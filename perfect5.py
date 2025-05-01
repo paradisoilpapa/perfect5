@@ -138,7 +138,7 @@ chaku = [st.number_input(f"{i+1}番着順", min_value=1, max_value=7, value=5, s
 st.subheader("▼ 競争得点入力")
 rating = [st.number_input(f"{i+1}番得点", value=55.0, step=0.1, key=f"rate_{i}") for i in range(7)]
 
-st.subheader("▼ 隊列順位入力（数字、欠の場合は空欄）")
+st.subheader("▼ 予想隊列入力（数字、欠の場合は空欄）")
 tairetsu = [st.text_input(f"{i+1}番隊列順位", key=f"tai_{i}") for i in range(7)]
 
 st.subheader("▼ ラインポジション入力（0単騎 1先頭 2番手 3三番手）")
