@@ -146,18 +146,29 @@ line_order = [
     st.number_input(f"{i+1}番ラインポジション", min_value=0, max_value=3, step=1, value=0, key=f"line_{i}")
     for i in range(7)]
 
-st.subheader("▼ 政春印入力（◎〇▲△×無ム → 7文字で入力）")
-symbol_input_raw = st.text_input("印記号を左から順に7文字で入力（例：◎〇▲△×無ム）", max_chars=7)
+st.subheader("▼ 政春印入力（各記号ごとに該当車番を入力）")
 
+# 使用する記号と評価値
+symbol_input_options = ['◎', '〇', '▲', '△', '×', '無', 'ム']
+symbol_bonus = {
+    '◎': 2.0, '〇': 1.5, '▲': 1.0, '△': 0.5, '×': 0.2,
+    '無': 0.0, 'ム': 0.0
+}
 
-# 選手番号（1〜7）に対応する印を割り当て
+# 入力欄を記号ごとに表示（タブ入力可能）
+symbol_inputs = {}
+cols = st.columns(len(symbol_input_options))
+for i, sym in enumerate(symbol_input_options):
+    with cols[i]:
+        st.markdown(f"**{sym}**")
+        symbol_inputs[sym] = st.text_input("", key=f"symbol_{sym}", max_chars=14)
+
+# 車番→記号 の辞書を構築
 car_to_symbol = {}
-if len(symbol_input_raw) == 7 and all(c in symbol_input_options for c in symbol_input_raw):
-    for i, mark in enumerate(symbol_input_raw):
-        car_to_symbol[i + 1] = mark
-else:
-    # エラーや不足時はすべて「無」に
-    car_to_symbol = {i + 1: '無' for i in range(7)}
+for sym, input_str in symbol_inputs.items():
+    for c in input_str:
+        if c.isdigit():
+            car_to_symbol[int(c)] = sym
     
 # 使用記号リストと評価値
 symbol_keys = ['◎', '〇', '▲', '△', '×', '無', 'ム']
