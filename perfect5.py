@@ -177,11 +177,6 @@ symbol_bonus = {
     '無': 0.0, 'ム': 0.0  # 同じ評価
 }
 
-# symbol_map: 選手番号→記号（例：car_to_symbol[5] = '◎'）
-car_to_symbol = {}
-if len(symbol_input_raw) == 7 and all(c in symbol_keys for c in symbol_input_raw):
-    for i, mark in enumerate(symbol_input_raw):
-        car_to_symbol[i + 1] = mark
 else:
     # エラー時はすべて無印に
     car_to_symbol = {i + 1: '無' for i in range(7)}
