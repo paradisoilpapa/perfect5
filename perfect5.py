@@ -177,10 +177,6 @@ symbol_bonus = {
     '無': 0.0, 'ム': 0.0  # 同じ評価
 }
 
-else:
-    # エラー時はすべて無印に
-    car_to_symbol = {i + 1: '無' for i in range(7)}
-
 
 # --- スコア計算 ---
 if st.button("スコア計算実行"):
