@@ -141,10 +141,11 @@ rating = [st.number_input(f"{i+1}番得点", value=55.0, step=0.1, key=f"rate_{i
 st.subheader("▼ 予想隊列入力（数字、欠の場合は空欄）")
 tairetsu = [st.text_input(f"{i+1}番隊列順位", key=f"tai_{i}") for i in range(7)]
 
-st.subheader("▼ ラインポジション入力（0単騎 1先頭 2番手 3三番手）")
+st.subheader("▼ ラインポジション入力（0単騎 1先頭 2番手 3三番手　4四番手）")
 line_order = [
-    st.number_input(f"{i+1}番ラインポジション", min_value=0, max_value=3, step=1, value=0, key=f"line_{i}")
-    for i in range(7)]
+    st.number_input(f"{i+1}番ラインポジション", min_value=0, max_value=4, step=1, value=0, key=f"line_{i}")
+    for i in range(7)
+]
 
 st.subheader("▼ 政春印入力（各記号ごとに該当車番を入力）")
 
@@ -210,16 +211,18 @@ if st.button("スコア計算実行"):
             return 0
         return {'逃': +2.5, '両': +0.5, '追': -2.5}[kaku]
 
-    def line_member_bonus(pos):
-        if pos == 0:
-            return -1.0
-        elif pos == 1:
-            return 2.0
-        elif pos == 2:
-            return 1.5
-        elif pos == 3:
-            return 1.0
-        return 0.0
+def line_member_bonus(pos):
+    if pos == 0:
+        return -1.0
+    elif pos == 1:
+        return 2.0
+    elif pos == 2:
+        return 1.5
+    elif pos == 3:
+        return 1.0
+    elif pos == 4:
+        return 0.5  # ← ここを追加！
+    return 0.0
 
     def bank_character_bonus(kaku, angle, straight):
         base_straight = 50.0
