@@ -203,14 +203,6 @@ symbol_bonus = {
 
 
 # --- スコア計算 ---
-if st.button("スコア計算実行"):
-
-    st.write("現在の脚質:", kakushitsu)
-    st.write("現在の着順:", chaku)
-    st.write("現在の隊列入力:", tairetsu)
-    st.write("現在のライン入力:", line_order)
-    st.write("現在の政春印:", car_to_symbol)
-
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
             return 0
