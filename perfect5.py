@@ -278,15 +278,25 @@ def bank_length_adjust(kaku, length):
             continue
         num = i + 1
         base = base_score[kakushitsu[i]]
-        wind = wind_straight_combo_adjust(kakushitsu[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
+        wind = wind_straight_combo_adjust(
+            kakushitsu[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
         tai = tairyetsu_adjust(num, tairetsu_list)
         kasai = score_from_chakujun(chaku[i])
         rating_score = max(0, round((sum(rating)/7 - rating[i]) * 0.2, 1))
         rain_corr = rain_adjust(kakushitsu[i])
         symbol_bonus_score = symbol_bonus.get(car_to_symbol.get(num, '無'), 0.0)
         line_bonus = line_member_bonus(line_order[i])
-                bank_bonus = bank_character_bonus(kakushitsu[i], bank_angle, straight_length)
-        length_bonus = bank_length_adjust(kakushitsu[i], bank_length)  # ← 追加！
+        bank_bonus = bank_character_bonus(kakushitsu[i], bank_angle, straight_length)
+        length_bonus = bank_length_adjust(kakushitsu[i], bank_length)
+
+        total = base + wind + tai + kasai + rating_score + rain_corr \
+                + symbol_bonus_score + line_bonus + bank_bonus + length_bonus
+
+        score_parts.append((
+            num, kakushitsu[i], base, wind, tai, kasai, rating_score,
+            rain_corr, symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total
+        ))
+
 
         total = base + wind + tai + kasai + rating_score + rain_corr + symbol_bonus_score + line_bonus + bank_bonus + length_bonus
 
