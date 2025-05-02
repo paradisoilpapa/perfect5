@@ -203,6 +203,8 @@ symbol_bonus = {
 
 
 # --- スコア計算 ---
+if st.button("スコア計算実行"):
+
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
             return 0
