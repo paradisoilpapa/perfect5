@@ -205,11 +205,10 @@ symbol_bonus = {
 # --- スコア計算 ---
 if st.button("スコア計算実行"):
     st.write("現在の脚質:", kakushitsu)
-st.write("現在の着順:", chaku)
-st.write("現在の隊列入力:", tairetsu)
-st.write("現在のライン入力:", line_order)
-st.write("現在の政春印:", car_to_symbol)
-
+    st.write("現在の着順:", chaku)
+    st.write("現在の隊列入力:", tairetsu)
+    st.write("現在のライン入力:", line_order)
+    st.write("現在の政春印:", car_to_symbol)
 
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
@@ -222,70 +221,37 @@ st.write("現在の政春印:", car_to_symbol)
         pos = tairetsu_list.index(num)
         base = max(0, round(3.0 - 0.5 * pos, 1))
         if kakushitsu[num - 1] == '追':
-            if 2 <= pos <= 4:
-                return base + 0.5 + 1.5
-            else:
-                return base + 0.5
+            return base + (2.0 if 2 <= pos <= 4 else 0.5)
         return base
 
     def score_from_chakujun(pos):
-        if pos == 1: return 3.0
-        elif pos == 2: return 2.5
-        elif pos == 3: return 2.0
-        elif pos <= 6: return 1.0
-        else: return 0.0
+        return 3.0 if pos == 1 else 2.5 if pos == 2 else 2.0 if pos == 3 else 1.0 if pos <= 6 else 0.0
 
     def rain_adjust(kaku):
-        if not rain:
-            return 0
-        return {'逃': +2.5, '両': +0.5, '追': -2.5}[kaku]
+        return {'逃': +2.5, '両': +0.5, '追': -2.5}.get(kaku, 0.0) if rain else 0.0
 
     def line_member_bonus(pos):
-        if pos == 0:
-            return -1.0
-        elif pos == 1:
-            return 2.0
-        elif pos == 2:
-            return 1.5
-        elif pos == 3:
-            return 1.0
-        elif pos == 4:
-            return 0.5
-        return 0.0
+        return {-1: -1.0, 0: -1.0, 1: 2.0, 2: 1.5, 3: 1.0, 4: 0.5}.get(pos, 0.0)
 
-def bank_character_bonus(kaku, angle, straight):
-    base_straight = 50.0
-    base_angle = 30.0
-    straight_factor = (straight - base_straight) / 10.0
-    angle_factor = (angle - base_angle) / 5.0
-    total_factor = -0.8 * straight_factor + 0.6 * angle_factor
-    bonus = {
-        '逃': +total_factor,
-        '追': -total_factor,
-        '両': 0.0
-    }.get(kaku, 0.0)
-    return round(bonus, 2)
+    def bank_character_bonus(kaku, angle, straight):
+        straight_factor = (straight - 50.0) / 10.0
+        angle_factor = (angle - 30.0) / 5.0
+        total_factor = -0.8 * straight_factor + 0.6 * angle_factor
+        return round({'逃': +total_factor, '追': -total_factor, '両': 0.0}.get(kaku, 0.0), 2)
 
-def bank_length_adjust(kaku, length):
-    # 標準値を400mとして差分で調整
-    delta = (length - 400) / 100
-    if kaku == '逃':
-        return -1.5 * delta
-    elif kaku == '追':
-        return +1.2 * delta
-    return 0.0
-
+    def bank_length_adjust(kaku, length):
+        delta = (length - 400) / 100
+        return {'逃': -1.5 * delta, '追': +1.2 * delta, '両': 0.0}.get(kaku, 0.0)
 
     tairetsu_list = [i+1 for i, v in enumerate(tairetsu) if v.isdigit()]
-
     score_parts = []
+
     for i in range(7):
         if not tairetsu[i].isdigit():
             continue
         num = i + 1
         base = base_score[kakushitsu[i]]
-        wind = wind_straight_combo_adjust(
-            kakushitsu[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
+        wind = wind_straight_combo_adjust(kakushitsu[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
         tai = tairyetsu_adjust(num, tairetsu_list)
         kasai = score_from_chakujun(chaku[i])
         rating_score = max(0, round((sum(rating)/7 - rating[i]) * 0.2, 1))
@@ -294,26 +260,13 @@ def bank_length_adjust(kaku, length):
         line_bonus = line_member_bonus(line_order[i])
         bank_bonus = bank_character_bonus(kakushitsu[i], bank_angle, straight_length)
         length_bonus = bank_length_adjust(kakushitsu[i], bank_length)
-
-        total = base + wind + tai + kasai + rating_score + rain_corr \
-                + symbol_bonus_score + line_bonus + bank_bonus + length_bonus
-
-        score_parts.append((
-            num, kakushitsu[i], base, wind, tai, kasai, rating_score,
-            rain_corr, symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total
-        ))
-
-
         total = base + wind + tai + kasai + rating_score + rain_corr + symbol_bonus_score + line_bonus + bank_bonus + length_bonus
 
-
-        score_parts.append((
-            num, kakushitsu[i], base, wind, tai, kasai, rating_score,
-            rain_corr, symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total
-        ))
-
+        score_parts.append((num, kakushitsu[i], base, wind, tai, kasai, rating_score, rain_corr,
+                            symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total))
 
     df = pd.DataFrame(score_parts, columns=[
         '車番', '脚質', '基本', '風補正', '隊列補正', '着順補正', '得点補正',
         '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正', '合計スコア'
     ])
+    st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
