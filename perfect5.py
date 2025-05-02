@@ -126,11 +126,7 @@ rain = st.checkbox("雨（滑走・慎重傾向あり）")
 # --- 【選手データ入力】 ---
 st.header("【選手データ入力】")
 
-kakushitsu_options = ['逃', '両', '追']
 symbol_input_options = ['◎', '〇', '▲', '△', '×', '無']
-
-st.subheader("▼ 脚質入力")
-kakushitsu = [st.selectbox(f"{i+1}番脚質", kakushitsu_options, key=f"kaku_{i}") for i in range(7)]
 
 st.subheader("▼ 脚質入力（逃・両・追：車番を半角数字で入力）")
 
