@@ -204,6 +204,7 @@ symbol_bonus = {
 
 # --- スコア計算 ---
 if st.button("スコア計算実行"):
+
     st.write("現在の脚質:", kakushitsu)
     st.write("現在の着順:", chaku)
     st.write("現在の隊列入力:", tairetsu)
@@ -243,7 +244,7 @@ if st.button("スコア計算実行"):
         delta = (length - 400) / 100
         return {'逃': -1.5 * delta, '追': +1.2 * delta, '両': 0.0}.get(kaku, 0.0)
 
-    tairetsu_list = [i+1 for i, v in enumerate(tairetsu) if v.isdigit()]
+    tairetsu_list = [i + 1 for i, v in enumerate(tairetsu) if v.isdigit()]
     score_parts = []
 
     for i in range(7):
@@ -254,7 +255,7 @@ if st.button("スコア計算実行"):
         wind = wind_straight_combo_adjust(kakushitsu[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
         tai = tairyetsu_adjust(num, tairetsu_list)
         kasai = score_from_chakujun(chaku[i])
-        rating_score = max(0, round((sum(rating)/7 - rating[i]) * 0.2, 1))
+        rating_score = max(0, round((sum(rating) / 7 - rating[i]) * 0.2, 1))
         rain_corr = rain_adjust(kakushitsu[i])
         symbol_bonus_score = symbol_bonus.get(car_to_symbol.get(num, '無'), 0.0)
         line_bonus = line_member_bonus(line_order[i])
@@ -262,8 +263,10 @@ if st.button("スコア計算実行"):
         length_bonus = bank_length_adjust(kakushitsu[i], bank_length)
         total = base + wind + tai + kasai + rating_score + rain_corr + symbol_bonus_score + line_bonus + bank_bonus + length_bonus
 
-        score_parts.append((num, kakushitsu[i], base, wind, tai, kasai, rating_score, rain_corr,
-                            symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total))
+        score_parts.append((
+            num, kakushitsu[i], base, wind, tai, kasai, rating_score,
+            rain_corr, symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total
+        ))
 
     df = pd.DataFrame(score_parts, columns=[
         '車番', '脚質', '基本', '風補正', '隊列補正', '着順補正', '得点補正',
