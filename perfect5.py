@@ -238,7 +238,53 @@ if st.button("スコア計算実行"):
         return base
 
     def score_from_chakujun(pos):
-        return 3.0 if pos == 1 else 2.5 if pos == 2 else 2.0 if pos == 3 else 1.0 if pos <= 6 else 0.0
+        correction_map = {
+            1: -0.5,
+            2: -0.3,
+            3: -0.2,
+            4:  0.0,
+            5: +0.3,
+            6: +0.2,
+            7: +0.0
+        }
+        return correction_map.get(pos, 0.0)
+
+    def score_from_tenscore(score):
+        if score >= 58:
+            return -0.6
+        elif score == 57:
+            return -0.4
+        elif score == 56:
+            return -0.2
+        elif score == 55:
+            return 0.0
+        elif score == 54:
+            return +0.3
+        elif score == 53:
+            return +0.2
+        else:
+            return 0.0
+def tairyetsu_adjust(num, tairetsu_list):
+    pos = tairetsu_list.index(num)
+    base = max(0, round(3.0 - 0.5 * pos, 1))
+    if kakushitsu[num - 1] == '追':
+        return base + (2.0 if 2 <= pos <= 4 else 0.5)
+    return base
+
+def score_from_chakujun(pos):
+    correction_map = {
+        1: -0.5,
+        2: -0.3,
+        3: -0.2,
+        4:  0.0,
+        5: +0.3,
+        6: +0.2,
+        7: +0.0  # 必要なら +0.1 にしてもOK
+    }
+    return correction_map.get(pos, 0.0)
+
+
+
 
     def rain_adjust(kaku):
         return {'逃': +2.5, '両': +0.5, '追': -2.5}.get(kaku, 0.0) if rain else 0.0
