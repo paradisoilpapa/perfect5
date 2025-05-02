@@ -227,37 +227,31 @@ if st.button("スコア計算実行"):
             return 0
         return {'逃': +2.5, '両': +0.5, '追': -2.5}[kaku]
 
-def line_member_bonus(pos):
-    if pos == 0:
-        return -1.0
-    elif pos == 1:
-        return 2.0
-    elif pos == 2:
-        return 1.5
-    elif pos == 3:
-        return 1.0
-    elif pos == 4:
-        return 0.5  # ← ここを追加！
-    return 0.0
+    def line_member_bonus(pos):
+        if pos == 0:
+            return -1.0
+        elif pos == 1:
+            return 2.0
+        elif pos == 2:
+            return 1.5
+        elif pos == 3:
+            return 1.0
+        elif pos == 4:
+            return 0.5
+        return 0.0
 
     def bank_character_bonus(kaku, angle, straight):
         base_straight = 50.0
         base_angle = 30.0
-
         straight_factor = (straight - base_straight) / 10.0
         angle_factor = (angle - base_angle) / 5.0
-
         total_factor = -0.8 * straight_factor + 0.6 * angle_factor
-
         bonus = {
             '逃': +total_factor,
             '追': -total_factor,
             '両': 0.0
         }.get(kaku, 0.0)
-
         return round(bonus, 2)
-
-
 
     tairetsu_list = [i+1 for i, v in enumerate(tairetsu) if v.isdigit()]
 
@@ -277,10 +271,13 @@ def line_member_bonus(pos):
         bank_bonus = bank_character_bonus(kakushitsu[i], bank_angle, straight_length)
         total = base + wind + tai + kasai + rating_score + rain_corr + symbol_bonus_score + line_bonus + bank_bonus
 
-        score_parts.append((num, kakushitsu[i], base, wind, tai, kasai, rating_score, rain_corr, symbol_bonus_score, line_bonus, bank_bonus, total))
+        score_parts.append((
+            num, kakushitsu[i], base, wind, tai, kasai, rating_score,
+            rain_corr, symbol_bonus_score, line_bonus, bank_bonus, total
+        ))
 
     df = pd.DataFrame(score_parts, columns=[
-        '車番', '脚質', '基本', '風補正', '隊列補正', '着順補正', '得点補正', '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '合計スコア'
+        '車番', '脚質', '基本', '風補正', '隊列補正', '着順補正', '得点補正',
+        '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '合計スコア'
     ])
     st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
-
