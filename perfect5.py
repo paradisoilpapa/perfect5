@@ -222,22 +222,33 @@ symbol_bonus = {
 
 if st.button("スコア計算実行"):
 
-    def score_from_tenscore(score):
-        s = int(round(score))
-        if s == 58:
-            return -0.6
-        elif s == 57:
-            return -0.4
-        elif s == 56:
-            return -0.2
-        elif s == 55:
-            return 0.0
-        elif s == 54:
-            return +0.3
-        elif s == 53:
-            return +0.2
-        else:
-            return 0.0
+    def score_from_tenscore_list(tenscore_list):
+        sorted_scores = sorted(tenscore_list, reverse=True)
+        baseline = sorted_scores[3]  # 4位の得点
+
+        result = []
+        for score in tenscore_list:
+            diff = score - baseline
+            correction = 0.0
+
+            if diff >= 6:
+                correction = -0.6
+            elif diff >= 4:
+                correction = -0.4
+            elif diff >= 2:
+                correction = -0.2
+            elif diff <= -6:
+                correction = +0.9
+            elif diff <= -4:
+                correction = +0.6
+            elif diff <= -2:
+                correction = +0.3
+            else:
+                correction = 0.0
+
+            result.append(round(correction, 1))
+
+        return result
 
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
@@ -282,6 +293,7 @@ if st.button("スコア計算実行"):
         return {'逃': -1.5 * delta, '追': +1.2 * delta, '両': 0.0}.get(kaku, 0.0)
 
     tairetsu_list = [i + 1 for i, v in enumerate(tairetsu) if v.isdigit()]
+    tenscore_score = score_from_tenscore_list(rating)
     score_parts = []
 
     for i in range(7):
@@ -292,7 +304,7 @@ if st.button("スコア計算実行"):
         wind = wind_straight_combo_adjust(kakushitsu[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
         tai = tairyetsu_adjust(num, tairetsu_list)
         kasai = score_from_chakujun(chaku[i])
-        rating_score = score_from_tenscore(rating[i])
+        rating_score = tenscore_score[i]
         rain_corr = rain_adjust(kakushitsu[i])
         symbol_bonus_score = symbol_bonus.get(car_to_symbol.get(num, '無'), 0.0)
         line_bonus = line_member_bonus(line_order[i])
