@@ -222,6 +222,23 @@ symbol_bonus = {
 
 if st.button("スコア計算実行"):
 
+    def score_from_tenscore(score):
+        s = int(round(score))
+        if s == 58:
+            return -0.6
+        elif s == 57:
+            return -0.4
+        elif s == 56:
+            return -0.2
+        elif s == 55:
+            return 0.0
+        elif s == 54:
+            return +0.3
+        elif s == 53:
+            return +0.2
+        else:
+            return 0.0
+
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
             return 0
@@ -247,22 +264,6 @@ if st.button("スコア計算実行"):
             7: +0.0
         }
         return correction_map.get(pos, 0.0)
-
-    def score_from_tenscore(score):
-        if score >= 58:
-            return -0.6
-        elif score == 57:
-            return -0.4
-        elif score == 56:
-            return -0.2
-        elif score == 55:
-            return 0.0
-        elif score == 54:
-            return +0.3
-        elif score == 53:
-            return +0.2
-        else:
-            return 0.0
 
     def rain_adjust(kaku):
         return {'逃': +2.5, '両': +0.5, '追': -2.5}.get(kaku, 0.0) if rain else 0.0
@@ -291,7 +292,7 @@ if st.button("スコア計算実行"):
         wind = wind_straight_combo_adjust(kakushitsu[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
         tai = tairyetsu_adjust(num, tairetsu_list)
         kasai = score_from_chakujun(chaku[i])
-        rating_score = max(0, round((sum(rating) / 7 - rating[i]) * 0.2, 1))
+        rating_score = score_from_tenscore(rating[i])
         rain_corr = rain_adjust(kakushitsu[i])
         symbol_bonus_score = symbol_bonus.get(car_to_symbol.get(num, '無'), 0.0)
         line_bonus = line_member_bonus(line_order[i])
