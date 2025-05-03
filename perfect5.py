@@ -223,32 +223,33 @@ symbol_bonus = {
 if st.button("スコア計算実行"):
 
     def score_from_tenscore_list(tenscore_list):
-        sorted_scores = sorted(tenscore_list, reverse=True)
-        baseline = sorted_scores[3]  # 4位の得点
+        # 得点を高い順に並べ、得点ごとに順位を付ける（同点は同順位）
+        sorted_unique = sorted(set(tenscore_list), reverse=True)
+        score_to_rank = {score: rank + 1 for rank, score in enumerate(sorted_unique)}
 
         result = []
         for score in tenscore_list:
-            diff = score - baseline
-            correction = 0.0
-
-            if diff >= 6:
+            rank = score_to_rank[score]
+            if rank == 1:
                 correction = -0.6
-            elif diff >= 4:
+            elif rank == 2:
                 correction = -0.4
-            elif diff >= 2:
+            elif rank == 3:
                 correction = -0.2
-            elif diff <= -6:
-                correction = +0.9
-            elif diff <= -4:
-                correction = +0.6
-            elif diff <= -2:
-                correction = +0.3
+            elif rank == 4:
+                correction = 0.0
+            elif rank == 5:
+                correction = +0.2
+            elif rank == 6:
+                correction = +0.1
+            elif rank == 7:
+                correction = 0.0
             else:
                 correction = 0.0
-
-            result.append(round(correction, 1))
+            result.append(correction)
 
         return result
+
 
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
