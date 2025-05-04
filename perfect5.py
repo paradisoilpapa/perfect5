@@ -258,24 +258,51 @@ if st.button("スコア計算実行"):
         coeff = {'逃': 1.2, '両': 1.0, '追': 0.8}.get(kaku, 1.0)
         return round(basic * coeff, 2)
 
-    def tairyetsu_adjust(num, tairetsu_list):
-        pos = tairetsu_list.index(num)
-        base = max(0, round(3.0 - 0.5 * pos, 1))
-        if kakushitsu[num - 1] == '追':
-            return base + (2.0 if 2 <= pos <= 4 else 0.5)
-        return base
+    def tairyetsu_adjust(num, tairetsu_list, kaku, wind_dir, wind_speed):
+    try:
+        pos = tairetsu_list.index(num)  # 隊列中での位置（先頭が0）
+    except ValueError:
+        return 0.0  # 隊列にいない場合は補正なし
+
+    # ベース補正値（追込でも過剰加点にならない範囲に収める）
+    base_values = [1.0, 0.8, 0.5, 0.3, 0.1]
+    base = base_values[pos] if pos < len(base_values) else 0.0
+
+    # 風向き補正（向かい風で減点、追い風で加点）
+    wind_factor = {
+        '上': -1.0, '右上': -0.7, '左上': -0.7,
+        '下': +1.0, '右下': +0.7, '左下': +0.7,
+        '右': -0.2, '左': -0.2, '無風': 0.0
+    }.get(wind_dir, 0.0)
+
+    # 脚質別の風影響係数（先頭に出る脚質ほど風の影響を受ける）
+    kaku_coeff = {'逃': 1.0, '両': 0.6, '追': 0.3}.get(kaku, 0.5)
+
+    # 隊列先頭のみ100%反映、後方は減衰
+    position_attenuation = 1.0 if pos == 0 else 0.4
+
+    # 風補正値を計算
+    wind_adjust = round(wind_speed * wind_factor * kaku_coeff * position_attenuation, 2)
+
+    # 総合補正値（base + 風補正）
+    return round(base + wind_adjust, 2)
+
 
     def score_from_chakujun(pos):
-        correction_map = {
-            1: -0.5,
-            2: -0.3,
-            3: -0.2,
-            4:  0.0,
-            5: +0.3,
-            6: +0.2,
-            7: +0.0
-        }
-        return correction_map.get(pos, 0.0)
+    correction_map = {
+        1: -0.5,
+        2: -0.3,
+        3: -0.2,
+        4:  0.0,
+        5: +0.3,
+        6: +0.2,
+        7: +0.0
+    }
+    return correction_map.get(pos, 0.0)
+
+# 呼び出し部（例）
+tai = tairyetsu_adjust(num, tairetsu_list, kakushitsu[i], st.session_state.selected_wind, wind_speed)
+
 
     def rain_adjust(kaku):
         return {'逃': +2.5, '両': +0.5, '追': -2.5}.get(kaku, 0.0) if rain else 0.0
