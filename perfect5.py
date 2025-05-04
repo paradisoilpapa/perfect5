@@ -350,7 +350,6 @@ def bank_length_adjust(kaku, length):
         num = i + 1
         base = base_score[kakushitsu[i]]
         wind = wind_straight_combo_adjust(kakushitsu[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
-        tai = tairyetsu_adjust(num, tairetsu_list, kakushitsu[i], st.session_state.selected_wind, wind_speed)
         kasai = score_from_chakujun(chaku[i])
         rating_score = tenscore_score[i]
         rain_corr = rain_adjust(kakushitsu[i])
@@ -358,15 +357,15 @@ def bank_length_adjust(kaku, length):
         line_bonus = line_member_bonus(line_order[i])
         bank_bonus = bank_character_bonus(kakushitsu[i], bank_angle, straight_length)
         length_bonus = bank_length_adjust(kakushitsu[i], bank_length)
-        total = base + wind + tai + kasai + rating_score + rain_corr + symbol_bonus_score + line_bonus + bank_bonus + length_bonus
+        total = base + wind + kasai + rating_score + rain_corr + symbol_bonus_score + line_bonus + bank_bonus + length_bonus
 
         score_parts.append((
-            num, kakushitsu[i], base, wind, tai, kasai, rating_score,
+            num, kakushitsu[i], base, wind, kasai, rating_score,
             rain_corr, symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total
         ))
 
     df = pd.DataFrame(score_parts, columns=[
-        '車番', '脚質', '基本', '風補正', '隊列補正', '着順補正', '得点補正',
+        '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
         '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正', '合計スコア'
     ])
     st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
