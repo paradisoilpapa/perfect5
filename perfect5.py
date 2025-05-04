@@ -323,9 +323,6 @@ def tairyetsu_adjust(num, tairetsu_list, kaku, wind_dir, wind_speed):
             7: +0.0
         }
         return correction_map.get(pos, 0.0)
-# 呼び出し部（例）
-tai = tairyetsu_adjust(num, tairetsu_list, kakushitsu[i], st.session_state.selected_wind, wind_speed)
-
 
 def rain_adjust(kaku):
     return {'逃': +2.5, '両': +0.5, '追': -2.5}.get(kaku, 0.0) if rain else 0.0
@@ -353,7 +350,7 @@ def bank_length_adjust(kaku, length):
         num = i + 1
         base = base_score[kakushitsu[i]]
         wind = wind_straight_combo_adjust(kakushitsu[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
-        tai = tairyetsu_adjust(num, tairetsu_list)
+        tai = tairyetsu_adjust(num, tairetsu_list, kakushitsu[i], st.session_state.selected_wind, wind_speed)
         kasai = score_from_chakujun(chaku[i])
         rating_score = tenscore_score[i]
         rain_corr = rain_adjust(kakushitsu[i])
