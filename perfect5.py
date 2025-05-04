@@ -318,21 +318,21 @@ if st.button("スコア計算実行"):
 tai = tairyetsu_adjust(num, tairetsu_list, kakushitsu[i], st.session_state.selected_wind, wind_speed)
 
 
-    def rain_adjust(kaku):
-        return {'逃': +2.5, '両': +0.5, '追': -2.5}.get(kaku, 0.0) if rain else 0.0
+def rain_adjust(kaku):
+    return {'逃': +2.5, '両': +0.5, '追': -2.5}.get(kaku, 0.0) if rain else 0.0
 
-    def line_member_bonus(pos):
-        return {0: -0.5, 1: 1.0, 2: 0.8, 3: 0.5, 4: 0.3}.get(pos, 0.0)
+def line_member_bonus(pos):
+    return {0: -0.5, 1: 1.0, 2: 0.8, 3: 0.5, 4: 0.3}.get(pos, 0.0)
 
-    def bank_character_bonus(kaku, angle, straight):
-        straight_factor = (straight - 50.0) / 10.0
-        angle_factor = (angle - 30.0) / 5.0
-        total_factor = -0.8 * straight_factor + 0.6 * angle_factor
-        return round({'逃': +total_factor, '追': -total_factor, '両': 0.0}.get(kaku, 0.0), 2)
+def bank_character_bonus(kaku, angle, straight):
+    straight_factor = (straight - 50.0) / 10.0
+    angle_factor = (angle - 30.0) / 5.0
+    total_factor = -0.8 * straight_factor + 0.6 * angle_factor
+    return round({'逃': +total_factor, '追': -total_factor, '両': 0.0}.get(kaku, 0.0), 2)
 
-    def bank_length_adjust(kaku, length):
-        delta = (length - 400) / 100
-        return {'逃': -1.5 * delta, '追': +1.2 * delta, '両': 0.0}.get(kaku, 0.0)
+def bank_length_adjust(kaku, length):
+    delta = (length - 400) / 100
+    return {'逃': -1.5 * delta, '追': +1.2 * delta, '両': 0.0}.get(kaku, 0.0)
 
     tairetsu_list = [i + 1 for i, v in enumerate(tairetsu) if v.isdigit()]
     tenscore_score = score_from_tenscore_list(rating)
