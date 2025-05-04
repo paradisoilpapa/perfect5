@@ -259,10 +259,10 @@ if st.button("スコア計算実行"):
         return round(basic * coeff, 2)
         
     def tairyetsu_adjust(num, tairetsu_list, kaku, wind_dir, wind_speed):
-        try:
-            pos = tairetsu_list.index(num)  # 隊列中での位置（先頭が0）
-        except ValueError:
-            return 0.0  # 隊列にいない場合は補正なし
+    try:
+        pos = tairetsu_list.index(num)  # 隊列中での位置（先頭が0）
+    except ValueError:
+        return 0.0  # 隊列にいない場合は補正なし
 
     # ベース補正値（追込でも過剰加点にならない範囲に収める）
     base_values = [1.0, 0.8, 0.5, 0.3, 0.1]
