@@ -286,7 +286,8 @@ if st.button("スコア計算実行"):
 
     # 総合補正値（base + 風補正）
     return round(base + wind_adjust, 2)
-        def score_from_chakujun(pos):
+
+    def score_from_chakujun(pos):
         correction_map = {
             1: -0.5,
             2: -0.3,
