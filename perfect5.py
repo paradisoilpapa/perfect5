@@ -288,31 +288,31 @@ if st.button("スコア計算実行"):
     return round(base + wind_adjust, 2)
 
 
-def score_from_chakujun(pos):
-    correction_map = {
-        1: -0.5,
-        2: -0.3,
-        3: -0.2,
-        4:  0.0,
-        5: +0.3,
-        6: +0.2,
-        7: +0.0
-    }
-    return correction_map.get(pos, 0.0)
+    def score_from_chakujun(pos):
+        correction_map = {
+            1: -0.5,
+            2: -0.3,
+            3: -0.2,
+            4:  0.0,
+            5: +0.3,
+            6: +0.2,
+            7: +0.0
+        }
+        return correction_map.get(pos, 0.0)
 
 
 
     def score_from_chakujun(pos):
-    correction_map = {
-        1: -0.5,
-        2: -0.3,
-        3: -0.2,
-        4:  0.0,
-        5: +0.3,
-        6: +0.2,
-        7: +0.0
-    }
-    return correction_map.get(pos, 0.0)
+        correction_map = {
+            1: -0.5,
+            2: -0.3,
+            3: -0.2,
+            4:  0.0,
+            5: +0.3,
+            6: +0.2,
+            7: +0.0
+        }
+        return correction_map.get(pos, 0.0)
 
 # 呼び出し部（例）
 tai = tairyetsu_adjust(num, tairetsu_list, kakushitsu[i], st.session_state.selected_wind, wind_speed)
