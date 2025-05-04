@@ -257,9 +257,9 @@ if st.button("スコア計算実行"):
         basic = wind_coefficients.get(direction, 0.0) * speed * position_multipliers[pos]
         coeff = {'逃': 1.2, '両': 1.0, '追': 0.8}.get(kaku, 1.0)
         return round(basic * coeff, 2)
-
+        
     def tairyetsu_adjust(num, tairetsu_list, kaku, wind_dir, wind_speed):
-    try:
+        try:
         pos = tairetsu_list.index(num)  # 隊列中での位置（先頭が0）
     except ValueError:
         return 0.0  # 隊列にいない場合は補正なし
@@ -286,6 +286,20 @@ if st.button("スコア計算実行"):
 
     # 総合補正値（base + 風補正）
     return round(base + wind_adjust, 2)
+
+
+def score_from_chakujun(pos):
+    correction_map = {
+        1: -0.5,
+        2: -0.3,
+        3: -0.2,
+        4:  0.0,
+        5: +0.3,
+        6: +0.2,
+        7: +0.0
+    }
+    return correction_map.get(pos, 0.0)
+
 
 
     def score_from_chakujun(pos):
