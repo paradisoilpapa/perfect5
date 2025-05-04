@@ -215,7 +215,7 @@ for sym, input_str in symbol_inputs.items():
 # 使用記号リストと評価値
 symbol_keys = ['◎', '〇', '▲', '△', '×', '無', 'ム']
 symbol_bonus = {
-    '◎': 2.0, '〇': 1.5, '▲': 1.0, '△': 0.5, '×': 0.2,
+    '◎': 0.30, '〇': 0.20, '▲': 0.15, '△': 0.1, '×': 0.5,
     '無': 0.0, 'ム': 0.0  # 同じ評価
 }
 
@@ -263,7 +263,7 @@ if st.button("スコア計算実行"):
         return correction_map.get(pos, 0.0)
 
     def rain_adjust(kaku):
-        return {'逃': +2.5, '両': +0.5, '追': -2.5}.get(kaku, 0.0) if rain else 0.0
+        return {'逃': +1.5, '両': +0.5, '追': -1.5}.get(kaku, 0.0) if rain else 0.0
 
     def line_member_bonus(pos):
         return {0: -0.5, 1: 1.0, 2: 0.8, 3: 0.5, 4: 0.3}.get(pos, 0.0)
