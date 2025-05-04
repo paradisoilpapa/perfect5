@@ -258,7 +258,7 @@ if st.button("スコア計算実行"):
         coeff = {'逃': 1.2, '両': 1.0, '追': 0.8}.get(kaku, 1.0)
         return round(basic * coeff, 2)
 
-def tairyetsu_adjust(num, tairetsu_list, kaku, wind_dir, wind_speed):
+    def tairyetsu_adjust(num, tairetsu_list, kaku, wind_dir, wind_speed):
     try:
         pos = tairetsu_list.index(num)  # 隊列中での位置（先頭が0）
     except ValueError:
