@@ -13,7 +13,7 @@ wind_coefficients = {
     "左": -0.2,   # 左風はやや不利（ホーム直線で外から押される）
     "右": +0.2,   # 右風はやや有利（バック直線で外に膨らみやすい）
     "左下": -0.7,
-    "下": -1.0,
+    "下": -1.0,.
     "右下": -0.7
 }
 
@@ -258,11 +258,26 @@ if st.button("スコア計算実行"):
         coeff = {'逃': 1.2, '両': 1.0, '追': 0.8}.get(kaku, 1.0)
         return round(basic * coeff, 2)
         
-    def tairyetsu_adjust(num, tairetsu_list, kaku, wind_dir, wind_speed):
+   def tairyetsu_adjust(num, tairetsu_list, kaku, wind_dir, wind_speed):
     try:
-        pos = tairetsu_list.index(num)  # 隊列中での位置（先頭が0）
+        pos = tairetsu_list.index(num)  # ← この行は必ず半角4文字（またはTab）でインデント
     except ValueError:
         return 0.0  # 隊列にいない場合は補正なし
+
+    base_values = [1.0, 0.8, 0.5, 0.3, 0.1]
+    base = base_values[pos] if pos < len(base_values) else 0.0
+
+    wind_factor = {
+        '上': -1.0, '右上': -0.7, '左上': -0.7,
+        '下': +1.0, '右下': +0.7, '左下': +0.7,
+        '右': -0.2, '左': -0.2, '無風': 0.0
+    }.get(wind_dir, 0.0)
+
+    kaku_coeff = {'逃': 1.0, '両': 0.6, '追': 0.3}.get(kaku, 0.5)
+    position_attenuation = 1.0 if pos == 0 else 0.4
+
+    wind_adjust = round(wind_speed * wind_factor * kaku_coeff * position_attenuation, 2)
+    return round(base + wind_adjust, 2)
 
     # ベース補正値（追込でも過剰加点にならない範囲に収める）
     base_values = [1.0, 0.8, 0.5, 0.3, 0.1]
