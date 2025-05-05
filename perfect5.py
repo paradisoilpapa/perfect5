@@ -194,11 +194,9 @@ symbol_bonus = {
     '無': 0.0, 'ム': 0.0
 }
 symbol_inputs = {}
-cols = st.columns(len(symbol_input_options))
-for i, sym in enumerate(symbol_input_options):
-    with cols[i]:
-        st.markdown(f"**{sym}**")
-        symbol_inputs[sym] = st.text_input("", key=f"symbol_{sym}", max_chars=14)
+for sym in symbol_input_options:
+    st.markdown(f"**{sym}（複数入力可）**")
+    symbol_inputs[sym] = st.text_input("", key=f"symbol_{sym}", max_chars=14)
 
 car_to_symbol = {}
 for sym, input_str in symbol_inputs.items():
