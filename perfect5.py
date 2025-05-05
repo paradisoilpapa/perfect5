@@ -222,36 +222,40 @@ st.subheader("▼ スコア計算")
 
 if st.button("スコア計算実行"):
 
+    # --- ラインマップ構築 ---
     def build_line_order_map(line_input):
         car_to_line = {}
         line_order_map = {}
         lines = [line.strip() for line in line_input.split(',') if line.strip()]
         for idx, line_str in enumerate(lines):
+            line_id = chr(65 + idx)  # A, B, C...
             cars = [int(c) for c in line_str if c.isdigit()]
             for i, car in enumerate(cars):
-                line_order_map[car] = i + 1 if len(cars) > 1 else 0
-                car_to_line[car] = chr(65 + idx) if len(cars) > 1 else 'D'
+                line_order_map[car] = i + 1 if len(cars) > 1 else 0  # 単騎なら0
+                car_to_line[car] = line_id
         return line_order_map, car_to_line
 
+    # --- グループ補正関数 ---
     def compute_group_bonus(score_parts, car_to_line):
         group_scores = {'A': 0.0, 'B': 0.0, 'C': 0.0}
         group_counts = {'A': 0, 'B': 0, 'C': 0}
         for entry in score_parts:
-            car_no = entry[0]
-            score = entry[-1]
-            group = car_to_line.get(car_no, None)
+            car_no, total_score = entry[0], entry[-1]
+            group = car_to_line.get(car_no, '')
             if group in group_scores:
-                group_scores[group] += score
+                group_scores[group] += total_score
                 group_counts[group] += 1
         group_avg = {k: group_scores[k] / group_counts[k] if group_counts[k] > 0 else 0.0 for k in group_scores}
-        sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
-        bonus_map = {group: [0.15, 0.08, 0.03][idx] if idx < 3 else 0.0 for idx, (group, _) in enumerate(sorted_lines)}
+        sorted_groups = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
+        bonus_values = [0.15, 0.08, 0.03]
+        bonus_map = {group: bonus_values[i] for i, (group, _) in enumerate(sorted_groups)}
         return bonus_map
 
     def get_group_bonus(car_no, car_to_line, group_bonus_map):
-        group = car_to_line.get(car_no, None)
-        return group_bonus_map.get(group, 0.0) if group in group_bonus_map else 0.0
+        group = car_to_line.get(car_no, '')
+        return group_bonus_map.get(group, 0.0)
 
+    # --- 得点補正 ---
     def score_from_tenscore_list(tenscore_list):
         sorted_unique = sorted(set(tenscore_list), reverse=True)
         score_to_rank = {score: rank + 1 for rank, score in enumerate(sorted_unique)}
@@ -262,28 +266,7 @@ if st.button("スコア計算実行"):
             result.append(correction)
         return result
 
-    # --- 必要なセッション情報取得（UI側で入力済である前提） ---
-    line_input = st.session_state.get("line_input", "")
-    kakushitsu = st.session_state.get("kakushitsu", ["追"] * 7)
-    chaku = st.session_state.get("chaku", [5] * 7)
-    rating = st.session_state.get("rating", [55.0] * 7)
-    symbol_map = st.session_state.get("symbol_map", {})
-    wind_dir = st.session_state.get("selected_wind", "無風")
-    wind_speed = st.session_state.get("wind_speed", 0.0)
-    straight = st.session_state.get("straight_length", 52.0)
-    bank_angle = st.session_state.get("bank_angle", 30.0)
-    bank_length = st.session_state.get("bank_length", 400.0)
-    rain = st.session_state.get("rain", False)
-
-    # --- ライン構成マップ構築 ---
-    line_order_map, car_to_line = build_line_order_map(line_input)
-
-    # --- 変数準備 ---
-    base_score = {'逃': 6.0, '両': 5.5, '追': 5.0}
-    symbol_bonus = {"◎": 0.6, "〇": 0.4, "▲": 0.3, "注": 0.28, "△": 0.2, "×": 0.1, "無": 0.0}
-    wind_coefficients = {"左上": +0.7, "上": +1.0, "右上": +0.7, "左": -0.2, "右": +0.2, "左下": -0.7, "下": -1.0, "右下": -0.7}
-    position_multipliers = {0: 1.2, 1: 1.0, 2: 0.3, 3: 0.1, 4: 0.05}
-
+    # --- 各種補正関数 ---
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
             return 0
@@ -292,7 +275,10 @@ if st.button("スコア計算実行"):
         return round(basic * coeff, 2)
 
     def score_from_chakujun(pos):
-        correction_map = {1: -0.5, 2: -0.3, 3: -0.2, 4: 0.0, 5: +0.3, 6: +0.2, 7: +0.0}
+        correction_map = {
+            1: -0.5, 2: -0.3, 3: -0.2,
+            4: 0.0, 5: +0.3, 6: +0.2, 7: +0.0
+        }
         return correction_map.get(pos, 0.0)
 
     def rain_adjust(kaku):
@@ -311,35 +297,47 @@ if st.button("スコア計算実行"):
         delta = (length - 400) / 100
         return {'逃': -1.5 * delta, '追': +1.2 * delta, '両': 0.0}.get(kaku, 0.0)
 
+    # --- スコア計算本体 ---
+    line_order_map, car_to_line = build_line_order_map(line_input)
     tenscore_score = score_from_tenscore_list(rating)
     score_parts = []
-    for i in range(7):
-        if i+1 not in line_order_map:
-            continue
-        num = i + 1
-        base = base_score.get(kakushitsu[i], 5.0)
-        wind = wind_straight_combo_adjust(kakushitsu[i], wind_dir, wind_speed, straight, line_order_map[num])
-        kasai = score_from_chakujun(chaku[i])
-        rating_score = tenscore_score[i]
-        rain_corr = rain_adjust(kakushitsu[i])
-        symbol_bonus_score = symbol_bonus.get(symbol_map.get(num, '無'), 0.0)
-        line_bonus = line_member_bonus(line_order_map[num])
-        bank_bonus = bank_character_bonus(kakushitsu[i], bank_angle, straight)
-        length_bonus = bank_length_adjust(kakushitsu[i], bank_length)
-        total = base + wind + kasai + rating_score + rain_corr + symbol_bonus_score + line_bonus + bank_bonus + length_bonus
-        score_parts.append((num, kakushitsu[i], base, wind, kasai, rating_score, rain_corr, symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total))
 
+    for i in range(7):
+        try:
+            car_no = i + 1
+            kaku = kakushitsu[i]
+            pos = int(line_order_map.get(car_no, 0))
+            base = base_score[kaku]
+            wind = wind_straight_combo_adjust(kaku, st.session_state.selected_wind, wind_speed, straight_length, pos)
+            kasai = score_from_chakujun(int(chaku[i]))
+            rating_score = tenscore_score[i]
+            rain_corr = rain_adjust(kaku)
+            symbol_bonus_score = symbol_bonus.get(car_to_symbol.get(car_no, '無'), 0.0)
+            line_bonus = line_member_bonus(pos)
+            bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
+            length_bonus = bank_length_adjust(kaku, bank_length)
+            total = base + wind + kasai + rating_score + rain_corr + symbol_bonus_score + line_bonus + bank_bonus + length_bonus
+            score_parts.append((
+                car_no, kaku, base, wind, kasai, rating_score,
+                rain_corr, symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total
+            ))
+        except Exception as e:
+            st.warning(f"{i+1}番のスコア計算中にエラー: {e}")
+            continue
+
+    # --- グループ補正反映 ---
     group_bonus_map = compute_group_bonus(score_parts, car_to_line)
     final_score_parts = []
     for row in score_parts:
         car_no = row[0]
         group_corr = get_group_bonus(car_no, car_to_line, group_bonus_map)
         new_total = row[-1] + group_corr
-        final_score_parts.append(row[:-1] + (group_corr, new_total))
+        final_score_parts.append(row[:-1] + [group_corr, new_total])
 
+    # --- 表示 ---
     df = pd.DataFrame(final_score_parts, columns=[
         '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
         '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正',
-        'グループ補正', '合計スコア'])
-
+        'グループ補正', '合計スコア'
+    ])
     st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
