@@ -1,4 +1,4 @@
-import streamlit as st
+=import streamlit as st
 import pandas as pd
 
 # --- ページ設定 ---
@@ -349,7 +349,36 @@ if st.button("スコア計算実行"):
             num, kakushitsu[i], base, wind, kasai, rating_score,
             rain_corr, symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total
         ))
-        
+        # --- グループ補正（ライン順位ボーナス）関数 ---
+def compute_group_bonus(score_parts, line_def):
+    group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
+    group_counts = {k: 0 for k in ['A', 'B', 'C']}
+    for entry in score_parts:
+        car_no = entry[0]
+        score = entry[-1]
+        for group in ['A', 'B', 'C']:
+            if car_no in line_def.get(group, []):
+                group_scores[group] += score
+                group_counts[group] += 1
+                break
+
+    group_avg = {
+        k: (group_scores[k] / group_counts[k]) if group_counts[k] > 0 else 0.0
+        for k in group_scores
+    }
+
+    sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
+    bonus_map = {}
+    for idx, (group, _) in enumerate(sorted_lines):
+        bonus_map[group] = [0.15, 0.08, 0.03][idx] if idx < 3 else 0.0
+    return bonus_map
+
+# --- 個別車番に対するグループ補正を取得 ---
+def get_group_bonus(car_no, line_def, group_bonus_map):
+    for group in ['A', 'B', 'C']:
+        if car_no in line_def.get(group, []):
+            return group_bonus_map.get(group, 0.0)
+    return 0.0
     # --- グループ補正の計算と合成 ---
 group_bonus_map = compute_group_bonus(score_parts, line_def)
 
