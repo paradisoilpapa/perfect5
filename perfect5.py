@@ -459,7 +459,7 @@ for i in range(7):
     if not tairetsu[i].isdigit():
         continue
     num = i + 1
-    base = base_score[kakushitsui[i]]
+    base = base_score.get(kakushitsui[i], 0.0)
     wind = wind_straight_combo_adjust(
         kakushitsui[i],
         st.session_state.selected_wind,
