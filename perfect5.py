@@ -452,7 +452,7 @@ tenscore_score = score_from_tenscore_list(rating)
 score_parts = []
 
 for i in range(7):
-    if not taitretsu[i].isdigit():
+    if not tairetsu[i].isdigit():
         continue
     num = i + 1
     base = base_score[kakushitsui[i]]
