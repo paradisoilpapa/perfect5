@@ -268,11 +268,10 @@ symbol_bonus = {
 }
 
 if st.button("スコア計算実行"):
-
+    # --- 得点補正 ---
     def score_from_tenscore_list(tenscore_list):
         sorted_unique = sorted(set(tenscore_list), reverse=True)
         score_to_rank = {score: rank + 1 for rank, score in enumerate(sorted_unique)}
-
         result = []
         for score in tenscore_list:
             rank = score_to_rank[score]
@@ -293,8 +292,9 @@ if st.button("スコア計算実行"):
             else:
                 correction = 0.0
             result.append(correction)
-
         return result
+
+#
 
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
@@ -479,36 +479,45 @@ line_def = {
     'D': [int(x) for x in st.session_state.get("line_D", "")] if st.session_state.get("line_D") else [],
 }
 
-score_parts = []
-for i in range(7):
-    if not tairetsu[i].isdigit():
-        continue
-    num = i + 1
-    base = base_score.get(kakushitsui[i], 0.0)
-    wind = wind_straight_combo_adjust(kakushitsui[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
-    kasai = score_from_chakujun(chakui[i])
-    rating_score = tenscore_score[i]
-    rain_corr = rain_adjust(kakushitsui[i])
-    symbol_bonus_score = symbol_bonus.get(car_to_symbol.get(num, '無'), 0.0)
-    line_bonus = line_member_bonus(line_order[i])
-    bank_bonus = bank_character_bonus(kakushitsui[i], bank_angle, straight_length)
-    length_bonus = bank_length_adjust(kakushitsui[i], bank_length)
-    total = base + wind + kasai + rating_score + rain_corr + symbol_bonus_score + line_bonus + bank_bonus + length_bonus
-    score_parts.append([num, kakushitsui[i], base, wind, kasai, rating_score, rain_corr, symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total])
+    # --- スコア算出 ---
+    tenscore_score = score_from_tenscore_list(rating)
+    score_parts = []
+    for i in range(7):
+        if not tairetsu[i].isdigit():
+            continue
+        num = i + 1
+        base = base_score[kakushitsu[i]]
+        wind = wind_straight_combo_adjust(kakushitsu[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
+        kasai = score_from_chakujun(chaku[i])
+        rating_score = tenscore_score[i]
+        rain_corr = rain_adjust(kakushitsu[i])
+        symbol_bonus_score = symbol_bonus.get(car_to_symbol.get(num, '無'), 0.0)
+        line_bonus = line_member_bonus(line_order[i])
+        bank_bonus = bank_character_bonus(kakushitsu[i], bank_angle, straight_length)
+        length_bonus = bank_length_adjust(kakushitsu[i], bank_length)
+        total = base + wind + kasai + rating_score + rain_corr + symbol_bonus_score + line_bonus + bank_bonus + length_bonus
+        score_parts.append((num, kakushitsu[i], base, wind, kasai, rating_score, rain_corr, symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total))
 
-# --- グループ補正反映 ---
-group_bonus_map = compute_group_bonus(score_parts, line_def)
-final_score_parts = []
-for row in score_parts:
-    car_no = row[0]
-    group_corr = get_group_bonus(car_no, line_def, group_bonus_map)
-    new_total = row[-1] + group_corr
-    final_score_parts.append(row[:-1] + [group_corr, new_total])
+    # --- グループ補正 ---
+    line_def = {
+        'A': extract_car_list(a_line),
+        'B': extract_car_list(b_line),
+        'C': extract_car_list(c_line),
+    }
+    group_bonus_map = compute_group_bonus(score_parts, line_def)
 
-# --- 表示 ---
-df = pd.DataFrame(final_score_parts, columns=[
-    '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
-    '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正',
-    'グループ補正', '合計スコア'])
-st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
+    final_score_parts = []
+    for row in score_parts:
+        car_no = row[0]
+        group_corr = get_group_bonus(car_no, line_def, group_bonus_map)
+        new_total = row[-1] + group_corr
+        final_score_parts.append(row[:-1] + [group_corr, new_total])
+
+    # --- 結果表示 ---
+    df = pd.DataFrame(final_score_parts, columns=[
+        '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
+        '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正',
+        'グループ補正', '合計スコア'
+    ])
+    st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
 
