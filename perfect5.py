@@ -353,6 +353,7 @@ if st.button("スコア計算実行"):
 def compute_group_bonus(score_parts, line_def):
     group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
     group_counts = {k: 0 for k in ['A', 'B', 'C']}
+
     for entry in score_parts:
         car_no = entry[0]
         score = entry[-1]
@@ -368,10 +369,13 @@ def compute_group_bonus(score_parts, line_def):
     }
 
     sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
+
+    rank_bonus = [0.15, 0.08, 0.03]
     bonus_map = {}
     for idx, (group, _) in enumerate(sorted_lines):
-        bonus_map[group] = [0.15, 0.08, 0.03][idx] if idx < 3 else 0.0
-    return bonus_map
+        bonus_map[group] = rank_bonus[idx] if idx < len(rank_bonus) else 0.0
+
+    return bonus_map#
 
 # --- 個別車番に対するグループ補正を取得 ---
 def get_group_bonus(car_no, line_def, group_bonus_map):
