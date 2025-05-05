@@ -218,8 +218,12 @@ symbol_bonus = {
 # --- スコア計算処理（入力UIのline_inputから処理） ---
 import pandas as pd
 
-# ▼ 車番→ラインポジションマップ（1: 先頭, 2: 2番手, ..., 0: 単騎）
-def build_line_order_map(line_input):
+st.subheader("▼ スコア計算")
+
+if st.button("スコア計算実行"):
+    
+    # ▼ 車番→ラインポジションマップ（1: 先頭, 2: 2番手, ..., 0: 単騎）
+    def build_line_order_map(line_input):
     car_to_line = {}
     line_order_map = {}
     lines = [line.strip() for line in line_input.split(',') if line.strip()]
@@ -232,29 +236,29 @@ def build_line_order_map(line_input):
 
 # ▼ グループ補正計算
 
-def compute_group_bonus(score_parts, car_to_line):
-    group_scores = {'A': 0.0, 'B': 0.0, 'C': 0.0}
-    group_counts = {'A': 0, 'B': 0, 'C': 0}
-    for entry in score_parts:
-        car_no = entry[0]
-        group = car_to_line.get(car_no)
-        if group in group_scores:
-            group_scores[group] += entry[-1]  # 合計スコア
-            group_counts[group] += 1
-    group_avg = {k: (group_scores[k] / group_counts[k]) if group_counts[k] > 0 else 0.0 for k in group_scores}
-    sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
-    bonus_map = {group: [0.15, 0.08, 0.03][i] for i, (group, _) in enumerate(sorted_lines)}
-    return bonus_map
+    def compute_group_bonus(score_parts, car_to_line):
+        group_scores = {'A': 0.0, 'B': 0.0, 'C': 0.0}
+        group_counts = {'A': 0, 'B': 0, 'C': 0}
+        for entry in score_parts:
+            car_no = entry[0]
+            group = car_to_line.get(car_no)
+            if group in group_scores:
+                group_scores[group] += entry[-1]  # 合計スコア
+                group_counts[group] += 1
+        group_avg = {k: (group_scores[k] / group_counts[k]) if group_counts[k] > 0 else 0.0 for k in group_scores}
+        sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
+        bonus_map = {group: [0.15, 0.08, 0.03][i] for i, (group, _) in enumerate(sorted_lines)}
+        return bonus_map
 
 # ▼ グループ補正値取得
 
-def get_group_bonus(car_no, car_to_line, bonus_map):
-    group = car_to_line.get(car_no)
-    return bonus_map.get(group, 0.0) if group in bonus_map else 0.0
+    def get_group_bonus(car_no, car_to_line, bonus_map):
+        group = car_to_line.get(car_no)
+        return bonus_map.get(group, 0.0) if group in bonus_map else 0.0
 
 # ▼ スコア表示処理本体（前提：line_input, rating, kakushitsu, chaku, line_order, car_to_symbol などは既に取得済み）
 
-def calculate_final_scores(line_input, kakushitsu, chaku, rating, line_order, car_to_symbol,
+    def calculate_final_scores(line_input, kakushitsu, chaku, rating, line_order, car_to_symbol,
                             selected_wind, wind_speed, straight_length, bank_angle, bank_length, rain):
     from math import isnan
 
