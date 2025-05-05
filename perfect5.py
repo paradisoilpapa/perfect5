@@ -409,8 +409,33 @@ def get_group_bonus(car_no, line_def, group_bonus_map):
         if car_no in line_def.get(group, []):
             return group_bonus_map.get(group, 0.0)
     return 0.0
+# --- 得点補正関数（順位ベース） ---
+def score_from_tenscore_list(tenscore_list):
+    sorted_unique = sorted(set(tenscore_list), reverse=True)
+    score_to_rank = {score: rank + 1 for rank, score in enumerate(sorted_unique)}
 
-# --- スコア生成処理 ---
+    result = []
+    for score in tenscore_list:
+        rank = score_to_rank[score]
+        if rank == 1:
+            correction = -0.6
+        elif rank == 2:
+            correction = -0.4
+        elif rank == 3:
+            correction = -0.2
+        elif rank == 4:
+            correction = 0.0
+        elif rank == 5:
+            correction = 0.2
+        elif rank == 6:
+            correction = 0.1
+        elif rank == 7:
+            correction = 0.0
+        else:
+            correction = 0.0
+        result.append(correction)
+    return result
+# --- スコア生成処理 ---=
 tenscore_score = score_from_tenscore_list(rating)
 score_parts = []
 for i in range(7):
