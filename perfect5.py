@@ -379,9 +379,63 @@ def get_group_bonus(car_no, line_def, group_bonus_map):
         if car_no in line_def.get(group, []):
             return group_bonus_map.get(group, 0.0)
     return 0.0
-    # --- グループ補正の計算と合成 ---
+    
+    final_score_parts = []
+# --- 関数定義（先に定義しておく） ---
+def compute_group_bonus(score_parts, line_def):
+    group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
+    group_counts = {k: 0 for k in ['A', 'B', 'C']}
+    for entry in score_parts:
+        car_no = entry[0]
+        score = entry[-1]
+        for group in ['A', 'B', 'C']:
+            if car_no in line_def.get(group, []):
+                group_scores[group] += score
+                group_counts[group] += 1
+                break
+
+    group_avg = {
+        k: (group_scores[k] / group_counts[k]) if group_counts[k] > 0 else 0.0
+        for k in group_scores
+    }
+    sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
+    bonus_map = {}
+    for idx, (group, _) in enumerate(sorted_lines):
+        bonus_map[group] = [0.15, 0.08, 0.03][idx] if idx < 3 else 0.0
+    return bonus_map
+
+def get_group_bonus(car_no, line_def, group_bonus_map):
+    for group in ['A', 'B', 'C']:
+        if car_no in line_def.get(group, []):
+            return group_bonus_map.get(group, 0.0)
+    return 0.0
+
+# --- スコア生成処理 ---
+tenscore_score = score_from_tenscore_list(rating)
+score_parts = []
+for i in range(7):
+    if not tairetsu[i].isdigit():
+        continue
+    num = i + 1
+    base = base_score[kakushitsu[i]]
+    wind = wind_straight_combo_adjust(kakushitsu[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
+    kasai = score_from_chakujun(chaku[i])
+    rating_score = tenscore_score[i]
+    rain_corr = rain_adjust(kakushitsu[i])
+    symbol_bonus_score = symbol_bonus.get(car_to_symbol.get(num, '無'), 0.0)
+    line_bonus = line_member_bonus(line_order[i])
+    bank_bonus = bank_character_bonus(kakushitsu[i], bank_angle, straight_length)
+    length_bonus = bank_length_adjust(kakushitsu[i], bank_length)
+    total = base + wind + kasai + rating_score + rain_corr + symbol_bonus_score + line_bonus + bank_bonus + length_bonus
+    score_parts.append((
+        num, kakushitsu[i], base, wind, kasai, rating_score,
+        rain_corr, symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total
+    ))
+
+# --- グループ補正の計算 ---
 group_bonus_map = compute_group_bonus(score_parts, line_def)
 
+# --- 最終スコア構築 ---
 final_score_parts = []
 for row in score_parts:
     car_no = row[0]
@@ -389,9 +443,11 @@ for row in score_parts:
     new_total = row[-1] + group_corr
     final_score_parts.append(row[:-1] + (group_corr, new_total))
 
-    df = pd.DataFrame(final_score_parts, columns=[
+df = pd.DataFrame(final_score_parts, columns=[
     '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
     '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正', 'グループ補正', '合計スコア'
 ])
-    st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
+
+st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
+
 
