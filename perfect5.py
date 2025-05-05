@@ -447,6 +447,10 @@ line_def = {
     'C': [3, 6],
     'D': [7]  # 単騎枠などあればDにまとめる
 }
+
+kakushitsui = [st.session_state.get(f'kakushitsu{i+1}', '') for i in range(7)]
+chakui = [st.session_state.get(f'chakui{i+1}', '') for i in range(7)]
+line_order = [st.session_state.get(f'line_order{i+1}', '') for i in range(7)]
 # --- スコア生成処理 ---
 tenscore_score = score_from_tenscore_list(rating)
 score_parts = []
