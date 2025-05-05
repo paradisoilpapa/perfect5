@@ -182,11 +182,59 @@ rating = [st.number_input(f"{i+1}番得点", value=55.0, step=0.1, key=f"rate_{i
 st.subheader("▼ 予想隊列入力（数字、欠の場合は空欄）")
 tairetsu = [st.text_input(f"{i+1}番隊列順位", key=f"tai_{i}") for i in range(7)]
 
-st.subheader("▼ ラインポジション入力（0単騎 1先頭 2番手 3三番手 4四番手）")
-line_order = [
-    st.number_input(f"{i+1}番ラインポジション", min_value=0, max_value=4, step=1, value=0, key=f"line_{i}")
-    for i in range(7)
-]
+# --- ライン構成入力欄（A〜Cライン＋単騎） ---
+st.subheader("▼ ライン構成入力（A〜Cライン＋単騎）")
+a_line = st.text_input("Aライン（例：137）", max_chars=7)
+b_line = st.text_input("Bライン（例：25）", max_chars=7)
+c_line = st.text_input("Cライン（例：4）", max_chars=7)
+solo_line = st.text_input("単騎枠（例：6）", max_chars=7)
+
+# --- 車番→ラインポジション & ライン分類 ---
+def extract_car_list(input_str):
+    return [int(c) for c in input_str if c.isdigit()]
+
+def build_line_position_map():
+    result = {}
+    for line in [a_line, b_line, c_line, solo_line]:
+        cars = extract_car_list(line)
+        for i, car in enumerate(cars):
+            if line == solo_line:
+                result[car] = 0  # 単騎
+            else:
+                result[car] = i + 1  # 先頭=1, 2番手=2...
+    return result
+
+line_order_map = build_line_position_map()
+# --- グループ補正（ライン順位ボーナス）処理 ---
+def compute_group_bonus(score_parts, line_def):
+    group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
+    group_counts = {k: 0 for k in ['A', 'B', 'C']}
+    for entry in score_parts:
+        car_no = entry[0]
+        score = entry[-1]
+        for group in ['A', 'B', 'C']:
+            if car_no in line_def[group]:
+                group_scores[group] += score
+                group_counts[group] += 1
+                break
+    group_avg = {
+        k: (group_scores[k] / group_counts[k]) if group_counts[k] > 0 else 0.0
+        for k in group_scores
+    }
+    sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
+    bonus_map = {}
+    for idx, (group, _) in enumerate(sorted_lines):
+        bonus_map[group] = [0.15, 0.08, 0.03][idx] if idx < 3 else 0.0
+    return bonus_map
+
+def get_group_bonus(car_no, line_def, group_bonus_map):
+    for group in ['A', 'B', 'C']:
+        if car_no in line_def[group]:
+            return group_bonus_map.get(group, 0.0)
+    return 0.0  # 単騎など該当なし
+
+# --- 車番ポジション表示 ---
+line_order = [line_order_map.get(i + 1, 0) for i in range(7)]
 
 st.subheader("▼ 政春印入力（各記号ごとに該当車番を入力）")
 
@@ -269,7 +317,7 @@ if st.button("スコア計算実行"):
         return {0: -0.5, 1: 1.0, 2: 0.8, 3: 0.5, 4: 0.3}.get(pos, 0.0)
 
     def bank_character_bonus(kaku, angle, straight):
-        straight_factor = (straight - 50.0) / 10.0
+        straight_factor = (straight - 50.0) / 10.0=
         angle_factor = (angle - 30.0) / 5.0
         total_factor = -0.8 * straight_factor + 0.6 * angle_factor
         return round({'逃': +total_factor, '追': -total_factor, '両': 0.0}.get(kaku, 0.0), 2)
@@ -301,10 +349,20 @@ if st.button("スコア計算実行"):
             num, kakushitsu[i], base, wind, kasai, rating_score,
             rain_corr, symbol_bonus_score, line_bonus, bank_bonus, length_bonus, total
         ))
+        
+    # --- グループ補正の計算と合成 ---
+group_bonus_map = compute_group_bonus(score_parts, line_def)
 
-    df = pd.DataFrame(score_parts, columns=[
-        '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
-        '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正', '合計スコア'
-    ])
+final_score_parts = []
+for row in score_parts:
+    car_no = row[0]
+    group_corr = get_group_bonus(car_no, line_def, group_bonus_map)
+    new_total = row[-1] + group_corr
+    final_score_parts.append(row[:-1] + (group_corr, new_total))
+
+    df = pd.DataFrame(final_score_parts, columns=[
+    '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
+    '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正', 'グループ補正', '合計スコア'
+])
     st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
 
