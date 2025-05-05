@@ -317,7 +317,7 @@ if st.button("スコア計算実行"):
         return {0: -0.5, 1: 1.0, 2: 0.8, 3: 0.5, 4: 0.3}.get(pos, 0.0)
 
     def bank_character_bonus(kaku, angle, straight):
-        straight_factor = (straight - 50.0) / 10.0=
+        straight_factor = (straight - 50.0) / 10.0
         angle_factor = (angle - 30.0) / 5.0
         total_factor = -0.8 * straight_factor + 0.6 * angle_factor
         return round({'逃': +total_factor, '追': -total_factor, '両': 0.0}.get(kaku, 0.0), 2)
