@@ -435,6 +435,14 @@ def score_from_tenscore_list(tenscore_list):
             correction = 0.0
         result.append(correction)
     return result
+    
+    # --- ライン構成定義（A/B/Cライン + 単騎） ---
+line_def = {
+    'A': [1, 4],
+    'B': [2, 5],
+    'C': [3, 6],
+    'D': [7]  # 単騎枠などあればDにまとめる
+}
 # --- スコア生成処理 ---=
 tenscore_score = score_from_tenscore_list(rating)
 score_parts = []
