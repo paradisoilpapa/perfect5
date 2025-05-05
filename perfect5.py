@@ -1,4 +1,4 @@
-import streamlit as st
+.import streamlit as st
 import pandas as pd
 
 # --- ページ設定 ---
@@ -385,7 +385,35 @@ def get_group_bonus(car_no, line_def, group_bonus_map):
     return 0.0
     
     final_score_parts = []
-# --- 関数定義（先に定義しておく） ---
+# --- base_score定義 ---
+base_score = {
+    '逃': 6.0,
+    '両': 5.5,
+    '追': 5.0
+}
+
+# --- 風+直線補正関数（新規定義） ---
+def wind_straight_combo_adjust(kakushitsu, wind_dir, wind_speed, straight_length, position_rank):
+    wind_coefficients = {
+        "左上": +0.7, "上": +1.0, "右上": +0.7,
+        "左": -0.2, "右": +0.2,
+        "左下": -0.7, "下": -1.0, "右下": -0.7
+    }
+
+    coeff = wind_coefficients.get(wind_dir, 0.0)
+
+    if kakushitsu == '逃':
+        base = 1.0
+    elif kakushitsu == '両':
+        base = 0.5
+    elif kakushitsu == '追':
+        base = 0.2
+    else:
+        base = 0.0
+
+    return round(base * coeff * float(wind_speed), 2)
+
+# --- グループ補正関数 ---
 def compute_group_bonus(score_parts, line_def):
     group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
     group_counts = {k: 0 for k in ['A', 'B', 'C']}
@@ -413,6 +441,7 @@ def get_group_bonus(car_no, line_def, group_bonus_map):
         if car_no in line_def.get(group, []):
             return group_bonus_map.get(group, 0.0)
     return 0.0
+
 # --- 得点補正関数（順位ベース） ---
 def score_from_tenscore_list(tenscore_list):
     sorted_unique = sorted(set(tenscore_list), reverse=True)
@@ -439,8 +468,8 @@ def score_from_tenscore_list(tenscore_list):
             correction = 0.0
         result.append(correction)
     return result
-    
-    # --- ライン構成定義（A/B/Cライン + 単騎） ---
+
+# --- ライン構成定義（A/B/Cライン + 単騎） ---
 line_def = {
     'A': [1, 4],
     'B': [2, 5],
@@ -451,6 +480,7 @@ line_def = {
 kakushitsui = [st.session_state.get(f'kakushitsu{i+1}', '') for i in range(7)]
 chakui = [st.session_state.get(f'chakui{i+1}', '') for i in range(7)]
 line_order = [st.session_state.get(f'line_order{i+1}', '') for i in range(7)]
+
 # --- スコア生成処理 ---
 tenscore_score = score_from_tenscore_list(rating)
 score_parts = []
@@ -496,10 +526,12 @@ for row in score_parts:
     group_corr = get_group_bonus(car_no, line_def, group_bonus_map)
     new_total = row[-1] + group_corr
     final_score_parts.append(row[:-1] + [group_corr, new_total])
+
 df = pd.DataFrame(final_score_parts, columns=[
     '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
     '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正',
     'グループ補正', '合計スコア'
 ])
+
 st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
 
