@@ -187,7 +187,6 @@ tairetsu = [st.text_input(f"{i+1}番隊列順位", key=f"tai_{i}") for i in rang
 st.subheader("▼ 政春印入力（各記号ごとに該当車番を入力）")
 
 # --- 政春印入力（記号別に入力） ---
-st.subheader("▼ 政春印入力（各記号ごとに該当車番を入力）")
 symbol_input_options = ['◎', '〇', '▲', '△', '×', '無']
 symbol_bonus = {
     '◎': 0.6, '〇': 0.4, '▲': 0.3, '△': 0.2, '×': 0.1,
