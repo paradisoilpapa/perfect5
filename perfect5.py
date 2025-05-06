@@ -187,6 +187,7 @@ tairetsu = [st.text_input(f"{i+1}番隊列順位", key=f"tai_{i}") for i in rang
 st.subheader("▼ 政春印入力（各記号ごとに該当車番を入力）")
 
 # --- 政春印入力（記号別に入力） ---
+st.subheader("▼ 政春印入力（各記号ごとに該当車番を入力）")
 symbol_input_options = ['◎', '〇', '▲', '△', '×', '無']
 symbol_bonus = {
     '◎': 0.6, '〇': 0.4, '▲': 0.3, '△': 0.2, '×': 0.1,
@@ -201,6 +202,21 @@ for sym, input_str in symbol_inputs.items():
     for c in input_str:
         if c.isdigit():
             car_to_symbol[int(c)] = sym
+
+# --- ライン構成入力に必要な補助関数 ---
+def extract_car_list(input_str):
+    return [int(c) for c in input_str if c.isdigit()]
+
+def build_line_position_map():
+    result = {}
+    for line, name in zip([a_line, b_line, c_line, solo_line], ['A', 'B', 'C', 'D']):
+        cars = extract_car_list(line)
+        for i, car in enumerate(cars):
+            if name == 'D':
+                result[car] = 0
+            else:
+                result[car] = i + 1
+    return result
 
 # --- スコア計算処理 ---
 st.subheader("▼ スコア計算")
