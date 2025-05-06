@@ -193,14 +193,23 @@ symbol_bonus = {
     '無': 0.0
 }
 symbol_inputs = {}
-for sym in symbol_input_options:
-    symbol_inputs[sym] = st.text_input(f"{sym}（複数入力可）", key=f"symbol_{sym}", max_chars=14)
+cols = st.columns(len(symbol_input_options))
+for i, sym in enumerate(symbol_input_options):
+    with cols[i]:
+        symbol_inputs[sym] = st.text_input(label=sym, key=f"symbol_{sym}", max_chars=14)
 
 car_to_symbol = {}
 for sym, input_str in symbol_inputs.items():
     for c in input_str:
         if c.isdigit():
             car_to_symbol[int(c)] = sym
+
+# --- ライン構成入力欄（A〜Cライン＋単騎） ---
+st.subheader("▼ ライン構成入力（A〜Cライン＋単騎）")
+a_line = st.text_input("Aライン（例：137）", max_chars=7)
+b_line = st.text_input("Bライン（例：25）", max_chars=7)
+c_line = st.text_input("Cライン（例：4）", max_chars=7)
+solo_line = st.text_input("単騎枠（例：6）", max_chars=7)
 
 # --- ライン構成入力に必要な補助関数 ---
 def extract_car_list(input_str):
