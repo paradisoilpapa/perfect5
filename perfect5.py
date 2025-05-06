@@ -188,10 +188,10 @@ st.subheader("▼ 政春印入力（各記号ごとに該当車番を入力）")
 
 # --- 政春印入力（記号別に入力） ---
 st.subheader("▼ 政春印入力（各記号ごとに該当車番を入力）")
-symbol_input_options = ['◎', '〇', '▲', '△', '×', '無', 'ム']
+symbol_input_options = ['◎', '〇', '▲', '△', '×', '無']
 symbol_bonus = {
     '◎': 0.6, '〇': 0.4, '▲': 0.3, '△': 0.2, '×': 0.1,
-    '無': 0.0, 'ム': 0.0
+    '無': 0.0
 }
 symbol_inputs = {}
 for sym in symbol_input_options:
@@ -265,7 +265,7 @@ if st.button("スコア計算実行"):
                 return group_bonus_map.get(group, 0.0)
         return 0.0
 
-    # ライン構成取得（グローバルな変数 a_line 等を使う）
+    # ライン構成取得
     line_def = {
         'A': extract_car_list(a_line),
         'B': extract_car_list(b_line),
