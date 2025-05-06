@@ -196,7 +196,7 @@ symbol_inputs = {}
 cols = st.columns(len(symbol_input_options))
 for i, sym in enumerate(symbol_input_options):
     with cols[i]:
-        symbol_inputs[sym] = st.text_input(label=sym, key=f"symbol_{sym}", max_chars=14)
+        symbol_inputs[sym] = st.text_input(label=f"{sym}（複数入力可）", key=f"symbol_{sym}", max_chars=14)
 
 car_to_symbol = {}
 for sym, input_str in symbol_inputs.items():
