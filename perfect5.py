@@ -195,8 +195,7 @@ symbol_bonus = {
 }
 symbol_inputs = {}
 for sym in symbol_input_options:
-    st.markdown(f"**{sym}（複数入力可）**")
-    symbol_inputs[sym] = st.text_input("", key=f"symbol_{sym}", max_chars=14)
+    symbol_inputs[sym] = st.text_input(f"{sym}（複数入力可）", key=f"symbol_{sym}", max_chars=14)
 
 car_to_symbol = {}
 for sym, input_str in symbol_inputs.items():
@@ -266,7 +265,7 @@ if st.button("スコア計算実行"):
                 return group_bonus_map.get(group, 0.0)
         return 0.0
 
-    # ライン構成取得
+    # ライン構成取得（グローバルな変数 a_line 等を使う）
     line_def = {
         'A': extract_car_list(a_line),
         'B': extract_car_list(b_line),
