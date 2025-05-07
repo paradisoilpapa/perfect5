@@ -236,7 +236,7 @@ def extract_car_list(input_str):
                 return group_bonus_map.get(group, 0.0)
         return 0.0
 
-# --- スコア計算処理 ---
+# --- スコア計算処理 --- 
 st.subheader("▼ スコア計算")
 if st.button("スコア計算実行"):
 
@@ -277,41 +277,46 @@ if st.button("スコア計算実行"):
         delta = (length - 400) / 100
         return {'逃': -1.5 * delta, '追': +1.2 * delta, '両': 0.0}.get(kaku, 0.0)
 
-def compute_group_bonus(score_parts, line_def):
-    group_keys = ['A', 'B', 'C', 'T']  # ← T（単騎）を追加
-    group_scores = {k: 0.0 for k in group_keys}
-    group_counts = {k: 0 for k in group_keys}
+    def compute_group_bonus(score_parts, line_def):
+        group_keys = ['A', 'B', 'C', 'T']
+        group_scores = {k: 0.0 for k in group_keys}
+        group_counts = {k: 0 for k in group_keys}
 
-    for entry in score_parts:
-        car_no, score = entry[0], entry[-1]
-        for group in group_keys:
-            if car_no in line_def.get(group, []):  # 念のため get() で安全に
-                group_scores[group] += score
-                group_counts[group] += 1
-                break
+        for entry in score_parts:
+            car_no, score = entry[0], entry[-1]
+            for group in group_keys:
+                if car_no in line_def.get(group, []):
+                    group_scores[group] += score
+                    group_counts[group] += 1
+                    break
 
-    group_avg = {k: group_scores[k] / group_counts[k] if group_counts[k] > 0 else 0.0 for k in group_keys}
+        group_avg = {k: group_scores[k] / group_counts[k] if group_counts[k] > 0 else 0.0 for k in group_keys}
+        sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
+        base_bonus = [0.15, 0.08, 0.03, 0.01]
 
-    sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
-    base_bonus = [0.15, 0.08, 0.03, 0.01]  # 4つ目以降を低くする
+        bonus_map = {
+            group: base_bonus[idx] if idx < len(base_bonus) else 0.0
+            for idx, (group, _) in enumerate(sorted_lines)
+        }
+        return bonus_map
 
-    bonus_map = {
-        group: base_bonus[idx] if idx < len(base_bonus) else 0.0
-        for idx, (group, _) in enumerate(sorted_lines)
-    }
-    return bonus_map
+    def get_group_bonus(car_no, line_def, bonus_map):
+        for group, cars in line_def.items():
+            if car_no in cars:
+                return bonus_map.get(group, 0.0)
+        return 0.0
 
-
-    # ライン構成取得
+    # --- 実行本体ここから ---
     line_def = {
         'A': extract_car_list(a_line),
         'B': extract_car_list(b_line),
         'C': extract_car_list(c_line),
+        'T': extract_car_list(tanki_line),
     }
+
     line_order_map = build_line_position_map()
     line_order = [line_order_map.get(i + 1, 0) for i in range(7)]
 
-    # スコア計算
     tenscore_score = score_from_tenscore_list(rating)
     score_parts = []
     for i in range(7):
@@ -330,7 +335,6 @@ def compute_group_bonus(score_parts, line_def):
         total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus
         score_parts.append([num, kakushitsu[i], base, wind, kasai, rating_score, rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus, total])
 
-    # グループ補正
     group_bonus_map = compute_group_bonus(score_parts, line_def)
     final_score_parts = []
     for row in score_parts:
@@ -338,7 +342,6 @@ def compute_group_bonus(score_parts, line_def):
         new_total = row[-1] + group_corr
         final_score_parts.append(row[:-1] + [group_corr, new_total])
 
-    # 表示
     df = pd.DataFrame(final_score_parts, columns=[
         '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
         '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正',
