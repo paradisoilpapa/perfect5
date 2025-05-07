@@ -215,16 +215,26 @@ solo_line = st.text_input("単騎枠（例：6）", max_chars=7)
 def extract_car_list(input_str):
     return [int(c) for c in input_str if c.isdigit()]
 
-def build_line_position_map():
-    result = {}
-    for line, name in zip([a_line, b_line, c_line, solo_line], ['A', 'B', 'C', 'D']):
-        cars = extract_car_list(line)
-        for i, car in enumerate(cars):
-            if name == 'D':
-                result[car] = 0
-            else:
-                result[car] = i + 1
-    return result
+    def compute_group_bonus(score_parts, line_def):
+        group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
+        group_counts = {k: 0 for k in ['A', 'B', 'C']}
+        for entry in score_parts:
+            car_no, score = entry[0], entry[-1]
+            for group in ['A', 'B', 'C']:
+                if car_no in line_def[group]:
+                    group_scores[group] += score
+                    group_counts[group] += 1
+                    break
+        group_avg = {k: group_scores[k] / group_counts[k] if group_counts[k] > 0 else 0.0 for k in group_scores}
+        sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
+        bonus_map = {group: [0.15, 0.08, 0.03][idx] if idx < 3 else 0.0 for idx, (group, _) in enumerate(sorted_lines)}
+        return bonus_map
+
+    def get_group_bonus(car_no, line_def, group_bonus_map):
+        for group in ['A', 'B', 'C']:
+            if car_no in line_def[group]:
+                return group_bonus_map.get(group, 0.0)
+        return 0.0
 
 # --- スコア計算処理 ---
 st.subheader("▼ スコア計算")
