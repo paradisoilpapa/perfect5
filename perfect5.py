@@ -255,7 +255,7 @@ if st.button("スコア計算実行"):
         return {'逃': 1.5, '両': 0.5, '追': -1.5}.get(kaku, 0.0) if rain else 0.0
 
     def line_member_bonus(pos):
-        return {0: -0.5, 1: 1.0, 2: 0.8, 3: 0.5, 4: 0.3}.get(pos, 0.0)
+        return {0: 0.7, 1: 1.0, 2: 0.8, 3: 0.5, 4: 0.3}.get(pos, 0.0)
 
     def bank_character_bonus(kaku, angle, straight):
         straight_factor = (straight - 50.0) / 10.0
