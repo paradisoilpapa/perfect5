@@ -255,7 +255,7 @@ if st.button("スコア計算実行"):
         return {'逃': 1.5, '両': 0.5, '追': -1.5}.get(kaku, 0.0) if rain else 0.0
 
     def line_member_bonus(pos):
-        return {0: -0.5, 1: 1.0, 2: 0.8, 3: 0.5, 4: 0.3}.get(pos, 0.0)
+        return {0: 0.7, 1: 1.0, 2: 0.8, 3: 0.5, 4: 0.3}.get(pos, 0.0)
 
     def bank_character_bonus(kaku, angle, straight):
         straight_factor = (straight - 50.0) / 10.0
@@ -267,26 +267,30 @@ if st.button("スコア計算実行"):
         delta = (length - 400) / 100
         return {'逃': -1.5 * delta, '追': +1.2 * delta, '両': 0.0}.get(kaku, 0.0)
 
-    def compute_group_bonus(score_parts, line_def):
-        group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
-        group_counts = {k: 0 for k in ['A', 'B', 'C']}
-        for entry in score_parts:
-            car_no, score = entry[0], entry[-1]
-            for group in ['A', 'B', 'C']:
-                if car_no in line_def[group]:
-                    group_scores[group] += score
-                    group_counts[group] += 1
-                    break
-        group_avg = {k: group_scores[k] / group_counts[k] if group_counts[k] > 0 else 0.0 for k in group_scores}
-        sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
-        bonus_map = {group: [0.15, 0.08, 0.03][idx] if idx < 3 else 0.0 for idx, (group, _) in enumerate(sorted_lines)}
-        return bonus_map
+def compute_group_bonus(score_parts, line_def):
+    group_keys = ['A', 'B', 'C', 'T']  # ← T（単騎）を追加
+    group_scores = {k: 0.0 for k in group_keys}
+    group_counts = {k: 0 for k in group_keys}
 
-    def get_group_bonus(car_no, line_def, group_bonus_map):
-        for group in ['A', 'B', 'C']:
-            if car_no in line_def[group]:
-                return group_bonus_map.get(group, 0.0)
-        return 0.0
+    for entry in score_parts:
+        car_no, score = entry[0], entry[-1]
+        for group in group_keys:
+            if car_no in line_def.get(group, []):  # 念のため get() で安全に
+                group_scores[group] += score
+                group_counts[group] += 1
+                break
+
+    group_avg = {k: group_scores[k] / group_counts[k] if group_counts[k] > 0 else 0.0 for k in group_keys}
+
+    sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
+    base_bonus = [0.15, 0.08, 0.03, 0.01]  # 4つ目以降を低くする
+
+    bonus_map = {
+        group: base_bonus[idx] if idx < len(base_bonus) else 0.0
+        for idx, (group, _) in enumerate(sorted_lines)
+    }
+    return bonus_map
+
 
     # ライン構成取得
     line_def = {
