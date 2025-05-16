@@ -27,7 +27,7 @@ position_multipliers = {
 
 
 # --- 基本スコア（脚質ごとの基準値） ---
-base_score = {'逃': 4.7, '両': 5.0, '追': 5.3}
+base_score = {'逃': 5.3, '両': 5.0, '追': 4.7}
 symbol_bonus = {'◎': 0.6, '〇': 0.4, '▲': 0.3, '△': 0.2, '×': 0.1, '無': 0.0}
 
 # --- 状態保持 ---
@@ -263,7 +263,7 @@ if st.button("スコア計算実行"):
         return correction_map.get(pos, 0.0)
 
     def rain_adjust(kaku):
-        return {'逃': -0.4, '両': 0.1, '追': 0.4}.get(kaku, 0.0) if rain else 0.0
+        return {'逃': 0.4, '両': 0.1, '追': -0.4}.get(kaku, 0.0) if rain else 0.0
 
     def line_member_bonus(pos):
         return {0: 0.7, 1: 1.0, 2: 0.8, 3: 0.5, 4: 0.3}.get(pos, 0.0)
