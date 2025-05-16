@@ -249,9 +249,9 @@ if st.button("スコア計算実行"):
 
         # 脚質ごとの風感受性を「逆転視点」で調整（逃げは風に弱い）
         kaku_coeff = {
-            '逃': -0.4,   # #風を受けると潰れやすい
+            '逃': +0.4,   # #風を受けると潰れやすい
             '両':  0.0,   # 風次第で左右される
-            '追': +0.4    # 向かい風なら特に有利に働く
+            '追': -0.4    # 向かい風なら特に有利に働く
         }.get(kaku, 1.0)
 
         # 全体抑制：0.3倍で基準スコアを壊さない
@@ -266,17 +266,17 @@ if st.button("スコア計算実行"):
         return {'逃': 0.4, '両': 0.1, '追': -0.4}.get(kaku, 0.0) if rain else 0.0
 
     def line_member_bonus(pos):
-        return {0: 0.7, 1: 1.0, 2: 0.8, 3: 0.5, 4: 0.3}.get(pos, 0.0)
+        return {0: 0.7, 1: 1.0, 2: 0.6, 3: 0.4, 4: 0.2}.get(pos, 0.0)
 
     def bank_character_bonus(kaku, angle, straight):
         straight_factor = (straight - 50.0) / 10.0
         angle_factor = (angle - 30.0) / 5.0
-        total_factor = -0.8 * straight_factor + 0.6 * angle_factor
+        total_factor = -0.4 * straight_factor + 0.3 * angle_factor
         return round({'逃': +total_factor, '追': -total_factor, '両': 0.0}.get(kaku, 0.0), 2)
 
     def bank_length_adjust(kaku, length):
         delta = (length - 400) / 100
-        return {'逃': -1.5 * delta, '追': +1.2 * delta, '両': 0.0}.get(kaku, 0.0)
+        return {'逃': -0.75 * delta, '追': +0.6 * delta, '両': 0.0}.get(kaku, 0.0)
 
     def compute_group_bonus(score_parts, line_def):
         group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
@@ -290,7 +290,7 @@ if st.button("スコア計算実行"):
                     break
         group_avg = {k: group_scores[k] / group_counts[k] if group_counts[k] > 0 else 0.0 for k in group_scores}
         sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
-        bonus_map = {group: [0.15, 0.08, 0.03][idx] if idx < 3 else 0.0 for idx, (group, _) in enumerate(sorted_lines)}
+        bonus_map = {group: [0.3, 0.15, 0.5][idx] if idx < 3 else 0.0 for idx, (group, _) in enumerate(sorted_lines)}
         return bonus_map
 
     def get_group_bonus(car_no, line_def, group_bonus_map):
