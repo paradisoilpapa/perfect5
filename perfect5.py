@@ -243,29 +243,13 @@ if st.button("スコア計算実行"):
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
             return 0
-
         wind_base = wind_coefficients.get(direction, 0.0)
         pos_multiplier = position_multipliers.get(pos, 0.0)
-        coeff = {'逃': 1.1, '両': 1.0, '追': 0.9}.get(kaku, 1.0)
+        coeff = {'逃': 1.2, '両': 1.0, '追': 0.8}.get(kaku, 1.0)
 
-        # 実質的な補正値
-        magnitude = wind_base * speed * pos_multiplier * coeff
-
-        # 階段補正で差を明確に保ちつつ、上限を制御
-        if magnitude >= 0.5:
-            return 0.4
-        elif magnitude >= 0.3:
-            return 0.25
-        elif magnitude >= 0.1:
-            return 0.1
-        elif magnitude <= -0.5:
-            return -0.4
-        elif magnitude <= -0.3:
-            return -0.25
-        elif magnitude <= -0.1:
-            return -0.1
-        else:
-            return 0.0
+        # 単純に全体を0.3倍で抑制（暴走なし・階段なし・壁なし）
+        basic = wind_base * speed * pos_multiplier
+        return round(basic * coeff * 0.3, 2)
         
     def score_from_chakujun(pos):
         correction_map = {1: -0.5, 2: -0.3, 3: -0.2, 4: 0.0, 5: 0.3, 6: 0.2, 7: 0.0}
