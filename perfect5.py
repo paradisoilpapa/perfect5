@@ -297,7 +297,7 @@ if st.button("スコア計算実行"):
         for group in ['A', 'B', 'C']:
             if car_no in line_def[group]:
                 return group_bonus_map.get(group, 0.0)
-        return 0.0
+        return 1.5
 
     # ライン構成取得
     line_def = {
