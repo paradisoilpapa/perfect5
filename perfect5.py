@@ -259,11 +259,11 @@ if st.button("スコア計算実行"):
         return round(basic * kaku_coeff * 0.3, 2)
         
     def score_from_chakujun(pos):
-        correction_map = {1: -0.5, 2: -0.3, 3: -0.2, 4: 0.0, 5: 0.3, 6: 0.2, 7: 0.0}
+        correction_map = {1: 0.5, 2: 0.3, 3: 0.2, 4: 0.0, 5: -0.3, 6: -0.2, 7: -0.5}
         return correction_map.get(pos, 0.0)
 
     def rain_adjust(kaku):
-        return {'逃': 1.5, '両': 0.5, '追': -1.5}.get(kaku, 0.0) if rain else 0.0
+        return {'逃': -0.4, '両': 0.1, '追': 0.4}.get(kaku, 0.0) if rain else 0.0
 
     def line_member_bonus(pos):
         return {0: 0.7, 1: 1.0, 2: 0.8, 3: 0.5, 4: 0.3}.get(pos, 0.0)
