@@ -27,7 +27,7 @@ position_multipliers = {
 
 
 # --- 基本スコア（脚質ごとの基準値） ---
-base_score = {'逃': 4.7, '両': 5.0, '追': 5.3}
+base_score = {'逃': 5.3, '両': 5.0, '追': 4.7}
 symbol_bonus = {'◎': 0.6, '〇': 0.4, '▲': 0.3, '△': 0.2, '×': 0.1, '無': 0.0}
 
 # --- 状態保持 ---
@@ -297,7 +297,7 @@ if st.button("スコア計算実行"):
         for group in ['A', 'B', 'C']:
             if car_no in line_def[group]:
                 return group_bonus_map.get(group, 0.0)
-        return 1.5
+        return 1.2
 
     # ライン構成取得
     line_def = {
