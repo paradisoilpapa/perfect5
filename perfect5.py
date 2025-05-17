@@ -169,11 +169,6 @@ for k, val in kakushitsu_inputs.items():
             if 1 <= n <= 7:
                 car_to_kakushitsu[n] = k
 
-# kakushitsu[0] = 1番選手の脚質、など
-st.subheader("▼ 前走着順入力（1〜9着 or 0＝落車）")
-chaku = [st.text_input(f"{i+1}番着順（0〜9, 空白可）", value="", key=f"chaku_{i}") for i in range(7)]
-
-
 st.subheader("▼ 前々走・前走の着順入力（1〜9着 または 0＝落車）")
 
 # 7選手 × 2走分
