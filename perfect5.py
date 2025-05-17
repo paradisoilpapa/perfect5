@@ -363,7 +363,7 @@ if st.button("スコア計算実行"):
         )
         # 平均スコア化
         chaku_values = chaku_inputs[i]  # [前々走, 前走]
-        kasai = score_from_chakujun(convert_chaku_to_score(chaku_values))
+        kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
         rating_score = tenscore_score[i]
         rain_corr = rain_adjust(kaku)
         symbol_score = symbol_bonus.get(car_to_symbol.get(num, '無'), 0.0)
