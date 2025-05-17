@@ -322,17 +322,6 @@ if st.button("スコア計算実行"):
         bonus_map = {group: [0.3, 0.15, 0.5][idx] if idx < 3 else 0.0 for idx, (group, _) in enumerate(sorted_lines)}
         return bonus_map
 
-    def compute_group_bonus(score_parts, line_def):
-        group_bonus = {}
-        for group in ['A', 'B', 'C']:
-            count = len(line_def[group])
-            if count > 0:
-                group_bonus[group] = round(1.5 / count, 2)
-            else:
-                group_bonus[group] = 0.0
-        return group_bonus
-
-
     # ライン構成取得
     line_def = {
         'A': extract_car_list(a_line),
@@ -380,7 +369,7 @@ if st.button("スコア計算実行"):
 
 
     # グループ補正
-    group_bonus_map = compute_group_bonus(score_parts, line_def)
+      group_bonus_map = compute_group_bonus(score_parts, line_def)
     final_score_parts = []
     for row in score_parts:
         group_corr = get_group_bonus(row[0], line_def, group_bonus_map)
