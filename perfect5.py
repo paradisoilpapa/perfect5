@@ -258,30 +258,31 @@ if st.button("スコア計算実行"):
         basic = base * speed * pos_mult
         return round(basic * kaku_coeff * 0.3, 2)
         
-   def convert_chaku_to_score(values):
-    """
-    values: ["3", "0", "", "9"] などの文字列リスト（最大2件）
-    - "0" は落車（加点0.0）
-    - "1"〜"9" は着順（1.00〜0.11）
-    - その他（空白など）は無視
-    """
-    scores = []
+    def convert_chaku_to_score(values):
+        """
+        values: ["3", "0", "", "9"] などの文字列リスト（最大2件）
+        - "0" は落車（加点0.0）
+        - "1"〜"9" は着順（1.00〜0.11）
+        - その他（空白など）は無視
+        """
+        scores = []
+    
+        for v in values:
+            v = v.strip()
+            try:
+                chaku = int(v)
+                if chaku == 0:
+                    scores.append(0.0)  # 落車（0入力）
+                elif 1 <= chaku <= 9:
+                    scores.append(round(1.0 / chaku, 2))  # 着順に応じたスコア
+            except ValueError:
+                continue  # 無効値は無視
 
-    for v in values:
-        v = v.strip()
-        try:
-            chaku = int(v)
-            if chaku == 0:
-                scores.append(0.0)  # 落車（0入力）
-            elif 1 <= chaku <= 9:
-                scores.append(round(1.0 / chaku, 2))  # 着順に応じたスコア
-        except ValueError:
-            continue  # 無効値は無視
-
-    if not scores:
-        return None  # 着順未入力時など
-    else:
-        return round(sum(scores) / len(scores), 2)  # 平均スコアで返す
+        if not scores:
+            return None
+        else:
+            return round(sum(scores) / len(scores), 2)
+    
 
     def rain_adjust(kaku):
         return {'逃': 0.4, '両': 0.1, '追': -0.4}.get(kaku, 0.0) if rain else 0.0
