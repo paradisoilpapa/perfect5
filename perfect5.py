@@ -174,8 +174,19 @@ st.subheader("▼ 前走着順入力（1〜9着 or 0＝落車）")
 chaku = [st.text_input(f"{i+1}番着順（0〜9, 空白可）", value="", key=f"chaku_{i}") for i in range(7)]
 
 
-st.subheader("▼ 前走着順入力（1〜7着）")
-chaku = [st.number_input(f"{i+1}番着順", min_value=1, max_value=7, value=5, step=1, key=f"chaku_{i}") for i in range(7)]
+st.subheader("▼ 前々走・前走の着順入力（1〜9着 または 0＝落車）")
+
+# 7選手 × 2走分
+chaku_inputs = []  # [[前々走, 前走], ..., [前々走, 前走]]
+
+for i in range(7):
+    col1, col2 = st.columns(2)
+    with col1:
+        chaku1 = st.text_input(f"{i+1}番【前々走】", value="", key=f"chaku1_{i}")
+    with col2:
+        chaku2 = st.text_input(f"{i+1}番【前走】", value="", key=f"chaku2_{i}")
+    chaku_inputs.append([chaku1, chaku2])
+
 
 
 st.subheader("▼ 競争得点入力")
