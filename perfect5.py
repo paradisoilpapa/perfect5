@@ -322,16 +322,13 @@ if st.button("スコア計算実行"):
         return 0.0
 
     # ライン構成取得
-    a_line = []
-    b_line = []
-    c_line = []
-    tanki = []
-
     line_def = {
         'A': extract_car_list(a_line),
         'B': extract_car_list(b_line),
         'C': extract_car_list(c_line),
-        '単騎': extract_car_list(tanki)
+        '単騎': extract_car_list(solo_line)  # tanki → solo_line に合わせて
+}
+
     }
 
     line_order_map = build_line_position_map()
