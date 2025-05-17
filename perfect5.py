@@ -345,21 +345,37 @@ if st.button("スコア計算実行"):
     # スコア計算
     tenscore_score = score_from_tenscore_list(rating)
     score_parts = []
+    
     for i in range(7):
         if not tairetsu[i].isdigit():
             continue
+        
         num = i + 1
-        base = base_score[kakushitsu[i]]
-        wind = wind_straight_combo_adjust(kakushitsu[i], st.session_state.selected_wind, wind_speed, straight_length, line_order[i])
+        kaku = car_to_kakushitsu.get(num, "追")  # 未入力なら「追」扱い
+        base = base_score[kaku]
+        
+        wind = wind_straight_combo_adjust(
+            kaku,
+            st.session_state.selected_wind,
+            wind_speed,
+            straight_length,
+            line_order[i]
+        )
         kasai = score_from_chakujun(chaku[i])
         rating_score = tenscore_score[i]
-        rain_corr = rain_adjust(kakushitsu[i])
+        rain_corr = rain_adjust(kaku)
         symbol_score = symbol_bonus.get(car_to_symbol.get(num, '無'), 0.0)
         line_bonus = line_member_bonus(line_order[i])
-        bank_bonus = bank_character_bonus(kakushitsu[i], bank_angle, straight_length)
-        length_bonus = bank_length_adjust(kakushitsu[i], bank_length)
+        bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
+        length_bonus = bank_length_adjust(kaku, bank_length)
+    
         total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus
-        score_parts.append([num, kakushitsu[i], base, wind, kasai, rating_score, rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus, total])
+    
+        score_parts.append([
+            num, kaku, base, wind, kasai, rating_score,
+            rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus, total
+        ])
+
 
     # グループ補正
     group_bonus_map = compute_group_bonus(score_parts, line_def)
