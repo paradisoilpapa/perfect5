@@ -258,9 +258,30 @@ if st.button("スコア計算実行"):
         basic = base * speed * pos_mult
         return round(basic * kaku_coeff * 0.3, 2)
         
-    def score_from_chakujun(pos):
-        correction_map = {1: 0.5, 2: 0.3, 3: 0.2, 4: 0.0, 5: -0.3, 6: -0.2, 7: -0.5}
-        return correction_map.get(pos, 0.0)
+   def convert_chaku_to_score(values):
+    """
+    values: ["3", "0", "", "9"] などの文字列リスト（最大2件）
+    - "0" は落車（加点0.0）
+    - "1"〜"9" は着順（1.00〜0.11）
+    - その他（空白など）は無視
+    """
+    scores = []
+
+    for v in values:
+        v = v.strip()
+        try:
+            chaku = int(v)
+            if chaku == 0:
+                scores.append(0.0)  # 落車（0入力）
+            elif 1 <= chaku <= 9:
+                scores.append(round(1.0 / chaku, 2))  # 着順に応じたスコア
+        except ValueError:
+            continue  # 無効値は無視
+
+    if not scores:
+        return None  # 着順未入力時など
+    else:
+        return round(sum(scores) / len(scores), 2)  # 平均スコアで返す
 
     def rain_adjust(kaku):
         return {'逃': 0.4, '両': 0.1, '追': -0.4}.get(kaku, 0.0) if rain else 0.0
@@ -293,11 +314,16 @@ if st.button("スコア計算実行"):
         bonus_map = {group: [0.3, 0.15, 0.5][idx] if idx < 3 else 0.0 for idx, (group, _) in enumerate(sorted_lines)}
         return bonus_map
 
-    def get_group_bonus(car_no, line_def, group_bonus_map):
+    def compute_group_bonus(score_parts, line_def):
+        group_bonus = {}
         for group in ['A', 'B', 'C']:
-            if car_no in line_def[group]:
-                return group_bonus_map.get(group, 0.0)
-        return 1.2
+            count = len(line_def[group])
+            if count > 0:
+                group_bonus[group] = round(1.5 / count, 2)
+            else:
+                group_bonus[group] = 0.0
+        return group_bonus
+
 
     # ライン構成取得
     line_def = {
