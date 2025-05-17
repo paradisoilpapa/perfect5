@@ -256,9 +256,9 @@ if st.button("スコア計算実行"):
         pos_mult = position_multipliers.get(pos, 0.0)
 
         kaku_coeff = {
-            '逃': +0.4,   # 風に弱い
+            '逃': +0.4,
             '両':  0.0,
-            '追': -0.4    # 向かい風で伸びる
+            '追': -0.4
         }.get(kaku, 1.0)
 
         basic = base * speed * pos_mult
@@ -271,11 +271,11 @@ if st.button("スコア計算実行"):
             try:
                 chaku = int(v)
                 if chaku == 0:
-                    scores.append(0.0)  # 落車（0入力）
+                    scores.append(0.0)
                 elif 1 <= chaku <= 9:
-                    scores.append(round(1.0 / chaku, 2))  # 着順に応じたスコア
+                    scores.append(round(1.0 / chaku, 2))
             except ValueError:
-                continue  # 無効値は無視
+                continue
 
         if not scores:
             return None
@@ -317,17 +317,23 @@ if st.button("スコア計算実行"):
         for group in ['A', 'B', 'C']:
             if car_no in line_def[group]:
                 return group_bonus_map.get(group, 0.0)
-        if car_no in line_def.get('単騎', []):
+        if '単騎' in line_def and car_no in line_def['単騎']:
             return 1.5
         return 0.0
 
     # ライン構成取得
+    a_line = []
+    b_line = []
+    c_line = []
+    tanki = []
+
     line_def = {
         'A': extract_car_list(a_line),
         'B': extract_car_list(b_line),
         'C': extract_car_list(c_line),
         '単騎': extract_car_list(tanki)
     }
+
     line_order_map = build_line_position_map()
     line_order = [line_order_map.get(i + 1, 0) for i in range(7)]
 
@@ -374,6 +380,7 @@ if st.button("スコア計算実行"):
         group_corr = get_group_bonus(row[0], line_def, group_bonus_map)
         new_total = row[-1] + group_corr
         final_score_parts.append(row[:-1] + [group_corr, new_total])
+
 
     # 表示
     df = pd.DataFrame(final_score_parts, columns=[
