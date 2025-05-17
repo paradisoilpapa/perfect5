@@ -251,20 +251,19 @@ if st.button("スコア計算実行"):
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
             return 0
-
+    
         base = wind_coefficients.get(direction, 0.0)
         pos_mult = position_multipliers.get(pos, 0.0)
-
-        # 脚質ごとの風感受性を「逆転視点」で調整（逃げは風に弱い）
+    
         kaku_coeff = {
-            '逃': +0.4,   # #風を受けると潰れやすい
-            '両':  0.0,   # 風次第で左右される
-            '追': -0.4    # 向かい風なら特に有利に働く
+            '逃': +0.4,   # 風に弱い
+            '両':  0.0,
+            '追': -0.4    # 向かい風で伸びる
         }.get(kaku, 1.0)
-
-        # 全体抑制：0.3倍で基準スコアを壊さない
+    
         basic = base * speed * pos_mult
         return round(basic * kaku_coeff * 0.3, 2)
+
         
     def convert_chaku_to_score(values):
         """
