@@ -327,9 +327,7 @@ if st.button("スコア計算実行"):
         'B': extract_car_list(b_line),
         'C': extract_car_list(c_line),
         '単騎': extract_car_list(solo_line)  # tanki → solo_line に合わせて
-}
-
-    }
+        }
 
     line_order_map = build_line_position_map()
     line_order = [line_order_map.get(i + 1, 0) for i in range(7)]
