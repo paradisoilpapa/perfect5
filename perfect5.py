@@ -286,7 +286,14 @@ if st.button("スコア計算実行"):
         return {'逃': 0.4, '両': 0.1, '追': -0.4}.get(kaku, 0.0) if rain else 0.0
 
     def line_member_bonus(pos):
-        return {0: 0.7, 1: 1.0, 2: 0.6, 3: 0.4, 4: 0.2}.get(pos, 0.0)
+        return {
+            0: 0.7,  # 単騎
+            1: 0.5,  # 先頭（ライン1番手）
+            2: 0.6,  # 2番手（番手）
+            3: 0.7,  # 3番手（最後尾）
+            4: 0.2   # 4番手（9車用：評価不要レベル）
+        }.get(pos, 0.0)
+
 
     def bank_character_bonus(kaku, angle, straight):
         straight_factor = (straight - 40.0) / 10.0
