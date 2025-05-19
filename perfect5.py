@@ -325,7 +325,7 @@ if st.button("スコア計算実行"):
             if car_no in line_def[group]:
                 return group_bonus_map.get(group, 0.0)
         if '単騎' in line_def and car_no in line_def['単騎']:
-            return 1.5
+            return 0.8
         return 0.0
 
     # ライン構成取得
