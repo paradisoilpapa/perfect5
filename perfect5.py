@@ -150,9 +150,9 @@ st.header("【選手データ入力】")
 
 symbol_input_options = ['◎', '〇', '▲', '△', '×', '無']
 
-st.subheader("▼ 脚質入力（逃・両・追：車番を半角数字で入力）")
+st.subheader("▼ 位置入力（先頭・番手or単騎・３番手以降：車番を半角数字で入力）")
 
-kakushitsu_keys = ['逃', '両', '追']
+kakushitsu_keys = ['先頭', '番手or単騎', '３番手以降']
 kakushitsu_inputs = {}
 cols = st.columns(3)
 for i, k in enumerate(kakushitsu_keys):
