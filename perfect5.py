@@ -244,7 +244,7 @@ if st.button("スコア計算実行"):
         result = []
         for score in tenscore_list:
             rank = score_to_rank[score]
-            correction = {-3: 0.2, -2: 0.1, -1: 0.0, 0: -0.05, 1: -0.1, 2: -0.15}.get(4 - rank, -0.2)
+            correction = {-3: 0.1, -2: 0.05, -1: 0.0, 0: -0.05, 1: -0.1, 2: -0.15}.get(4 - rank, -0.2)
             result.append(correction)
         return result
 
@@ -256,9 +256,9 @@ if st.button("スコア計算実行"):
         pos_mult = position_multipliers.get(pos, 0.0)
 
         kaku_coeff = {
-            '逃': +0.4,
+            '逃': +0.1,
             '両':  0.0,
-            '追': -0.4
+            '追': +0.1
         }.get(kaku, 1.0)
 
         basic = base * speed * pos_mult
@@ -291,7 +291,7 @@ if st.button("スコア計算実行"):
             1: 0.5,  # 先頭（ライン1番手）
             2: 0.6,  # 2番手（番手）
             3: 0.7,  # 3番手（最後尾）
-            4: 0.5   # 4番手（9車用：評価不要レベル）
+            4: 0.7   # 4番手（9車用：評価不要レベル）
         }.get(pos, 0.0)
 
 
