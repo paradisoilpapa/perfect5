@@ -317,7 +317,7 @@ if st.button("スコア計算実行"):
                     break
         group_avg = {k: group_scores[k] / group_counts[k] if group_counts[k] > 0 else 0.0 for k in group_scores}
         sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
-        bonus_map = {group: [0.5, 0.4, 0.2][idx] if idx < 3 else 0.0 for idx, (group, _) in enumerate(sorted_lines)}
+        bonus_map = {group: [0.3, 0.4, 0.5][idx] if idx < 3 else 0.0 for idx, (group, _) in enumerate(sorted_lines)}
         return bonus_map
 
     def get_group_bonus(car_no, line_def, group_bonus_map):
