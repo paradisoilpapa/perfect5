@@ -150,7 +150,7 @@ st.header("【選手データ入力】")
 
 symbol_input_options = ['◎', '〇', '▲', '△', '×', '無']
 
-st.subheader("▼ 位置入力（逃＝先頭・両＝番手or単騎・追＝３番手以降：車番を半角数字で入力）")
+st.subheader("▼ 位置入力（逃＝先頭・両＝番手・追＝３番手以降&単騎：車番を半角数字で入力）")
 
 kakushitsu_keys = ['逃', '両', '追']
 kakushitsu_inputs = {}
@@ -287,7 +287,7 @@ if st.button("スコア計算実行"):
 
     def line_member_bonus(pos):
         return {
-            0: 0.3,  # 単騎
+            0: 0.5,  # 単騎
             1: 0.5,  # 先頭（ライン1番手）
             2: 0.6,  # 2番手（番手）
             3: 0.7,  # 3番手（最後尾）
@@ -325,7 +325,7 @@ if st.button("スコア計算実行"):
             if car_no in line_def[group]:
                 return group_bonus_map.get(group, 0.0)
         if '単騎' in line_def and car_no in line_def['単騎']:
-            return 0.3
+            return 0.6
         return 0.0
 
     # ライン構成取得
