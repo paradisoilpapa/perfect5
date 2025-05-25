@@ -283,11 +283,11 @@ if st.button("スコア計算実行"):
             return round(sum(scores) / len(scores), 2)
 
     def rain_adjust(kaku):
-        return {'逃': 0.4, '両': 0.1, '追': -0.4}.get(kaku, 0.0) if rain else 0.0
+        return {'逃': 0.2, '両': 0.1, '追': -0.2}.get(kaku, 0.0) if rain else 0.0
 
     def line_member_bonus(pos):
         return {
-            0: 0.7,  # 単騎
+            0: 0.3,  # 単騎
             1: 0.5,  # 先頭（ライン1番手）
             2: 0.6,  # 2番手（番手）
             3: 0.7,  # 3番手（最後尾）
@@ -325,7 +325,7 @@ if st.button("スコア計算実行"):
             if car_no in line_def[group]:
                 return group_bonus_map.get(group, 0.0)
         if '単騎' in line_def and car_no in line_def['単騎']:
-            return 0.6
+            return 0.3
         return 0.0
 
     # ライン構成取得
