@@ -258,7 +258,7 @@ if st.button("スコア計算実行"):
         kaku_coeff = {
             '逃': +0.1,
             '両':  0.0,
-            '追': +0.1
+            '追': -0.1
         }.get(kaku, 1.0)
 
         basic = base * speed * pos_mult
@@ -303,7 +303,7 @@ if st.button("スコア計算実行"):
 
     def bank_length_adjust(kaku, length):
         delta = (length - 400) / 100
-        return {'逃': -0.75 * delta, '追': +0.6 * delta, '両': 0.0}.get(kaku, 0.0)
+        return {'逃': 0.75 * delta, '追': -0.6 * delta, '両': 0.0}.get(kaku, 0.0)
 
     def compute_group_bonus(score_parts, line_def):
         group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
