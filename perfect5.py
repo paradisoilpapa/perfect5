@@ -302,8 +302,8 @@ if st.button("スコア計算実行"):
         return round({'逃': +total_factor, '追': -total_factor, '両': 0.0}.get(kaku, 0.0), 2)
 
     def bank_length_adjust(kaku, length):
-        delta = (length - 400) / 100
-        return {'逃': 0.75 * delta, '追': -0.6 * delta, '両': 0.0}.get(kaku, 0.0)
+        delta = (length - 411) / 100
+        return {'逃': 0.2 * delta, '追': 0.5 * delta, '両': 0.3}.get(kaku, 0.0)
 
     def compute_group_bonus(score_parts, line_def):
         group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
