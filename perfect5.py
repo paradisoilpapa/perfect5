@@ -296,14 +296,22 @@ if st.button("スコア計算実行"):
 
 
     def bank_character_bonus(kaku, angle, straight):
+        """
+        カント角と直線長による脚質補正（スケール緩和済み）
+        """
         straight_factor = (straight - 40.0) / 10.0
         angle_factor = (angle - 25.0) / 5.0
-        total_factor = -0.4 * straight_factor + 0.3 * angle_factor
+        total_factor = -0.2 * straight_factor + 0.2 * angle_factor
         return round({'逃': +total_factor, '追': -total_factor, '両': +0.5 * total_factor}.get(kaku, 0.0), 2)
-
+    
+    
     def bank_length_adjust(kaku, length):
+        """
+        バンク周長による補正（400基準を完全維持しつつ、±0.15に制限）
+        """
         delta = (length - 411) / 100
-        return {'逃': 2 * delta, '追': 6 * delta, '両': 4 * delta,}.get(kaku, 0.0)
+        delta = max(min(delta, 0.15), -0.15)
+        return round({'逃': 2.0 * delta, '両': 4.0 * delta, '追': 6.0 * delta}.get(kaku, 0.0), 2)
 
     def compute_group_bonus(score_parts, line_def):
         group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
