@@ -299,7 +299,7 @@ if st.button("スコア計算実行"):
         straight_factor = (straight - 40.0) / 10.0
         angle_factor = (angle - 25.0) / 5.0
         total_factor = -0.4 * straight_factor + 0.3 * angle_factor
-        return round({'逃': +total_factor, '追': -total_factor, '両': 0.0}.get(kaku, 0.0), 2)
+        return round({'逃': +total_factor, '追': -total_factor, '両': +0.5 * total_factor}.get(kaku, 0.0), 2)
 
     def bank_length_adjust(kaku, length):
         delta = (length - 411) / 100
