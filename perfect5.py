@@ -318,7 +318,7 @@ if st.button("スコア計算実行"):
         group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
         group_counts = {k: 0 for k in ['A', 'B', 'C']}
     
-        # 合計スコアと人数を集計
+        # 各ラインの合計スコアと人数を集計
         for entry in score_parts:
             car_no, score = entry[0], entry[-1]
             for group in ['A', 'B', 'C']:
@@ -327,16 +327,14 @@ if st.button("スコア計算実行"):
                     group_counts[group] += 1
                     break
     
-        # ★ AラインにSボーナス（全体で1.0点を均等配分）
-        a_len = group_counts['A']
-        if a_len > 0:
-            group_scores['A'] += 0.5  # 合計に0.5を加算（後で平均せず合計順位で評価）
+        # ★ Sを取ったAラインに1.0点を加算（分配はしない）
+        group_scores['A'] += 1.0
     
-        # 合計スコアで順位付け
+        # 合計スコアで順位を決定（平均ではない）
         sorted_lines = sorted(group_scores.items(), key=lambda x: x[1], reverse=True)
     
-        # 高スコア順に 0.5, 0.4, 0.3 を付与
-        bonus_map = {group: [0.5, 0.4, 0.3][idx] if idx < 3 else 0.0 for idx, (group, _) in enumerate(sorted_lines)}
+        # 上位グループから順に 0.5 → 0.4 → 0.3 のボーナスを付与
+        bonus_map = {group: [0.5, 0.4, 0.3][idx] for idx, (group, _) in enumerate(sorted_lines)}
     
         return bonus_map
         
