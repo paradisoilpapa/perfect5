@@ -310,7 +310,7 @@ if st.button("スコア計算実行"):
         バンク周長による補正（400基準を完全維持しつつ、±0.15に制限）
         """
         delta = (length - 411) / 100
-        delta = max(min(delta, 0.15), -0.15)
+        delta = max(min(delta, 0.075), -0.075)
         return round({'逃': 2.0 * delta, '両': 4.0 * delta, '追': 6.0 * delta}.get(kaku, 0.0), 2)
 
     def compute_group_bonus(score_parts, line_def):
