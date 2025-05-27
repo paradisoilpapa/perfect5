@@ -327,8 +327,6 @@ if st.button("スコア計算実行"):
                     group_counts[group] += 1
                     break
     
-        # ★ Sを取ったAラインに1.0点を加算（分配はしない）
-        group_scores['A'] += 1.0
     
         # 合計スコアで順位を決定（平均ではない）
         sorted_lines = sorted(group_scores.items(), key=lambda x: x[1], reverse=True)
@@ -341,7 +339,9 @@ if st.button("スコア計算実行"):
     def get_group_bonus(car_no, line_def, group_bonus_map):
         for group in ['A', 'B', 'C']:
             if car_no in line_def[group]:
-                return group_bonus_map.get(group, 0.0)
+                base_bonus = group_bonus_map.get(group, 0.0)
+                s_bonus = 0.3 if group == 'A' else 0.0  # ← 無条件でAだけに+0.3
+                return base_bonus + s_bonus
         if '単騎' in line_def and car_no in line_def['単騎']:
             return 0.3
         return 0.0
