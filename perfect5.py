@@ -314,8 +314,11 @@ if st.button("スコア計算実行"):
         return round({'逃': 2.0 * delta, '両': 4.0 * delta, '追': 6.0 * delta}.get(kaku, 0.0), 2)
 
     def compute_group_bonus(score_parts, line_def):
+        # 初期化
         group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
         group_counts = {k: 0 for k in ['A', 'B', 'C']}
+    
+        # 合計スコアと人数を集計
         for entry in score_parts:
             car_no, score = entry[0], entry[-1]
             for group in ['A', 'B', 'C']:
@@ -323,15 +326,20 @@ if st.button("スコア計算実行"):
                     group_scores[group] += score
                     group_counts[group] += 1
                     break
-                    
-    # ★ AラインにSボーナスを加算（1.0点）
-        group_scores['A'] += 1.0
-        
-        group_avg = {k: group_scores[k] / group_counts[k] if group_counts[k] > 0 else 0.0 for k in group_scores}
-        sorted_lines = sorted(group_avg.items(), key=lambda x: x[1], reverse=True)
-        bonus_map = {group: [0.3, 0.4, 0.5][idx] if idx < 3 else 0.0 for idx, (group, _) in enumerate(sorted_lines)}
+    
+        # ★ AラインにSボーナス（全体で1.0点を均等配分）
+        a_len = group_counts['A']
+        if a_len > 0:
+            group_scores['A'] += 0.5  # 合計に0.5を加算（後で平均せず合計順位で評価）
+    
+        # 合計スコアで順位付け
+        sorted_lines = sorted(group_scores.items(), key=lambda x: x[1], reverse=True)
+    
+        # 高スコア順に 0.5, 0.4, 0.3 を付与
+        bonus_map = {group: [0.5, 0.4, 0.3][idx] if idx < 3 else 0.0 for idx, (group, _) in enumerate(sorted_lines)}
+    
         return bonus_map
-
+        
     def get_group_bonus(car_no, line_def, group_bonus_map):
         for group in ['A', 'B', 'C']:
             if car_no in line_def[group]:
