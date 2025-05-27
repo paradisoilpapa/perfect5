@@ -244,7 +244,7 @@ if st.button("スコア計算実行"):
         result = []
         for score in tenscore_list:
             rank = score_to_rank[score]
-            correction = {-3: 0.0, -2: 0.0, -1: 0.0, 0: 0.7, 1: 0.1, 2: 0.2}.get(4 - rank, 0.0)
+            correction = {-3: 0.0, -2: 0.0, -1: 0.0, 0: 0.1, 1: 0.13, 2: 0.2}.get(4 - rank, 0.0)
             result.append(correction)
         return result
 
