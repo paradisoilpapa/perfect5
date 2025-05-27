@@ -251,18 +251,19 @@ if st.button("スコア計算実行"):
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
             return 0
-
-        base = wind_coefficients.get(direction, 0.0)
-        pos_mult = position_multipliers.get(pos, 0.0)
-
+    
+        base = wind_coefficients.get(direction, 0.0)  # e.g. 上=+0.10
+        pos_mult = position_multipliers.get(pos, 0.0)  # e.g. 先頭=1.0, 番手=0.6
+    
+        # 強化された脚質補正係数（±1.0スケールに）
         kaku_coeff = {
-            '逃': +0.1,
-            '両':  0.0,
-            '追': -0.1
-        }.get(kaku, 1.0)
-
-        basic = base * speed * pos_mult
-        return round(basic * kaku_coeff * 0.3, 2)
+            '逃': +1.0,
+            '両':  0.5,
+            '追': -1.0
+        }.get(kaku, 0.0)
+    
+        total = base * speed * pos_mult * kaku_coeff  # 例: +0.1×10×1×1 = +1.0
+        return round(total, 2)
 
     def convert_chaku_to_score(values):
         scores = []
