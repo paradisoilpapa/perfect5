@@ -143,8 +143,8 @@ bank_length = st.number_input("バンク周長(m)", min_value=300.0, max_value=5
                               value=float(selected_info["bank_length"]))
 
 
-# ▼ 雨チェック（最後に）
-rain = st.checkbox("雨（滑走・慎重傾向あり）")
+# ▼ 周回数の入力（通常は4、高松などは5）
+laps = st.number_input("周回数（通常は4、高松などは5）", min_value=1, max_value=10, value=4, step=1)
 
 # --- 【選手データ入力】 ---
 st.header("【選手データ入力】")
@@ -284,8 +284,13 @@ if st.button("スコア計算実行"):
         else:
             return round(sum(scores) / len(scores), 2)
 
-    def rain_adjust(kaku):
-        return {'逃': 0.2, '両': 0.1, '追': -0.2}.get(kaku, 0.0) if rain else 0.0
+    def lap_adjust(kaku, laps):
+        delta = max(laps - 4, 0)
+        return {
+            '逃': round(-0.2 * delta, 2),
+            '追': round(+0.1 * delta, 2),
+            '両': 0.0
+        }.get(kaku, 0.0)
 
     def line_member_bonus(pos):
         return {
@@ -382,7 +387,7 @@ if st.button("スコア計算実行"):
         chaku_values = chaku_inputs[i]
         kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
         rating_score = tenscore_score[i]
-        rain_corr = rain_adjust(kaku)
+        rain_corr = lap_adjust(kaku, laps)
         symbol_score = symbol_bonus.get(car_to_symbol.get(num, '無'), 0.0)
         line_bonus = line_member_bonus(line_order[i])
         bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
@@ -407,7 +412,7 @@ if st.button("スコア計算実行"):
     # 表示
     df = pd.DataFrame(final_score_parts, columns=[
         '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
-        '雨補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正',
+        '周回補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正',
         'グループ補正', '合計スコア'
     ])
     st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
