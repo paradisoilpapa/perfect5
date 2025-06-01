@@ -193,19 +193,13 @@ tairetsu = [st.text_input(f"{i+1}番隊列順位", key=f"tai_{i}") for i in rang
 
 st.subheader("▼ 政春印入力（各記号ごとに該当車番を入力）")
 
-# --- S・B 入力（記号別ではなく車番別） ---
-st.subheader("▼ S・B 入力（各選手にチェック）")
-s_marks = []
-b_marks = []
+# --- S・B 入力（回数を数値で入力） ---
+st.subheader("▼ S・B 入力（各選手のS・B回数を入力）")
 
-cols = st.columns(7)
 for i in range(7):
-    with cols[i]:
-        st.markdown(f"**{i+1}番**")
-        if st.checkbox("S", key=f"s_{i+1}"):
-            s_marks.append(i + 1)
-        if st.checkbox("B", key=f"b_{i+1}"):
-            b_marks.append(i + 1)
+    st.markdown(f"**{i+1}番**")
+    s_val = st.number_input("S回数", min_value=0, max_value=99, value=0, step=1, key=f"s_point_{i+1}")
+    b_val = st.number_input("B回数", min_value=0, max_value=99, value=0, step=1, key=f"b_point_{i+1}")
 
 
 # --- ライン構成入力欄（A〜Cライン＋単騎） ---
@@ -383,9 +377,8 @@ if st.button("スコア計算実行"):
         kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
         rating_score = tenscore_score[i]
         rain_corr = lap_adjust(kaku, laps)
-    # ▼ ここを修正（政春印 → S・B補正）
-        s_bonus = 0.05 if num in s_marks else 0.0
-        b_bonus = 0.05 if num in b_marks else 0.0
+        s_bonus = 0.05 * st.session_state.get(f"s_point_{num}", 0)
+        b_bonus = 0.05 * st.session_state.get(f"b_point_{num}", 0)
         symbol_score = s_bonus + b_bonus
         line_bonus = line_member_bonus(line_order[i])
         bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
