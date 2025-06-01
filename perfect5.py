@@ -29,7 +29,6 @@ position_multipliers = {
 
 # --- 基本スコア（脚質ごとの基準値） ---
 base_score = {'逃': 5.0, '両': 4.9, '追': 4.7}
-symbol_bonus = {'◎': 0.6, '〇': 0.4, '▲': 0.3, '△': 0.2, '×': 0.1, '無': 0.0}
 
 # --- 状態保持 ---
 if "selected_wind" not in st.session_state:
