@@ -190,9 +190,6 @@ st.subheader("▼ 予想隊列入力（数字、欠の場合は空欄）")
 tairetsu = [st.text_input(f"{i+1}番隊列順位", key=f"tai_{i}") for i in range(7)]
 
 
-
-st.subheader("▼ 政春印入力（各記号ごとに該当車番を入力）")
-
 # --- S・B 入力（回数を数値で入力） ---
 st.subheader("▼ S・B 入力（各選手のS・B回数を入力）")
 
