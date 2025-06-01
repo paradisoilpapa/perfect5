@@ -253,14 +253,17 @@ if st.button("スコア計算実行"):
 
     def convert_chaku_to_score(values):
         scores = []
-        for v in values:
+        for i, v in enumerate(values):
             v = v.strip()
             try:
                 chaku = int(v)
                 if chaku == 0:
-                    scores.append(0.0)
+                    score = 0.0
                 elif 1 <= chaku <= 9:
-                    scores.append(round(1.0 / chaku, 2))
+                    score = round(1.0 / chaku, 2)
+                    if i == 1:  # 2番目（前々走）だけ過小評価
+                        score *= 0.7
+                    scores.append(score)
             except ValueError:
                 continue
 
@@ -268,6 +271,7 @@ if st.button("スコア計算実行"):
             return None
         else:
             return round(sum(scores) / len(scores), 2)
+
 
     def lap_adjust(kaku, laps):
         delta = max(laps - 4, 0)
