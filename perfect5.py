@@ -4,7 +4,7 @@ import pandas as pd
 # --- ページ設定 ---
 st.set_page_config(page_title="ライン競輪スコア計算（完全統一版）", layout="wide")
 
-st.title("⭐ ライン競輪スコア計算（7車ライン＋政春補正＋欠番対応）⭐")
+st.title("⭐ ライン競輪スコア計算（7車ライン＋欠番対応）⭐")
 
 wind_coefficients = {
     "左上": -0.07,   # ホーム寄りからの風 → 差し有利（逃げやや不利）
@@ -149,8 +149,6 @@ laps = st.number_input("周回数（通常は4、高松などは5）", min_value
 # --- 【選手データ入力】 ---
 st.header("【選手データ入力】")
 
-symbol_input_options = ['◎', '〇', '▲', '△', '×', '無']
-
 st.subheader("▼ 位置入力（逃＝先頭・両＝番手・追＝３番手以降&単騎：車番を半角数字で入力）")
 
 kakushitsu_keys = ['逃', '両', '追']
@@ -195,23 +193,20 @@ tairetsu = [st.text_input(f"{i+1}番隊列順位", key=f"tai_{i}") for i in rang
 
 st.subheader("▼ 政春印入力（各記号ごとに該当車番を入力）")
 
-# --- 政春印入力（記号別に入力） ---
-symbol_input_options = ['◎', '〇', '▲', '△', '×', '無']
-symbol_bonus = {
-    '◎': 0.6, '〇': 0.4, '▲': 0.3, '△': 0.2, '×': 0.1,
-    '無': 0.0
-}
-symbol_inputs = {}
-cols = st.columns(len(symbol_input_options))
-for i, sym in enumerate(symbol_input_options):
-    with cols[i]:
-        symbol_inputs[sym] = st.text_input(label=f"{sym}（複数入力可）", key=f"symbol_{sym}", max_chars=14)
+# --- S・B 入力（記号別ではなく車番別） ---
+st.subheader("▼ S・B 入力（各選手にチェック）")
+s_marks = []
+b_marks = []
 
-car_to_symbol = {}
-for sym, input_str in symbol_inputs.items():
-    for c in input_str:
-        if c.isdigit():
-            car_to_symbol[int(c)] = sym
+cols = st.columns(7)
+for i in range(7):
+    with cols[i]:
+        st.markdown(f"**{i+1}番**")
+        if st.checkbox("S", key=f"s_{i+1}"):
+            s_marks.append(i + 1)
+        if st.checkbox("B", key=f"b_{i+1}"):
+            b_marks.append(i + 1)
+
 
 # --- ライン構成入力欄（A〜Cライン＋単騎） ---
 st.subheader("▼ ライン構成入力（A〜Cライン＋単騎）")
@@ -388,7 +383,10 @@ if st.button("スコア計算実行"):
         kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
         rating_score = tenscore_score[i]
         rain_corr = lap_adjust(kaku, laps)
-        symbol_score = symbol_bonus.get(car_to_symbol.get(num, '無'), 0.0)
+    # ▼ ここを修正（政春印 → S・B補正）
+        s_bonus = 0.05 if num in s_marks else 0.0
+        b_bonus = 0.05 if num in b_marks else 0.0
+        symbol_score = s_bonus + b_bonus
         line_bonus = line_member_bonus(line_order[i])
         bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
         length_bonus = bank_length_adjust(kaku, bank_length)
@@ -412,7 +410,7 @@ if st.button("スコア計算実行"):
     # 表示
     df = pd.DataFrame(final_score_parts, columns=[
         '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
-        '周回補正', '政春印補正', 'ライン補正', 'バンク補正', '周長補正',
+        '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
         'グループ補正', '合計スコア'
     ])
     st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
