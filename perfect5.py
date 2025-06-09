@@ -388,43 +388,47 @@ if st.button("スコア計算実行"):
     tenscore_score = score_from_tenscore_list(rating)
     score_parts = []
 
-    for i in range(7):
-        if not tairetsu[i].isdigit():
-            continue
+for i in range(7):
+    if not tairetsu[i].isdigit():
+        continue
 
-        num = i + 1
-        kaku = car_to_kakushitsu.get(num, "追")
-        base = base_score[kaku]
+    num = i + 1
+    kaku = car_to_kakushitsu.get(num, "追")
+    base = base_score[kaku]
 
-        wind = wind_straight_combo_adjust(
-            kaku,
-            st.session_state.selected_wind,
-            wind_speed,
-            straight_length,
-            line_order[i]
-        )
+    wind = wind_straight_combo_adjust(
+        kaku,
+        st.session_state.selected_wind,
+        wind_speed,
+        straight_length,
+        line_order[i]
+    )
 
-        chaku_values = chaku_inputs[i]
-        kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
-        rating_score = tenscore_score[i]
-        rain_corr = lap_adjust(kaku, laps)
-        s_bonus = 0.05 * st.session_state.get(f"s_point_{num}", 0)
-        b_bonus = 0.05 * st.session_state.get(f"b_point_{num}", 0)
-        symbol_score = s_bonus + b_bonus
-        line_bonus = line_member_bonus(line_order[i])
-        bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
-        length_bonus = bank_length_adjust(kaku, bank_length)
+    chaku_values = chaku_inputs[i]
+    kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
+    rating_score = tenscore_score[i]
+    rain_corr = lap_adjust(kaku, laps)
+    s_bonus = 0.05 * st.session_state.get(f"s_point_{num}", 0)
+    b_bonus = 0.05 * st.session_state.get(f"b_point_{num}", 0)
+    symbol_score = s_bonus + b_bonus
+    line_bonus = line_member_bonus(line_order[i])
+    bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
+    length_bonus = bank_length_adjust(kaku, bank_length)
 
-        meta_score = metabolism_scores[i]  # ← 年齢＆級による代謝補正
+    meta_score = metabolism_scores[i]  # ← 年齢＆級による代謝補正
 
-        total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus + meta_score
+    # ✅ ここに書いて確認
+    st.write(f"{num}番 年齢: {ages[i]}, 級: {race_class}, 代謝補正: {meta_score}")
 
-        score_parts.append([
-            num, kaku, base, wind, kasai, rating_score,
-            rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus,
-            meta_score,  # ← ここを新たに追加
-            total
-        ])
+    total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus + meta_score
+
+    score_parts.append([
+        num, kaku, base, wind, kasai, rating_score,
+        rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus,
+        meta_score,  # ← 表示列と一致させる
+        total
+    ])
+
 
     # グループ補正
     group_bonus_map = compute_group_bonus(score_parts, line_def)
