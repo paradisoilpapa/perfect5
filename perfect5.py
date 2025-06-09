@@ -263,7 +263,7 @@ if st.button("スコア計算実行"):
     
         # 2〜6位の平均得点を基準
         baseline = df[df["順位"].between(2, 6)]["得点"].mean()
-        df["元の補正値"] = ((baseline - df["得点"]) / 3).round(3)
+        df["元の補正値"] = ((baseline - df["得点"]) / 4).round(3)
     
         # 6位の補正値を取得
         sixth = df[df["順位"] == 6]["元の補正値"].values[0]
@@ -351,12 +351,10 @@ if st.button("スコア計算実行"):
     
     
     def bank_length_adjust(kaku, length):
-        """
-        バンク周長による補正（400基準を完全維持しつつ、±0.15に制限）
-        """
         delta = (length - 411) / 100
-        delta = max(min(delta, 0.075), -0.075)
-        return round({'逃': 2.0 * delta, '両': 4.0 * delta, '追': 6.0 * delta}.get(kaku, 0.0), 2)
+        delta = max(min(delta, 0.05), -0.05)  # ±0.05制限
+        return round({'逃': 1.5 * delta, '両': 3.0 * delta, '追': 4.5 * delta}.get(kaku, 0.0), 2)
+
 
     def compute_group_bonus(score_parts, line_def):
         # 初期化
@@ -414,9 +412,9 @@ if st.button("スコア計算実行"):
         "S級":        0.6
     }
 
-    # --- 3. 補正スコアの生成（7選手分） ---
+    # --- 3. 補正スコアの生成（7選手分、上限付き） ---
     metabolism_scores = [
-        get_age_correction(ages[i]) * correction_factor.get(race_class, 1.0)
+        min(get_age_correction(ages[i]) * correction_factor.get(race_class, 1.0), 0.3)
         if isinstance(ages[i], (int, float)) else 0.0
         for i in range(7)
     ]
