@@ -256,14 +256,34 @@ st.subheader("▼ スコア計算")
 if st.button("スコア計算実行"):
 
     def score_from_tenscore_list(tenscore_list):
-        sorted_unique = sorted(set(tenscore_list), reverse=True)
-        score_to_rank = {score: rank + 1 for rank, score in enumerate(sorted_unique)}
-        result = []
-        for score in tenscore_list:
-            rank = score_to_rank[score]
-            correction = {-3: 0.0, -2: 0.0, -1: 0.0, 0: 0.1, 1: 0.13, 2: 0.2}.get(4 - rank, 0.0)
-            result.append(correction)
-        return result
+        df = pd.DataFrame({
+            "得点": tenscore_list,
+            "順位": pd.Series(tenscore_list).rank(ascending=False, method="min").astype(int)
+        })
+    
+        # 元の補正値（zスコア）
+        mean = df["得点"].mean()
+        std = df["得点"].std()
+        df["元の補正値"] = (df["得点"] - mean) / std
+    
+        # 基準点
+        second = df[df["順位"] == 2]["元の補正値"].values[0]
+        sixth = df[df["順位"] == 6]["元の補正値"].values[0]
+    
+        final = []
+        for _, row in df.iterrows():
+            if row["順位"] == 1:
+                max_val = second - 0.1
+                val = max(row["元の補正値"], max_val)
+            elif row["順位"] == 7:
+                min_val = sixth + 0.1
+                val = min(row["元の補正値"], min_val)
+            else:
+                val = row["元の補正値"]
+            final.append(val)
+    
+        return final
+
 
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
