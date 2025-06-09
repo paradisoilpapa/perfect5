@@ -270,13 +270,14 @@ if st.button("スコア計算実行"):
         second = df[df["順位"] == 2]["元の補正値"].values[0]
         sixth = df[df["順位"] == 6]["元の補正値"].values[0]
     
-        def apply_limit(row):
-            if row["順位"] == 1:
-                return 0.0  # 1位は補正なし（固定で0）
-           elif row["順位"] == 7:
-               return min(row["元の補正値"], sixth + 0.1)  # 7位だけ制限適用
-            else:
-               return row["元の補正値"]
+    def apply_limit(row):
+        if row["順位"] == 1:
+            return 0.0  # 1位は補正なし（固定で0）
+        elif row["順位"] == 7:
+            return min(row["元の補正値"], sixth + 0.1)  # 7位だけ制限適用
+        else:
+            return row["元の補正値"]
+
     
         
             df["最終補正値"] = df.apply(apply_limit, axis=1).round(3)
