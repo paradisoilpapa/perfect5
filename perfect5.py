@@ -255,19 +255,17 @@ except Exception:
 st.subheader("▼ スコア計算")
 if st.button("スコア計算実行"):
 
-    def corrected_score_from_tenscore_list(tenscore_list):
+    def score_from_tenscore_list(tenscore_list):
         import pandas as pd
     
         df = pd.DataFrame({"得点": tenscore_list})
         df["順位"] = df["得点"].rank(ascending=False, method="min").astype(int)
     
-        # 2〜6位の得点平均を基準にする
+        # 2〜6位の平均得点を基準
         baseline = df[df["順位"].between(2, 6)]["得点"].mean()
-    
-        # 補正値 = 基準からの差（高いとマイナス、低いとプラス）
         df["元の補正値"] = (baseline - df["得点"]).round(3)
     
-        # 2位と6位の補正値取得
+        # 2位と6位の補正値を取得
         second = df[df["順位"] == 2]["元の補正値"].values[0]
         sixth  = df[df["順位"] == 6]["元の補正値"].values[0]
     
@@ -280,7 +278,11 @@ if st.button("スコア計算実行"):
                 return row["元の補正値"]
     
         df["最終補正値"] = df.apply(apply_limit, axis=1).round(3)
-        return df
+        return df["最終補正値"].tolist()  # ← Streamlit用途ならリストで返す
+    
+        
+            df["最終補正値"] = df.apply(apply_limit, axis=1).round(3)
+            return df
 
 
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
