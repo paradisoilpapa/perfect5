@@ -267,7 +267,7 @@ if st.button("スコア計算実行"):
     
         # 2位と6位の補正値を取得
         second = df[df["順位"] == 2]["元の補正値"].values[0]
-        sixth  = df[df["順位"] == 6]["元の補正値"].values[0]
+        sixth = df[df["順位"] == 6]["元の補正値"].values[0]
     
         def apply_limit(row):
             if row["順位"] == 1:
@@ -278,11 +278,8 @@ if st.button("スコア計算実行"):
                 return row["元の補正値"]
     
         df["最終補正値"] = df.apply(apply_limit, axis=1).round(3)
-        return df["最終補正値"].tolist()  # ← Streamlit用途ならリストで返す
-    
-        
-            df["最終補正値"] = df.apply(apply_limit, axis=1).round(3)
-            return df
+        return df["最終補正値"].tolist()
+
 
 
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
