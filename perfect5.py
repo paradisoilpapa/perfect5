@@ -279,8 +279,8 @@ if st.button("スコア計算実行"):
         else:
             return row["元の補正値"]
 
-    　　　　df["最終補正値"] = df.apply(apply_limit, axis=1)
-        　　　　return df["最終補正値"].tolist()
+        df["最終補正値"] = df.apply(apply_limit, axis=1)
+            return df["最終補正値"].tolist()
 
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
