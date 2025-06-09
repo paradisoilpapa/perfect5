@@ -255,28 +255,32 @@ except Exception:
 st.subheader("▼ スコア計算")
 if st.button("スコア計算実行"):
 
-    def score_from_tenscore_list(tenscore_list):
-        import numpy as np
+    def corrected_score_from_tenscore_list(tenscore_list):
         import pandas as pd
     
         df = pd.DataFrame({"得点": tenscore_list})
         df["順位"] = df["得点"].rank(ascending=False, method="min").astype(int)
     
-        # 2〜6位の平均得点を基準点に
-        mask_2to6 = df["順位"].between(2, 6)
-        baseline = df[mask_2to6]["得点"].mean()
+        # 2〜6位の得点平均を基準にする
+        baseline = df[df["順位"].between(2, 6)]["得点"].mean()
     
-        # 元の補正値（＝得点との差）
-        df["元の補正値"] = df["得点"] - baseline
+        # 補正値 = 基準からの差（高いとマイナス、低いとプラス）
+        df["元の補正値"] = (baseline - df["得点"]).round(3)
     
-        # スケーリング（±0.1の範囲に丸める）
-        max_abs = df["元の補正値"].abs().max()
-        scale = 0.1 / max_abs if max_abs != 0 else 0
-        df["最終補正値"] = (df["元の補正値"] * scale).round(3)
+        # 2位と6位の補正値取得
+        second = df[df["順位"] == 2]["元の補正値"].values[0]
+        sixth  = df[df["順位"] == 6]["元の補正値"].values[0]
     
-        return df["最終補正値"].tolist()
-
-
+        def apply_limit(row):
+            if row["順位"] == 1:
+                return max(row["元の補正値"], second - 0.1)
+            elif row["順位"] == 7:
+                return min(row["元の補正値"], sixth + 0.1)
+            else:
+                return row["元の補正値"]
+    
+        df["最終補正値"] = df.apply(apply_limit, axis=1).round(3)
+        return df
 
 
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
