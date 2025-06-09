@@ -404,7 +404,7 @@ if st.button("スコア計算実行"):
 
     
     # --- 1. 年齢補正の関数 ---
-    def get_age_correction(age, base_age=40, step=0.02):
+    def get_age_correction(age, base_age=35, step=0.03):
         return max(0.0, (age - base_age) * step)
     
     # --- 2. 級別係数の定義 ---
