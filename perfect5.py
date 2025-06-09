@@ -256,39 +256,26 @@ st.subheader("▼ スコア計算")
 if st.button("スコア計算実行"):
 
     def score_from_tenscore_list(tenscore_list):
+        import numpy as np
         import pandas as pd
     
-        df = pd.DataFrame({
-            "得点": tenscore_list
-        })
-    
-        # 高得点＝1位、低得点＝7位（同点時は同順位）
+        df = pd.DataFrame({"得点": tenscore_list})
         df["順位"] = df["得点"].rank(ascending=False, method="min").astype(int)
     
-        # 平均・標準偏差でzスコア化
-        mean = df["得点"].mean()
-        std = df["得点"].std()
-        df["元の補正値"] = (df["得点"] - mean) / std
+        # 2〜6位の平均得点を基準点に
+        mask_2to6 = df["順位"].between(2, 6)
+        baseline = df[mask_2to6]["得点"].mean()
     
-        # 2位・6位の補正値取得（制限基準用）
-        second = df[df["順位"] == 2]["元の補正値"].values[0]
-        sixth  = df[df["順位"] == 6]["元の補正値"].values[0]
+        # 元の補正値（＝得点との差）
+        df["元の補正値"] = df["得点"] - baseline
     
-        # 最終補正値決定（1位・7位のみ±0.1制限）
-        final = []
-        for _, row in df.iterrows():
-            rank = row["順位"]
-            raw = row["元の補正値"]
+        # スケーリング（±0.1の範囲に丸める）
+        max_abs = df["元の補正値"].abs().max()
+        scale = 0.1 / max_abs if max_abs != 0 else 0
+        df["最終補正値"] = (df["元の補正値"] * scale).round(3)
     
-            if rank == 1:
-                limited = max(raw, second - 0.1)  # 減らしすぎない
-            elif rank == 7:
-                limited = min(raw, sixth + 0.1)   # 増やしすぎない
-            else:
-                limited = raw
-            final.append(round(limited, 3))  # 小数第3位で丸め（好みに応じて調整可）
-    
-        return final
+        return df["最終補正値"].tolist()
+
 
 
 
