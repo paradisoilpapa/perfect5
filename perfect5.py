@@ -384,40 +384,36 @@ if st.button("スコア計算実行"):
     line_order_map = build_line_position_map()
     line_order = [line_order_map.get(i + 1, 0) for i in range(7)]
 
-st.subheader("▼ スコア計算")
+# --- スコア計算処理 ---
+st.subheader("\u25bc スコア計算")
 if st.button("スコア計算実行", key="score_calc_button"):
-    # スコア処理
 
-
-    # --- 1. 代謝補正関数定義 ---
     def get_metabolism_score(age, class_type):
-        if class_type == "\u30c1\u30e3\u30ec\u30f3\u30b8":
+        if class_type == "チャレンジ":
             if age >= 45:
                 return 0.15
             elif age >= 38:
                 return 0.07
-        elif class_type == "A\u7d1a":
+        elif class_type == "A級":
             if age >= 46:
                 return 0.10
             elif age >= 40:
                 return 0.05
-        elif class_type == "S\u7d1a":
+        elif class_type == "S級":
             if age >= 48:
                 return 0.05
         return 0.0
 
+    # 年齢と級から補正スコアを取得
     try:
         metabolism_scores = [
             get_metabolism_score(ages[i], race_class) if isinstance(ages[i], (int, float)) else 0.0
             for i in range(7)
         ]
-    except:
+    except Exception as e:
+        st.warning(f"代謝補正エラー: {e}")
         metabolism_scores = [0.0 for _ in range(7)]
 
-    # --- 2. 他の補正関数群（wind等）定義は省略せず上に入れてください ---
-    # ここでは wind_straight_combo_adjust などが先に正しく定義されていることが前提です
-
-    # --- 3. スコア計算メインループ ---
     tenscore_score = score_from_tenscore_list(rating)
     score_parts = []
 
@@ -454,14 +450,13 @@ if st.button("スコア計算実行", key="score_calc_button"):
             score_parts.append([
                 num, kaku, base, wind, kasai, rating_score,
                 rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus,
-                meta_score,  # 代謝補正
-                total
+                meta_score, total
             ])
         except Exception as e:
-            st.warning(f"{i+1}\u756a\u306e\u8a08\u7b97\u3067\u30a8\u30e9\u30fc: {e}")
+            st.warning(f"{i+1}番計算エラー: {e}")
             continue
 
-    # --- 4. グループ補正 ---
+    # グループ補正
     group_bonus_map = compute_group_bonus(score_parts, line_def)
     final_score_parts = []
     for row in score_parts:
@@ -469,7 +464,6 @@ if st.button("スコア計算実行", key="score_calc_button"):
         new_total = row[-1] + group_corr
         final_score_parts.append(row[:-1] + [group_corr, new_total])
 
-    # --- 5. 表示部 ---
     df = pd.DataFrame(final_score_parts, columns=[
         '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
         '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
