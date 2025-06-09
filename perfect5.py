@@ -197,6 +197,13 @@ for i in range(7):
     s_val = st.number_input("S回数", min_value=0, max_value=99, value=0, step=1, key=f"s_point_{i+1}")
     b_val = st.number_input("B回数", min_value=0, max_value=99, value=0, step=1, key=f"b_point_{i+1}")
 
+# --- 年齢と級の入力（代謝補正用） ---
+st.subheader("▼ 年齢・級（代謝補正用）")
+
+race_class = st.selectbox("級を選択", ["S級", "A級", "チャレンジ"])
+
+ages = [st.number_input(f"{i+1}番 年齢", min_value=16, max_value=60, value=40, key=f"age_{i+1}") for i in range(7)]
+
 
 # --- ライン構成入力欄（A〜Cライン＋単騎） ---
 st.subheader("▼ ライン構成入力（A〜Cライン＋単騎）")
@@ -219,6 +226,27 @@ def build_line_position_map():
             else:
                 result[car] = i + 1
     return result
+
+# --- 代謝補正関数（スコア計算の直前に定義） ---
+    def get_metabolism_score(age, class_type):
+        if class_type == "チャレンジ":
+            if age >= 45:
+                return 0.15
+            elif age >= 38:
+                return 0.07
+        elif class_type == "A級":
+            if age >= 46:
+                return 0.10
+            elif age >= 40:
+                return 0.05
+        elif class_type == "S級":
+            if age >= 48:
+                return 0.05
+        return 0.0
+
+# --- 代謝スコアのリストを作成 ---
+metabolism_scores = [get_metabolism_score(ages[i], race_class) for i in range(7)]
+
 
 # --- スコア計算処理 ---
 st.subheader("▼ スコア計算")
@@ -384,11 +412,15 @@ if st.button("スコア計算実行"):
         bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
         length_bonus = bank_length_adjust(kaku, bank_length)
 
-        total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus
+        meta_score = metabolism_scores[i]  # ← 年齢＆級による代謝補正
+
+        total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus + meta_score
 
         score_parts.append([
             num, kaku, base, wind, kasai, rating_score,
-            rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus, total
+            rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus,
+            meta_score,  # ← ここを新たに追加
+            total
         ])
 
     # グループ補正
@@ -404,6 +436,8 @@ if st.button("スコア計算実行"):
     df = pd.DataFrame(final_score_parts, columns=[
         '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
         '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
+        '代謝補正',     # ← ここを追加
         'グループ補正', '合計スコア'
     ])
+
     st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
