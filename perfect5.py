@@ -384,9 +384,10 @@ if st.button("スコア計算実行"):
     line_order_map = build_line_position_map()
     line_order = [line_order_map.get(i + 1, 0) for i in range(7)]
 
-# --- スコア計算処理 ---
-st.subheader("\u25bc \u30b9\u30b3\u30a2\u8a08\u7b97")
-if st.button("\u30b9\u30b3\u30a2\u8a08\u7b97\u5b9f\u884c"):
+st.subheader("▼ スコア計算")
+if st.button("スコア計算実行", key="score_calc_button"):
+    # スコア処理
+
 
     # --- 1. 代謝補正関数定義 ---
     def get_metabolism_score(age, class_type):
