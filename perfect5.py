@@ -256,33 +256,40 @@ st.subheader("▼ スコア計算")
 if st.button("スコア計算実行"):
 
     def score_from_tenscore_list(tenscore_list):
+        import pandas as pd
+    
         df = pd.DataFrame({
-            "得点": tenscore_list,
-            "順位": pd.Series(tenscore_list).rank(ascending=False, method="min").astype(int)
+            "得点": tenscore_list
         })
     
-        # 元の補正値（zスコア）
+        # 高得点＝1位、低得点＝7位（同点時は同順位）
+        df["順位"] = df["得点"].rank(ascending=False, method="min").astype(int)
+    
+        # 平均・標準偏差でzスコア化
         mean = df["得点"].mean()
         std = df["得点"].std()
         df["元の補正値"] = (df["得点"] - mean) / std
     
-        # 基準点
+        # 2位・6位の補正値取得（制限基準用）
         second = df[df["順位"] == 2]["元の補正値"].values[0]
-        sixth = df[df["順位"] == 6]["元の補正値"].values[0]
+        sixth  = df[df["順位"] == 6]["元の補正値"].values[0]
     
+        # 最終補正値決定（1位・7位のみ±0.1制限）
         final = []
         for _, row in df.iterrows():
-            if row["順位"] == 1:
-                max_val = second - 0.1
-                val = max(row["元の補正値"], max_val)
-            elif row["順位"] == 7:
-                min_val = sixth + 0.1
-                val = min(row["元の補正値"], min_val)
+            rank = row["順位"]
+            raw = row["元の補正値"]
+    
+            if rank == 1:
+                limited = max(raw, second - 0.1)  # 減らしすぎない
+            elif rank == 7:
+                limited = min(raw, sixth + 0.1)   # 増やしすぎない
             else:
-                val = row["元の補正値"]
-            final.append(val)
+                limited = raw
+            final.append(round(limited, 3))  # 小数第3位で丸め（好みに応じて調整可）
     
         return final
+
 
 
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
