@@ -269,18 +269,16 @@ if st.button("スコア計算実行"):
         sixth = df[df["順位"] == 6]["元の補正値"].values[0]
     
         # 補正適用
-        def apply_limit(row):
-            if row["順位"] == 1:
-                return 0.0  # 1位は補正なし
-            elif row["順位"] == 7:
-                # 6位との差分を最大0.1に制限
-                diff = row["元の補正値"] - sixth
-                return round(sixth + min(diff, 0.1), 3)
-            else:
-                return row["元の補正値"]
+    def apply_limit(row):
+        if row["順位"] <= 4:
+            return 0.0  # 上位1〜4位は補正なし
+        elif row["順位"] == 7:
+            # 6位との差を最大+0.1に制限
+            diff = row["元の補正値"] - sixth
+            return round(sixth + min(diff, 0.1), 3)
+        else:
+            return row["元の補正値"]
 
-        df["最終補正値"] = df.apply(apply_limit, axis=1)
-        return df["最終補正値"].tolist()
 
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
         if direction == "無風" or speed < 0.5:
