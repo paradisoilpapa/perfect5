@@ -475,11 +475,12 @@ if st.button("スコア計算実行"):
         new_total = row[-1] + group_corr
         final_score_parts.append(row[:-1] + [group_corr, new_total])
 
-    # 4. 結果表示
+    # 1. DataFrameを作成
     df = pd.DataFrame(final_score_parts, columns=[
         '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
         '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
         '代謝補正', 'グループ補正', '合計スコア'
     ])
-st.dataframe(df.sort_values(by='合計スコア', ascending=True).reset_index(drop=True))
-
+    
+    # 2. 昇順で表示（スコアが低い順）
+    st.dataframe(df.sort_values(by='合計スコア', ascending=True).reset_index(drop=True))
