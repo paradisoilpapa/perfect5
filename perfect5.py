@@ -384,14 +384,6 @@ if st.button("スコア計算実行"):
     line_order_map = build_line_position_map()
     line_order = [line_order_map.get(i + 1, 0) for i in range(7)]
 
-# ボタン表示はここだけにする
-st.subheader("▼ スコア計算")
-
-# ✅ ボタンが押された時だけスコア処理を実行
-if st.button("スコア計算実行"):
-    
-    # --- すべての補正関数はこの if の前に定義されていること ---
-    # wind_straight_combo_adjust、convert_chaku_to_score、など
     
     # 1. 代謝補正スコアの取得
     def get_metabolism_score(age, class_type):
