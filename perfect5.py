@@ -255,6 +255,22 @@ except Exception:
 st.subheader("▼ スコア計算")
 if st.button("スコア計算実行"):
 
+    def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
+    if direction == "無風" or speed < 0.5:
+        return 0
+    
+    base = wind_coefficients.get(direction, 0.0)
+    pos_mult = position_multipliers.get(pos, 0.0)
+    kaku_coeff = {
+        '逃': +1.0,
+        '両':  0.5,
+        '追': -1.0
+    }.get(kaku, 0.0)
+
+    total = base * speed * pos_mult * kaku_coeff
+    return round(total, 2)
+
+
     def score_from_tenscore_list(tenscore_list):
         sorted_unique = sorted(set(tenscore_list), reverse=True)
         score_to_rank = {score: rank + 1 for rank, score in enumerate(sorted_unique)}
