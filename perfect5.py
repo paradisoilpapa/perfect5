@@ -245,7 +245,10 @@ def build_line_position_map():
         return 0.0
 
 # --- 代謝スコアのリストを作成 ---
-metabolism_scores = [get_metabolism_score(ages[i], race_class) for i in range(7)]
+try:
+    metabolism_scores = [get_metabolism_score(ages[i], race_class) for i in range(7)]
+except Exception:
+    metabolism_scores = [0.0] * 7
 
 
 # --- スコア計算処理 ---
