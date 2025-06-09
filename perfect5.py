@@ -28,7 +28,7 @@ position_multipliers = {
 
 
 # --- 基本スコア（脚質ごとの基準値） ---
-base_score = {'逃': 5.0, '両': 4.9, '追': 4.7}
+base_score = {'逃': 4.9, '両': 4.9, '追': 4.8}
 
 # --- 状態保持 ---
 if "selected_wind" not in st.session_state:
@@ -263,7 +263,7 @@ if st.button("スコア計算実行"):
     
         # 2〜6位の平均得点を基準
         baseline = df[df["順位"].between(2, 6)]["得点"].mean()
-        df["元の補正値"] = ((baseline - df["得点"]) / 5).round(3)
+        df["元の補正値"] = ((baseline - df["得点"]) / 3).round(3)
     
         # 6位の補正値を取得
         sixth = df[df["順位"] == 6]["元の補正値"].values[0]
@@ -446,8 +446,12 @@ if st.button("スコア計算実行"):
             kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
             rating_score = tenscore_score[i]
             rain_corr = lap_adjust(kaku, laps)
-            s_bonus = 0.05 * st.session_state.get(f"s_point_{num}", 0)
-            b_bonus = 0.05 * st.session_state.get(f"b_point_{num}", 0)
+            s_count = st.session_state.get(f"s_point_{num}", 0)
+            b_count = st.session_state.get(f"b_point_{num}", 0)
+            
+            s_bonus = min(0.05 * s_count, 0.15)
+            b_bonus = min(0.05 * b_count, 0.15)
+
             symbol_score = s_bonus + b_bonus
             line_bonus = line_member_bonus(line_order[i])
             bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
