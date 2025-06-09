@@ -263,7 +263,7 @@ if st.button("スコア計算実行"):
     
         # 2〜6位の平均得点を基準
         baseline = df[df["順位"].between(2, 6)]["得点"].mean()
-        df["元の補正値"] = ((baseline - df["得点"]) / 20).round(3)
+        df["元の補正値"] = ((baseline - df["得点"]) / 10).round(3)
     
         # 6位の補正値を取得
         sixth = df[df["順位"] == 6]["元の補正値"].values[0]
