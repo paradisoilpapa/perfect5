@@ -264,19 +264,20 @@ if st.button("スコア計算実行"):
         # 2〜6位の平均得点を基準
         baseline = df[df["順位"].between(2, 6)]["得点"].mean()
             # 🔧 補正値（1/10スケーリング）
-        df["元の補正値"] = ((baseline - df["得点"]) / 10).round(3)
+        df["元の補正値"] = ((baseline - df["得点"]) / 20).round(3)
     
         # 2位と6位の補正値を取得
         second = df[df["順位"] == 2]["元の補正値"].values[0]
         sixth = df[df["順位"] == 6]["元の補正値"].values[0]
     
         def apply_limit(row):
-            if row["順位"] == 1:
-                return max(row["元の補正値"], second - 0.1)
-            elif row["順位"] == 7:
-                return min(row["元の補正値"], sixth + 0.1)
-            else:
-                return row["元の補正値"]
+        if row["順位"] == 1:
+            return 0.0  # 1位は補正なし（固定で0）
+        elif row["順位"] == 7:
+            return min(row["元の補正値"], sixth + 0.1)  # 7位だけ制限適用
+        else:
+            return row["元の補正値"]
+
     
         df["最終補正値"] = df.apply(apply_limit, axis=1).round(3)
         return df["最終補正値"].tolist()
