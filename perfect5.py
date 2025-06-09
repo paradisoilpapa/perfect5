@@ -384,53 +384,83 @@ if st.button("スコア計算実行"):
     line_order_map = build_line_position_map()
     line_order = [line_order_map.get(i + 1, 0) for i in range(7)]
 
-    # スコア計算
+# --- スコア計算処理 ---
+st.subheader("\u25bc \u30b9\u30b3\u30a2\u8a08\u7b97")
+if st.button("\u30b9\u30b3\u30a2\u8a08\u7b97\u5b9f\u884c"):
+
+    # --- 1. 代謝補正関数定義 ---
+    def get_metabolism_score(age, class_type):
+        if class_type == "\u30c1\u30e3\u30ec\u30f3\u30b8":
+            if age >= 45:
+                return 0.15
+            elif age >= 38:
+                return 0.07
+        elif class_type == "A\u7d1a":
+            if age >= 46:
+                return 0.10
+            elif age >= 40:
+                return 0.05
+        elif class_type == "S\u7d1a":
+            if age >= 48:
+                return 0.05
+        return 0.0
+
+    try:
+        metabolism_scores = [
+            get_metabolism_score(ages[i], race_class) if isinstance(ages[i], (int, float)) else 0.0
+            for i in range(7)
+        ]
+    except:
+        metabolism_scores = [0.0 for _ in range(7)]
+
+    # --- 2. 他の補正関数群（wind等）定義は省略せず上に入れてください ---
+    # ここでは wind_straight_combo_adjust などが先に正しく定義されていることが前提です
+
+    # --- 3. スコア計算メインループ ---
     tenscore_score = score_from_tenscore_list(rating)
     score_parts = []
 
-for i in range(7):
-    if not tairetsu[i].isdigit():
-        continue
+    for i in range(7):
+        try:
+            if i >= len(tairetsu) or not tairetsu[i].isdigit():
+                continue
 
-    num = i + 1
-    kaku = car_to_kakushitsu.get(num, "追")
-    base = base_score[kaku]
+            num = i + 1
+            kaku = car_to_kakushitsu.get(num, "追")
+            base = base_score[kaku]
 
-    wind = wind_straight_combo_adjust(
-        kaku,
-        st.session_state.selected_wind,
-        wind_speed,
-        straight_length,
-        line_order[i]
-    )
+            wind = wind_straight_combo_adjust(
+                kaku,
+                st.session_state.selected_wind,
+                wind_speed,
+                straight_length,
+                line_order[i]
+            )
 
-    chaku_values = chaku_inputs[i]
-    kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
-    rating_score = tenscore_score[i]
-    rain_corr = lap_adjust(kaku, laps)
-    s_bonus = 0.05 * st.session_state.get(f"s_point_{num}", 0)
-    b_bonus = 0.05 * st.session_state.get(f"b_point_{num}", 0)
-    symbol_score = s_bonus + b_bonus
-    line_bonus = line_member_bonus(line_order[i])
-    bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
-    length_bonus = bank_length_adjust(kaku, bank_length)
+            kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
+            rating_score = tenscore_score[i]
+            rain_corr = lap_adjust(kaku, laps)
+            s_bonus = 0.05 * st.session_state.get(f"s_point_{num}", 0)
+            b_bonus = 0.05 * st.session_state.get(f"b_point_{num}", 0)
+            symbol_score = s_bonus + b_bonus
+            line_bonus = line_member_bonus(line_order[i])
+            bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
+            length_bonus = bank_length_adjust(kaku, bank_length)
 
-    meta_score = metabolism_scores[i]  # ← 年齢＆級による代謝補正
+            meta_score = metabolism_scores[i]
+            total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus + meta_score
 
-    # ✅ ここに書いて確認
-    st.write(f"{num}番 年齢: {ages[i]}, 級: {race_class}, 代謝補正: {meta_score}")
+            score_parts.append([
+                num, kaku, base, wind, kasai, rating_score,
+                rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus,
+                meta_score,  # 代謝補正
+                total
+            ])
+        except Exception as e:
+            st.warning(f"{i+1}\u756a\u306e\u8a08\u7b97\u3067\u30a8\u30e9\u30fc: {e}")
+            continue
 
-    total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus + meta_score
-
-    score_parts.append([
-        num, kaku, base, wind, kasai, rating_score,
-        rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus,
-        meta_score,  # ← 表示列と一致させる
-        total
-    ])
-
-
-    # グループ補正
+    # --- 4. グループ補正 ---
     group_bonus_map = compute_group_bonus(score_parts, line_def)
     final_score_parts = []
     for row in score_parts:
@@ -438,13 +468,11 @@ for i in range(7):
         new_total = row[-1] + group_corr
         final_score_parts.append(row[:-1] + [group_corr, new_total])
 
-
-    # 表示
+    # --- 5. 表示部 ---
     df = pd.DataFrame(final_score_parts, columns=[
         '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
         '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
-        '代謝補正',     # ← ここを追加
-        'グループ補正', '合計スコア'
+        '代謝補正', 'グループ補正', '合計スコア'
     ])
 
     st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
