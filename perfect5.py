@@ -482,5 +482,4 @@ if st.button("スコア計算実行"):
         '代謝補正', 'グループ補正', '合計スコア'
     ])
     
-    # 2. 昇順で表示（スコアが低い順）
-    st.dataframe(df.sort_values(by='合計スコア', ascending=True).reset_index(drop=True))
+    st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
