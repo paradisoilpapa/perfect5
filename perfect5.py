@@ -261,13 +261,13 @@ if st.button("スコア計算実行"):
         df = pd.DataFrame({"得点": tenscore_list})
         df["順位"] = df["得点"].rank(ascending=False, method="min").astype(int)
     
-        # 2〜6位の平均を基準点に
+        # 基準は 2〜6位の平均
         baseline = df[df["順位"].between(2, 6)]["得点"].mean()
     
+        # 補正関数：2〜4位だけ補正（差分×0.03）
         def apply_targeted_correction(row):
             if row["順位"] in [2, 3, 4]:
-                correction = (baseline - row["得点"]) * 0.03
-                return round(max(0.0, correction), 3)
+                return round((baseline - row["得点"]) * 0.03, 3)
             else:
                 return 0.0
     
