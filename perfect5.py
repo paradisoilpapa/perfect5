@@ -257,29 +257,21 @@ if st.button("スコア計算実行"):
 
     def score_from_tenscore_list(tenscore_list):
         import pandas as pd
-
+    
         df = pd.DataFrame({"得点": tenscore_list})
         df["順位"] = df["得点"].rank(ascending=False, method="min").astype(int)
-
-        # 2〜6位の平均得点を基準
+    
+        # 2〜6位の平均を基準点に
         baseline = df[df["順位"].between(2, 6)]["得点"].mean()
-        df["元の補正値"] = ((baseline - df["得点"]) * 0.03).round(3)  # 3%スケーリング
-
-        # 6位の補正値を取得
-        sixth = df[df["順位"] == 6]["元の補正値"].values[0]
-
-        # 補正適用関数
-        def apply_limit(row):
-            if row["順位"] <= 4:
-                return 0.0  # 上位1〜4位は補正なし
-            elif row["順位"] == 7:
-                # 6位との差を最大+0.1に制限
-                diff = row["元の補正値"] - sixth
-                return round(sixth + min(diff, 0.01), 3)
+    
+        def apply_targeted_correction(row):
+            if row["順位"] in [2, 3, 4]:
+                correction = (baseline - row["得点"]) * 0.03
+                return round(max(0.0, correction), 3)
             else:
-                return row["元の補正値"]
-
-        df["最終補正値"] = df.apply(apply_limit, axis=1)
+                return 0.0
+    
+        df["最終補正値"] = df.apply(apply_targeted_correction, axis=1)
         return df["最終補正値"].tolist()
 
     def wind_straight_combo_adjust(kaku, direction, speed, straight, pos):
