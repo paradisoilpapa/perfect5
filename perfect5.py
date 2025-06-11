@@ -416,7 +416,18 @@ if st.button("スコア計算実行"):
 def extract_car_list(input_str):
     return [int(c) for c in input_str if c.isdigit()]
 
-# line_def は別箇所で入力済みの想定（例：上部で手動入力済みなど）
+# --- ライン構成定義の再入力（上位UIから引き継ぎ） ---
+a_line = st.text_input("Aライン（例：13）", max_chars=7, key="a_line")
+b_line = st.text_input("Bライン（例：25）", max_chars=7, key="b_line")
+c_line = st.text_input("Cライン（例：47）", max_chars=7, key="c_line")
+solo_line = st.text_input("単騎枠（例：6）", max_chars=7, key="solo_line")
+
+line_def = {
+    'A': extract_car_list(a_line),
+    'B': extract_car_list(b_line),
+    'C': extract_car_list(c_line),
+    '単騎': extract_car_list(solo_line)
+}
 
 # --- rating 未定義対策 ---
 # 使用しないので削除または無効化
@@ -559,3 +570,4 @@ else:
 st.markdown("### 🎯 推奨三連複3点")
 for trio in trio_combos:
     st.markdown(f"- {'-'.join(trio)}")
+
