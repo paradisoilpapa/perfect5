@@ -393,9 +393,9 @@ if st.button("スコア計算実行"):
     line_order = [line_order_map.get(i + 1, 0) for i in range(7)]
 
     
-    # --- 1. 年齢補正の関数 ---
+    # --- 1. 年齢補正の関数（減点型） ---
     def get_age_correction(age, base_age=35, step=0.03):
-        return max(0.0, (age - base_age) * step)
+        return -max(0.0, (age - base_age) * step)
     
     # --- 2. 級別係数の定義 ---
     correction_factor = {
@@ -403,13 +403,14 @@ if st.button("スコア計算実行"):
         "A級":        1.0,
         "S級":        0.6
     }
-
-    # --- 3. 補正スコアの生成（7選手分、上限付き） ---
+    
+    # --- 3. 補正スコアの生成（7選手分、下限付き） ---
     metabolism_scores = [
-        min(get_age_correction(ages[i]) * correction_factor.get(race_class, 1.0), 0.3)
+        max(get_age_correction(ages[i]) * correction_factor.get(race_class, 1.0), -0.3)
         if isinstance(ages[i], (int, float)) else 0.0
         for i in range(7)
     ]
+
 
 
     # 2. スコア計算ループ
