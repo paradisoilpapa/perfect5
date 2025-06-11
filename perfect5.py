@@ -408,14 +408,7 @@ if st.button("スコア計算実行"):
     metabolism_scores = [
         max(get_age_correction(ages[i]) * correction_factor.get(race_class, 1.0), -0.3)
 
-# --- ライン構成入力欄（UI＋セッション登録） ---
-a_line = st.text_input("Aライン（例：13）", max_chars=7, key="a_line_input")
-b_line = st.text_input("Bライン（例：25）", max_chars=7, key="b_line_input")
-c_line = st.text_input("Cライン（例：47）", max_chars=7, key="c_line_input")
-solo_line = st.text_input("単騎枠（例：6）", max_chars=7, key="solo_line_input")
 
-def extract_car_list(input_str):
-    return [int(c) for c in input_str if c.isdigit()]
 
 import streamlit as st
 import pandas as pd
