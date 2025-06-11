@@ -407,11 +407,6 @@ if st.button("スコア計算実行"):
     # --- 3. 補正スコアの生成（7選手分、下限付き） ---
     metabolism_scores = [
         max(get_age_correction(ages[i]) * correction_factor.get(race_class, 1.0), -0.3)
-        if isinstance(ages[i], (int, float)) else 0.0
-        for i in range(7)
-    ]
-
-
 # --- ライン構成入力欄（UI＋セッション登録） ---
 a_line = st.text_input("Aライン（例：13）", max_chars=7, key="a_line_input")
 b_line = st.text_input("Bライン（例：25）", max_chars=7, key="b_line_input")
@@ -422,14 +417,15 @@ def extract_car_list(input_str):
     return [int(c) for c in input_str if c.isdigit()]
 
 # --- セッションにライン構成を格納（即時反映） ---
-st.session_state["line_def"] = {
-    'A': extract_car_list(a_line),
-    'B': extract_car_list(b_line),
-    'C': extract_car_list(c_line),
-    '単騎': extract_car_list(solo_line)
-}
+if a_line or b_line or c_line or solo_line:
+    st.session_state["line_def"] = {
+        'A': extract_car_list(a_line),
+        'B': extract_car_list(b_line),
+        'C': extract_car_list(c_line),
+        '単騎': extract_car_list(solo_line)
+    }
 
-line_def = st.session_state.get("line_def")
+line_def = st.session_state.get("line_def", {'A': [], 'B': [], 'C': [], '単騎': []})
 
 if not line_def or all(len(v) == 0 for v in line_def.values()):
     st.error("⚠️ ライン構成が未入力です。上部フォームから入力してください。")
@@ -559,8 +555,9 @@ if include_anchor:
         return same_line or score_close
 
     partners = [row[0] for row in sorted_scores[1:] if is_viable_partner(row)][:3]
-    for pair in combinations(partners, 2):
-        trio_combos.append(sorted([str(anchor_car)] + [str(p) for p in pair]))
+    if len(partners) >= 2:
+        for pair in combinations(partners, 2):
+            trio_combos.append(sorted([str(anchor_car)] + [str(p) for p in pair]))
 else:
     sorted_lows = sorted(final_score_parts, key=lambda x: x[-1])[:3]
     low_anchor = sorted_lows[0][0]
@@ -575,8 +572,9 @@ else:
         return same_line or score_close
 
     partners = [row[0] for row in final_score_parts if row[0] != low_anchor and is_viable_low_partner(row)][:3]
-    for pair in combinations(partners, 2):
-        trio_combos.append(sorted([str(low_anchor)] + [str(p) for p in pair]))
+    if len(partners) >= 2:
+        for pair in combinations(partners, 2):
+            trio_combos.append(sorted([str(low_anchor)] + [str(p) for p in pair]))
 
 # --- 買い目出力 ---
 st.markdown("### 🎯 推奨三連複3点")
