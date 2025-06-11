@@ -412,11 +412,6 @@ if st.button("スコア計算実行"):
     ]
 
 
-
-# --- rating 未定義対策 ---
-rating = [st.session_state.get(f"rating_{i+1}", 0.0) for i in range(7)]
-tenscore_score = score_from_tenscore_list(rating)
-
 # --- 2. スコア計算ループ ---
 score_parts = []
 
@@ -438,7 +433,7 @@ for i in range(7):
         )
 
         kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
-        rating_score = tenscore_score[i]
+        rating_score = 0.0  # 評価スコアを未使用に
         rain_corr = lap_adjust(kaku, laps)
         s_count = st.session_state.get(f"s_point_{num}", 0)
         b_count = st.session_state.get(f"b_point_{num}", 0)
