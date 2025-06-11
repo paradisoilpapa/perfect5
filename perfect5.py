@@ -416,18 +416,18 @@ if st.button("スコア計算実行"):
 def extract_car_list(input_str):
     return [int(c) for c in input_str if c.isdigit()]
 
-# --- ライン構成定義の再入力（上位UIから引き継ぎ） ---
-a_line = st.text_input("Aライン（例：13）", max_chars=7, key="a_line")
-b_line = st.text_input("Bライン（例：25）", max_chars=7, key="b_line")
-c_line = st.text_input("Cライン（例：47）", max_chars=7, key="c_line")
-solo_line = st.text_input("単騎枠（例：6）", max_chars=7, key="solo_line")
+# --- ライン構成定義の再入力（このブロックは UI 重複防止のため削除） ---
+# a_line = st.text_input("Aライン（例：13）", max_chars=7, key="a_line")
+# b_line = st.text_input("Bライン（例：25）", max_chars=7, key="b_line")
+# c_line = st.text_input("Cライン（例：47）", max_chars=7, key="c_line")
+# solo_line = st.text_input("単騎枠（例：6）", max_chars=7, key="solo_line")
 
-line_def = {
-    'A': extract_car_list(a_line),
-    'B': extract_car_list(b_line),
-    'C': extract_car_list(c_line),
-    '単騎': extract_car_list(solo_line)
-}
+# --- line_def は外部 UI またはセッションから取得されている前提 ---
+line_def = st.session_state.get("line_def")  # 外部から事前定義されている想定
+
+if not line_def:
+    st.error("⚠️ ライン構成が未入力です。上部フォームから入力してください。")
+    st.stop()
 
 # --- rating 未定義対策 ---
 # 使用しないので削除または無効化
