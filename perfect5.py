@@ -413,74 +413,58 @@ if st.button("スコア計算実行"):
 import streamlit as st
 import pandas as pd
 
-# --- 仮定の前提データ ---
-tairetsu = ['1','2','3','4','5','6','7']
-car_to_kakushitsu = {i+1: "追" for i in range(7)}  # 例：すべて「追」
-base_score = {"追": 1.0}
-chaku_inputs = ["1", "2", "3", "4", "5", "6", "7"]
-wind_speed = 0.0
-straight_length = 0.0
-line_order = list(range(7))
-laps = 5
-bank_angle = 0
-bank_length = 400
-metabolism_scores = [0.0] * 7
+# --- スコア計算：代謝補正追加（オリジナル復元） ---
 
-def convert_chaku_to_score(chaku): return 0.0
-def lap_adjust(kaku, laps): return 0.0
-def line_member_bonus(pos): return 0.0
-def bank_character_bonus(kaku, angle, length): return 0.0
-def bank_length_adjust(kaku, length): return 0.0
-
-# --- スコア計算 ---
+tenscore_score = score_from_tenscore_list(rating)
 score_parts = []
 
 for i in range(7):
-    try:
-        if i >= len(tairetsu) or not tairetsu[i].isdigit():
-            continue
-        num = i + 1
-        kaku = car_to_kakushitsu.get(num, "追")
-        base = base_score[kaku]
-        wind = 0.0
-        kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
-        rating_score = 0.0
-        rain_corr = lap_adjust(kaku, laps)
-        s_bonus = 0.0
-        b_bonus = 0.0
-        symbol_score = s_bonus + b_bonus
-        line_bonus = line_member_bonus(i)
-        bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
-        length_bonus = bank_length_adjust(kaku, bank_length)
-        meta_score = metabolism_scores[i]
-        total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus + meta_score
-        score_parts.append([num, kaku, base, wind, kasai, rating_score,
-            rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus,
-            meta_score, total])
-    except Exception as e:
-        st.warning(f"{num}番スコアエラー: {e}")
+    if not tairetsu[i].isdigit():
+        continue
 
-if not score_parts:
-    st.error("⚠️ スコアデータが生成されませんでした。")
-    st.stop()
+    num = i + 1
+    kaku = car_to_kakushitsu.get(num, "追")
+    base = base_score[kaku]
 
-# --- ◎判定処理 ---
-sorted_scores = sorted(score_parts, key=lambda x: x[-1], reverse=True)
-anchor_row = sorted_scores[0]
-anchor_car = anchor_row[0]
-anchor_score = anchor_row[-1]
-avg_score = sum(row[-1] for row in score_parts) / len(score_parts)
-include_anchor = (anchor_score - avg_score) >= 0.1
+    wind = wind_straight_combo_adjust(
+        kaku,
+        st.session_state.selected_wind,
+        wind_speed,
+        straight_length,
+        line_order[i]
+    )
 
-# --- 表示 ---
-df = pd.DataFrame(score_parts, columns=[
+    chaku_values = chaku_inputs[i]
+    kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
+    rating_score = tenscore_score[i]
+    rain_corr = lap_adjust(kaku, laps)
+    s_bonus = 0.05 * st.session_state.get(f"s_point_{num}", 0)
+    b_bonus = 0.05 * st.session_state.get(f"b_point_{num}", 0)
+    symbol_score = s_bonus + b_bonus
+    line_bonus = line_member_bonus(line_order[i])
+    bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
+    length_bonus = bank_length_adjust(kaku, bank_length)
+    meta_score = metabolism_scores[i]
+
+    total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus + meta_score
+
+    score_parts.append([
+        num, kaku, base, wind, kasai, rating_score,
+        rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus, meta_score, total
+    ])
+
+# --- グループ補正適用 ---
+group_bonus_map = compute_group_bonus(score_parts, line_def)
+final_score_parts = []
+for row in score_parts:
+    group_corr = get_group_bonus(row[0], line_def, group_bonus_map)
+    new_total = row[-1] + group_corr
+    final_score_parts.append(row[:-1] + [group_corr, new_total])
+
+# --- DataFrame表示のみ ---
+df = pd.DataFrame(final_score_parts, columns=[
     '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
-    '周回補正', 'SB補正', 'ライン補正', 'バンク補正', '周長補正',
-    '代謝補正', '合計スコア'
+    '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
+    '代謝補正', 'グループ補正', '合計スコア'
 ])
 st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
-
-if include_anchor:
-    st.success(f"✅ ◎（{anchor_car}）は採用：スコア {anchor_score:.2f} が平均 {avg_score:.2f} より高い")
-else:
-    st.warning(f"⚠️ ◎（{anchor_car}）は除外：スコア {anchor_score:.2f} が平均 {avg_score:.2f} を下回る")
