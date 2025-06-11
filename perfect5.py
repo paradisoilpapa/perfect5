@@ -490,7 +490,7 @@ if len(score_parts) == 0:
     st.error("⚠️ スコアデータが空です。入力ミスや前提条件の欠落がないか確認してください。")
     st.stop()
 
-# --- 3. グループ補正関数の追加 ---
+# --- グループ補正関数の追加 ---
 def compute_group_bonus(score_parts, line_def):
     group_totals = {k: [] for k in line_def}
     for row in score_parts:
@@ -510,7 +510,7 @@ def get_group_bonus(car_no, line_def, group_bonus_map):
         return group_bonus_map.get('単騎', 0.0)
     return 0.0
 
-# --- 3. グループ補正 ---
+# --- グループ補正の適用 ---
 group_bonus_map = compute_group_bonus(score_parts, line_def)
 final_score_parts = []
 for row in score_parts:
@@ -518,40 +518,31 @@ for row in score_parts:
     new_total = row[-1] + group_corr
     final_score_parts.append(row[:-1] + [group_corr, new_total])
 
-# --- ◎相当の選手（スコア1位）による採用判定ロジック ---
+# --- ◎選出と平均比較による軸判定 ---
 sorted_scores = sorted(final_score_parts, key=lambda x: x[-1], reverse=True)
-anchor_row = sorted_scores[0]  # スコア1位
+anchor_row = sorted_scores[0]
 anchor_car = anchor_row[0]
 anchor_score = anchor_row[-1]
 avg_score = sum(row[-1] for row in final_score_parts) / len(final_score_parts)
-
 include_anchor = (anchor_score - avg_score) >= 0.1
 
-# --- 1. DataFrameを作成 ---
+# --- 表示 ---
 df = pd.DataFrame(final_score_parts, columns=[
     '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
     '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
-    '代謝補正', 'グループ補正', '合計スコア'
+    '代謝補正', '合計スコア', 'グループ補正', '補正後スコア'
 ])
+st.dataframe(df.sort_values(by='補正後スコア', ascending=False).reset_index(drop=True))
 
-st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
-
-# --- 判定結果の表示 ---
-if include_anchor:
-    st.markdown(f"\n✅ ◎（{anchor_car}）は採用：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} より高いため、軸として使用します。")
-else:
-    st.markdown(f"\n⚠️ ◎（{anchor_car}）は除外：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} を下回るため、信頼できません。")
-
-# --- ライン構成取得用関数 ---
+# --- ライン取得 ---
 def get_line(car_no, line_def):
     for group in line_def:
         if car_no in line_def[group]:
             return group
     return None
 
-# --- 4. 買い目生成（3連複3点、意思ある構成） ---
+# --- 買い目生成（三連複3点） ---
 from itertools import combinations
-
 trio_combos = []
 
 if include_anchor:
@@ -585,5 +576,8 @@ else:
 
 # --- 買い目出力 ---
 st.markdown("### 🎯 推奨三連複3点")
-for trio in trio_combos:
-    st.markdown(f"- {'-'.join(trio)}")
+if not trio_combos:
+    st.warning("買い目が生成できませんでした。データを確認してください。")
+else:
+    for trio in trio_combos:
+        st.markdown(f"- {'-'.join(trio)}")
