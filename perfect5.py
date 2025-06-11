@@ -468,18 +468,14 @@ for row in score_parts:
     new_total = row[-1] + group_corr
     final_score_parts.append(row[:-1] + [group_corr, new_total])
 
-# --- ◎の採用判定ロジック ---
-anchor_symbol = "◎"
-anchor_car = symbol_inputs.get(anchor_symbol)  # 例: '3'など
+# --- ◎相当の選手（スコア1位）による採用判定ロジック ---
+sorted_scores = sorted(final_score_parts, key=lambda x: x[-1], reverse=True)
+anchor_row = sorted_scores[0]  # スコア1位
+anchor_car = anchor_row[0]
+anchor_score = anchor_row[-1]
+avg_score = sum(row[-1] for row in final_score_parts) / len(final_score_parts)
 
-if anchor_car:
-    anchor_car = int(anchor_car)
-    anchor_score = next((row[-1] for row in final_score_parts if row[0] == anchor_car), 0.0)
-    avg_score = sum(row[-1] for row in final_score_parts) / len(final_score_parts)
-
-    include_anchor = anchor_score - avg_score >= 0.1
-else:
-    include_anchor = False
+include_anchor = (anchor_score - avg_score) >= 0.1
 
 # --- 1. DataFrameを作成 ---
 df = pd.DataFrame(final_score_parts, columns=[
@@ -491,23 +487,22 @@ df = pd.DataFrame(final_score_parts, columns=[
 st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
 
 # --- 判定結果の表示 ---
-if anchor_car:
-    if include_anchor:
-        st.markdown(f"\n✅ ◎（{anchor_car}）は採用：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} より高いため、軸として使用します。")
-    else:
-        st.markdown(f"\n⚠️ ◎（{anchor_car}）は除外：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} を下回るため、信頼できません。")
+if include_anchor:
+    st.markdown(f"\n✅ ◎（{anchor_car}）は採用：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} より高いため、軸として使用します。")
 else:
-    st.markdown("⚠️ ◎の車番が未入力です。")
+    st.markdown(f"\n⚠️ ◎（{anchor_car}）は除外：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} を下回るため、信頼できません。")
 
 # --- 4. 買い目生成（3連複3点） ---
 from itertools import combinations
 
 if include_anchor:
-    partners = [symbol_inputs[sym] for sym in ["〇", "▲", "△"] if symbol_inputs[sym]]
+    # スコア2〜4位の選手を相手に選定
+    partners = [row[0] for row in sorted_scores[1:4]]
     trio_combos = []
     for pair in combinations(partners, 2):
-        trio_combos.append(sorted([str(anchor_car)] + list(pair)))
+        trio_combos.append(sorted([str(anchor_car)] + [str(p) for p in pair]))
 else:
+    # スコア下位3名の三連複
     low_score_cars = sorted(final_score_parts, key=lambda x: x[-1])[:3]
     trio_combos = [sorted([str(row[0]) for row in low_score_cars])]
 
