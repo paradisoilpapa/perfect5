@@ -413,8 +413,11 @@ if st.button("スコア計算実行"):
 
 
 
-# --- 2. スコア計算ループ ---
+# --- rating 未定義対策 ---
+rating = [st.session_state.get(f"rating_{i+1}", 0.0) for i in range(7)]
 tenscore_score = score_from_tenscore_list(rating)
+
+# --- 2. スコア計算ループ ---
 score_parts = []
 
 for i in range(7):
@@ -492,19 +495,47 @@ if include_anchor:
 else:
     st.markdown(f"\n⚠️ ◎（{anchor_car}）は除外：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} を下回るため、信頼できません。")
 
-# --- 4. 買い目生成（3連複3点） ---
+# --- ライン構成取得用関数 ---
+def get_line(car_no, line_def):
+    for group in line_def:
+        if car_no in line_def[group]:
+            return group
+    return None
+
+# --- 4. 買い目生成（3連複3点、意思ある構成） ---
 from itertools import combinations
 
+trio_combos = []
+
 if include_anchor:
-    # スコア2〜4位の選手を相手に選定
-    partners = [row[0] for row in sorted_scores[1:4]]
-    trio_combos = []
+    anchor_line = get_line(anchor_car, line_def)
+    def is_viable_partner(row):
+        car_no = row[0]
+        score = row[-1]
+        same_line = get_line(car_no, line_def) == anchor_line
+        score_close = (anchor_score - score) <= 0.15
+        return same_line or score_close
+
+    partners = [row[0] for row in sorted_scores[1:] if is_viable_partner(row)][:3]
     for pair in combinations(partners, 2):
         trio_combos.append(sorted([str(anchor_car)] + [str(p) for p in pair]))
 else:
-    # スコア下位3名の三連複
-    low_score_cars = sorted(final_score_parts, key=lambda x: x[-1])[:3]
-    trio_combos = [sorted([str(row[0]) for row in low_score_cars])]
+    # スコア最下位選手を軸に、そのラインから相手を選出
+    sorted_lows = sorted(final_score_parts, key=lambda x: x[-1])[:3]
+    low_anchor = sorted_lows[0][0]
+    low_score = sorted_lows[0][-1]
+    low_line = get_line(low_anchor, line_def)
+
+    def is_viable_low_partner(row):
+        car_no = row[0]
+        score = row[-1]
+        same_line = get_line(car_no, line_def) == low_line
+        score_close = abs(low_score - score) <= 0.2
+        return same_line or score_close
+
+    partners = [row[0] for row in final_score_parts if row[0] != low_anchor and is_viable_low_partner(row)][:3]
+    for pair in combinations(partners, 2):
+        trio_combos.append(sorted([str(low_anchor)] + [str(p) for p in pair]))
 
 # --- 買い目出力 ---
 st.markdown("### 🎯 推奨三連複3点")
