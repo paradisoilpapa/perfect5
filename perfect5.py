@@ -577,3 +577,7 @@ st.markdown("### 🎯 推奨三連複3点")
 for trio in trio_combos:
     st.markdown(f"- {'-'.join(trio)}")
 
+if len(score_parts) == 0:
+    st.error("⚠️ スコアデータが空です。入力ミスや前提条件の欠落がないか確認してください。")
+    st.stop()  # これが重要：これ以降の処理を中断
+
