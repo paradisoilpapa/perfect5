@@ -435,6 +435,10 @@ if not line_def or all(len(v) == 0 for v in line_def.values()):
     st.error("⚠️ ライン構成が未入力です。上部フォームから入力してください。")
     st.stop()
 
+# --- ダミー風補正関数（未定義エラー対策） ---
+def wind_straight_combo_adjust(kaku, wind_dir, wind_speed, straight_length, line_position):
+    return 0.0  # 必要に応じて具体的ロジックへ置換
+
 # --- rating 未定義対策 ---
 # 使用しないので削除または無効化
 # rating = [st.session_state.get(f"rating_{i+1}", 0.0) for i in range(7)]
