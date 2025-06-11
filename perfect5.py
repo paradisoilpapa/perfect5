@@ -458,6 +458,18 @@ for i in range(7):
     except Exception as e:
         st.warning(f"{num}番のスコア計算エラー: {e}")
 
+# --- 3. グループ補正関数の追加 ---
+def compute_group_bonus(score_parts, line_def):
+    group_totals = {k: [] for k in line_def}
+    for row in score_parts:
+        car_no = row[0]
+        score = row[-1]
+        for group, members in line_def.items():
+            if car_no in members:
+                group_totals[group].append(score)
+                break
+    return {k: (sum(v) / len(v)) if v else 0.0 for k, v in group_totals.items()}
+
 # --- 3. グループ補正 ---
 group_bonus_map = compute_group_bonus(score_parts, line_def)
 final_score_parts = []
