@@ -413,66 +413,105 @@ if st.button("スコア計算実行"):
 
 
 
-    # 2. スコア計算ループ
-    tenscore_score = score_from_tenscore_list(rating)
-    score_parts = []
+# --- 2. スコア計算ループ ---
+tenscore_score = score_from_tenscore_list(rating)
+score_parts = []
 
-    for i in range(7):
-        try:
-            if i >= len(tairetsu) or not tairetsu[i].isdigit():
-                continue
+for i in range(7):
+    try:
+        if i >= len(tairetsu) or not tairetsu[i].isdigit():
+            continue
 
-            num = i + 1
-            kaku = car_to_kakushitsu.get(num, "追")
-            base = base_score[kaku]
+        num = i + 1
+        kaku = car_to_kakushitsu.get(num, "追")
+        base = base_score[kaku]
 
-            wind = wind_straight_combo_adjust(
-                kaku,
-                st.session_state.selected_wind,
-                wind_speed,
-                straight_length,
-                line_order[i]
-            )
+        wind = wind_straight_combo_adjust(
+            kaku,
+            st.session_state.selected_wind,
+            wind_speed,
+            straight_length,
+            line_order[i]
+        )
 
-            kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
-            rating_score = tenscore_score[i]
-            rain_corr = lap_adjust(kaku, laps)
-            s_count = st.session_state.get(f"s_point_{num}", 0)
-            b_count = st.session_state.get(f"b_point_{num}", 0)
-            
-            s_bonus = min(0.05 * s_count, 0.15)
-            b_bonus = min(0.05 * b_count, 0.15)
+        kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
+        rating_score = tenscore_score[i]
+        rain_corr = lap_adjust(kaku, laps)
+        s_count = st.session_state.get(f"s_point_{num}", 0)
+        b_count = st.session_state.get(f"b_point_{num}", 0)
 
-            symbol_score = s_bonus + b_bonus
-            line_bonus = line_member_bonus(line_order[i])
-            bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
-            length_bonus = bank_length_adjust(kaku, bank_length)
-            meta_score = metabolism_scores[i]
+        s_bonus = min(0.05 * s_count, 0.15)
+        b_bonus = min(0.05 * b_count, 0.15)
 
-            total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus + meta_score
+        symbol_score = s_bonus + b_bonus
+        line_bonus = line_member_bonus(line_order[i])
+        bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
+        length_bonus = bank_length_adjust(kaku, bank_length)
+        meta_score = metabolism_scores[i]
 
-            score_parts.append([
-                num, kaku, base, wind, kasai, rating_score,
-                rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus,
-                meta_score,
-                total
-            ])
-        except Exception as e:
-            st.warning(f"{num}番のスコア計算エラー: {e}")
+        total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus + meta_score
 
-    # 3. グループ補正
-    group_bonus_map = compute_group_bonus(score_parts, line_def)
-    final_score_parts = []
-    for row in score_parts:
-        group_corr = get_group_bonus(row[0], line_def, group_bonus_map)
-        new_total = row[-1] + group_corr
-        final_score_parts.append(row[:-1] + [group_corr, new_total])
+        score_parts.append([
+            num, kaku, base, wind, kasai, rating_score,
+            rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus,
+            meta_score,
+            total
+        ])
+    except Exception as e:
+        st.warning(f"{num}番のスコア計算エラー: {e}")
 
-    # 1. DataFrameを作成
-    df = pd.DataFrame(final_score_parts, columns=[
-        '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
-        '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
-        '代謝補正', 'グループ補正', '合計スコア'
-    ])
-    
-    st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
+# --- 3. グループ補正 ---
+group_bonus_map = compute_group_bonus(score_parts, line_def)
+final_score_parts = []
+for row in score_parts:
+    group_corr = get_group_bonus(row[0], line_def, group_bonus_map)
+    new_total = row[-1] + group_corr
+    final_score_parts.append(row[:-1] + [group_corr, new_total])
+
+# --- ◎の採用判定ロジック ---
+anchor_symbol = "◎"
+anchor_car = symbol_inputs.get(anchor_symbol)  # 例: '3'など
+
+if anchor_car:
+    anchor_car = int(anchor_car)
+    anchor_score = next((row[-1] for row in final_score_parts if row[0] == anchor_car), 0.0)
+    avg_score = sum(row[-1] for row in final_score_parts) / len(final_score_parts)
+
+    include_anchor = anchor_score - avg_score >= 0.1
+else:
+    include_anchor = False
+
+# --- 1. DataFrameを作成 ---
+df = pd.DataFrame(final_score_parts, columns=[
+    '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
+    '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
+    '代謝補正', 'グループ補正', '合計スコア'
+])
+
+st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
+
+# --- 判定結果の表示 ---
+if anchor_car:
+    if include_anchor:
+        st.markdown(f"\n✅ ◎（{anchor_car}）は採用：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} より高いため、軸として使用します。")
+    else:
+        st.markdown(f"\n⚠️ ◎（{anchor_car}）は除外：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} を下回るため、信頼できません。")
+else:
+    st.markdown("⚠️ ◎の車番が未入力です。")
+
+# --- 4. 買い目生成（3連複3点） ---
+from itertools import combinations
+
+if include_anchor:
+    partners = [symbol_inputs[sym] for sym in ["〇", "▲", "△"] if symbol_inputs[sym]]
+    trio_combos = []
+    for pair in combinations(partners, 2):
+        trio_combos.append(sorted([str(anchor_car)] + list(pair)))
+else:
+    low_score_cars = sorted(final_score_parts, key=lambda x: x[-1])[:3]
+    trio_combos = [sorted([str(row[0]) for row in low_score_cars])]
+
+# --- 買い目出力 ---
+st.markdown("### 🎯 推奨三連複3点")
+for trio in trio_combos:
+    st.markdown(f"- {'-'.join(trio)}")
