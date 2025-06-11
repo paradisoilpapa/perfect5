@@ -480,49 +480,55 @@ for i in range(7):
     except Exception as e:
         st.warning(f"{num}番のスコア計算エラー: {e}")
 
-# --- 3. グループ補正関数の追加 ---
-def compute_group_bonus(score_parts, line_def):
-    group_totals = {k: [] for k in line_def}
-    for row in score_parts:
-        car_no = row[0]
-        score = row[-1]
-        for group, members in line_def.items():
-            if car_no in members:
-                group_totals[group].append(score)
-                break
-    return {k: (sum(v) / len(v)) if v else 0.0 for k, v in group_totals.items()}
-
-# --- 3. グループ補正 ---
-group_bonus_map = compute_group_bonus(score_parts, line_def)
-final_score_parts = []
-for row in score_parts:
-    group_corr = get_group_bonus(row[0], line_def, group_bonus_map)
-    new_total = row[-1] + group_corr
-    final_score_parts.append(row[:-1] + [group_corr, new_total])
-
-# --- ◎相当の選手（スコア1位）による採用判定ロジック ---
-sorted_scores = sorted(final_score_parts, key=lambda x: x[-1], reverse=True)
-anchor_row = sorted_scores[0]  # スコア1位
-anchor_car = anchor_row[0]
-anchor_score = anchor_row[-1]
-avg_score = sum(row[-1] for row in final_score_parts) / len(final_score_parts)
-
-include_anchor = (anchor_score - avg_score) >= 0.1
-
-# --- 1. DataFrameを作成 ---
-df = pd.DataFrame(final_score_parts, columns=[
-    '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
-    '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
-    '代謝補正', 'グループ補正', '合計スコア'
-])
-
-st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
-
-# --- 判定結果の表示 ---
-if include_anchor:
-    st.markdown(f"\n✅ ◎（{anchor_car}）は採用：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} より高いため、軸として使用します。")
+if len(score_parts) == 0:
+    st.error("⚠️ スコアデータが空です。入力ミスや前提条件の欠落がないか確認してください。")
 else:
-    st.markdown(f"\n⚠️ ◎（{anchor_car}）は除外：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} を下回るため、信頼できません。")
+    # --- 3. グループ補正関数の追加 ---
+    def compute_group_bonus(score_parts, line_def):
+        group_totals = {k: [] for k in line_def}
+        for row in score_parts:
+            car_no = row[0]
+            score = row[-1]
+            for group, members in line_def.items():
+                if car_no in members:
+                    group_totals[group].append(score)
+                    break
+        return {k: (sum(v) / len(v)) if v else 0.0 for k, v in group_totals.items()}
+
+    # --- 3. グループ補正 ---
+    group_bonus_map = compute_group_bonus(score_parts, line_def)
+    final_score_parts = []
+    for row in score_parts:
+        group_corr = get_group_bonus(row[0], line_def, group_bonus_map)
+        new_total = row[-1] + group_corr
+        final_score_parts.append(row[:-1] + [group_corr, new_total])
+
+    # --- ◎相当の選手（スコア1位）による採用判定ロジック ---
+    sorted_scores = sorted(final_score_parts, key=lambda x: x[-1], reverse=True)
+    if len(sorted_scores) == 0:
+        st.error("スコア結果が生成されませんでした。前提条件を確認してください。")
+    else:
+        anchor_row = sorted_scores[0]  # スコア1位
+        anchor_car = anchor_row[0]
+        anchor_score = anchor_row[-1]
+        avg_score = sum(row[-1] for row in final_score_parts) / len(final_score_parts)
+
+        include_anchor = (anchor_score - avg_score) >= 0.1
+
+        # --- 1. DataFrameを作成 ---
+        df = pd.DataFrame(final_score_parts, columns=[
+            '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
+            '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
+            '代謝補正', 'グループ補正', '合計スコア'
+        ])
+
+        st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
+
+        # --- 判定結果の表示 ---
+        if include_anchor:
+            st.markdown(f"\n✅ ◎（{anchor_car}）は採用：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} より高いため、軸として使用します。")
+        else:
+            st.markdown(f"\n⚠️ ◎（{anchor_car}）は除外：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} を下回るため、信頼できません。")
 
 # --- ライン構成取得用関数 ---
 def get_line(car_no, line_def):
