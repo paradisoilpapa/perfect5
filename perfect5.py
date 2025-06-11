@@ -28,7 +28,7 @@ position_multipliers = {
 
 
 # --- 基本スコア（脚質ごとの基準値） ---
-base_score = {'逃': 4.9, '両': 4.9, '追': 4.8}
+base_score = {'逃': 4.7, '両': 4.9, '追': 5.1}
 
 # --- 状態保持 ---
 if "selected_wind" not in st.session_state:
@@ -207,9 +207,9 @@ ages = [st.number_input(f"{i+1}番 年齢", min_value=16, max_value=60, value=40
 
 # --- ライン構成入力欄（A〜Cライン＋単騎） ---
 st.subheader("▼ ライン構成入力（A〜Cライン＋単騎）")
-a_line = st.text_input("Aライン（例：137）", max_chars=7)
+a_line = st.text_input("Aライン（例：13）", max_chars=7)
 b_line = st.text_input("Bライン（例：25）", max_chars=7)
-c_line = st.text_input("Cライン（例：4）", max_chars=7)
+c_line = st.text_input("Cライン（例：47）", max_chars=7)
 solo_line = st.text_input("単騎枠（例：6）", max_chars=7)
 
 # --- ライン構成入力に必要な補助関数 ---
