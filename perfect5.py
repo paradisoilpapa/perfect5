@@ -412,6 +412,29 @@ if st.button("スコア計算実行"):
     ]
 
 
+# --- ライン構成入力欄（A〜Cライン＋単騎） ---
+st.subheader("▼ ライン構成入力（A〜Cライン＋単騎）")
+a_line = st.text_input("Aライン（例：13）", max_chars=7)
+b_line = st.text_input("Bライン（例：25）", max_chars=7)
+c_line = st.text_input("Cライン（例：47）", max_chars=7)
+solo_line = st.text_input("単騎枠（例：6）", max_chars=7)
+
+# --- ライン構成入力に必要な補助関数 ---
+def extract_car_list(input_str):
+    return [int(c) for c in input_str if c.isdigit()]
+
+line_def = {
+    'A': extract_car_list(a_line),
+    'B': extract_car_list(b_line),
+    'C': extract_car_list(c_line),
+    '単騎': extract_car_list(solo_line)
+}
+
+# --- rating 未定義対策 ---
+# 使用しないので削除または無効化
+# rating = [st.session_state.get(f"rating_{i+1}", 0.0) for i in range(7)]
+# tenscore_score = score_from_tenscore_list(rating)
+
 # --- 2. スコア計算ループ ---
 score_parts = []
 
