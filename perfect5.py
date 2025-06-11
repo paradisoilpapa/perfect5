@@ -394,14 +394,14 @@ if st.button("スコア計算実行"):
 
     
     # --- 1. 年齢補正の関数（減点型） ---
-    def get_age_correction(age, base_age=35, step=0.03):
+    def get_age_correction(age, base_age=35, step=0.015):
         return -max(0.0, (age - base_age) * step)
     
     # --- 2. 級別係数の定義 ---
     correction_factor = {
-        "チャレンジ": 1.2,
-        "A級":        1.0,
-        "S級":        0.6
+        "チャレンジ": 1.0,
+        "A級":        0.7,
+        "S級":        0.5
     }
     
     # --- 3. 補正スコアの生成（7選手分、下限付き） ---
