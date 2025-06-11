@@ -417,25 +417,6 @@ solo_line = st.text_input("単騎枠（例：6）", max_chars=7, key="solo_line_
 def extract_car_list(input_str):
     return [int(c) for c in input_str if c.isdigit()]
 
-# --- セッションにライン構成を格納（無限ループ防止） ---
-if "line_def" not in st.session_state:
-    st.session_state["line_def"] = {
-        'A': extract_car_list(a_line),
-        'B': extract_car_list(b_line),
-        'C': extract_car_list(c_line),
-        '単騎': extract_car_list(solo_line)
-    }
-
-line_def = st.session_state.get("line_def", {'A': [], 'B': [], 'C': [], '単騎': []})
-
-if not line_def or all(len(v) == 0 for v in line_def.values()):
-    st.error("⚠️ ライン構成が未入力です。上部フォームから入力してください。")
-    st.stop()
-
-# --- ダミー風補正関数（未定義エラー対策） ---
-def wind_straight_combo_adjust(kaku, wind_dir, wind_speed, straight_length, line_position):
-    return 0.0  # 必要に応じて具体的ロジックへ置換
-
 # --- rating 未定義対策 ---
 # 使用しないので削除または無効化
 # rating = [st.session_state.get(f"rating_{i+1}", 0.0) for i in range(7)]
@@ -453,16 +434,10 @@ for i in range(7):
         kaku = car_to_kakushitsu.get(num, "追")
         base = base_score[kaku]
 
-        wind = wind_straight_combo_adjust(
-            kaku,
-            st.session_state.selected_wind,
-            wind_speed,
-            straight_length,
-            line_order[i]
-        )
+        wind = 0.0  # 簡略化のため固定値
 
         kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
-        rating_score = 0.0  # 評価スコアを未使用に
+        rating_score = 0.0
         rain_corr = lap_adjust(kaku, laps)
         s_count = st.session_state.get(f"s_point_{num}", 0)
         b_count = st.session_state.get(f"b_point_{num}", 0)
@@ -471,7 +446,7 @@ for i in range(7):
         b_bonus = min(0.05 * b_count, 0.15)
 
         symbol_score = s_bonus + b_bonus
-        line_bonus = line_member_bonus(line_order[i])
+        line_bonus = 0.0
         bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
         length_bonus = bank_length_adjust(kaku, bank_length)
         meta_score = metabolism_scores[i]
@@ -491,99 +466,24 @@ if len(score_parts) == 0:
     st.error("⚠️ スコアデータが空です。入力ミスや前提条件の欠落がないか確認してください。")
     st.stop()
 
-# --- グループ補正関数の追加 ---
-def compute_group_bonus(score_parts, line_def):
-    group_totals = {k: [] for k in line_def}
-    for row in score_parts:
-        car_no = row[0]
-        score = row[-1]
-        for group, members in line_def.items():
-            if car_no in members:
-                group_totals[group].append(score)
-                break
-    return {k: (sum(v) / len(v)) if v else 0.0 for k, v in group_totals.items()}
-
-def get_group_bonus(car_no, line_def, group_bonus_map):
-    for group in ['A', 'B', 'C']:
-        if car_no in line_def[group]:
-            return group_bonus_map.get(group, 0.0)
-    if '単騎' in line_def and car_no in line_def['単騎']:
-        return group_bonus_map.get('単騎', 0.0)
-    return 0.0
-
-# --- グループ補正の適用 ---
-group_bonus_map = compute_group_bonus(score_parts, line_def)
-final_score_parts = []
-for row in score_parts:
-    group_corr = get_group_bonus(row[0], line_def, group_bonus_map)
-    new_total = row[-1] + group_corr
-    final_score_parts.append(row[:-1] + [group_corr, new_total])
-
 # --- ◎選出と平均比較による軸判定 ---
-sorted_scores = sorted(final_score_parts, key=lambda x: x[-1], reverse=True)
+sorted_scores = sorted(score_parts, key=lambda x: x[-1], reverse=True)
 anchor_row = sorted_scores[0]
 anchor_car = anchor_row[0]
 anchor_score = anchor_row[-1]
-avg_score = sum(row[-1] for row in final_score_parts) / len(final_score_parts)
+avg_score = sum(row[-1] for row in score_parts) / len(score_parts)
 include_anchor = (anchor_score - avg_score) >= 0.1
 
 # --- 表示 ---
-df = pd.DataFrame(final_score_parts, columns=[
+df = pd.DataFrame(score_parts, columns=[
     '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
     '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
-    '代謝補正', '合計スコア', 'グループ補正', '補正後スコア'
+    '代謝補正', '合計スコア'
 ])
-st.dataframe(df.sort_values(by='補正後スコア', ascending=False).reset_index(drop=True))
+st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
 
-# --- ライン取得 ---
-def get_line(car_no, line_def):
-    for group in line_def:
-        if car_no in line_def[group]:
-            return group
-    return None
-
-# --- 買い目生成（三連複3点） ---
-from itertools import combinations
-trio_combos = []
-
+# --- 結果表示 ---
 if include_anchor:
-    anchor_line = get_line(anchor_car, line_def)
-    def is_viable_partner(row):
-        car_no = row[0]
-        score = row[-1]
-        same_line = get_line(car_no, line_def) == anchor_line
-        score_close = (anchor_score - score) <= 0.15
-        return same_line or score_close
-
-    partners = [row[0] for row in sorted_scores[1:] if is_viable_partner(row)][:3]
-    if len(partners) >= 2:
-        for pair in combinations(partners, 2):
-            trio_combos.append(sorted([str(anchor_car)] + [str(p) for p in pair]))
+    st.markdown(f"✅ ◎（{anchor_car}）は採用：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} より高いため、軸として使用します。")
 else:
-    sorted_lows = sorted(final_score_parts, key=lambda x: x[-1])[:3]
-    low_anchor = sorted_lows[0][0]
-    low_score = sorted_lows[0][-1]
-    low_line = get_line(low_anchor, line_def)
-
-    def is_viable_low_partner(row):
-        car_no = row[0]
-        score = row[-1]
-        same_line = get_line(car_no, line_def) == low_line
-        score_close = abs(low_score - score) <= 0.2
-        return same_line or score_close
-
-    partners = [row[0] for row in final_score_parts if row[0] != low_anchor and is_viable_low_partner(row)][:3]
-    if len(partners) >= 2:
-        for pair in combinations(partners, 2):
-            trio_combos.append(sorted([str(low_anchor)] + [str(p) for p in pair]))
-
-# --- 買い目出力 ---
-st.markdown("### 🎯 推奨三連複3点")
-if not trio_combos:
-    st.warning("買い目が生成できませんでした。データを確認してください。")
-else:
-    for trio in trio_combos:
-        st.markdown(f"- {'-'.join(trio)}")
-        
-
-
+    st.markdown(f"⚠️ ◎（{anchor_car}）は除外：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} を下回るため、信頼できません。")
