@@ -482,53 +482,59 @@ for i in range(7):
 
 if len(score_parts) == 0:
     st.error("⚠️ スコアデータが空です。入力ミスや前提条件の欠落がないか確認してください。")
-else:
-    # --- 3. グループ補正関数の追加 ---
-    def compute_group_bonus(score_parts, line_def):
-        group_totals = {k: [] for k in line_def}
-        for row in score_parts:
-            car_no = row[0]
-            score = row[-1]
-            for group, members in line_def.items():
-                if car_no in members:
-                    group_totals[group].append(score)
-                    break
-        return {k: (sum(v) / len(v)) if v else 0.0 for k, v in group_totals.items()}
+    st.stop()
 
-    # --- 3. グループ補正 ---
-    group_bonus_map = compute_group_bonus(score_parts, line_def)
-    final_score_parts = []
+# --- 3. グループ補正関数の追加 ---
+def compute_group_bonus(score_parts, line_def):
+    group_totals = {k: [] for k in line_def}
     for row in score_parts:
-        group_corr = get_group_bonus(row[0], line_def, group_bonus_map)
-        new_total = row[-1] + group_corr
-        final_score_parts.append(row[:-1] + [group_corr, new_total])
+        car_no = row[0]
+        score = row[-1]
+        for group, members in line_def.items():
+            if car_no in members:
+                group_totals[group].append(score)
+                break
+    return {k: (sum(v) / len(v)) if v else 0.0 for k, v in group_totals.items()}
 
-    # --- ◎相当の選手（スコア1位）による採用判定ロジック ---
-    sorted_scores = sorted(final_score_parts, key=lambda x: x[-1], reverse=True)
-    if len(sorted_scores) == 0:
-        st.error("スコア結果が生成されませんでした。前提条件を確認してください。")
-    else:
-        anchor_row = sorted_scores[0]  # スコア1位
-        anchor_car = anchor_row[0]
-        anchor_score = anchor_row[-1]
-        avg_score = sum(row[-1] for row in final_score_parts) / len(final_score_parts)
+def get_group_bonus(car_no, line_def, group_bonus_map):
+    for group in ['A', 'B', 'C']:
+        if car_no in line_def[group]:
+            return group_bonus_map.get(group, 0.0)
+    if '単騎' in line_def and car_no in line_def['単騎']:
+        return group_bonus_map.get('単騎', 0.0)
+    return 0.0
 
-        include_anchor = (anchor_score - avg_score) >= 0.1
+# --- 3. グループ補正 ---
+group_bonus_map = compute_group_bonus(score_parts, line_def)
+final_score_parts = []
+for row in score_parts:
+    group_corr = get_group_bonus(row[0], line_def, group_bonus_map)
+    new_total = row[-1] + group_corr
+    final_score_parts.append(row[:-1] + [group_corr, new_total])
 
-        # --- 1. DataFrameを作成 ---
-        df = pd.DataFrame(final_score_parts, columns=[
-            '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
-            '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
-            '代謝補正', 'グループ補正', '合計スコア'
-        ])
+# --- ◎相当の選手（スコア1位）による採用判定ロジック ---
+sorted_scores = sorted(final_score_parts, key=lambda x: x[-1], reverse=True)
+anchor_row = sorted_scores[0]  # スコア1位
+anchor_car = anchor_row[0]
+anchor_score = anchor_row[-1]
+avg_score = sum(row[-1] for row in final_score_parts) / len(final_score_parts)
 
-        st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
+include_anchor = (anchor_score - avg_score) >= 0.1
 
-        # --- 判定結果の表示 ---
-        if include_anchor:
-            st.markdown(f"\n✅ ◎（{anchor_car}）は採用：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} より高いため、軸として使用します。")
-        else:
-            st.markdown(f"\n⚠️ ◎（{anchor_car}）は除外：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} を下回るため、信頼できません。")
+# --- 1. DataFrameを作成 ---
+df = pd.DataFrame(final_score_parts, columns=[
+    '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
+    '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
+    '代謝補正', 'グループ補正', '合計スコア'
+])
+
+st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
+
+# --- 判定結果の表示 ---
+if include_anchor:
+    st.markdown(f"\n✅ ◎（{anchor_car}）は採用：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} より高いため、軸として使用します。")
+else:
+    st.markdown(f"\n⚠️ ◎（{anchor_car}）は除外：補正スコア {anchor_score:.2f} が平均 {avg_score:.2f} を下回るため、信頼できません。")
 
 # --- ライン構成取得用関数 ---
 def get_line(car_no, line_def):
@@ -555,7 +561,6 @@ if include_anchor:
     for pair in combinations(partners, 2):
         trio_combos.append(sorted([str(anchor_car)] + [str(p) for p in pair]))
 else:
-    # スコア最下位選手を軸に、そのラインから相手を選出
     sorted_lows = sorted(final_score_parts, key=lambda x: x[-1])[:3]
     low_anchor = sorted_lows[0][0]
     low_score = sorted_lows[0][-1]
@@ -576,8 +581,3 @@ else:
 st.markdown("### 🎯 推奨三連複3点")
 for trio in trio_combos:
     st.markdown(f"- {'-'.join(trio)}")
-
-if len(score_parts) == 0:
-    st.error("⚠️ スコアデータが空です。入力ミスや前提条件の欠落がないか確認してください。")
-    st.stop()  # これが重要：これ以降の処理を中断
-
