@@ -412,23 +412,11 @@ if st.button("スコア計算実行"):
     ]
 
 
-# --- ライン構成入力欄（A〜Cライン＋単騎） ---
-st.subheader("▼ ライン構成入力（A〜Cライン＋単騎）")
-a_line = st.text_input("Aライン（例：13）", max_chars=7)
-b_line = st.text_input("Bライン（例：25）", max_chars=7)
-c_line = st.text_input("Cライン（例：47）", max_chars=7)
-solo_line = st.text_input("単騎枠（例：6）", max_chars=7)
-
-# --- ライン構成入力に必要な補助関数 ---
+# --- ライン構成入力に必要な補助関数（既存のline_def使用前提で入力欄は削除） ---
 def extract_car_list(input_str):
     return [int(c) for c in input_str if c.isdigit()]
 
-line_def = {
-    'A': extract_car_list(a_line),
-    'B': extract_car_list(b_line),
-    'C': extract_car_list(c_line),
-    '単騎': extract_car_list(solo_line)
-}
+# line_def は別箇所で入力済みの想定（例：上部で手動入力済みなど）
 
 # --- rating 未定義対策 ---
 # 使用しないので削除または無効化
