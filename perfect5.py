@@ -408,24 +408,6 @@ if st.button("スコア計算実行"):
     metabolism_scores = [
         max(get_age_correction(ages[i]) * correction_factor.get(race_class, 1.0), -0.3)
 
-
-        
-
-# --- 安定起動用の初期化（存在しないキーがあると止まる） ---
-for i in range(7):
-    st.session_state.setdefault(f"chaku_{i+1}", "")
-    st.session_state.setdefault(f"s_point_{i+1}", 0)
-    st.session_state.setdefault(f"b_point_{i+1}", 0)
-
-st.session_state.setdefault("selected_wind", "無風")
-st.session_state.setdefault("wind_speed", 0.0)
-st.session_state.setdefault("bank_length", 400)
-st.session_state.setdefault("bank_angle", 30)
-st.session_state.setdefault("laps", 5)
-st.session_state.setdefault("tairetsu", [""] * 7)
-st.session_state.setdefault("line_order", [""] * 7)
-
-        
 # --- ライン構成入力欄（UI＋セッション登録） ---
 a_line = st.text_input("Aライン（例：13）", max_chars=7, key="a_line_input")
 b_line = st.text_input("Bライン（例：25）", max_chars=7, key="b_line_input")
@@ -435,8 +417,8 @@ solo_line = st.text_input("単騎枠（例：6）", max_chars=7, key="solo_line_
 def extract_car_list(input_str):
     return [int(c) for c in input_str if c.isdigit()]
 
-# --- セッションにライン構成を格納（即時反映） ---
-if a_line or b_line or c_line or solo_line:
+# --- セッションにライン構成を格納（無限ループ防止） ---
+if "line_def" not in st.session_state:
     st.session_state["line_def"] = {
         'A': extract_car_list(a_line),
         'B': extract_car_list(b_line),
@@ -602,3 +584,6 @@ if not trio_combos:
 else:
     for trio in trio_combos:
         st.markdown(f"- {'-'.join(trio)}")
+        
+
+
