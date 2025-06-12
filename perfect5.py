@@ -195,7 +195,7 @@ st.subheader("▼ S・B 入力（各選手のS・B回数を入力）")
 for i in range(7):
     st.markdown(f"**{i+1}番**")
     s_val = st.number_input("S回数", min_value=0, max_value=99, value=0, step=1, key=f"s_point_{i+1}")
-    b_val = at.number_input("B回数", min_value=0, max_value=99, value=0, step=1, key=f"b_point_{i+1}")
+    b_val = st.number_input("B回数", min_value=0, max_value=99, value=0, step=1, key=f"b_point_{i+1}")
 
 
 # --- ライン構成入力（A〜Dライン＋単騎） ---
