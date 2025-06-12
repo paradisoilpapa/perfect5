@@ -443,12 +443,14 @@ df = pd.DataFrame(final_score_parts, columns=[
     "SB印補正", "ライン補正", "バンク補正", "周長補正", "グループ補正", "合計スコア"
 ])
 
-# ◎：スコア1位
+# --- 着順＋SB補正の合算スコア列を追加（個性補正） ---
+df["個性補正"] = df["着順補正"] + df["SB印補正"]
+
 # --- ◎：スコア1位を抽出
 anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
 
-# --- ◎以外を抽出
+# --- ◎以外を抽出（個性補正付き）
 others = df[df["車番"] != anchor_index]
 
 # --- 着順補正上位2名（同点なら3名）
@@ -465,15 +467,14 @@ if sorted_sb["SB印補正"].iloc[3] == sorted_sb["SB印補正"].iloc[4]:
 else:
     top_sb = sorted_sb.head(4)["車番"].tolist()
 
-# ✅ ここから追加（着順＋SB の合算）
-df["個性補正"] = df["着順補正"] + df["SB印補正"]
+# --- 個性補正（着順＋SB）上位4名（同点なら5名）
 sorted_indiv = others.sort_values("個性補正", ascending=False)
 if sorted_indiv["個性補正"].iloc[3] == sorted_indiv["個性補正"].iloc[4]:
     top_indiv = sorted_indiv.head(5)["車番"].tolist()
 else:
     top_indiv = sorted_indiv.head(4)["車番"].tolist()
 
-# --- 表示（視覚的な三連複構成）
+# --- 出力（視覚的に三連複構成を見せる）---
 st.markdown(f"◎：{anchor_index}")
 st.markdown(f"着順補正上位：{', '.join(map(str, top_chaku))}")
 st.markdown(f"SB補正上位：{', '.join(map(str, top_sb))}")
