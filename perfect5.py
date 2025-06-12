@@ -4,7 +4,7 @@ import pandas as pd
 # --- ページ設定 ---
 st.set_page_config(page_title="ライン競輪スコア計算（完全統一版）", layout="wide")
 
-st.title("⭐ ライン競輪スコア計算（7車ライン＋欠番対応）⭐")
+st.title("⭐ ライン競輪スコア計算（5車ライン＋欠番対応）⭐")
 
 wind_coefficients = {
     "左上": -0.07,   # ホーム寄りからの風 → 差し有利（逃げやや不利）
@@ -28,7 +28,7 @@ position_multipliers = {
 
 
 # --- 基本スコア（脚質ごとの基準値） ---
-base_score = {'逃': 4.7, '両': 4.9, '追': 5.1}
+base_score = {'逃': 4.7, '両': 4.8, '追': 5.0}
 
 # --- 状態保持 ---
 if "selected_wind" not in st.session_state:
@@ -195,22 +195,17 @@ st.subheader("▼ S・B 入力（各選手のS・B回数を入力）")
 for i in range(7):
     st.markdown(f"**{i+1}番**")
     s_val = st.number_input("S回数", min_value=0, max_value=99, value=0, step=1, key=f"s_point_{i+1}")
-    b_val = st.number_input("B回数", min_value=0, max_value=99, value=0, step=1, key=f"b_point_{i+1}")
-
-# --- 年齢と級の入力（代謝補正用） ---
-st.subheader("▼ 年齢・級（代謝補正用）")
-
-race_class = st.selectbox("級を選択", ["S級", "A級", "チャレンジ"])
-
-ages = [st.number_input(f"{i+1}番 年齢", min_value=16, max_value=60, value=40, key=f"age_{i+1}") for i in range(7)]
+    b_val = at.number_input("B回数", min_value=0, max_value=99, value=0, step=1, key=f"b_point_{i+1}")
 
 
-# --- ライン構成入力欄（A〜Cライン＋単騎） ---
-st.subheader("▼ ライン構成入力（A〜Cライン＋単騎）")
-a_line = st.text_input("Aライン（例：13）", max_chars=7)
-b_line = st.text_input("Bライン（例：25）", max_chars=7)
-c_line = st.text_input("Cライン（例：47）", max_chars=7)
-solo_line = st.text_input("単騎枠（例：6）", max_chars=7)
+# --- ライン構成入力（A〜Dライン＋単騎） ---
+st.subheader("▼ ライン構成入力（A〜Dライン＋単騎）")
+a_line = st.text_input("Aライン（例：13）", key="a_line", max_chars=9)
+b_line = st.text_input("Bライン（例：25）", key="b_line", max_chars=9)
+c_line = st.text_input("Cライン（例：47）", key="c_line", max_chars=9)
+d_line = st.text_input("Dライン（例：68）", key="d_line", max_chars=9)
+solo_line = st.text_input("単騎枠（例：9）", key="solo_line", max_chars=9)
+
 
 # --- ライン構成入力に必要な補助関数 ---
 def extract_car_list(input_str):
@@ -218,42 +213,21 @@ def extract_car_list(input_str):
 
 def build_line_position_map():
     result = {}
-    for line, name in zip([a_line, b_line, c_line, solo_line], ['A', 'B', 'C', 'D']):
+    for line, name in zip([a_line, b_line, c_line, d_line, solo_line], ['A', 'B', 'C', 'D', 'S']):
         cars = extract_car_list(line)
         for i, car in enumerate(cars):
-            if name == 'D':
+            if name == 'S':
                 result[car] = 0
             else:
                 result[car] = i + 1
     return result
 
-# --- 代謝補正関数（スコア計算の直前に定義） ---
-    def get_metabolism_score(age, class_type):
-        if class_type == "チャレンジ":
-            if age >= 45:
-                return 0.15
-            elif age >= 38:
-                return 0.07
-        elif class_type == "A級":
-            if age >= 46:
-                return 0.10
-            elif age >= 40:
-                return 0.05
-        elif class_type == "S級":
-            if age >= 48:
-                return 0.05
-        return 0.0
-
-# --- 代謝スコアのリストを作成 ---
-try:
-    metabolism_scores = [get_metabolism_score(ages[i], race_class) for i in range(7)]
-except Exception:
-    metabolism_scores = [0.0] * 7
-
-
-# --- スコア計算処理 ---
+# --- スコア計算ボタン表示 ---
 st.subheader("▼ スコア計算")
 if st.button("スコア計算実行"):
+
+    def extract_car_list(input_str):
+        return [int(c) for c in input_str if c.isdigit()]
 
     def score_from_tenscore_list(tenscore_list):
         import pandas as pd
@@ -291,6 +265,7 @@ if st.button("スコア計算実行"):
     
         total = base * speed * pos_mult * kaku_coeff  # 例: +0.1×10×1×1 = +1.0
         return round(total, 2)
+
 
     def convert_chaku_to_score(values):
         scores = []
@@ -340,39 +315,38 @@ if st.button("スコア計算実行"):
         angle_factor = (angle - 25.0) / 5.0
         total_factor = -0.2 * straight_factor + 0.2 * angle_factor
         return round({'逃': +total_factor, '追': -total_factor, '両': +0.5 * total_factor}.get(kaku, 0.0), 2)
-    
-    
+        
     def bank_length_adjust(kaku, length):
+        """
+        バンク周長による補正（400基準を完全維持しつつ、±0.15に制限）
+        """
         delta = (length - 411) / 100
-        delta = max(min(delta, 0.05), -0.05)  # ±0.05制限
-        return round({'逃': 1.5 * delta, '両': 3.0 * delta, '追': 4.5 * delta}.get(kaku, 0.0), 2)
-
+        delta = max(min(delta, 0.075), -0.075)
+        return round({'逃': 2.0 * delta, '両': 4.0 * delta, '追': 6.0 * delta}.get(kaku, 0.0), 2)
 
     def compute_group_bonus(score_parts, line_def):
-        # 初期化
-        group_scores = {k: 0.0 for k in ['A', 'B', 'C']}
-        group_counts = {k: 0 for k in ['A', 'B', 'C']}
-    
-        # 各ラインの合計スコアと人数を集計
+        group_scores = {k: 0.0 for k in ['A', 'B', 'C', 'D']}
+        group_counts = {k: 0 for k in ['A', 'B', 'C', 'D']}
+
+            # 各ラインの合計スコアと人数を集計
         for entry in score_parts:
             car_no, score = entry[0], entry[-1]
-            for group in ['A', 'B', 'C']:
+            for group in ['A', 'B', 'C', 'D']:
                 if car_no in line_def[group]:
                     group_scores[group] += score
                     group_counts[group] += 1
                     break
-    
-    
         # 合計スコアで順位を決定（平均ではない）
         sorted_lines = sorted(group_scores.items(), key=lambda x: x[1], reverse=True)
     
-        # 上位グループから順に 0.5 → 0.4 → 0.3 のボーナスを付与
-        bonus_map = {group: [0.5, 0.4, 0.3][idx] for idx, (group, _) in enumerate(sorted_lines)}
+        # 上位グループから順に 0.5 → 0.4 → 0.3→0.2 のボーナスを付与
+        bonus_map = {group: [0.5, 0.4, 0.3, 0.2][idx] for idx, (group, _) in enumerate(sorted_lines)}
     
         return bonus_map
-        
+
+
     def get_group_bonus(car_no, line_def, group_bonus_map):
-        for group in ['A', 'B', 'C']:
+        for group in ['A', 'B', 'C', 'D']:
             if car_no in line_def[group]:
                 base_bonus = group_bonus_map.get(group, 0.0)
                 s_bonus = 0.3 if group == 'A' else 0.0  # ← 無条件でAだけに+0.3
@@ -381,90 +355,103 @@ if st.button("スコア計算実行"):
             return 0.3
         return 0.0
 
-    # ライン構成取得
+ # ライン構成取得
     line_def = {
         'A': extract_car_list(a_line),
         'B': extract_car_list(b_line),
         'C': extract_car_list(c_line),
+        'D': extract_car_list(c_line),
         '単騎': extract_car_list(solo_line)  # tanki → solo_line に合わせて
         }
 
     line_order_map = build_line_position_map()
-    line_order = [line_order_map.get(i + 1, 0) for i in range(7)]
-
-    
-    # --- 1. 年齢補正の関数（減点型） ---
-    def get_age_correction(age, base_age=35, step=0.015):
-        return -max(0.0, (age - base_age) * step)
-    
-    # --- 2. 級別係数の定義 ---
-    correction_factor = {
-        "チャレンジ": 1.0,
-        "A級":        0.7,
-        "S級":        0.5
-    }
-    
-    # --- 3. 補正スコアの生成（7選手分、下限付き） ---
-    metabolism_scores = [
-        max(get_age_correction(ages[i]) * correction_factor.get(race_class, 1.0), -0.3)
+    line_order = [line_order_map.get(i + 1, 0) for i in range(9)]
 
 
+    # スコア計算
+    tenscore_score = score_from_tenscore_list(rating)
+    score_parts = []
 
-import streamlit as st
-import pandas as pd
+    for i in range(7):
+        if not tairetsu[i].isdigit():
+            continue
 
-# --- スコア計算：代謝補正追加（オリジナル復元） ---
+        num = i + 1
+        kaku = car_to_kakushitsu.get(num, "追")
+        base = base_score[kaku]
 
-tenscore_score = score_from_tenscore_list(rating)
-score_parts = []
+        wind = wind_straight_combo_adjust(
+            kaku,
+            st.session_state.selected_wind,
+            wind_speed,
+            straight_length,
+            line_order[i]
+        )
 
-for i in range(7):
-    if not tairetsu[i].isdigit():
-        continue
+        chaku_values = chaku_inputs[i]
+        kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
+        rating_score = tenscore_score[i]
+        rain_corr = lap_adjust(kaku, laps)
+        s_bonus = -0.01 * st.session_state.get(f"s_point_{num}", 0)
+        b_bonus = 0.05 * st.session_state.get(f"b_point_{num}", 0)
+        symbol_score = s_bonus + b_bonus
+        line_bonus = line_member_bonus(line_order[i])
+        bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
+        length_bonus = bank_length_adjust(kaku, bank_length)
 
-    num = i + 1
-    kaku = car_to_kakushitsu.get(num, "追")
-    base = base_score[kaku]
+        total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus
 
-    wind = wind_straight_combo_adjust(
-        kaku,
-        st.session_state.selected_wind,
-        wind_speed,
-        straight_length,
-        line_order[i]
-    )
+        score_parts.append([
+            num, kaku, base, wind, kasai, rating_score,
+            rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus, total
+        ])
 
-    chaku_values = chaku_inputs[i]
-    kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
-    rating_score = tenscore_score[i]
-    rain_corr = lap_adjust(kaku, laps)
-    s_bonus = 0.05 * st.session_state.get(f"s_point_{num}", 0)
-    b_bonus = 0.05 * st.session_state.get(f"b_point_{num}", 0)
-    symbol_score = s_bonus + b_bonus
-    line_bonus = line_member_bonus(line_order[i])
-    bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
-    length_bonus = bank_length_adjust(kaku, bank_length)
-    meta_score = metabolism_scores[i]
 
-    total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus + meta_score
+    # グループ補正
+    group_bonus_map = compute_group_bonus(score_parts, line_def)
+    final_score_parts = []
+    for row in score_parts:
+        group_corr = get_group_bonus(row[0], line_def, group_bonus_map)
+        new_total = row[-1] + group_corr
+        final_score_parts.append(row[:-1] + [group_corr, new_total])
 
-    score_parts.append([
-        num, kaku, base, wind, kasai, rating_score,
-        rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus, meta_score, total
+
+    # 表示
+    df = pd.DataFrame(final_score_parts, columns=[
+        '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
+        '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
+        'グループ補正', '合計スコア'
     ])
+    st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
+    
+try:
+    if not final_score_parts:
+        st.warning("スコアが計算されていません。入力や処理を確認してください。")
+        st.stop()
+except NameError:
+    st.warning("スコアデータが定義されていません。入力に問題がある可能性があります。")
+    st.stop()
+    
+    
+    # --- スコア差に基づく買い方アドバイス（買い目は出さない） ---
+sorted_scores = sorted(final_score_parts, key=lambda x: x[-1], reverse=True)
+anchor_row = sorted_scores[0]
+second_row = sorted_scores[1]
+lowest_row = sorted_scores[-1]
 
-# --- グループ補正適用 ---
-group_bonus_map = compute_group_bonus(score_parts, line_def)
-final_score_parts = []
-for row in score_parts:
-    group_corr = get_group_bonus(row[0], line_def, group_bonus_map)
-    new_total = row[-1] + group_corr
-    final_score_parts.append(row[:-1] + [group_corr, new_total])
+gap_1_2 = anchor_row[-1] - second_row[-1]
+gap_1_low = anchor_row[-1] - lowest_row[-1]
 
-# --- DataFrame表示のみ ---
-df = pd.DataFrame(final_score_parts, columns=[
-    '車番', '脚質', '基本', '風補正', '着順補正', '得点補正',
-    '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正',
-    '代謝補正', 'グループ補正', '合計スコア'
-])
-st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
+st.markdown("## 🔍 買い方アドバイス")
+
+if gap_1_2 >= 0.25 and gap_1_low > 1.0:
+    st.success(f"◎（{anchor_row[0]}）は抜けた存在。堅軸として信頼できます。")
+    st.markdown("- フォーメーションの軸に据えるのが有力です。")
+
+elif gap_1_2 < 0.25 and gap_1_low > 1.0:
+    st.info(f"◎（{anchor_row[0]}）は微差リード。BOX向きの混戦模様です。")
+    st.markdown("- 頭を固定せず、BOX型の買い方が適している可能性があります。")
+
+else:
+    st.warning(f"スコア全体が拮抗（トップと最下位差 {gap_1_low:.2f}）。団子状態です。")
+    st.markdown("- 積極的な勝負は避け、見送りや小点数が妥当な局面です。")
