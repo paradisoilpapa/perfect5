@@ -444,10 +444,11 @@ df = pd.DataFrame(final_score_parts, columns=[
 ])
 
 # ◎：スコア1位
+# --- ◎：スコア1位を抽出
 anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
 
-# ◎以外を抽出
+# --- ◎以外を抽出
 others = df[df["車番"] != anchor_index]
 
 # --- 着順補正上位2名（同点なら3名）
@@ -464,7 +465,17 @@ if sorted_sb["SB印補正"].iloc[3] == sorted_sb["SB印補正"].iloc[4]:
 else:
     top_sb = sorted_sb.head(4)["車番"].tolist()
 
-# --- 表示：視覚的に「三連複構成」に見える出力
+# ✅ ここから追加（着順＋SB の合算）
+df["個性補正"] = df["着順補正"] + df["SB印補正"]
+sorted_indiv = others.sort_values("個性補正", ascending=False)
+if sorted_indiv["個性補正"].iloc[3] == sorted_indiv["個性補正"].iloc[4]:
+    top_indiv = sorted_indiv.head(5)["車番"].tolist()
+else:
+    top_indiv = sorted_indiv.head(4)["車番"].tolist()
+
+# --- 表示（視覚的な三連複構成）
 st.markdown(f"◎：{anchor_index}")
 st.markdown(f"着順補正上位：{', '.join(map(str, top_chaku))}")
 st.markdown(f"SB補正上位：{', '.join(map(str, top_sb))}")
+st.markdown(f"【着順＋SB補正の上位】：{', '.join(map(str, top_indiv))}")
+
