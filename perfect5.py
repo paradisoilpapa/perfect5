@@ -434,49 +434,47 @@ except NameError:
     
     
     # --- スコア差に基づく買い方アドバイス（買い目は出さない） ---
-# --- フォーメーション提案（視覚的三連複構成） ---
-st.markdown("### 🎯 フォーメーション提案")
+import numpy as np
 
-# DataFrame（final_score_parts から構成）
-df = pd.DataFrame(final_score_parts, columns=[
-    "車番", "脚質", "基本", "風補正", "着順補正", "得点補正", "周回補正",
-    "SB印補正", "ライン補正", "バンク補正", "周長補正", "グループ補正", "合計スコア"
-])
+# --- 拡張個性補正（着順 + SB + ライン + グループ）を列に追加 ---
+df["個性補正"] = (
+    df["着順補正"] +
+    df["SB印補正"] +
+    df["ライン補正"] +
+    df["グループ補正"]
+)
 
-# --- 着順＋SB補正の合算スコア列を追加（個性補正） ---
-df["個性補正"] = df["着順補正"] + df["SB印補正"]
-
-# --- ◎：スコア1位を抽出
+# --- ◎：スコア1位を抽出（軸固定） ---
 anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
 
-# --- ◎以外を抽出（個性補正付き）
+# --- ◎を除いた残りの選手を抽出 ---
 others = df[df["車番"] != anchor_index]
 
-# --- 着順補正上位2名（同点なら3名）
+# --- 着順補正上位2名（同点なら3名） ---
 sorted_chaku = others.sort_values("着順補正", ascending=False)
-if sorted_chaku["着順補正"].iloc[1] == sorted_chaku["着順補正"].iloc[2]:
+if len(sorted_chaku) >= 3 and sorted_chaku["着順補正"].iloc[1] == sorted_chaku["着順補正"].iloc[2]:
     top_chaku = sorted_chaku.head(3)["車番"].tolist()
 else:
     top_chaku = sorted_chaku.head(2)["車番"].tolist()
 
-# --- SB補正上位4名（同点なら5名）
+# --- SB補正上位4名（同点なら5名） ---
 sorted_sb = others.sort_values("SB印補正", ascending=False)
-if sorted_sb["SB印補正"].iloc[3] == sorted_sb["SB印補正"].iloc[4]:
+if len(sorted_sb) >= 5 and np.isclose(sorted_sb["SB印補正"].iloc[3], sorted_sb["SB印補正"].iloc[4]):
     top_sb = sorted_sb.head(5)["車番"].tolist()
 else:
     top_sb = sorted_sb.head(4)["車番"].tolist()
 
-# --- 個性補正（着順＋SB）上位4名（同点なら5名）
+# --- 個性補正（着順+SB+ライン+グループ）上位4名（同点なら5名） ---
 sorted_indiv = others.sort_values("個性補正", ascending=False)
-if sorted_indiv["個性補正"].iloc[3] == sorted_indiv["個性補正"].iloc[4]:
+if len(sorted_indiv) >= 5 and np.isclose(sorted_indiv["個性補正"].iloc[3], sorted_indiv["個性補正"].iloc[4]):
     top_indiv = sorted_indiv.head(5)["車番"].tolist()
 else:
     top_indiv = sorted_indiv.head(4)["車番"].tolist()
 
-# --- 出力（視覚的に三連複構成を見せる）---
-st.markdown(f"◎：{anchor_index}")
+# --- 出力表示：三連複的フォーメーション表示 ---
+st.markdown("### 🎯 フォーメーション構成")
+st.markdown(f"◎（合計スコア1位）：{anchor_index}")
 st.markdown(f"着順補正上位：{', '.join(map(str, top_chaku))}")
 st.markdown(f"SB補正上位：{', '.join(map(str, top_sb))}")
-st.markdown(f"【着順＋SB補正の上位】：{', '.join(map(str, top_indiv))}")
-
+st.markdown(f"【個性補正（着順＋SB＋ライン＋グループ）上位】：{', '.join(map(str, top_indiv))}")
