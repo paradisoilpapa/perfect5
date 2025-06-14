@@ -474,29 +474,3 @@ st.markdown("### 🎯 フォーメーション構成")
 st.markdown(f"◎（合計スコア1位）：{anchor_index}")
 st.markdown(f"【個性補正（score-based）上位3名（うち同ライン1名保障）】：{', '.join(map(str, final_candidates[1:]))}")
 st.markdown(f"👉 三連複4点：BOX（{', '.join(map(str, final_candidates))}）")
-
-# --- anchor_line に属する車番のうち、anchor_index 以外の者を抽出 ---
-same_line_others = [c for c in line_def.get(anchor_line, []) if c != anchor_index]
-same_line_others = [c for c in same_line_others if c in others["車番"].tolist()]
-
-# --- 同ライン内で個性補正が高い順に1名選出 ---
-line_df = others[others["車番"].isin(same_line_others)].copy()
-line_df = line_df.sort_values("個性補正", ascending=False)
-if not line_df.empty:
-    line_pick = line_df.iloc[0]["車番"]
-else:
-    line_pick = None
-
-# --- 個性補正の上位候補から line_pick を除いた上位2名を選出（重複回避） ---
-sorted_indiv = others.sort_values("個性補正", ascending=False)
-top_indiv = sorted_indiv["車番"].tolist()
-top_indiv = [x for x in top_indiv if x != line_pick][:2]  # line_pickを除いた上位2名
-
-# --- 最終：◎＋（line_pick＋top_indiv 2名）＝三連複4点BOX ---
-final_candidates = [anchor_index] + ([line_pick] if line_pick else []) + top_indiv
-
-# --- 表示 ---
-st.markdown("### 🎯 フォーメーション構成")
-st.markdown(f"◎（合計スコア1位）：{anchor_index}")
-st.markdown(f"【個性補正（signal_score）上位3名（うち同ライン1名保障）】：{', '.join(map(str, final_candidates[1:]))}")
-st.markdown(f"👉 三連複4点：BOX（{', '.join(map(str, final_candidates))}）")
