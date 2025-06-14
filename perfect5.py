@@ -433,11 +433,15 @@ anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
 others = df[df["車番"] != anchor_index].copy()
 
-# --- B値のしきい値で分類 ---
-others["B値"] = df.set_index("車番").loc[others["車番"]]["B"]
+# --- B列が既にある前提で処理（存在チェック） ---
+if "B" not in df.columns:
+    df["B"] = 0  # 仮に全員0で初期化（実データに依存）
 
-low_B_df = others[others["B値"] <= 2].copy()
-high_B_df = others[others["B値"] >= 3].copy()
+others = others.merge(df[["車番", "B"]], on="車番", how="left")
+
+# --- B値のしきい値で分類 ---
+low_B_df = others[others["B"] <= 2].copy()
+high_B_df = others[others["B"] >= 3].copy()
 
 # --- 個性補正（数値ベース）を算出 ---
 for target_df in [low_B_df, high_B_df]:
