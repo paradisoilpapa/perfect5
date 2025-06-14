@@ -461,25 +461,28 @@ line_df = others[others["車番"].isin(same_line_others)].copy().sort_values("�
 line_pick = line_df.iloc[0]["車番"] if not line_df.empty else None
 
 # --- 候補抽出：B2以下・B3以上から重複除外して選出 ---
-sb_2_or_less_df = others[(others["B"] <= 2) & (~others["車番"].isin([line_pick]))].copy()
-sb_3_or_more_df = others[(others["B"] > 2) & (~others["車番"].isin([line_pick]))].copy()
+sb_2_or_less_df = others[others["B"] <= 2].copy()
+sb_3_or_more_df = others[others["B"] > 2].copy()
 
-cand_1 = sb_2_or_less_df.sort_values("個性補正", ascending=False)["車番"].tolist()
-cand_2 = sb_3_or_more_df.sort_values("個性補正", ascending=False)["車番"].tolist()
+cand_1 = [c for c in sb_2_or_less_df.sort_values("個性補正", ascending=False)["車番"] if c not in [anchor_index, line_pick]]
+cand_2 = [c for c in sb_3_or_more_df.sort_values("個性補正", ascending=False)["車番"] if c not in [anchor_index, line_pick] + cand_1]
 
+# --- 組み立て（重複除外＋足りない場合は補完） ---
 final_candidates = [anchor_index]
 if line_pick and line_pick not in final_candidates:
     final_candidates.append(line_pick)
+if cand_1:
+    final_candidates.append(cand_1[0])
+if cand_2:
+    final_candidates.append(cand_2[0])
 
-for c in cand_1:
-    if c not in final_candidates:
+# --- 補完：不足していれば個性補正順で埋める ---
+if len(final_candidates) < 4:
+    filler = others[~others["車番"].isin(final_candidates)].sort_values("個性補正", ascending=False)["車番"].tolist()
+    for c in filler:
         final_candidates.append(c)
-        break
-
-for c in cand_2:
-    if c not in final_candidates:
-        final_candidates.append(c)
-        break
+        if len(final_candidates) == 4:
+            break
 
 # --- 表示 ---
 st.markdown("### 🎯 フォーメーション構成")
