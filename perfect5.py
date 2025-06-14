@@ -458,15 +458,28 @@ others["個性補正"] = (
     others["グループ順位"].apply(rank_to_signal) * 0.3
 )
 
-# --- 補正上位抽出 ---
+# --- 着順補正上位2名（同点なら3名） ---
 sorted_chaku = others.sort_values("着順補正", ascending=False)
-top_chaku = sorted_chaku.head(3)["車番"].tolist() if sorted_chaku.iloc[1]["着順補正"] == sorted_chaku.iloc[2]["着順補正"] else sorted_chaku.head(2)["車番"].tolist()
+if len(sorted_chaku) >= 3 and np.isclose(sorted_chaku.iloc[1]["着順補正"], sorted_chaku.iloc[2]["着順補正"]):
+    top_chaku = sorted_chaku.head(3)["車番"].tolist()
+else:
+    top_chaku = sorted_chaku.head(2)["車番"].tolist()
 
+# --- SB補正上位4名（同点なら5名） ---
 sorted_sb = others.sort_values("SB印補正", ascending=False)
-top_sb = sorted_sb.head(5)["車番"].tolist() if np.isclose(sorted_sb.iloc[3]["SB印補正"], sorted_sb.iloc[4]["SB印補正"]) else sorted_sb.head(4)["車番"].tolist()
+if len(sorted_sb) >= 5 and np.isclose(sorted_sb["SB印補正"].iloc[3], sorted_sb["SB印補正"].iloc[4]):
+    top_sb = sorted_sb.head(5)["車番"].tolist()
+else:
+    top_sb = sorted_sb.head(4)["車番"].tolist()
 
+
+# --- 個性補正（着順+SB+ライン+グループ）上位4名（同点なら5名） ---
 sorted_indiv = others.sort_values("個性補正", ascending=False)
-top_indiv = sorted_indiv.head(5)["車番"].tolist() if np.isclose(sorted_indiv.iloc[3]["個性補正"], sorted_indiv.iloc[4]["個性補正"]) else sorted_indiv.head(4)["車番"].tolist()
+if len(sorted_indiv) >= 5 and np.isclose(sorted_indiv["個性補正"].iloc[3], sorted_indiv["個性補正"].iloc[4]):
+    top_indiv = sorted_indiv.head(5)["車番"].tolist()
+else:
+    top_indiv = sorted_indiv.head(4)["車番"].tolist()
+
 
 # --- 表示 ---
 st.markdown("### 🎯 フォーメーション構成")
