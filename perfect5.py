@@ -429,48 +429,48 @@ except NameError:
     st.stop()
     
     
-    # --- スコア差に基づく買い方アドバイス（買い目は出さない） ---
-import numpy as np
-
-# --- 拡張個性補正（着順 + SB + ライン + グループ）を列に追加 ---
-df["個性補正"] = (
-    df["着順補正"] +
-    df["SB印補正"] +
-    df["ライン補正"] +
-    df["グループ補正"]
-)
-
 # --- ◎：スコア1位を抽出（軸固定） ---
 anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
+others = df[df["車番"] != anchor_index].copy()
 
-# --- ◎を除いた残りの選手を抽出 ---
-others = df[df["車番"] != anchor_index]
+# --- 順位 → signalスコア変換 ---
+def rank_to_signal(rank):
+    if rank == 1: return 1.00
+    elif rank == 2: return 0.80
+    elif rank == 3: return 0.65
+    elif rank == 4: return 0.50
+    elif rank == 5: return 0.30
+    elif rank == 6: return 0.15
+    else: return 0.0
 
-# --- 着順補正上位2名（同点なら3名） ---
+# --- 補正順位を算出 ---
+others["着順順位"] = others["着順補正"].rank(ascending=False, method="min")
+others["SB順位"] = others["SB印補正"].rank(ascending=False, method="min")
+others["ライン順位"] = others["ライン補正"].rank(ascending=False, method="min")
+others["グループ順位"] = others["グループ補正"].rank(ascending=False, method="min")
+
+# --- signalスコアによる個性補正を算出 ---
+others["個性補正"] = (
+    others["着順順位"].apply(rank_to_signal) * 0.8 +
+    others["SB順位"].apply(rank_to_signal) * 1.2 +
+    others["ライン順位"].apply(rank_to_signal) * 0.5 +
+    others["グループ順位"].apply(rank_to_signal) * 0.3
+)
+
+# --- 補正上位抽出 ---
 sorted_chaku = others.sort_values("着順補正", ascending=False)
-if len(sorted_chaku) >= 3 and sorted_chaku["着順補正"].iloc[1] == sorted_chaku["着順補正"].iloc[2]:
-    top_chaku = sorted_chaku.head(3)["車番"].tolist()
-else:
-    top_chaku = sorted_chaku.head(2)["車番"].tolist()
+top_chaku = sorted_chaku.head(3)["車番"].tolist() if sorted_chaku.iloc[1]["着順補正"] == sorted_chaku.iloc[2]["着順補正"] else sorted_chaku.head(2)["車番"].tolist()
 
-# --- SB補正上位4名（同点なら5名） ---
 sorted_sb = others.sort_values("SB印補正", ascending=False)
-if len(sorted_sb) >= 5 and np.isclose(sorted_sb["SB印補正"].iloc[3], sorted_sb["SB印補正"].iloc[4]):
-    top_sb = sorted_sb.head(5)["車番"].tolist()
-else:
-    top_sb = sorted_sb.head(4)["車番"].tolist()
+top_sb = sorted_sb.head(5)["車番"].tolist() if np.isclose(sorted_sb.iloc[3]["SB印補正"], sorted_sb.iloc[4]["SB印補正"]) else sorted_sb.head(4)["車番"].tolist()
 
-# --- 個性補正（着順+SB+ライン+グループ）上位4名（同点なら5名） ---
 sorted_indiv = others.sort_values("個性補正", ascending=False)
-if len(sorted_indiv) >= 5 and np.isclose(sorted_indiv["個性補正"].iloc[3], sorted_indiv["個性補正"].iloc[4]):
-    top_indiv = sorted_indiv.head(5)["車番"].tolist()
-else:
-    top_indiv = sorted_indiv.head(4)["車番"].tolist()
+top_indiv = sorted_indiv.head(5)["車番"].tolist() if np.isclose(sorted_indiv.iloc[3]["個性補正"], sorted_indiv.iloc[4]["個性補正"]) else sorted_indiv.head(4)["車番"].tolist()
 
-# --- 出力表示：三連複的フォーメーション表示 ---
+# --- 表示 ---
 st.markdown("### 🎯 フォーメーション構成")
 st.markdown(f"◎（合計スコア1位）：{anchor_index}")
 st.markdown(f"着順補正上位：{', '.join(map(str, top_chaku))}")
 st.markdown(f"SB補正上位：{', '.join(map(str, top_sb))}")
-st.markdown(f"【個性補正（着順＋SB＋ライン＋グループ）上位】：{', '.join(map(str, top_indiv))}")
+st.markdown(f"【個性補正（signal_score）上位】：{', '.join(map(str, top_indiv))}")
