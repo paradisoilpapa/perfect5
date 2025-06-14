@@ -436,12 +436,12 @@ anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
 others = df[df["車番"] != anchor_index].copy()
 
-# --- signalスコアによる個性補正（数値ベース） ---
+# --- 個性補正（スコアベースでの重みづけ） ---
 others["個性補正"] = (
     others["着順補正"] * 0.8 +
     others["SB印補正"] * 1.2 +
-    others["ライン補正"] * 0.4 +
-    others["グループ補正"] * 0.15
+    others["ライン補正"] * 0.5 +
+    others["グループ補正"] * 0.3
 )
 
 # --- anchor_index のライン取得 ---
@@ -455,34 +455,26 @@ same_line_others = [c for c in line_def.get(anchor_line, []) if c != anchor_inde
 line_df = others[others["車番"].isin(same_line_others)].copy().sort_values("個性補正", ascending=False)
 line_pick = line_df.iloc[0]["車番"] if not line_df.empty else None
 
-# --- Bの回数に基づく選出（2以下、3以上からそれぞれ1名） ---
-try:
-    b_counts = df.set_index("車番")["B"].to_dict()
-except KeyError:
-    b_counts = {}
+# --- SB回数に応じた抽出 ---
+others = others.copy()
+others["B回数"] = others["バック"]  # すでにB回数が入っている前提
 
-low_b_others = others[others["車番"].map(lambda x: b_counts.get(x, 0) <= 2)]
-high_b_others = others[others["車番"].map(lambda x: b_counts.get(x, 0) >= 3)]
+low_B_df = others[others["B回数"] <= 2].copy().sort_values("個性補正", ascending=False)
+high_B_df = others[others["B回数"] >= 3].copy().sort_values("個性補正", ascending=False)
 
-low_b_pick = None
-if not low_b_others.empty:
-    low_b_pick = low_b_others.sort_values("個性補正", ascending=False).iloc[0]["車番"]
-
-high_b_pick = None
-if not high_b_others.empty:
-    high_b_pick = high_b_others.sort_values("個性補正", ascending=False).iloc[0]["車番"]
+low_pick = low_B_df.iloc[0]["車番"] if not low_B_df.empty else None
+high_pick = high_B_df.iloc[0]["車番"] if not high_B_df.empty else None
 
 # --- 候補統合 ---
-final_candidates = [anchor_index]
-if line_pick and line_pick not in final_candidates:
-    final_candidates.append(line_pick)
-if low_b_pick and low_b_pick not in final_candidates:
-    final_candidates.append(low_b_pick)
-if high_b_pick and high_b_pick not in final_candidates:
-    final_candidates.append(high_b_pick)
+candidates = [anchor_index]
+if line_pick: candidates.append(line_pick)
+if low_pick and low_pick not in candidates: candidates.append(low_pick)
+if high_pick and high_pick not in candidates: candidates.append(high_pick)
 
 # --- 表示 ---
 st.markdown("### 🎯 フォーメーション構成")
 st.markdown(f"◎（合計スコア1位）：{anchor_index}")
-st.markdown(f"【個性補正（B回数選抜＋ライン保障）】：{', '.join(map(str, final_candidates[1:]))}")
-st.markdown(f"👉 三連複4点：BOX（{', '.join(map(str, final_candidates))}）")
+st.markdown(f"ライン補完：{line_pick if line_pick else '―'}")
+st.markdown(f"SB回数2以下から選出：{low_pick if low_pick else '―'}")
+st.markdown(f"SB回数3以上から選出：{high_pick if high_pick else '―'}")
+st.markdown(f"👉 三連複4点：BOX（{', '.join(map(str, candidates))}）")
