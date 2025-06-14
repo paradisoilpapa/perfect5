@@ -428,11 +428,29 @@ except NameError:
     st.warning("スコアデータが定義されていません。入力に問題がある可能性があります。")
     st.stop()
     
-    
 # --- ◎：スコア1位を抽出（軸固定） ---
 anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
 others = df[df["車番"] != anchor_index].copy()
+
+# --- B値のしきい値で分類 ---
+others["B値"] = df.set_index("車番").loc[others["車番"]]["B"]
+
+low_B_df = others[others["B値"] <= 2].copy()
+high_B_df = others[others["B値"] >= 3].copy()
+
+# --- 個性補正（数値ベース）を算出 ---
+for target_df in [low_B_df, high_B_df]:
+    target_df["個性補正"] = (
+        target_df["着順補正"] * 0.8 +
+        target_df["SB印補正"] * 1.2 +
+        target_df["ライン補正"] * 0.5 +
+        target_df["グループ補正"] * 0.3
+    )
+
+# --- 各グループから個性補正上位を抽出 ---
+low_b_pick = low_B_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
+high_b_pick = high_B_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
 
 # --- anchor_index のライン取得 ---
 anchor_line = None
@@ -442,25 +460,22 @@ for k, v in line_def.items():
         break
 
 same_line_others = [c for c in line_def.get(anchor_line, []) if c != anchor_index and c in others["車番"].tolist()]
-line_df = others[others["車番"].isin(same_line_others)].copy().sort_values("個性補正", ascending=False)
-line_pick = line_df.iloc[0]["車番"] if not line_df.empty else None
+line_df = others[others["車番"].isin(same_line_others)].copy()
+line_df["個性補正"] = (
+    line_df["着順補正"] * 0.8 +
+    line_df["SB印補正"] * 1.2 +
+    line_df["ライン補正"] * 0.5 +
+    line_df["グループ補正"] * 0.3
+)
+line_pick = line_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
 
-# --- SB補正に基づきバック数でグループ分け ---
-sb_below_3 = others[others["B"] <= 2].copy()
-sb_above_2 = others[others["B"] >= 3].copy()
-
-# --- 各グループから個性補正で上位抽出（ただしline_pickと重複しないこと） ---
-cand_1 = sb_below_3[~sb_below_3["車番"].isin([line_pick])].sort_values("個性補正", ascending=False)["車番"].tolist()
-cand_2 = sb_above_2[~sb_above_2["車番"].isin([line_pick] + cand_1)].sort_values("個性補正", ascending=False)["車番"].tolist()
-
-# --- 最終候補集約（重複防止） ---
-final_candidates = [anchor_index]
-if line_pick: final_candidates.append(line_pick)
-if cand_1: final_candidates.append(cand_1[0])
-if cand_2: final_candidates.append(cand_2[0])
+# --- 重複排除して最終候補に ---
+candidates = [anchor_index] + line_pick + low_b_pick + high_b_pick
+final_candidates = []
+[final_candidates.append(c) for c in candidates if c not in final_candidates]
 
 # --- 表示 ---
 st.markdown("### 🎯 フォーメーション構成")
 st.markdown(f"◎（合計スコア1位）：{anchor_index}")
-st.markdown(f"【個性補正（SBバック分離型）上位3名（同ライン1名含む）】：{', '.join(map(str, final_candidates[1:]))}")
+st.markdown(f"【個性補正（B分離）3名（同ライン1名保障）】：{', '.join(map(str, final_candidates[1:]))}")
 st.markdown(f"👉 三連複4点：BOX（{', '.join(map(str, final_candidates))}）")
