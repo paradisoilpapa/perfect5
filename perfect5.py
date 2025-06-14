@@ -428,52 +428,56 @@ except NameError:
     st.warning("スコアデータが定義されていません。入力に問題がある可能性があります。")
     st.stop()
     
+import pandas as pd
+
 # --- ◎：スコア1位を抽出（軸固定） ---
 anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
 others = df[df["車番"] != anchor_index].copy()
 
-# --- B列が既にある前提で処理（存在チェック） ---
+# --- B列の存在確認と統合 ---
 if "B" not in df.columns:
-    df["B"] = 0  # 仮に全員0で初期化（実データに依存）
+    df["B"] = 0
 
-others = others.merge(df[["車番", "B"]], on="車番", how="left")
+others = pd.merge(others, df[["車番", "B"]], on="車番", how="left")
 
-# --- B値のしきい値で分類 ---
+# --- B値で分離 ---
 low_B_df = others[others["B"] <= 2].copy()
 high_B_df = others[others["B"] >= 3].copy()
 
 # --- 個性補正（数値ベース）を算出 ---
-for target_df in [low_B_df, high_B_df]:
-    target_df["個性補正"] = (
-        target_df["着順補正"] * 0.8 +
-        target_df["SB印補正"] * 1.2 +
-        target_df["ライン補正"] * 0.5 +
-        target_df["グループ補正"] * 0.3
+def calc_kosei(df_part):
+    return (
+        df_part["着順補正"] * 0.8 +
+        df_part["SB印補正"] * 1.2 +
+        df_part["ライン補正"] * 0.5 +
+        df_part["グループ補正"] * 0.3
     )
 
-# --- 各グループから個性補正上位を抽出 ---
+low_B_df["個性補正"] = calc_kosei(low_B_df)
+high_B_df["個性補正"] = calc_kosei(high_B_df)
+others["個性補正"] = calc_kosei(others)
+
+# --- 各グループから抽出 ---
 low_b_pick = low_B_df.sort_values("個性補正", ascending=False)["車番"].tolist()[:1]
 high_b_pick = high_B_df.sort_values("個性補正", ascending=False)["車番"].tolist()[:1]
 
-# --- anchor_index のライン取得 ---
+# --- anchorのラインから1名抽出 ---
 anchor_line = None
 for k, v in line_def.items():
     if anchor_index in v:
         anchor_line = k
         break
 
-same_line_others = [c for c in line_def.get(anchor_line, []) if c != anchor_index and c in others["車番"].tolist()]
-line_df = others[others["車番"].isin(same_line_others)].copy()
-line_df["個性補正"] = (
-    line_df["着順補正"] * 0.8 +
-    line_df["SB印補正"] * 1.2 +
-    line_df["ライン補正"] * 0.5 +
-    line_df["グループ補正"] * 0.3
-)
-line_pick = line_df.sort_values("個性補正", ascending=False)["車番"].tolist()[:1]
+line_pick = []
+if anchor_line:
+    same_line = [c for c in line_def.get(anchor_line, []) if c != anchor_index and c in others["車番"].tolist()]
+    if same_line:
+        line_df = others[others["車番"].isin(same_line)].copy()
+        line_df["個性補正"] = calc_kosei(line_df)
+        line_pick = line_df.sort_values("個性補正", ascending=False)["車番"].tolist()[:1]
 
-# --- 重複排除して最終候補に ---
+# --- 重複排除して表示候補に ---
 candidates = [anchor_index] + line_pick + low_b_pick + high_b_pick
 final_candidates = []
 [final_candidates.append(c) for c in candidates if c not in final_candidates and pd.notnull(c)]
