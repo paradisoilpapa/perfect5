@@ -443,9 +443,9 @@ others = others[others["車番"] != anchor_index]
 
 # --- signalスコアによる個性補正（SB＋ライン型バージョン） ---
 others["個性補正"] = (
-    others["SB印補正"] * 1.5 +
-    others["ライン補正"] * 1.0 +
-    others["着順補正"] * 0.3 +
+    others["SB印補正"] * 1.2 +
+    others["ライン補正"] * 0.3 +
+    others["着順補正"] * 0.5 +
     others["グループ補正"] * 0.2
 )
 
