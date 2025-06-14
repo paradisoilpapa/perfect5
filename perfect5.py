@@ -429,7 +429,7 @@ except NameError:
     st.stop()
     
     
-# --- B列が欠けていた場合の防御処理（ゼロで補完） ---
+# --- B列が欠けていた場合のみ追加（誤上書き防止） ---
 if "B" not in df.columns:
     df["B"] = 0
 
