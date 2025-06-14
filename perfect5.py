@@ -458,12 +458,15 @@ others["個性補正"] = (
     others["グループ順位"].apply(rank_to_signal) * 0.3
 )
 
+import numpy as np
+
 # --- 着順補正上位2名（同点なら3名） ---
 sorted_chaku = others.sort_values("着順補正", ascending=False)
 if len(sorted_chaku) >= 3 and np.isclose(sorted_chaku["着順補正"].iloc[1], sorted_chaku["着順補正"].iloc[2]):
     top_chaku = sorted_chaku.head(3)["車番"].tolist()
 else:
     top_chaku = sorted_chaku.head(2)["車番"].tolist()
+
 
 # --- SB補正上位4名（同点なら5名） ---
 sorted_sb = others.sort_values("SB印補正", ascending=False)
