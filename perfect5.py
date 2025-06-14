@@ -443,9 +443,9 @@ others = others[others["車番"] != anchor_index]
 
 # --- signalスコアによる個性補正（SB＋ライン型バージョン） ---
 others["個性補正"] = (
-    others["SB印補正"] * 1.2 +
-    others["ライン補正"] * 0.3 +
-    others["着順補正"] * 0.5 +
+    others["SB印補正"] * 1.5 +
+    others["ライン補正"] * 1.0 +
+    others["着順補正"] * 0.3 +
     others["グループ補正"] * 0.2
 )
 
@@ -460,14 +460,13 @@ same_line_others = [c for c in line_def.get(anchor_line, []) if c != anchor_inde
 line_df = others[others["車番"].isin(same_line_others)].copy().sort_values("個性補正", ascending=False)
 line_pick = line_df.iloc[0]["車番"] if not line_df.empty else None
 
-# --- SB補正で2以下・3以上に分けて1名ずつ個性補正で抽出（例外対応あり） ---
-sb_2_or_less_df = others[others["B"] <= 2].copy()
-sb_3_or_more_df = others[others["B"] > 2].copy()
+# --- 候補抽出：B2以下・B3以上から重複除外して選出 ---
+sb_2_or_less_df = others[(others["B"] <= 2) & (~others["車番"].isin([line_pick]))].copy()
+sb_3_or_more_df = others[(others["B"] > 2) & (~others["車番"].isin([line_pick]))].copy()
 
 cand_1 = sb_2_or_less_df.sort_values("個性補正", ascending=False)["車番"].tolist()
 cand_2 = sb_3_or_more_df.sort_values("個性補正", ascending=False)["車番"].tolist()
 
-# --- 重複を排除しつつ候補選出 ---
 final_candidates = [anchor_index]
 if line_pick and line_pick not in final_candidates:
     final_candidates.append(line_pick)
@@ -481,14 +480,6 @@ for c in cand_2:
     if c not in final_candidates:
         final_candidates.append(c)
         break
-
-# --- 補足：不足がある場合は個性補正上位から追加 ---
-if len(final_candidates) < 4:
-    additional = others[~others["車番"].isin(final_candidates)].sort_values("個性補正", ascending=False)["車番"].tolist()
-    for c in additional:
-        final_candidates.append(c)
-        if len(final_candidates) == 4:
-            break
 
 # --- 表示 ---
 st.markdown("### 🎯 フォーメーション構成")
