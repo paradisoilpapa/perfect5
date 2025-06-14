@@ -429,25 +429,10 @@ except NameError:
     st.stop()
     
     
-# --- B列が欠けていた場合のみ追加（誤上書き防止） ---
-if "B" not in df.columns:
-    df["B"] = 0
-
 # --- ◎：スコア1位を抽出（軸固定） ---
 anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
-
-# --- 全列保持しつつ anchor 除外 ---
-others = df.copy()
-others = others[others["車番"] != anchor_index]
-
-# --- signalスコアによる個性補正（SB＋ライン型バージョン） ---
-others["個性補正"] = (
-    others["SB印補正"] * 1.5 +
-    others["ライン補正"] * 1.0 +
-    others["着順補正"] * 0.3 +
-    others["グループ補正"] * 0.2
-)
+others = df[df["車番"] != anchor_index].copy()
 
 # --- anchor_index のライン取得 ---
 anchor_line = None
@@ -460,32 +445,22 @@ same_line_others = [c for c in line_def.get(anchor_line, []) if c != anchor_inde
 line_df = others[others["車番"].isin(same_line_others)].copy().sort_values("個性補正", ascending=False)
 line_pick = line_df.iloc[0]["車番"] if not line_df.empty else None
 
-# --- 候補抽出：B2以下・B3以上から重複除外して選出 ---
-sb_2_or_less_df = others[others["B"] <= 2].copy()
-sb_3_or_more_df = others[others["B"] > 2].copy()
+# --- SB補正に基づきバック数でグループ分け ---
+sb_below_3 = others[others["B"] <= 2].copy()
+sb_above_2 = others[others["B"] >= 3].copy()
 
-cand_1 = [c for c in sb_2_or_less_df.sort_values("個性補正", ascending=False)["車番"] if c not in [anchor_index, line_pick]]
-cand_2 = [c for c in sb_3_or_more_df.sort_values("個性補正", ascending=False)["車番"] if c not in [anchor_index, line_pick] + cand_1]
+# --- 各グループから個性補正で上位抽出（ただしline_pickと重複しないこと） ---
+cand_1 = sb_below_3[~sb_below_3["車番"].isin([line_pick])].sort_values("個性補正", ascending=False)["車番"].tolist()
+cand_2 = sb_above_2[~sb_above_2["車番"].isin([line_pick] + cand_1)].sort_values("個性補正", ascending=False)["車番"].tolist()
 
-# --- 組み立て（重複除外＋足りない場合は補完） ---
+# --- 最終候補集約（重複防止） ---
 final_candidates = [anchor_index]
-if line_pick and line_pick not in final_candidates:
-    final_candidates.append(line_pick)
-if cand_1:
-    final_candidates.append(cand_1[0])
-if cand_2:
-    final_candidates.append(cand_2[0])
-
-# --- 補完：不足していれば個性補正順で埋める ---
-if len(final_candidates) < 4:
-    filler = others[~others["車番"].isin(final_candidates)].sort_values("個性補正", ascending=False)["車番"].tolist()
-    for c in filler:
-        final_candidates.append(c)
-        if len(final_candidates) == 4:
-            break
+if line_pick: final_candidates.append(line_pick)
+if cand_1: final_candidates.append(cand_1[0])
+if cand_2: final_candidates.append(cand_2[0])
 
 # --- 表示 ---
 st.markdown("### 🎯 フォーメーション構成")
 st.markdown(f"◎（合計スコア1位）：{anchor_index}")
-st.markdown(f"【個性補正（SB+ライン型）上位3名（うち同ライン1名含む）】：{', '.join(map(str, final_candidates[1:]))}")
+st.markdown(f"【個性補正（SBバック分離型）上位3名（同ライン1名含む）】：{', '.join(map(str, final_candidates[1:]))}")
 st.markdown(f"👉 三連複4点：BOX（{', '.join(map(str, final_candidates))}）")
