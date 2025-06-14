@@ -467,3 +467,4 @@ st.markdown("### 🎯 フォーメーション構成")
 st.markdown(f"◎（合計スコア1位）：{anchor_index}")
 st.markdown(f"【個性補正（signal_score）上位3名】：{', '.join(map(str, top_indiv))}")
 st.markdown(f"👉 三連複4点：BOX（{anchor_index}, {', '.join(map(str, top_indiv))}）")
+
