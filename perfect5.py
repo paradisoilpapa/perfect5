@@ -453,8 +453,8 @@ for target_df in [low_B_df, high_B_df]:
     )
 
 # --- 各グループから個性補正上位を抽出 ---
-low_b_pick = low_B_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
-high_b_pick = high_B_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
+low_b_pick = low_B_df.sort_values("個性補正", ascending=False)["車番"].tolist()[:1]
+high_b_pick = high_B_df.sort_values("個性補正", ascending=False)["車番"].tolist()[:1]
 
 # --- anchor_index のライン取得 ---
 anchor_line = None
@@ -471,12 +471,12 @@ line_df["個性補正"] = (
     line_df["ライン補正"] * 0.5 +
     line_df["グループ補正"] * 0.3
 )
-line_pick = line_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
+line_pick = line_df.sort_values("個性補正", ascending=False)["車番"].tolist()[:1]
 
 # --- 重複排除して最終候補に ---
 candidates = [anchor_index] + line_pick + low_b_pick + high_b_pick
 final_candidates = []
-[final_candidates.append(c) for c in candidates if c not in final_candidates]
+[final_candidates.append(c) for c in candidates if c not in final_candidates and pd.notnull(c)]
 
 # --- 表示 ---
 st.markdown("### 🎯 フォーメーション構成")
