@@ -432,7 +432,15 @@ except NameError:
 # --- ◎：スコア1位を抽出（軸固定） ---
 anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
-others = df[df["車番"] != anchor_index].copy()
+others = df[df["車番"] != anchor_index].copy()  # 車番列を確実に保持
+
+# --- signalスコアによる個性補正（SB＋ライン型バージョン） ---
+others["個性補正"] = (
+    others["SB印補正"] * 1.5 +
+    others["ライン補正"] * 1.0 +
+    others["着順補正"] * 0.3 +
+    others["グループ補正"] * 0.2
+)
 
 # --- anchor_index のライン取得 ---
 anchor_line = None
@@ -446,8 +454,8 @@ line_df = others[others["車番"].isin(same_line_others)].copy().sort_values("�
 line_pick = line_df.iloc[0]["車番"] if not line_df.empty else None
 
 # --- SB補正で2以下・3以上に分けて1名ずつ個性補正で抽出（例外対応あり） ---
-sb_2_or_less_df = others[others["SB補正値"] <= 2].copy()
-sb_3_or_more_df = others[others["SB補正値"] >= 3].copy()
+sb_2_or_less_df = others[others["B"] <= 2].copy()
+sb_3_or_more_df = others[others["B"] > 2].copy()
 
 cand_1 = sb_2_or_less_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
 cand_2 = sb_3_or_more_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
