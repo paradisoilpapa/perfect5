@@ -460,7 +460,7 @@ others["個性補正"] = (
 
 # --- 着順補正上位2名（同点なら3名） ---
 sorted_chaku = others.sort_values("着順補正", ascending=False)
-if len(sorted_chaku) >= 3 and np.isclose(sorted_chaku.iloc[1]["着順補正"], sorted_chaku.iloc[2]["着順補正"]):
+if len(sorted_chaku) >= 3 and np.isclose(sorted_chaku["着順補正"].iloc[1], sorted_chaku["着順補正"].iloc[2]):
     top_chaku = sorted_chaku.head(3)["車番"].tolist()
 else:
     top_chaku = sorted_chaku.head(2)["車番"].tolist()
@@ -471,7 +471,6 @@ if len(sorted_sb) >= 5 and np.isclose(sorted_sb["SB印補正"].iloc[3], sorted_s
     top_sb = sorted_sb.head(5)["車番"].tolist()
 else:
     top_sb = sorted_sb.head(4)["車番"].tolist()
-
 
 # --- 個性補正（着順+SB+ライン+グループ）上位4名（同点なら5名） ---
 sorted_indiv = others.sort_values("個性補正", ascending=False)
