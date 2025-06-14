@@ -429,11 +429,15 @@ except NameError:
     st.stop()
     
     
+# --- B列が欠けていた場合の防御処理（ゼロで補完） ---
+if "B" not in df.columns:
+    df["B"] = 0
+
 # --- ◎：スコア1位を抽出（軸固定） ---
 anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
 
-# --- 全列保持しつつ anchor 除外（B列などが消えないように） ---
+# --- 全列保持しつつ anchor 除外 ---
 others = df.copy()
 others = others[others["車番"] != anchor_index]
 
