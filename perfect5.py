@@ -434,12 +434,12 @@ anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
 others = df[df["車番"] != anchor_index].copy()
 
-# --- signalスコアによる個性補正を数値ベースで加重算出 ---
+# --- 個性補正を数値ベースで加重算出 ---
 others["個性補正"] = (
-    others["着順補正"] * 0.8 +
-    others["SB印補正"] * 1.2 +
-    others["ライン補正"] * 0.5 +
-    others["グループ補正"] * 0.3
+    others["SB印補正"] * 1.5 +
+    others["ライン補正"] * 1.0 +
+    others["着順補正"] * 0.3 +
+    others["グループ補正"] * 0.2
 )
 
 # --- anchor_index のライン取得 ---
@@ -449,28 +449,17 @@ for k, v in line_def.items():
         anchor_line = k
         break
 
-# --- anchor_line に属する車番のうち、anchor_index 以外の者を抽出 ---
-same_line_others = [c for c in line_def.get(anchor_line, []) if c != anchor_index]
-same_line_others = [c for c in same_line_others if c in others["車番"].tolist()]
+same_line_others = [c for c in line_def.get(anchor_line, []) if c != anchor_index and c in others["車番"].tolist()]
+line_df = others[others["車番"].isin(same_line_others)].copy().sort_values("個性補正", ascending=False)
+line_pick = line_df.iloc[0]["車番"] if not line_df.empty else None
 
-# --- 同ライン内で個性補正が高い順に1名選出 ---
-line_df = others[others["車番"].isin(same_line_others)].copy()
-line_df = line_df.sort_values("個性補正", ascending=False)
-if not line_df.empty:
-    line_pick = line_df.iloc[0]["車番"]
-else:
-    line_pick = None
-
-# --- 個性補正の上位候補から line_pick を除いた上位2名を選出（重複回避） ---
 sorted_indiv = others.sort_values("個性補正", ascending=False)
-top_indiv = sorted_indiv["車番"].tolist()
-top_indiv = [x for x in top_indiv if x != line_pick][:2]  # line_pickを除いた上位2名
+top_indiv = [x for x in sorted_indiv["車番"].tolist() if x != line_pick][:2]
 
-# --- 最終：◎＋（line_pick＋top_indiv 2名）＝三連複4点BOX ---
 final_candidates = [anchor_index] + ([line_pick] if line_pick else []) + top_indiv
 
 # --- 表示 ---
 st.markdown("### 🎯 フォーメーション構成")
 st.markdown(f"◎（合計スコア1位）：{anchor_index}")
-st.markdown(f"【個性補正（score-based）上位3名（うち同ライン1名保障）】：{', '.join(map(str, final_candidates[1:]))}")
+st.markdown(f"【個性補正（SB+ライン型）上位3名（同ライン1名含む）】：{', '.join(map(str, final_candidates[1:]))}")
 st.markdown(f"👉 三連複4点：BOX（{', '.join(map(str, final_candidates))}）")
