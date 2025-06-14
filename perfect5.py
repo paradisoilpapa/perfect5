@@ -447,8 +447,8 @@ def calc_kosei(df_part):
     return (
         df_part["着順補正"] * 0.8 +
         df_part["SB印補正"] * 1.2 +
-        df_part["ライン補正"] * 0.5 +
-        df_part["グループ補正"] * 0.3
+        df_part["ライン補正"] * 0.4 +
+        df_part["グループ補正"] * 0.15
     )
 
 others["個性補正"] = calc_kosei(others)
@@ -458,10 +458,6 @@ low_B_df = others[others["B"] <= 2].copy()
 high_B_df = others[others["B"] >= 3].copy()
 low_B_df["個性補正"] = calc_kosei(low_B_df)
 high_B_df["個性補正"] = calc_kosei(high_B_df)
-
-# --- 各グループから個性補正上位を抽出 ---
-low_b_pick = low_B_df.sort_values("個性補正", ascending=False)["車番"].tolist()
-high_b_pick = high_B_df.sort_values("個性補正", ascending=False)["車番"].tolist()
 
 # --- anchorのラインから1名抽出 ---
 anchor_line = None
@@ -480,7 +476,7 @@ if anchor_line:
 
 # --- 重複排除しつつ優先順位で選出 ---
 candidates = [anchor_index]
-for group in [line_pick, low_b_pick, high_b_pick]:
+for group in [line_pick, low_B_df.sort_values("個性補正", ascending=False)["車番"].tolist(), high_B_df.sort_values("個性補正", ascending=False)["車番"].tolist()]:
     for c in group:
         if c not in candidates and pd.notnull(c):
             candidates.append(c)
