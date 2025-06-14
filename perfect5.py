@@ -432,7 +432,7 @@ except NameError:
 # --- ◎：スコア1位を抽出（軸固定） ---
 anchor_row = df.loc[df["合計スコア"].idxmax()]
 anchor_index = anchor_row["車番"]
-others = df[df["車番"] != anchor_index].copy()  # 車番列を確実に保持
+others = df[df["車番"] != anchor_index].copy()  # 全列を保持してエラー防止
 
 # --- signalスコアによる個性補正（SB＋ライン型バージョン） ---
 others["個性補正"] = (
