@@ -464,18 +464,31 @@ line_pick = line_df.iloc[0]["車番"] if not line_df.empty else None
 sb_2_or_less_df = others[others["B"] <= 2].copy()
 sb_3_or_more_df = others[others["B"] > 2].copy()
 
-cand_1 = sb_2_or_less_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
-cand_2 = sb_3_or_more_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
+cand_1 = sb_2_or_less_df.sort_values("個性補正", ascending=False)["車番"].tolist()
+cand_2 = sb_3_or_more_df.sort_values("個性補正", ascending=False)["車番"].tolist()
 
-if not cand_1:
-    cand_1 = sb_3_or_more_df.sort_values("個性補正", ascending=False).head(2)["車番"].tolist()
-    cand_2 = []
-elif not cand_2:
-    cand_2 = sb_2_or_less_df.sort_values("個性補正", ascending=False).head(2)["車番"].tolist()
-    cand_1 = []
+# --- 重複を排除しつつ候補選出 ---
+final_candidates = [anchor_index]
+if line_pick and line_pick not in final_candidates:
+    final_candidates.append(line_pick)
 
-final_candidates = [anchor_index] + ([line_pick] if line_pick else []) + cand_1 + cand_2
-final_candidates = list(dict.fromkeys(final_candidates))[:4]  # 重複排除しつつ最大4名に制限
+for c in cand_1:
+    if c not in final_candidates:
+        final_candidates.append(c)
+        break
+
+for c in cand_2:
+    if c not in final_candidates:
+        final_candidates.append(c)
+        break
+
+# --- 補足：不足がある場合は個性補正上位から追加 ---
+if len(final_candidates) < 4:
+    additional = others[~others["車番"].isin(final_candidates)].sort_values("個性補正", ascending=False)["車番"].tolist()
+    for c in additional:
+        final_candidates.append(c)
+        if len(final_candidates) == 4:
+            break
 
 # --- 表示 ---
 st.markdown("### 🎯 フォーメーション構成")
