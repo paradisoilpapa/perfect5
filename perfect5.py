@@ -431,50 +431,40 @@ except NameError:
 
 import pandas as pd
 
-# --- ◎：スコア1位を抽出（軸固定） ---
+# --- 必要な前提：DataFrame `df` に以下の列が存在すること ---
+# "車番", "合計スコア", "ライン", "B", "個性補正"
+
+# ◎（スコア1位）を抽出
 anchor_row = df.loc[df["合計スコア"].idxmax()]
-anchor_index = anchor_row["車番"]
-others = df[df["車番"] != anchor_index].copy()
+anchor_no = anchor_row["車番"]
+anchor_line = anchor_row["ライン"]
 
-# --- 個性補正（スコアベースでの重みづけ） ---
-others["個性補正"] = (
-    others["着順補正"] * 0.8 +
-    others["SB印補正"] * 1.2 +
-    others["ライン補正"] * 0.5 +
-    others["グループ補正"] * 0.3
-)
+# ◎以外の選手を抽出
+others = df[df["車番"] != anchor_no].copy()
 
-# --- anchor_index のライン取得 ---
-anchor_line = None
-for k, v in line_def.items():
-    if anchor_index in v:
-        anchor_line = k
-        break
+# ◎と同ラインの選手（1車）
+same_line_df = others[others["ライン"] == anchor_line]
+same_line_df = same_line_df.sort_values("個性補正", ascending=False)
+line_pick = same_line_df.iloc[0:1] if not same_line_df.empty else pd.DataFrame()
 
-same_line_others = [c for c in line_def.get(anchor_line, []) if c != anchor_index and c in others["車番"].tolist()]
-line_df = others[others["車番"].isin(same_line_others)].copy().sort_values("個性補正", ascending=False)
-line_pick = line_df.iloc[0]["車番"] if not line_df.empty else None
+# B回数2以下の中から個性補正上位（1車）
+low_B_df = others[others["B"] <= 2].sort_values("個性補正", ascending=False)
+low_B_pick = low_B_df.iloc[0:1] if not low_B_df.empty else pd.DataFrame()
 
-# --- SB回数に応じた抽出 ---
-others = others.copy()
-others["B回数"] = others["バック"]  # すでにB回数が入っている前提
+# B回数3以上の中から個性補正上位（1車）
+high_B_df = others[others["B"] >= 3].sort_values("個性補正", ascending=False)
+high_B_pick = high_B_df.iloc[0:1] if not high_B_df.empty else pd.DataFrame()
 
-low_B_df = others[others["B回数"] <= 2].copy().sort_values("個性補正", ascending=False)
-high_B_df = others[others["B回数"] >= 3].copy().sort_values("個性補正", ascending=False)
+# 候補を結合（重複排除）
+final_candidates = pd.concat([anchor_row.to_frame().T, line_pick, low_B_pick, high_B_pick])
+final_candidates = final_candidates.drop_duplicates(subset="車番")
 
-low_pick = low_B_df.iloc[0]["車番"] if not low_B_df.empty else None
-high_pick = high_B_df.iloc[0]["車番"] if not high_B_df.empty else None
+# 最終確認
+print("◎：", anchor_no)
+print("ライン補完：", line_pick["車番"].values if not line_pick.empty else "該当なし")
+print("B2以下補完：", low_B_pick["車番"].values if not low_B_pick.empty else "該当なし")
+print("B3以上補完：", high_B_pick["車番"].values if not high_B_pick.empty else "該当なし")
 
-# --- 候補統合 ---
-candidates = [anchor_index]
-if line_pick: candidates.append(line_pick)
-if low_pick and low_pick not in candidates: candidates.append(low_pick)
-if high_pick and high_pick not in candidates: candidates.append(high_pick)
-
-# --- 表示 ---
-st.markdown("### 🎯 フォーメーション構成")
-st.markdown(f"◎（合計スコア1位）：{anchor_index}")
-st.markdown(f"ライン補完：{line_pick if line_pick else '―'}")
-st.markdown(f"SB回数2以下から選出：{low_pick if low_pick else '―'}")
-st.markdown(f"SB回数3以上から選出：{high_pick if high_pick else '―'}")
-st.markdown(f"👉 三連複4点：BOX（{', '.join(map(str, candidates))}）")
+# 三連複構成
+box_numbers = final_candidates["車番"].tolist()
+print("👉 三連複BOX（{}点）：".format(len(box_numbers)), box_numbers)
