@@ -438,7 +438,7 @@ if "バック" in df.columns:
 # --- ◎（合計スコア1位）を抽出 ---
 anchor_idx = df["合計スコア"].idxmax()
 anchor_index = int(df.loc[anchor_idx, "車番"])
-anchor_line_value = df.loc[anchor_idx, "グループ補正値"]
+anchor_line_value = df.loc[anchor_idx, "グループ補正"]
 
 # --- ◎以外の選手を抽出 ---
 others = df[df["車番"] != anchor_index].copy()
@@ -453,7 +453,7 @@ others["個性補正"] = (
 )
 
 # --- ラインから1車 ---
-same_line_df = others[others["グループ補正値"] == anchor_line_value]
+same_line_df = others[others["グループ補正"] == anchor_line_value]
 line_pick = same_line_df.loc[same_line_df["個性補正"].idxmax(), "車番"] if not same_line_df.empty else None
 
 # --- B回数2以下から1車 ---
