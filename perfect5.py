@@ -431,9 +431,8 @@ except NameError:
 
 import pandas as pd
 
-# --- 列名の整備 ---
-if "バック" in df.columns:
-    df.rename(columns={"バック": "B回数"}, inplace=True)
+# --- 列名の統一（バック → B回数） ---
+df.rename(columns={"バック": "B回数"}, inplace=True)
 
 # --- ◎（合計スコア1位）を抽出 ---
 anchor_idx = df["合計スコア"].idxmax()
@@ -451,6 +450,9 @@ others["個性補正"] = (
     others["ライン補正"] * 0.4 +
     others["グループ補正"] * 0.2
 )
+
+# --- B回数の割り当て ---
+others["B回数"] = df.set_index("車番").loc[others["車番"], "B回数"].values
 
 # --- ラインから1車 ---
 same_line_df = others[others["グループ補正"] == anchor_line_value]
