@@ -437,8 +437,8 @@ anchor_index = anchor_row["車番"]
 anchor_group = anchor_row["グループ補正"]
 others = df[df["車番"] != anchor_index].copy()
 
-# --- B回数の割り当て ---
-others["B回数"] = df.set_index("車番").loc[others["車番"], "バック"].values
+# --- B回数の割り当て（「B」列から取得） ---
+others["B回数"] = df.set_index("車番").loc[others["車番"], "B"].values
 
 # --- 個性補正を数値ベースで加重算出 ---
 others["個性補正"] = (
@@ -450,25 +450,25 @@ others["個性補正"] = (
 
 # --- 同グループ補正の中から個性補正上位1名（ライン代用） ---
 same_group_df = others[others["グループ補正"] == anchor_group].copy()
-same_group_pick = same_group_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
+line_pick = same_group_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
 
 # --- B回数が2以下の選手から個性補正上位を1名 ---
 low_B_df = others[others["B回数"] <= 2].copy().sort_values("個性補正", ascending=False)
-low_B_pick = low_B_df[~low_B_df["車番"].isin(same_group_pick)].head(1)["車番"].tolist()
+low_B_pick = low_B_df[~low_B_df["車番"].isin(line_pick)].head(1)["車番"].tolist()
 
 # --- B回数が3以上の選手から個性補正上位を1名 ---
 high_B_df = others[others["B回数"] >= 3].copy().sort_values("個性補正", ascending=False)
 high_B_pick = high_B_df[
-    ~high_B_df["車番"].isin(same_group_pick + low_B_pick)
+    ~high_B_df["車番"].isin(line_pick + low_B_pick)
 ].head(1)["車番"].tolist()
 
 # --- 最終候補をまとめる ---
-final_candidates = [anchor_index] + same_group_pick + low_B_pick + high_B_pick
+final_candidates = [anchor_index] + line_pick + low_B_pick + high_B_pick
 
 # --- 表示 ---
 st.markdown("### 🎯 フォーメーション構成")
 st.markdown(f"◎（合計スコア1位）：{anchor_index}")
-st.markdown(f"ラインから1車：{same_group_pick if same_group_pick else '該当なし'}")
-st.markdown(f"B回数2以下から1車：{low_B_pick if low_B_pick else '該当なし'}")
-st.markdown(f"B回数3以上から1車：{high_B_pick if high_B_pick else '該当なし'}")
+st.markdown(f"ラインから1車：{line_pick[0] if line_pick else '該当なし'}")
+st.markdown(f"B回数2以下から1車：{low_B_pick[0] if low_B_pick else '該当なし'}")
+st.markdown(f"B回数3以上から1車：{high_B_pick[0] if high_B_pick else '該当なし'}")
 st.markdown(f"👉 三連複4点：BOX（{', '.join(map(str, final_candidates))}）")
