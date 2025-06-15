@@ -431,19 +431,20 @@ except NameError:
 
 import pandas as pd
 
-# --- スコア計算が完了した直後 ---
-# ※「バック」列が存在している前提
+# --- 列名の整備 ---
+if "バック" in df.columns:
+    df.rename(columns={"バック": "B回数"}, inplace=True)
 
-# 【列名統一】バック → B回数 に変更
-df.rename(columns={"バック": "B回数"}, inplace=True)
+# --- ◎（合計スコア1位）を抽出 ---
+anchor_idx = df["合計スコア"].idxmax()
+anchor_index = int(df.loc[anchor_idx, "車番"])
+anchor_line_value = df.loc[anchor_idx, "グループ補正値"]
 
-# --- ◎：スコア1位を抽出（軸固定） ---
-anchor_row = df.loc[df["合計スコア"].idxmax()]
-anchor_index = anchor_row["車番"]
-anchor_group = anchor_row["グループ補正"]
+# --- ◎以外の選手を抽出 ---
 others = df[df["車番"] != anchor_index].copy()
+others["B回数"] = df.set_index("車番").loc[others["車番"], "B回数"].values
 
-# --- 個性補正を数値ベースで加重算出 ---
+# --- 個性補正の算出 ---
 others["個性補正"] = (
     others["着順補正"] * 0.8 +
     others["SB印補正"] * 1.2 +
@@ -451,27 +452,34 @@ others["個性補正"] = (
     others["グループ補正"] * 0.2
 )
 
-# --- 同グループ補正の中から個性補正上位1名（ライン代用） ---
-same_group_df = others[others["グループ補正"] == anchor_group].copy()
-same_group_pick = same_group_df.sort_values("個性補正", ascending=False).head(1)["車番"].tolist()
+# --- ラインから1車 ---
+same_line_df = others[others["グループ補正値"] == anchor_line_value]
+line_pick = same_line_df.loc[same_line_df["個性補正"].idxmax(), "車番"] if not same_line_df.empty else None
 
-# --- B回数が2以下の選手から個性補正上位を1名 ---
-low_B_df = others[others["B回数"] <= 2].copy().sort_values("個性補正", ascending=False)
-low_B_pick = low_B_df[~low_B_df["車番"].isin(same_group_pick)].head(1)["車番"].tolist()
+# --- B回数2以下から1車 ---
+others_for_b = others.copy()
+if line_pick is not None:
+    others_for_b = others_for_b[others_for_b["車番"] != line_pick]
+low_B_df = others_for_b[others_for_b["B回数"] <= 2]
+low_B_pick = low_B_df.loc[low_B_df["個性補正"].idxmax(), "車番"] if not low_B_df.empty else None
 
-# --- B回数が3以上の選手から個性補正上位を1名 ---
-high_B_df = others[others["B回数"] >= 3].copy().sort_values("個性補正", ascending=False)
-high_B_pick = high_B_df[
-    ~high_B_df["車番"].isin(same_group_pick + low_B_pick)
-].head(1)["車番"].tolist()
+# --- B回数3以上から1車 ---
+others_for_high = others_for_b.copy()
+if low_B_pick is not None:
+    others_for_high = others_for_high[others_for_high["車番"] != low_B_pick]
+high_B_df = others_for_high[others_for_high["B回数"] >= 3]
+high_B_pick = high_B_df.loc[high_B_df["個性補正"].idxmax(), "車番"] if not high_B_df.empty else None
 
-# --- 最終候補をまとめる ---
-final_candidates = [anchor_index] + same_group_pick + low_B_pick + high_B_pick
+# --- 最終構成 ---
+final_candidates = [anchor_index]
+if line_pick is not None: final_candidates.append(int(line_pick))
+if low_B_pick is not None: final_candidates.append(int(low_B_pick))
+if high_B_pick is not None: final_candidates.append(int(high_B_pick))
 
 # --- 表示 ---
 st.markdown("### 🎯 フォーメーション構成")
 st.markdown(f"◎（合計スコア1位）：{anchor_index}")
-st.markdown(f"ラインから1車：{same_group_pick if same_group_pick else '該当なし'}")
-st.markdown(f"B回数2以下から1車：{low_B_pick if low_B_pick else '該当なし'}")
-st.markdown(f"B回数3以上から1車：{high_B_pick if high_B_pick else '該当なし'}")
+st.markdown(f"ラインから1車：{line_pick if line_pick is not None else '該当なし'}")
+st.markdown(f"B回数2以下から1車：{low_B_pick if low_B_pick is not None else '該当なし'}")
+st.markdown(f"B回数3以上から1車：{high_B_pick if high_B_pick is not None else '該当なし'}")
 st.markdown(f"👉 三連複4点：BOX（{', '.join(map(str, final_candidates))}）")
