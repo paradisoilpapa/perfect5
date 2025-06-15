@@ -430,14 +430,19 @@ except NameError:
     
 
 import pandas as pd
+import streamlit as st
 
 # --- B回数列の統一（バック → B回数）---
 df.rename(columns={"バック": "B回数"}, inplace=True)
 
+# --- ユーザー入力されたB回数（バック回数）をdfへ格納 ---
+b_list = [st.session_state.get(f"b_point_{i+1}", 0) for i in range(7)]
+df["B回数"] = b_list
+
 # --- ◎（合計スコア1位）抽出 ---
 anchor_idx = df["合計スコア"].idxmax()
 anchor_row = df.loc[anchor_idx]
-anchor_index = int(anchor_row["車番"])
+anchor_index = int(df.loc[anchor_idx, "車番"])
 anchor_line_value = anchor_row["グループ補正"]
 
 # --- その他選手の抽出 ---
@@ -451,31 +456,32 @@ others["個性補正"] = (
     others["グループ補正"] * 0.2
 )
 
-# --- B回数を参照（列名統一済の "B回数" を使用）---
+# --- B回数を参照 ---
 others["B回数"] = df.set_index("車番").loc[others["車番"], "B回数"].values
 
-# --- ライン1車抽出 ---
+# --- ラインから1車抽出 ---
 same_line_df = others[others["グループ補正"] == anchor_line_value].copy()
 line_pick = same_line_df.loc[same_line_df["個性補正"].idxmax(), "車番"] if not same_line_df.empty else None
 
-# --- B回数2以下から1車 ---
+# --- B回数2以下から1車抽出 ---
 others_for_b = others.copy()
 if line_pick is not None:
     others_for_b = others_for_b[others_for_b["車番"] != line_pick]
 low_B_df = others_for_b[others_for_b["B回数"] <= 2].copy()
 low_B_pick = low_B_df.loc[low_B_df["個性補正"].idxmax(), "車番"] if not low_B_df.empty else None
 
-# --- B回数3以上から1車 ---
-high_B_df = others_for_b[others_for_b["B回数"] >= 3].copy()
+# --- B回数3以上から1車抽出 ---
+others_for_b2 = others.copy()
+if line_pick is not None:
+    others_for_b2 = others_for_b2[others_for_b2["車番"] != line_pick]
+if low_B_pick is not None:
+    others_for_b2 = others_for_b2[others_for_b2["車番"] != low_B_pick]
+high_B_df = others_for_b2[others_for_b2["B回数"] >= 3].copy()
 high_B_pick = high_B_df.loc[high_B_df["個性補正"].idxmax(), "車番"] if not high_B_df.empty else None
 
-# --- 最終候補を統合 ---
-final_candidates = [anchor_index]
-for pick in [line_pick, low_B_pick, high_B_pick]:
-    if pick is not None:
-        final_candidates.append(pick)
+# --- フォーメーション構成表示 ---
+final_candidates = [anchor_index] + [c for c in [line_pick, low_B_pick, high_B_pick] if c is not None]
 
-# --- 表示（エラー時も確認しやすいよう明示）---
 st.markdown("### 🎯 フォーメーション構成")
 st.markdown(f"◎（合計スコア1位）：{anchor_index}")
 st.markdown(f"ラインから1車：{line_pick if line_pick else '該当なし'}")
