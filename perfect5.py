@@ -7,23 +7,23 @@ st.set_page_config(page_title="ライン競輪スコア計算（完全統一版�
 st.title("⭐ ライン競輪スコア計算（7車ライン＋欠番対応）⭐")
 
 wind_coefficients = {
-    "左上": -0.07,   # ホーム寄りからの風 → 差し有利（逃げやや不利）
-    "上":   -0.10,   # バック向かい風 → 逃げ最大不利
-    "右上": -0.07,   # 差しやや有利
+    "左上": -0.03,   # ホーム寄りからの風 → 差し有利（逃げやや不利）
+    "上":   -0.05,   # バック向かい風 → 逃げ最大不利
+    "右上": -0.035,   # 差しやや有利
 
-    "左":   +0.10,   # ホーム向かい風 → 差し不利、逃げ有利
-    "右":   -0.10,   # バック追い風 → 差し不利、逃げ有利
+    "左":   +0.05,   # ホーム向かい風 → 差し不利、逃げ有利
+    "右":   -0.05,   # バック追い風 → 差し不利、逃げ有利
 
-    "左下": +0.07,   # ゴール寄り追い風 → 差しやや有利
-    "下":   +0.10,   # ゴール強追い風 → 差し最大有利（逃げ最大不利）
-    "右下": +0.07    # 差しやや有利
+    "左下": +0.035,   # ゴール寄り追い風 → 差しやや有利
+    "下":   +0.05,   # ゴール強追い風 → 差し最大有利（逃げ最大不利）
+    "右下": +0.035    # 差しやや有利
 }
 position_multipliers = {
-    0: 0.6,  # 単騎
-    1: 0.65,  # 先頭
-    2: 0.6,
-    3: 0.5,
-    4: 0.4  # 4番手
+    0: 0.3,  # 単騎
+    1: 0.32,  # 先頭
+    2: 0.3,
+    3: 0.25,
+    4: 0.2  # 4番手
 }
 
 
@@ -132,13 +132,13 @@ selected_info = keirin_data[selected_track]
 wind_speed = st.number_input("風速(m/s)", min_value=0.0, max_value=30.0, step=0.1, value=3.0)
 
 # ▼ 自動反映される直線長さ・バンク角・周長
-straight_length = st.number_input("みなし直線(m)", min_value=30.0, max_value=80.0, step=0.1,
+straight_length = st.number_input("みなし直線(m)", min_value=30.0, max_value=80.0, step=0.05,
                                   value=float(selected_info["straight_length"]))
 
-bank_angle = st.number_input("バンク角(°)", min_value=20.0, max_value=45.0, step=0.1,
+bank_angle = st.number_input("バンク角(°)", min_value=20.0, max_value=45.0, step=0.05,
                              value=float(selected_info["bank_angle"]))
 
-bank_length = st.number_input("バンク周長(m)", min_value=300.0, max_value=500.0, step=0.1,
+bank_length = st.number_input("バンク周長(m)", min_value=300.0, max_value=500.0, step=0.05,
                               value=float(selected_info["bank_length"]))
 
 
@@ -253,14 +253,14 @@ if st.button("スコア計算実行"):
         if direction == "無風" or speed < 0.5:
             return 0
     
-        base = wind_coefficients.get(direction, 0.0)  # e.g. 上=+0.10
-        pos_mult = position_multipliers.get(pos, 0.0)  # e.g. 先頭=1.0, 番手=0.6
+        base = wind_coefficients.get(direction, 0.0)  # e.g. 上=+0.005
+        pos_mult = position_multipliers.get(pos, 0.0)  # e.g. 先頭=0.5, 番手=0.3
     
         # 強化された脚質補正係数（±1.0スケールに）
         kaku_coeff = {
-            '逃': +1.0,
-            '両':  0.5,
-            '追': -1.0
+            '逃': +0.3,
+            '両':  +0.15,
+            '追': -0.3
         }.get(kaku, 0.0)
     
         total = base * speed * pos_mult * kaku_coeff  # 例: +0.1×10×1×1 = +1.0
@@ -276,7 +276,7 @@ if st.button("スコア計算実行"):
                 if 1 <= chaku <= 9:
                     score = (10 - chaku) / 9
                     if i == 1:  # 前々走のみ補正
-                        score *= 0.7
+                        score *= 0.35
                     scores.append(score)
             except ValueError:
                 continue
@@ -286,20 +286,20 @@ if st.button("スコア計算実行"):
 
 
     def lap_adjust(kaku, laps):
-        delta = max(laps - 4, 0)
+        delta = max(laps - 2, 0)
         return {
-            '逃': round(-0.2 * delta, 2),
-            '追': round(+0.1 * delta, 2),
+            '逃': round(-0.1 * delta, 1),
+            '追': round(+0.05 * delta, 1),
             '両': 0.0
         }.get(kaku, 0.0)
 
     def line_member_bonus(pos):
         return {
-            0: 0.5,  # 単騎
-            1: 0.5,  # 先頭（ライン1番手）
-            2: 0.6,  # 2番手（番手）
-            3: 0.4,  # 3番手（最後尾）
-            4: 0.3   # 4番手（9車用：評価不要レベル）
+            0: 0.25,  # 単騎
+            1: 0.25,  # 先頭（ライン1番手）
+            2: 0.3,  # 2番手（番手）
+            3: 0.3,  # 3番手（最後尾）
+            4: 0.15   # 4番手（9車用：評価不要レベル）
         }.get(pos, 0.0)
 
 
@@ -309,8 +309,8 @@ if st.button("スコア計算実行"):
         """
         straight_factor = (straight - 40.0) / 10.0
         angle_factor = (angle - 25.0) / 5.0
-        total_factor = -0.2 * straight_factor + 0.2 * angle_factor
-        return round({'逃': +total_factor, '追': -total_factor, '両': +0.5 * total_factor}.get(kaku, 0.0), 2)
+        total_factor = -0.1 * straight_factor + 0.1 * angle_factor
+        return round({'逃': +total_factor, '追': -total_factor, '両': +0.25 * total_factor}.get(kaku, 0.0), 2)
         
     def bank_length_adjust(kaku, length):
         """
@@ -318,7 +318,7 @@ if st.button("スコア計算実行"):
         """
         delta = (length - 411) / 100
         delta = max(min(delta, 0.075), -0.075)
-        return round({'逃': 2.0 * delta, '両': 4.0 * delta, '追': 6.0 * delta}.get(kaku, 0.0), 2)
+        return round({'逃': 1.0 * delta, '両': 2.0 * delta, '追': 3.0 * delta}.get(kaku, 0.0), 2)
 
     def compute_group_bonus(score_parts, line_def):
         group_scores = {k: 0.0 for k in ['A', 'B', 'C', 'D']}
@@ -335,8 +335,8 @@ if st.button("スコア計算実行"):
         # 合計スコアで順位を決定（平均ではない）
         sorted_lines = sorted(group_scores.items(), key=lambda x: x[1], reverse=True)
     
-        # 上位グループから順に 0.5 → 0.4 → 0.3→0.2 のボーナスを付与
-        bonus_map = {group: [0.5, 0.4, 0.3, 0.2][idx] for idx, (group, _) in enumerate(sorted_lines)}
+        # 上位グループから順に 0.25 → 0.2 → 0.15→0.1 のボーナスを付与
+        bonus_map = {group: [0.25, 0.2, 0.15, 0.1][idx] for idx, (group, _) in enumerate(sorted_lines)}
     
         return bonus_map
 
@@ -345,10 +345,10 @@ if st.button("スコア計算実行"):
         for group in ['A', 'B', 'C', 'D']:
             if car_no in line_def[group]:
                 base_bonus = group_bonus_map.get(group, 0.0)
-                s_bonus = 0.3 if group == 'A' else 0.0  # ← 無条件でAだけに+0.3
+                s_bonus = 0.15 if group == 'A' else 0.0  # ← 無条件でAだけに+0.15
                 return base_bonus + s_bonus
         if '単騎' in line_def and car_no in line_def['単騎']:
-            return 0.3
+            return 0.2
         return 0.0
 
  # ライン構成取得
