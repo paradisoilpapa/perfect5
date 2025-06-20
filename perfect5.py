@@ -226,8 +226,14 @@ def build_line_position_map():
 st.subheader("▼ スコア計算")
 if st.button("スコア計算実行"):
 
-    def extract_car_list(input_str):
-        return [int(c) for c in input_str if c.isdigit()]
+    def extract_car_list(input_data):
+        if isinstance(input_data, str):
+            return [int(c) for c in input_data if c.isdigit()]
+        elif isinstance(input_data, list):
+            return [int(c) for c in input_data if isinstance(c, (str, int)) and str(c).isdigit()]
+        else:
+            return []
+
 
     def score_from_tenscore_list(tenscore_list):
         import pandas as pd
