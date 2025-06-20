@@ -208,8 +208,13 @@ solo_line = st.text_input("単騎枠（例：9）", key="solo_line", max_chars=9
 
 
 # --- ライン構成入力に必要な補助関数 ---
-def extract_car_list(input_str):
-    return [int(c) for c in input_str if c.isdigit()]
+def extract_car_list(input_data):
+    if isinstance(input_data, str):
+        return [int(c) for c in input_data if c.isdigit()]
+    elif isinstance(input_data, list):
+        return [int(c) for c in input_data if isinstance(c, (str, int)) and str(c).isdigit()]
+    else:
+        return []
 
 def build_line_position_map():
     result = {}
