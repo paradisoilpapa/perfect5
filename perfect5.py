@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 """
-ヴェロビ（欠車対応・統一版perfect5ver）
+ヴェロビ（欠車対応・統一版KAPP3）
 - 目的：7車UIを維持しつつ、欠車（隊列空欄）でも安全に計算が通るように全面整理
 - 主な変更点：
   1) active_idx（有効車番）で全ループを駆動（range(7)固定の解消）
@@ -181,23 +181,35 @@ def score_from_tenscore_list_dynamic(tenscore_list, upper_k=8):
     return (df.apply(corr, axis=1)).tolist()
 
 
-def compute_group_bonus(score_parts, line_def):
-    """ライン合計スコアで順位→ボーナス値を割当。実在キーのみ対象。"""
+def compute_group_bonus(score_parts, line_def, n=n_cars):
+    """人数に応じた補正：8車=α0.25, 9車=α0.5 で人数バイアスを抑制。
+    総配分は 7車基準0.42 を人数に応じてスケール（5車≈0.36, 9車≈0.48）。"""
     if not line_def:
         return {}
-    # 車番→グループ逆引き
+
+    alpha = 0.0 if n <= 7 else (0.25 if n == 8 else 0.5)
+    total_budget = 0.42 * ((max(n,1) / 7.0) ** 0.5)
+
     car_to_group = {car: g for g, members in line_def.items() for car in members}
-    # 合計集計
-    group_scores = {g: 0.0 for g in line_def}
+    sums, sizes = {}, {}
+    for g, members in line_def.items():
+        sums[g], sizes[g] = 0.0, max(len(members), 1)
+
     for row in score_parts:
         car_no, total = row[0], row[-1]
         g = car_to_group.get(car_no)
         if g:
-            group_scores[g] += total
-    # 順位化
-    sorted_lines = sorted(group_scores.items(), key=lambda x: x[1], reverse=True)
-    base_vals = [0.125, 0.10, 0.075, 0.05, 0.04, 0.02, 0.01][:len(sorted_lines)]
-    return {g: base_vals[idx] for idx, (g, _) in enumerate(sorted_lines)}
+            sums[g] += total
+
+    adj = {g: (sums[g] / (sizes[g] ** alpha)) for g in line_def.keys()}
+    sorted_lines = sorted(adj.items(), key=lambda x: x[1], reverse=True)
+
+    r = 0.80
+    weights = [r**i for i in range(len(sorted_lines))]
+    sw = sum(weights) if weights else 1.0
+    bonuses = [(w / sw) * total_budget for w in weights]
+
+    return {g: bonuses[i] for i, (g, _) in enumerate(sorted_lines)}
 
 
 def get_group_bonus(car_no, line_def, bonus_map, a_head_bonus=True):
@@ -211,8 +223,8 @@ def get_group_bonus(car_no, line_def, bonus_map, a_head_bonus=True):
 # Streamlit UI
 # =========================================================
 
-st.set_page_config(page_title="ライン競輪スコア計算（欠車対応・統一版perfect5）", layout="wide")
-st.title("⭐ ライン競輪スコア計算（欠車対応・統一版perfect5）⭐")
+st.set_page_config(page_title="ライン競輪スコア計算（欠車対応・統一版KAPP3）", layout="wide")
+st.title("⭐ ライン競輪スコア計算（欠車対応・統一版KAPP3）⭐")
 
 # 風向選択（ボタン）
 if "selected_wind" not in st.session_state:
@@ -326,11 +338,41 @@ line_order = [line_order_map.get(i + 1, 0) for i in range(7)]
 
 # 有効車番のみ採用
 active_idx = [i for i in range(7) if str(tairetsu[i]).isdigit()]
+# ▼ 人数に応じた動的パラメータ（5〜9車を一括運用）
+n_cars = len(active_idx)
+
+def choose_upper_k(n: int) -> int:
+    # 小頭数は 2〜n、7車は 2〜6、8〜9車は 2〜8
+    if n <= 3:   return 0  # 計算しない（全員0）
+    if n == 4:   return 4
+    if n == 5:   return 5
+    if n == 6:   return 6
+    if n == 7:   return 6
+    return 8
+
+def dynamic_params(n: int):
+    # 位置ボーナスと風倍率の“定義範囲”を人数で拡張
+    if n <= 7:
+        line_bonus = {0:0.03, 1:0.05, 2:0.04, 3:0.03}
+        pos_multi  = {0:0.30, 1:0.32, 2:0.30, 3:0.25, 4:0.20}
+    else:
+        line_bonus = {0:0.03, 1:0.05, 2:0.04, 3:0.03, 4:0.02, 5:0.015}
+        pos_multi  = {0:0.30, 1:0.32, 2:0.30, 3:0.25, 4:0.20, 5:0.18}
+    upper_k = choose_upper_k(n)
+    return line_bonus, pos_multi, upper_k
+
+# グローバルに反映（既存の定数を上書きして使う）
+LINE_BONUS, POS_MULTI, UPPER_K = dynamic_params(n_cars)
+
+# 既存定義を動的版で上書き
+
+def line_member_bonus(line_order):
+    return LINE_BONUS.get(line_order, 0.0)
 
 # 競争得点補正（有効車番だけ計算→7枠に戻す）
 ratings_active = [rating[i] for i in active_idx]
 # upper_k は 6/8 のいずれかで好みに合わせて調整可
-corr_active = score_from_tenscore_list_dynamic(ratings_active, upper_k=8)
+corr_active = score_from_tenscore_list_dynamic(ratings_active, upper_k=UPPER_K)
 
 tenscore_score = [0.0] * 7
 for j, k in enumerate(active_idx):
