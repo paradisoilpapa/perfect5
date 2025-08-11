@@ -211,7 +211,7 @@ def get_group_bonus(car_no, line_def, bonus_map, a_head_bonus=True):
 # Streamlit UI
 # =========================================================
 
-st.set_page_config(page_title="ライン競輪スコア計算（欠車対応・統一版KAPP3）", layout="wide")
+st.set_page_config(page_title="ライン競輪スコア計算（欠車対応・統一版perfect5）", layout="wide")
 st.title("⭐ ライン競輪スコア計算（欠車対応・統一版KAPP3）⭐")
 
 # 風向選択（ボタン）
