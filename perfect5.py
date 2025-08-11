@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 """
-ヴェロビ（欠車対応・統一版KAPP3）
+ヴェロビ（欠車対応・統一版perfect5）
 - 目的：7車UIを維持しつつ、欠車（隊列空欄）でも安全に計算が通るように全面整理
 - 主な変更点：
   1) active_idx（有効車番）で全ループを駆動（range(7)固定の解消）
@@ -223,8 +223,8 @@ def get_group_bonus(car_no, line_def, bonus_map, a_head_bonus=True):
 # Streamlit UI
 # =========================================================
 
-st.set_page_config(page_title="ライン競輪スコア計算（欠車対応・統一版KAPP3）", layout="wide")
-st.title("⭐ ライン競輪スコア計算（欠車対応・統一版KAPP3）⭐")
+st.set_page_config(page_title="ライン競輪スコア計算（欠車対応・統一版perfect5）", layout="wide")
+st.title("⭐ ライン競輪スコア計算（欠車対応・統一版perfect5）⭐")
 
 # ▼ 最大入力車数（7→9に拡張）
 N_MAX = 9
