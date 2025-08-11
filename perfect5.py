@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 """
-ヴェロビ（欠車対応・統一版perfect5）
+ヴェロビ（欠車対応・統一版KAPP3）
 - 目的：7車UIを維持しつつ、欠車（隊列空欄）でも安全に計算が通るように全面整理
 - 主な変更点：
   1) active_idx（有効車番）で全ループを駆動（range(7)固定の解消）
@@ -180,6 +180,7 @@ def score_from_tenscore_list_dynamic(tenscore_list, upper_k=8):
         return round(abs(baseline - row["得点"]) * 0.03, 3) if row["順位"] in [2, 3, 4] else 0.0
     return (df.apply(corr, axis=1)).tolist()
 
+
 def compute_group_bonus(score_parts, line_def, n):
     """人数に応じた補正：8車=α0.25, 9車=α0.5 で人数バイアスを抑制。
     総配分は 7車基準0.42 を人数に応じてスケール（5車≈0.36, 9車≈0.48）。"""
@@ -222,8 +223,11 @@ def get_group_bonus(car_no, line_def, bonus_map, a_head_bonus=True):
 # Streamlit UI
 # =========================================================
 
-st.set_page_config(page_title="ライン競輪スコア計算（欠車対応・統一版perfect5）", layout="wide")
-st.title("⭐ ライン競輪スコア計算（欠車対応・統一版perfect5）⭐")
+st.set_page_config(page_title="ライン競輪スコア計算（欠車対応・統一版KAPP3）", layout="wide")
+st.title("⭐ ライン競輪スコア計算（欠車対応・統一版KAPP3）⭐")
+
+# ▼ 最大入力車数（7→9に拡張）
+N_MAX = 9
 
 # 風向選択（ボタン）
 if "selected_wind" not in st.session_state:
@@ -299,7 +303,7 @@ for k, val in kakushitsu_inputs.items():
 
 st.subheader("▼ 前々走・前走の着順入力（1〜9着 または 0＝落車）")
 chaku_inputs = []
-for i in range(7):
+for i in range(N_MAX):
     col1, col2 = st.columns(2)
     with col1:
         chaku1 = st.text_input(f"{i+1}番【前々走】", value="", key=f"chaku1_{i}")
@@ -308,13 +312,13 @@ for i in range(7):
     chaku_inputs.append([chaku1, chaku2])
 
 st.subheader("▼ 競争得点入力")
-rating = [st.number_input(f"{i+1}番得点", value=55.0, step=0.1, key=f"rate_{i}") for i in range(7)]
+rating = [st.number_input(f"{i+1}番得点", value=55.0, step=0.1, key=f"rate_{i}") for i in range(N_MAX)]
 
 st.subheader("▼ 予想隊列入力（数字、欠の場合は空欄）")
-tairetsu = [st.text_input(f"{i+1}番隊列順位", key=f"tai_{i}") for i in range(7)]
+tairetsu = [st.text_input(f"{i+1}番隊列順位", key=f"tai_{i}") for i in range(N_MAX)]
 
 st.subheader("▼ S・B 入力（各選手のS・B回数を入力）")
-for i in range(7):
+for i in range(N_MAX):
     st.markdown(f"**{i+1}番**")
     st.number_input("S回数", min_value=0, max_value=99, value=0, step=1, key=f"s_point_{i+1}")
     st.number_input("B回数", min_value=0, max_value=99, value=0, step=1, key=f"b_point_{i+1}")
@@ -333,10 +337,10 @@ line_inputs = [
 # ライン配列
 lines = [extract_car_list(x) for x in line_inputs if str(x).strip()]
 line_order_map = build_line_position_map(lines)
-line_order = [line_order_map.get(i + 1, 0) for i in range(7)]
+line_order = [line_order_map.get(i + 1, 0) for i in range(N_MAX)]
 
 # 有効車番のみ採用
-active_idx = [i for i in range(7) if str(tairetsu[i]).isdigit()]
+active_idx = [i for i in range(N_MAX) if str(tairetsu[i]).isdigit()]
 # ▼ 人数に応じた動的パラメータ（5〜9車を一括運用）
 n_cars = len(active_idx)
 
@@ -373,7 +377,7 @@ ratings_active = [rating[i] for i in active_idx]
 # upper_k は 6/8 のいずれかで好みに合わせて調整可
 corr_active = score_from_tenscore_list_dynamic(ratings_active, upper_k=UPPER_K)
 
-tenscore_score = [0.0] * 7
+tenscore_score = [0.0] * N_MAX
 for j, k in enumerate(active_idx):
     tenscore_score[k] = corr_active[j]
 
@@ -408,7 +412,7 @@ labels = ["A", "B", "C", "D", "E", "F", "G"]
 line_def = {labels[idx]: line for idx, line in enumerate(lines) if line}
 
 # グループ補正
-group_bonus_map = compute_group_bonus(score_parts, line_def)
+group_bonus_map = compute_group_bonus(score_parts, line_def, n_cars)
 final_score_parts = []
 for row in score_parts:
     group_corr = get_group_bonus(row[0], line_def, group_bonus_map, a_head_bonus=True)
@@ -422,7 +426,7 @@ df = pd.DataFrame(final_score_parts, columns=columns)
 try:
     if len(rating) >= len(df):
         # df の車番に合わせて並べる
-        rating_map = {i + 1: rating[i] for i in range(7)}
+        rating_map = {i + 1: rating[i] for i in range(N_MAX)}
         df['競争得点'] = df['車番'].map(rating_map)
 except Exception:
     pass
