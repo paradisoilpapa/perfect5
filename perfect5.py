@@ -180,8 +180,7 @@ def score_from_tenscore_list_dynamic(tenscore_list, upper_k=8):
         return round(abs(baseline - row["得点"]) * 0.03, 3) if row["順位"] in [2, 3, 4] else 0.0
     return (df.apply(corr, axis=1)).tolist()
 
-
-def compute_group_bonus(score_parts, line_def, n=n_cars):
+def compute_group_bonus(score_parts, line_def, n):
     """人数に応じた補正：8車=α0.25, 9車=α0.5 で人数バイアスを抑制。
     総配分は 7車基準0.42 を人数に応じてスケール（5車≈0.36, 9車≈0.48）。"""
     if not line_def:
