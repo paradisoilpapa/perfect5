@@ -1,17 +1,13 @@
-import streamlit as st
+import streamlit as st 
 import pandas as pd
 
 """
-ヴェロビ（欠車対応・統一版perfect5）
-- 目的：7車UIを維持しつつ、欠車（隊列空欄）でも安全に計算が通るように全面整理
-- 主な変更点：
-  1) active_idx（有効車番）で全ループを駆動（range(7)固定の解消）
-  2) 競争得点補正のbaselineレンジを動的化（2〜min(n, upper_k)）
-  3) グループ補正は line_def の実在キーのみ、ボーナス配列は本数に合わせてスライス
-  4) 重複関数の排除・定義を1本化
-  5) 安全ガード（NaN/0除去、列存在チェック）
-
-※ 地方競馬転用時は、ライン→通過順/枠・馬場/指数へ写像予定
+ヴェロビ（欠車対応・統一版perfect5 / 完全版）
+- 追加仕様（固定）：
+  A) 「開催日＝疲労」周回補正：初日+1 / 2日目+2 / 最終日+3（常に+方向）
+  B) ◎は「競争得点1〜4位」から選定（5〜7位の大穴は“紐”へ）
+  C) 表は“順位の横にスコア＋競争得点”を常時表示
+  D) 補正タグ（開催日補正量/差替え有無）を常時表示
 """
 
 # =========================================================
@@ -24,7 +20,7 @@ WIND_COEFF = {
     "左下": +0.035, "下": +0.05, "右下": +0.035
 }
 
-# ライン順：0=単騎, 1=先頭, 2=番手, 3=3番手, 4=4番手
+# ライン順：0=単騎, 1=先頭, 2=番手, 3=3番手, 4=4番手（※8-9車時は動的に拡張）
 POS_MULTI = {0: 0.3, 1: 0.32, 2: 0.30, 3: 0.25, 4: 0.20}
 
 # 脚質基準値（KAPP3ベース）
@@ -77,9 +73,16 @@ KEIRIN_DATA = {
     "手入力": {"bank_angle": 30.0, "straight_length": 52.0, "bank_length": 400},
 }
 
+# 開催日補正（常に+方向）
+DAY_DELTA = {1: 1, 2: 2, 3: 3}  # 初日+1 / 2日目+2 / 最終日+3
+
 # =========================================================
 # 補助関数
 # =========================================================
+
+def effective_laps(base_laps: int, day_idx: int) -> int:
+    """周回＝疲労換算（減らさない設計）。不明日は初日扱い(+1)。"""
+    return int(base_laps) + DAY_DELTA.get(int(day_idx), 1)
 
 def convert_chaku_to_score(values):
     """前々走/前走の着順を[0..1]に正規化し平均。欠は無視。"""
@@ -99,7 +102,6 @@ def convert_chaku_to_score(values):
         return 0.0
     return round(sum(scores) / len(scores), 2)
 
-
 def wind_straight_combo_adjust(kakushitsu, wind_direction, wind_speed, straight_length, line_order):
     """風×ライン順の補正（±0.05制限／係数:逃1.0 両0.7 追0.4）"""
     if wind_direction == "無風" or wind_speed == 0:
@@ -111,7 +113,6 @@ def wind_straight_combo_adjust(kakushitsu, wind_direction, wind_speed, straight_
     total = max(min(total, 0.05), -0.05)
     return round(total, 3)
 
-
 def lap_adjust(kaku, laps):
     delta = max(int(laps) - 2, 0)
     return {
@@ -120,11 +121,9 @@ def lap_adjust(kaku, laps):
         '両': 0.0
     }.get(kaku, 0.0)
 
-
 def line_member_bonus(line_order):
     """ライン位置補正（0:単騎, 1:先頭, 2:番手, 3:3番手）"""
     return {0: 0.03, 1: 0.05, 2: 0.04, 3: 0.03}.get(line_order, 0.0)
-
 
 def bank_character_bonus(kakushitsu, bank_angle, straight_length):
     """バンク性格補正（±0.05）"""
@@ -134,13 +133,11 @@ def bank_character_bonus(kakushitsu, bank_angle, straight_length):
     total_factor = max(min(total_factor, 0.05), -0.05)
     return round({'逃': +total_factor, '追': -total_factor, '両': +0.25 * total_factor}.get(kakushitsu, 0.0), 2)
 
-
 def bank_length_adjust(kakushitsu, bank_length):
     """周長補正（±0.05）"""
     delta = (float(bank_length) - 411.0) / 100.0
     delta = max(min(delta, 0.05), -0.05)  # 強制制限
     return round({'逃': 1.0 * delta, '両': 2.0 * delta, '追': 3.0 * delta}.get(kakushitsu, 0.0), 2)
-
 
 def extract_car_list(input_data):
     if isinstance(input_data, str):
@@ -149,7 +146,6 @@ def extract_car_list(input_data):
         return [int(c) for c in input_data if isinstance(c, (str, int)) and str(c).isdigit()]
     else:
         return []
-
 
 def build_line_position_map(lines):
     """各車番→(ライン内の順番: 1.. / 単騎:0) を返す"""
@@ -163,7 +159,6 @@ def build_line_position_map(lines):
             for pos, car in enumerate(line, start=1):
                 line_order_map[car] = pos
     return line_order_map
-
 
 def score_from_tenscore_list_dynamic(tenscore_list, upper_k=8):
     """競争得点補正：2〜min(n, upper_k)の平均を基準に、2〜4位へ差分×3%加点。
@@ -179,7 +174,6 @@ def score_from_tenscore_list_dynamic(tenscore_list, upper_k=8):
     def corr(row):
         return round(abs(baseline - row["得点"]) * 0.03, 3) if row["順位"] in [2, 3, 4] else 0.0
     return (df.apply(corr, axis=1)).tolist()
-
 
 def compute_group_bonus(score_parts, line_def, n):
     """人数に応じた補正：8車=α0.25, 9車=α0.5 で人数バイアスを抑制。
@@ -211,7 +205,6 @@ def compute_group_bonus(score_parts, line_def, n):
 
     return {g: bonuses[i] for i, (g, _) in enumerate(sorted_lines)}
 
-
 def get_group_bonus(car_no, line_def, bonus_map, a_head_bonus=True):
     for g, members in line_def.items():
         if car_no in members:
@@ -219,12 +212,27 @@ def get_group_bonus(car_no, line_def, bonus_map, a_head_bonus=True):
             return bonus_map.get(g, 0.0) + add
     return 0.0
 
+# --- ◎選定（競争得点1〜4位縛り） ---
+def pick_anchor_from_points(velobi_sorted, comp_points_rank):
+    """
+    velobi_sorted: [(車番, 合計スコア)] 降順
+    comp_points_rank: {車番: 競争得点順位(1〜)}
+    return: (◎車番, ◎スコア, is_forced: bool)
+    """
+    top_no, top_sc = velobi_sorted[0]
+    if comp_points_rank.get(top_no, 99) <= 4:
+        return top_no, top_sc, False
+    for no, sc in velobi_sorted:
+        if comp_points_rank.get(no, 99) <= 4:
+            return no, sc, True
+    return top_no, top_sc, False  # 保険
+
 # =========================================================
 # Streamlit UI
 # =========================================================
 
-st.set_page_config(page_title="ライン競輪スコア計算（欠車対応・統一版perfect5）", layout="wide")
-st.title("⭐ ライン競輪スコア計算（欠車対応・統一版perfect5）⭐")
+st.set_page_config(page_title="ライン競輪スコア計算（欠車対応・統一版perfect5 / 完全版）", layout="wide")
+st.title("⭐ ライン競輪スコア計算（欠車対応・統一版perfect5 / 完全版）⭐")
 
 # ▼ 最大入力車数（7→9に拡張）
 N_MAX = 9
@@ -278,8 +286,14 @@ straight_length = st.number_input("みなし直線(m)", min_value=30.0, max_valu
 bank_angle = st.number_input("バンク角(°)", min_value=20.0, max_value=45.0, step=0.05, value=float(info["bank_angle"]))
 bank_length = st.number_input("バンク周長(m)", min_value=300.0, max_value=500.0, step=0.05, value=float(info["bank_length"]))
 
-# 周回数
-laps = st.number_input("周回数（通常は4、高松などは5）", min_value=1, max_value=10, value=4, step=1)
+# 周回数（基準）
+base_laps = st.number_input("周回数（通常は4、高松などは5）", min_value=1, max_value=10, value=4, step=1)
+
+# 開催日（開催日＝疲労補正）
+day_label_to_idx = {"初日":1, "2日目":2, "最終日":3}
+day_label = st.selectbox("開催日（固定補正：初日+1 / 2日目+2 / 最終日+3）", list(day_label_to_idx.keys()))
+day_idx = day_label_to_idx[day_label]
+eff_laps = effective_laps(base_laps, day_idx)
 
 # 選手データ入力
 st.header("【選手データ入力】")
@@ -341,11 +355,9 @@ line_order = [line_order_map.get(i + 1, 0) for i in range(N_MAX)]
 
 # 有効車番のみ採用
 active_idx = [i for i in range(N_MAX) if str(tairetsu[i]).isdigit()]
-# ▼ 人数に応じた動的パラメータ（5〜9車を一括運用）
 n_cars = len(active_idx)
 
 def choose_upper_k(n: int) -> int:
-    # 小頭数は 2〜n、7車は 2〜6、8〜9車は 2〜8
     if n <= 3:   return 0  # 計算しない（全員0）
     if n == 4:   return 4
     if n == 5:   return 5
@@ -367,16 +379,12 @@ def dynamic_params(n: int):
 # グローバルに反映（既存の定数を上書きして使う）
 LINE_BONUS, POS_MULTI, UPPER_K = dynamic_params(n_cars)
 
-# 既存定義を動的版で上書き
-
 def line_member_bonus(line_order):
     return LINE_BONUS.get(line_order, 0.0)
 
-# 競争得点補正（有効車番だけ計算→7枠に戻す）
+# 競争得点補正（有効車番だけ計算→N_MAXへ復元）
 ratings_active = [rating[i] for i in active_idx]
-# upper_k は 6/8 のいずれかで好みに合わせて調整可
 corr_active = score_from_tenscore_list_dynamic(ratings_active, upper_k=UPPER_K)
-
 tenscore_score = [0.0] * N_MAX
 for j, k in enumerate(active_idx):
     tenscore_score[k] = corr_active[j]
@@ -393,18 +401,21 @@ for i in active_idx:
     )
     kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
     rating_score = tenscore_score[i]
-    rain_corr = lap_adjust(kaku, laps)
+    # 開催日補正を適用した「有効周回」で計算
+    rain_corr = lap_adjust(kaku, eff_laps)
+
     s_bonus = min(0.1 * st.session_state.get(f"s_point_{num}", 0), 0.5)
     b_bonus = min(0.1 * st.session_state.get(f"b_point_{num}", 0), 0.5)
     symbol_score = s_bonus + b_bonus
-    line_bonus = line_member_bonus(line_order[i])
-    bank_bonus = bank_character_bonus(kaku, bank_angle, straight_length)
-    length_bonus = bank_length_adjust(kaku, bank_length)
 
-    total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_bonus + bank_bonus + length_bonus
+    line_b = line_member_bonus(line_order[i])
+    bank_b = bank_character_bonus(kaku, bank_angle, straight_length)
+    length_b = bank_length_adjust(kaku, bank_length)
+
+    total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_b + bank_b + length_b
 
     score_parts.append([
-        num, kaku, base, wind, kasai, rating_score, rain_corr, symbol_score, line_bonus, bank_bonus, length_bonus, total
+        num, kaku, base, wind, kasai, rating_score, rain_corr, symbol_score, line_b, bank_b, length_b, total
     ])
 
 # line_def 構築（存在するものだけ）
@@ -418,22 +429,56 @@ for row in score_parts:
     group_corr = get_group_bonus(row[0], line_def, group_bonus_map, a_head_bonus=True)
     final_score_parts.append(row[:-1] + [group_corr, row[-1] + group_corr])
 
-# DataFrame 化
+# DataFrame 化（詳細）
 columns = ['車番', '脚質', '基本', '風補正', '着順補正', '得点補正', '周回補正', 'SB印補正', 'ライン補正', 'バンク補正', '周長補正', 'グループ補正', '合計スコア']
 df = pd.DataFrame(final_score_parts, columns=columns)
 
-# 競争得点の列（元の素点）を併記したい場合
+# 競争得点の列（元の素点）併記
 try:
     if len(rating) >= len(df):
-        # df の車番に合わせて並べる
         rating_map = {i + 1: rating[i] for i in range(N_MAX)}
         df['競争得点'] = df['車番'].map(rating_map)
 except Exception:
     pass
 
-# 表示とエラーチェック
-st.markdown("### 📊 合計スコア順スコア表（欠車対応）")
+# ===== 出口：ランキング表＋◎（得点1〜4縛り） =====
+st.markdown("### 📊 合計スコア順（印・スコア・競争得点を常時表示）")
 if df.empty:
     st.error("データが空です。入力を確認してください。")
 else:
-    st.dataframe(df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True))
+    # Velobi順位
+    df_rank = df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True)
+    velobi_sorted = list(zip(df_rank['車番'].tolist(), df_rank['合計スコア'].round(1).tolist()))
+
+    # 競争得点順位（activeのみを対象）
+    points_df = pd.DataFrame({
+        "車番": [i+1 for i in active_idx],
+        "得点": [rating[i] for i in active_idx]
+    })
+    if not points_df.empty:
+        points_df["順位"] = points_df["得点"].rank(ascending=False, method="min").astype(int)
+        comp_points_rank = dict(zip(points_df["車番"], points_df["順位"]))
+    else:
+        comp_points_rank = {}
+
+    # ◎決定（得点1〜4位縛り）
+    anchor_no, anchor_sc, forced = pick_anchor_from_points(velobi_sorted, comp_points_rank)
+
+    # 表示用：順位・印・車・スコア・競争得点
+    view_rows = []
+    for r, (no, sc) in enumerate(velobi_sorted, start=1):
+        mark = "◎" if no == anchor_no else ""
+        pt = df.loc[df['車番']==no, '競争得点'].iloc[0] if '競争得点' in df.columns else None
+        view_rows.append({"順": r, "印": mark, "車": no, "合計スコア": round(sc,1), "競争得点": pt})
+
+    view_df = pd.DataFrame(view_rows)
+
+    st.dataframe(view_df, use_container_width=True)
+    tag = f"開催日補正 +{DAY_DELTA.get(day_idx,1)}（有効周回={eff_laps}）"
+    if forced:
+        tag += " / ◎は競争得点1〜4位から差替え"
+    st.caption(tag)
+
+    # 明細（常時フル表示）
+    st.markdown("### 🧩 補正内訳（常時表示）")
+    st.dataframe(df_rank, use_container_width=True)
