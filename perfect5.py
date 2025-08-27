@@ -377,8 +377,48 @@ def dynamic_params(n:int):
 
 LINE_BONUS, POS_MULTI_MAP, UPPER_K = dynamic_params(n_cars)
 
-# スコア計算（activeのみ）
-ratings_active = [rating[i] for i in active_idx]
+# === 競争得点ホットフィックス（1桁など怪しい値の検出→その場で再入力） ===
+# 既存 rating を利用。20未満を「疑わしい」と判定して再入力欄を表示します。
+rating_fixed = []
+suspects = []
+for i in range(N_MAX):
+    try:
+        v = float(rating[i])
+    except Exception:
+        v = 0.0
+    if v < 20.0:  # 1桁/異常値の目安（必要なら閾値は調整可）
+        suspects.append(i)
+
+rating_fixed = list(map(lambda x: float(x) if x is not None else 0.0, rating))
+
+if suspects:
+    st.markdown("#### 競争得点の確認（自動検出）")
+    st.caption("一部の得点が1桁など不自然と検知されたため、ここで再入力できます。")
+    for i in suspects:
+        # デフォルト値は「元値×10 or 40.0」の大きい方（ざっくり救済）。必要に応じて上書きしてください。
+        try:
+            base_val = float(rating[i])
+        except Exception:
+            base_val = 0.0
+        suggested = max(base_val * 10.0 if base_val < 10.0 else base_val, 40.0)
+        val = st.number_input(
+            f"{i+1}番 得点（再入力）",
+            min_value=0.0,
+            max_value=150.0,
+            value=float(suggested),
+            step=0.1,
+            format="%.1f",
+            key=f"rate_fix_{i}",
+        )
+        rating_fixed[i] = float(val)
+
+# 参考：レンジ外の簡易警告（任意）
+abnormal = [(i+1, v) for i, v in enumerate(rating_fixed) if v < 20.0 or v > 120.0]
+if abnormal:
+    st.warning("競争得点の想定外の値があります: " + ", ".join([f"{no}:{val:.1f}" for no, val in abnormal]))
+
+# スコア計算（activeのみ）-- 以降は rating_fixed を使用
+ratings_active = [rating_fixed[i] for i in active_idx]
 corr_active = score_from_tenscore_list_dynamic(ratings_active, upper_k=UPPER_K)
 tenscore_score = [0.0] * N_MAX
 for j, k in enumerate(active_idx):
@@ -417,10 +457,10 @@ for row in score_parts:
 columns = ['車番','脚質','基本','風補正','着順補正','得点補正','周回補正','SB印補正','ライン補正','バンク補正','周長補正','グループ補正','合計スコア']
 df = pd.DataFrame(final_score_parts, columns=columns)
 
-# 競争得点の列を併記
+# 競争得点の列を併記（rating_fixedで上書き）
 try:
-    if len(rating) >= len(df):
-        rating_map = {i + 1: rating[i] for i in range(N_MAX)}
+    if len(rating_fixed) >= len(df):
+        rating_map = {i + 1: rating_fixed[i] for i in range(N_MAX)}
         df['競争得点'] = df['車番'].map(rating_map)
 except Exception:
     pass
@@ -435,8 +475,8 @@ else:
     df_rank = df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True)
     velobi_sorted = list(zip(df_rank['車番'].tolist(), df_rank['合計スコア'].round(1).tolist()))
 
-    # 競争得点順位（active対象）
-    points_df = pd.DataFrame({"車番": [i + 1 for i in active_idx], "得点": [rating[i] for i in active_idx]})
+    # 競争得点順位（active対象）— rating_fixed を使用
+    points_df = pd.DataFrame({"車番": [i + 1 for i in active_idx], "得点": [rating_fixed[i] for i in active_idx]})
     if not points_df.empty:
         points_df["順位"] = points_df["得点"].rank(ascending=False, method="min").astype(int)
         comp_points_rank = dict(zip(points_df["車番"], points_df["順位"]))
