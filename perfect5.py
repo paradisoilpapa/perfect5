@@ -381,20 +381,22 @@ LINE_BONUS, POS_MULTI_MAP, UPPER_K = dynamic_params(n_cars)
 ratings_active = [rating[i] for i in active_idx]
 corr_active = score_from_tenscore_list_dynamic(ratings_active, upper_k=UPPER_K)
 tenscore_score = [0.0] * N_MAX
-for j,k in enumerate(active_idx):
+for j, k in enumerate(active_idx):
     tenscore_score[k] = corr_active[j]
 
 score_parts = []
 for i in active_idx:
-    num = i+1
+    num = i + 1
     kaku = car_to_kakushitsu.get(num, "追")
     base = BASE_SCORE.get(kaku, 0.0)
-    wind = wind_straight_combo_adjust(kaku, st.session_state.selected_wind, wind_speed, straight_length, line_order[i], POS_MULTI_MAP)
+    wind = wind_straight_combo_adjust(
+        kaku, st.session_state.selected_wind, wind_speed, straight_length, line_order[i], POS_MULTI_MAP
+    )
     kasai = convert_chaku_to_score(chaku_inputs[i]) or 0.0
     rating_score = tenscore_score[i]
     rain_corr = lap_adjust(kaku, eff_laps)
-    s_bonus = min(0.1*st.session_state.get(f"s_{num}",0), 0.5)
-    b_bonus = min(0.1*st.session_state.get(f"b_{num}",0), 0.5)
+    s_bonus = min(0.1 * st.session_state.get(f"s_{num}", 0), 0.5)
+    b_bonus = min(0.1 * st.session_state.get(f"b_{num}", 0), 0.5)
     symbol_score = s_bonus + b_bonus
     line_b = line_member_bonus(line_order[i], LINE_BONUS)
     bank_b = bank_character_bonus(kaku, bank_angle, straight_length)
@@ -402,7 +404,7 @@ for i in active_idx:
     total = base + wind + kasai + rating_score + rain_corr + symbol_score + line_b + bank_b + length_b
     score_parts.append([num, kaku, base, wind, kasai, rating_score, rain_corr, symbol_score, line_b, bank_b, length_b, total])
 
-labels = ["A","B","C","D","E","F","G"]
+labels = ["A", "B", "C", "D", "E", "F", "G"]
 line_def = {labels[idx]: line for idx, line in enumerate(lines) if line}
 car_to_group = {car: g for g, members in line_def.items() for car in members}
 
@@ -418,7 +420,7 @@ df = pd.DataFrame(final_score_parts, columns=columns)
 # 競争得点の列を併記
 try:
     if len(rating) >= len(df):
-        rating_map = {i+1: rating[i] for i in range(N_MAX)}
+        rating_map = {i + 1: rating[i] for i in range(N_MAX)}
         df['競争得点'] = df['車番'].map(rating_map)
 except Exception:
     pass
@@ -434,7 +436,7 @@ else:
     velobi_sorted = list(zip(df_rank['車番'].tolist(), df_rank['合計スコア'].round(1).tolist()))
 
     # 競争得点順位（active対象）
-    points_df = pd.DataFrame({"車番":[i+1 for i in active_idx], "得点":[rating[i] for i in active_idx]})
+    points_df = pd.DataFrame({"車番": [i + 1 for i in active_idx], "得点": [rating[i] for i in active_idx]})
     if not points_df.empty:
         points_df["順位"] = points_df["得点"].rank(ascending=False, method="min").astype(int)
         comp_points_rank = dict(zip(points_df["車番"], points_df["順位"]))
@@ -453,7 +455,7 @@ else:
         if b:
             result_marks["〇"] = b[0]; reasons[b[0]] = "対抗(得点1-4)"
         used = set(result_marks.values())
-        rest = [no for no,_ in velobi_sorted if no not in used]
+        rest = [no for no, _ in velobi_sorted if no not in used]
         fill_marks = [m for m in marks_order if m not in result_marks]
         for m, n in zip(fill_marks, rest):
             result_marks[m] = n
@@ -462,10 +464,10 @@ else:
         anchor_no, _ = pick_anchor(velobi_sorted, comp_points_rank)
         result_marks["◎"] = anchor_no; reasons[anchor_no] = "本命(得点1-4内最高スコア)"
         anchor_group = car_to_group.get(anchor_no, None)
-        same_line_exists = anchor_group and any((car_to_group.get(no)==anchor_group and no!=anchor_no) for no,_ in velobi_sorted)
+        same_line_exists = anchor_group and any((car_to_group.get(no) == anchor_group and no != anchor_no) for no, _ in velobi_sorted)
 
         if same_line_exists:
-            A,B = pick_A_B_for_anchor(anchor_no, velobi_sorted, comp_points_rank, car_to_group)
+            A, B = pick_A_B_for_anchor(anchor_no, velobi_sorted, comp_points_rank, car_to_group)
             # ○/▲ 決定
             if A and B:
                 if A[1] >= B[1]:
@@ -498,17 +500,41 @@ else:
 
         # 残りをスコア順で補完
         used = set(result_marks.values())
-        rest = [no for no,_ in velobi_sorted if no not in used]
-        for m,n in zip([m for m in marks_order if m not in result_marks], rest):
+        rest = [no for no, _ in velobi_sorted if no not in used]
+        for m, n in zip([m for m in marks_order if m not in result_marks], rest):
             result_marks[m] = n
+
+    # --- 重複排除つき・最終印整形（◎〇▲△×αβは車番の重複を許さない） ---
+    def finalize_marks_unique(result_marks: dict, velobi_sorted: list):
+        order = ["◎","〇","▲","△","×","α","β"]
+        used = set()
+        final = {}
+        # 既存の割当を順番に採用（重複はスキップ）
+        for m in order:
+            n = result_marks.get(m)
+            if n is not None and n not in used:
+                final[m] = n
+                used.add(n)
+        # 足りない印はスコア順の未使用車で補完
+        for m in order:
+            if m not in final:
+                for no, _ in velobi_sorted:
+                    if no not in used:
+                        final[m] = no
+                        used.add(no)
+                        break
+        return final
+
+    # 最終化（重複解消）
+    result_marks = finalize_marks_unique(result_marks, velobi_sorted)
 
     # 表示（印入りランキング＋詳細内訳）
     rows = []
-    for r,(no,sc) in enumerate(velobi_sorted, start=1):
-        mark = [m for m,v in result_marks.items() if v==no]
-        reason = reasons.get(no,"")
-        pt = df.loc[df['車番']==no, '競争得点'].iloc[0] if '競争得点' in df.columns else None
-        rows.append({"順":r,"印":"".join(mark),"車":no,"合計スコア":sc,"競争得点":pt,"理由":reason})
+    for r, (no, sc) in enumerate(velobi_sorted, start=1):
+        mark = [m for m, v in result_marks.items() if v == no]
+        reason = reasons.get(no, "")
+        pt = df.loc[df['車番'] == no, '競争得点'].iloc[0] if '競争得点' in df.columns else None
+        rows.append({"順": r, "印": "".join(mark), "車": no, "合計スコア": sc, "競争得点": pt, "理由": reason})
     view_df = pd.DataFrame(rows)
     st.dataframe(view_df, use_container_width=True)
 
@@ -520,10 +546,19 @@ else:
     st.caption(tag)
 
     # =========================================================
-    # ✅ note記事用（上下2行）— 必ず最後に表示
+    # ✅ note記事用（上下2行＋スコア順）— 必ず最後に表示
     # =========================================================
-    st.markdown("### 📋 note記事用（コピー可 / 上下2行）")
+    st.markdown("### 📋 note記事用（コピー可 / 上下2行＋スコア順）")
+
+    # 上段：ライン構成（UI入力を結合）
     line_text = "　".join([x for x in line_inputs if str(x).strip()])
-    marks_line = " ".join([f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks])
-    note_text = f"ライン　{line_text}\n{marks_line}"
-    st.text_area("note貼り付け用（この枠の内容をそのままコピー）", note_text, height=90)
+
+    # 中段：本来のスコア順（車番のみ）
+    score_order_text = " ".join(str(no) for no, _ in velobi_sorted)
+
+    # 下段：最終印の並び（重複排除後の result_marks を使用）
+    marks_order = ["◎","〇","▲","△","×","α","β"]
+    marks_line = " ".join(f"{m}{result_marks[m]}" for m in marks_order if m in result_marks)
+
+    note_text = f"ライン　{line_text}\nスコア順　{score_order_text}\n{marks_line}"
+    st.text_area("note貼り付け用（この枠の内容をそのままコピー）", note_text, height=120)
