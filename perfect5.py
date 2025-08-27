@@ -378,28 +378,26 @@ def dynamic_params(n:int):
 LINE_BONUS, POS_MULTI_MAP, UPPER_K = dynamic_params(n_cars)
 
 # =============================== 
-# ▼ 競争得点 入力～印決定（完全版・ロールバック＋保険）
+# ▼ 競争得点 入力（完全版・number_input撤廃）
 # ===============================
 st.subheader("▼ 競争得点")
 
 import re, unicodedata
 
-# 旧キーをパージしてウィジェットを強制再生成（過去設定の持ち越し防止）
+# 旧キーをパージ（過去状態の持ち越し防止）
 for i in range(N_MAX):
     st.session_state.pop(f"rate_{i}", None)
     st.session_state.pop(f"rate_fix_{i}", None)
     st.session_state.pop(f"rate_v2_{i}", None)
     st.session_state.pop(f"rate_safe_{i}", None)
-    st.session_state.pop(f"rate_txt_{i}", None)
-
-# 入力方式トグル（不具合時にtextへ切替可能）
-use_text_input = st.toggle("入力不具合時はテキスト入力に切替", value=False, key="rate_mode_toggle")
+    # 過去のテキスト版キーも一応掃除
+    # st.session_state.pop(f"rate_txt_{i}", None)  # ←既存値を活かしたいならコメントアウト
 
 def _parse_float_flexible(s: str) -> float | None:
-    """全角→半角、カンマ/空白除去。符号と小数1つのみ許容。失敗はNone。"""
+    """全角→半角、カンマ除去、符号と小数1つのみ許容。失敗時はNone。"""
     if s is None:
         return None
-    s = unicodedata.normalize("NFKC", str(s))  # 全角数字・全角ドット対応
+    s = unicodedata.normalize("NFKC", str(s))   # 全角数字/小数点を半角化
     s = s.replace(",", "").strip()
     if not re.fullmatch(r"[+-]?\d+(\.\d+)?", s):
         return None
@@ -408,35 +406,40 @@ def _parse_float_flexible(s: str) -> float | None:
     except Exception:
         return None
 
-# 競争得点入力（number_inputを“緩い検証”に戻し、保険でtext_inputも用意）
 rating: list[float] = []
 invalid_inputs: list[int] = []
 
+# 各入力をテキストで受け、直ちにパース。失敗時は直前の有効値 or 55.0 にフォールバック。
 for i in range(N_MAX):
-    if not use_text_input:
-        # ---- number_input 安全設定：min/max/step/format を指定しない（入力途中の拒否を防ぐ）----
-        key = f"rate_safe_{i}"
-        default_val = 55.0 if key not in st.session_state else float(st.session_state.get(key) or 55.0)
-        val = st.number_input(f"{i+1}番得点", value=default_val, key=key)
-        v = float(val)
-    else:
-        # ---- text_input：全角/カンマ許容、厳密パース ----
-        key = f"rate_txt_{i}"
-        default_str = st.session_state.get(key, "55.0")
-        s = st.text_input(f"{i+1}番得点（例: 55.0）", value=str(default_str), key=key)
-        v = _parse_float_flexible(s)
-        if v is None:
-            invalid_inputs.append(i + 1)
-            v = 55.0
-            st.session_state[key] = f"{v:.1f}"
-    rating.append(v)
+    key_txt = f"rate_txt_v1_{i}"     # 表示用のテキストボックスキー
+    key_val = f"rate_val_v1_{i}"     # 直近の有効float値を保持するキー
 
-# 任意：想定レンジ外の簡易警告（運用に合わせてしきい値は調整可）
+    # 初期表示テキスト：直近の有効値があればそれを、小数1桁で見せる
+    prev_valid = st.session_state.get(key_val, 55.0)
+    default_str = st.session_state.get(key_txt, f"{prev_valid:.1f}")
+
+    s = st.text_input(f"{i+1}番得点（例: 55.0）", value=str(default_str), key=key_txt)
+    v = _parse_float_flexible(s)
+
+    if v is None:
+        # パース失敗：前回の有効値に戻す。なければ 55.0
+        invalid_inputs.append(i + 1)
+        v = float(prev_valid) if key_val in st.session_state else 55.0
+        # 表示も有効値で上書き（赤枠残さない）
+        st.session_state[key_txt] = f"{v:.1f}"
+    else:
+        # 正常パースなら有効値を更新
+        st.session_state[key_val] = float(v)
+
+    rating.append(float(v))
+
+# 想定レンジ外の注意喚起（閾値は運用に合わせて調整）
 abnormal = [(i+1, v) for i, v in enumerate(rating) if v < 20.0 or v > 120.0]
 if invalid_inputs:
-    st.error("数値として解釈できない入力があったため 55.0 に補正しました: " + ", ".join(map(str, invalid_inputs)))
+    st.error("数値として解釈できない入力があったため、前回の有効値に戻しました: " + ", ".join(map(str, invalid_inputs)))
 if abnormal:
     st.warning("競争得点の想定外の値があります: " + ", ".join([f"{no}:{val:.1f}" for no, val in abnormal]))
+
 
 # ===============================
 # スコア計算（activeのみ）
