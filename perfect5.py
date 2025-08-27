@@ -1,32 +1,22 @@
 import streamlit as st
 import pandas as pd
+import re, unicodedata
+
+st.set_page_config(page_title="ヴェロビ 完全版（note記事用出力つき）", layout="wide")
 
 """
 ヴェロビ（欠車対応・統一版 完全版 / 男子・ガールズ分岐 + note出力）
-- スコア計算は従来どおり（欠車対応・5〜9車・風/周長/開催日＝疲労補正 など）
-- 印ルール（男子）：
-  ◎：競争得点1〜4位の中でヴェロビ合計スコア最上位
-  ○：A=◎同ラインの次点 vs B=競争得点1〜4位の次点（◎除外） → スコア高い方
-  ▲：○で選ばれなかった方（A or B）
-  ※◎が単騎のとき：まず○=B、その後「○基準」で A'=○同ライン次点 vs B'=競争得点1〜4位の次点（○除外） → ▲は高い方、△は残り
-  △×αβ：残りをヴェロビ合計スコア順
-- 印ルール（ガールズ＝全員単騎）：
-  ◎：競争得点1〜4位の中でスコア最上位
-  ○：◎以外の競争得点1〜4位の中でスコア最上位
-  ▲以下：残りをヴェロビ合計スコア順
-- 最後に note 記事向けの上下2行（ライン構成／印の最終順）を出力（コピー可）
 """
 
 # =========================================================
 # 定数・共通テーブル
 # =========================================================
-
 WIND_COEFF = {
     "左上": -0.03, "上": -0.05, "右上": -0.035,
     "左": +0.05,  "右": -0.05,
     "左下": +0.035, "下": +0.05, "右下": +0.035
 }
-POS_MULTI = {0: 0.3, 1: 0.32, 2: 0.30, 3: 0.25, 4: 0.20}  # 8-9車時は動的拡張
+POS_MULTI = {0: 0.3, 1: 0.32, 2: 0.30, 3: 0.25, 4: 0.20}
 BASE_SCORE = {'逃': 1.577, '両': 1.628, '追': 1.796}
 
 KEIRIN_DATA = {
@@ -74,13 +64,11 @@ KEIRIN_DATA = {
     "熊本": {"bank_angle": 34.3, "straight_length": 60.3, "bank_length": 400},
     "手入力": {"bank_angle": 30.0, "straight_length": 52.0, "bank_length": 400},
 }
-
-DAY_DELTA = {1: 1, 2: 2, 3: 3}  # 開催日＝疲労補正（＋方向固定）
+DAY_DELTA = {1: 1, 2: 2, 3: 3}
 
 # =========================================================
 # 補助関数（スコア計算）
 # =========================================================
-
 def convert_chaku_to_score(values):
     scores = []
     for i, v in enumerate(values):
@@ -182,17 +170,15 @@ def get_group_bonus(car_no, line_def, bonus_map, a_head_bonus=True):
     return 0.0
 
 # =========================================================
-# 印選定補助（ここが今回の新ロジック）
+# 印選定補助
 # =========================================================
-
 def pick_anchor(velobi_sorted, comp_points_rank):
     for no, sc in velobi_sorted:
         if comp_points_rank.get(no, 99) <= 4:
             return no, sc
-    return velobi_sorted[0]  # フォールバック
+    return velobi_sorted[0]
 
 def pick_A_B_for_anchor(anchor_no, velobi_sorted, comp_points_rank, car_to_group):
-    # A: ◎同ラインの次点
     A = None
     anchor_group = car_to_group.get(anchor_no, None)
     for no, sc in velobi_sorted:
@@ -200,7 +186,6 @@ def pick_A_B_for_anchor(anchor_no, velobi_sorted, comp_points_rank, car_to_group
         if anchor_group and car_to_group.get(no, None) == anchor_group:
             A = (no, sc, "同ライン")
             break
-    # B: 競争得点1〜4位の次点（◎除外）
     B = None
     for no, sc in velobi_sorted:
         if no == anchor_no: continue
@@ -210,7 +195,6 @@ def pick_A_B_for_anchor(anchor_no, velobi_sorted, comp_points_rank, car_to_group
     return A, B
 
 def pick_for_single_anchor(anchor_no, velobi_sorted, comp_points_rank, car_to_group):
-    # ◎が単騎のとき：まず○=B（得点1〜4位次点）
     O = None
     for no, sc in velobi_sorted:
         if no == anchor_no: continue
@@ -218,8 +202,7 @@ def pick_for_single_anchor(anchor_no, velobi_sorted, comp_points_rank, car_to_gr
             O = (no, sc, "得点上位")
             break
     if not O:
-        return None, None, None  # ○も置けないケース（まれ）
-    # ○基準で A'/B' 比較 → ▲/△
+        return None, None, None
     o_no, o_sc, _ = O
     o_group = car_to_group.get(o_no, None)
     A2 = B2 = None
@@ -229,7 +212,6 @@ def pick_for_single_anchor(anchor_no, velobi_sorted, comp_points_rank, car_to_gr
             A2 = (no, sc, "○同ライン")
         if comp_points_rank.get(no, 99) <= 4 and not B2:
             B2 = (no, sc, "得点上位")
-    # ▲/△
     if A2 and B2:
         if A2[1] >= B2[1]:
             return O, A2, B2
@@ -256,10 +238,7 @@ def pick_girls_anchor_second(velobi_sorted, comp_points_rank):
 # =========================================================
 # Streamlit UI
 # =========================================================
-
-st.set_page_config(page_title="ヴェロビ 完全版（note記事用出力つき）", layout="wide")
 st.title("⭐ ヴェロビ 完全版（note記事用出力つき）⭐")
-
 mode = st.radio("開催種別を選択", ["男子", "ガールズ"], horizontal=True)
 
 # 風・バンク
@@ -296,7 +275,7 @@ straight_length = st.number_input("みなし直線(m)", 30.0, 80.0, float(info["
 bank_angle = st.number_input("バンク角(°)", 20.0, 45.0, float(info["bank_angle"]), 0.1)
 bank_length = st.number_input("バンク周長(m)", 300.0, 500.0, float(info["bank_length"]), 0.1)
 
-# 周回・開催日（疲労）
+# 周回・開催日
 base_laps = st.number_input("周回数（通常4、高松など5）", 1, 10, 4, 1)
 day_label_to_idx = {"初日":1, "2日目":2, "最終日":3}
 day_label = st.selectbox("開催日（疲労補正：初日+1 / 2日目+2 / 最終日+3）", list(day_label_to_idx.keys()))
@@ -329,8 +308,46 @@ for i in range(N_MAX):
     with col2: ch2 = st.text_input(f"{i+1}番【前走】", key=f"ch2_{i}")
     chaku_inputs.append([ch1,ch2])
 
+# ▼ 競争得点（根治版：テキスト入力一本化）
 st.subheader("▼ 競争得点")
-rating = [st.number_input(f"{i+1}番得点", value=55.0, step=0.1, key=f"rate_{i}") for i in range(N_MAX)]
+# 旧キーを全削除
+for i in range(N_MAX):
+    for k in (f"rate_{i}", f"rate_fix_{i}", f"rate_v2_{i}", f"rate_safe_{i}", f"rate_txt_{i}"):
+        st.session_state.pop(k, None)
+
+def _parse_float_flexible(s: str) -> float | None:
+    if s is None:
+        return None
+    s = unicodedata.normalize("NFKC", str(s)).replace(",", "").strip()
+    if not re.fullmatch(r"[+-]?\d+(\.\d+)?", s):
+        return None
+    try:
+        return float(s)
+    except Exception:
+        return None
+
+rating: list[float] = []
+invalid_inputs: list[int] = []
+for i in range(N_MAX):
+    key_txt = f"pt_txt_v2_{i}"   # 表示文字列
+    key_val = f"pt_val_v2_{i}"   # 有効float
+    prev_valid = float(st.session_state.get(key_val, 55.0))
+    default_str = st.session_state.get(key_txt, f"{prev_valid:.1f}")
+    s = st.text_input(f"{i+1}番得点（例: 55.0）", value=str(default_str), key=key_txt)
+    v = _parse_float_flexible(s)
+    if v is None:
+        invalid_inputs.append(i + 1)
+        v = prev_valid
+        st.session_state[key_txt] = f"{v:.1f}"
+    else:
+        st.session_state[key_val] = float(v)
+    rating.append(float(v))
+
+abnormal = [(i+1, v) for i, v in enumerate(rating) if v < 20.0 or v > 120.0]
+if invalid_inputs:
+    st.error("数値として解釈できない入力があったため、前回の有効値に戻しました: " + ", ".join(map(str, invalid_inputs)))
+if abnormal:
+    st.warning("競争得点の想定外の値があります: " + ", ".join([f"{no}:{val:.1f}" for no, val in abnormal]))
 
 st.subheader("▼ 予想隊列（数字、欠は空欄）")
 tairetsu = [st.text_input(f"{i+1}番隊列順位", key=f"tai_{i}") for i in range(N_MAX)]
@@ -376,70 +393,6 @@ def dynamic_params(n:int):
     return line_bonus, pos_multi_map, choose_upper_k(n)
 
 LINE_BONUS, POS_MULTI_MAP, UPPER_K = dynamic_params(n_cars)
-
-# =============================== 
-# ▼ 競争得点 入力（完全版・number_input撤廃）
-# ===============================
-st.subheader("▼ 競争得点")
-
-import re, unicodedata
-
-# 旧キーをパージ（過去状態の持ち越し防止）
-for i in range(N_MAX):
-    st.session_state.pop(f"rate_{i}", None)
-    st.session_state.pop(f"rate_fix_{i}", None)
-    st.session_state.pop(f"rate_v2_{i}", None)
-    st.session_state.pop(f"rate_safe_{i}", None)
-    # 過去のテキスト版キーも一応掃除
-    # st.session_state.pop(f"rate_txt_{i}", None)  # ←既存値を活かしたいならコメントアウト
-
-def _parse_float_flexible(s: str) -> float | None:
-    """全角→半角、カンマ除去、符号と小数1つのみ許容。失敗時はNone。"""
-    if s is None:
-        return None
-    s = unicodedata.normalize("NFKC", str(s))   # 全角数字/小数点を半角化
-    s = s.replace(",", "").strip()
-    if not re.fullmatch(r"[+-]?\d+(\.\d+)?", s):
-        return None
-    try:
-        return float(s)
-    except Exception:
-        return None
-
-rating: list[float] = []
-invalid_inputs: list[int] = []
-
-# 各入力をテキストで受け、直ちにパース。失敗時は直前の有効値 or 55.0 にフォールバック。
-for i in range(N_MAX):
-    key_txt = f"rate_txt_v1_{i}"     # 表示用のテキストボックスキー
-    key_val = f"rate_val_v1_{i}"     # 直近の有効float値を保持するキー
-
-    # 初期表示テキスト：直近の有効値があればそれを、小数1桁で見せる
-    prev_valid = st.session_state.get(key_val, 55.0)
-    default_str = st.session_state.get(key_txt, f"{prev_valid:.1f}")
-
-    s = st.text_input(f"{i+1}番得点（例: 55.0）", value=str(default_str), key=key_txt)
-    v = _parse_float_flexible(s)
-
-    if v is None:
-        # パース失敗：前回の有効値に戻す。なければ 55.0
-        invalid_inputs.append(i + 1)
-        v = float(prev_valid) if key_val in st.session_state else 55.0
-        # 表示も有効値で上書き（赤枠残さない）
-        st.session_state[key_txt] = f"{v:.1f}"
-    else:
-        # 正常パースなら有効値を更新
-        st.session_state[key_val] = float(v)
-
-    rating.append(float(v))
-
-# 想定レンジ外の注意喚起（閾値は運用に合わせて調整）
-abnormal = [(i+1, v) for i, v in enumerate(rating) if v < 20.0 or v > 120.0]
-if invalid_inputs:
-    st.error("数値として解釈できない入力があったため、前回の有効値に戻しました: " + ", ".join(map(str, invalid_inputs)))
-if abnormal:
-    st.warning("競争得点の想定外の値があります: " + ", ".join([f"{no}:{val:.1f}" for no, val in abnormal]))
-
 
 # ===============================
 # スコア計算（activeのみ）
@@ -501,7 +454,6 @@ else:
     df_rank = df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True)
     velobi_sorted = list(zip(df_rank['車番'].tolist(), df_rank['合計スコア'].round(1).tolist()))
 
-    # 競争得点順位（active対象）
     points_df = pd.DataFrame({"車番": [i + 1 for i in active_idx], "得点": [rating[i] for i in active_idx]})
     if not points_df.empty:
         points_df["順位"] = points_df["得点"].rank(ascending=False, method="min").astype(int)
@@ -510,11 +462,9 @@ else:
         comp_points_rank = {}
 
     marks_order = ["◎","〇","▲","△","×","α","β"]
-    result_marks = {}
-    reasons = {}
+    result_marks, reasons = {}, {}
 
     if mode == "ガールズ":
-        # ◎/○ は得点1-4縛り、以降はスコア順
         a, b = pick_girls_anchor_second(velobi_sorted, comp_points_rank)
         if a:
             result_marks["◎"] = a[0]; reasons[a[0]] = "本命(得点1-4)"
@@ -526,15 +476,12 @@ else:
         for m, n in zip(fill_marks, rest):
             result_marks[m] = n
     else:
-        # 男子（ラインあり／単騎あり）
         anchor_no, _ = pick_anchor(velobi_sorted, comp_points_rank)
         result_marks["◎"] = anchor_no; reasons[anchor_no] = "本命(得点1-4内最高スコア)"
         anchor_group = car_to_group.get(anchor_no, None)
         same_line_exists = anchor_group and any((car_to_group.get(no) == anchor_group and no != anchor_no) for no, _ in velobi_sorted)
-
         if same_line_exists:
             A, B = pick_A_B_for_anchor(anchor_no, velobi_sorted, comp_points_rank, car_to_group)
-            # ○/▲ 決定
             if A and B:
                 if A[1] >= B[1]:
                     result_marks["〇"] = A[0]; reasons[A[0]] = "同ライン"
@@ -547,12 +494,10 @@ else:
             elif B:
                 result_marks["〇"] = B[0]; reasons[B[0]] = "得点上位"
         else:
-            # ◎単騎：○=B、その後○基準で A'/B' 比較 → ▲/△
             O, A2, B2 = pick_for_single_anchor(anchor_no, velobi_sorted, comp_points_rank, car_to_group)
             if O:
                 result_marks["〇"] = O[0]; reasons[O[0]] = "得点上位"
             if A2 and B2:
-                # スコア高い方を▲、残りを△
                 if A2[1] >= B2[1]:
                     result_marks["▲"] = A2[0]; reasons[A2[0]] = A2[2]
                     result_marks["△"] = B2[0]; reasons[B2[0]] = B2[2]
@@ -564,37 +509,27 @@ else:
             elif B2:
                 result_marks["▲"] = B2[0]; reasons[B2[0]] = B2[2]
 
-        # 残りをスコア順で補完
         used = set(result_marks.values())
         rest = [no for no, _ in velobi_sorted if no not in used]
         for m, n in zip([m for m in marks_order if m not in result_marks], rest):
             result_marks[m] = n
 
-    # --- 重複排除つき・最終印整形（◎〇▲△×αβは車番の重複を許さない） ---
     def finalize_marks_unique(result_marks: dict, velobi_sorted: list):
         order = ["◎","〇","▲","△","×","α","β"]
-        used = set()
-        final = {}
-        # 既存の割当を順番に採用（重複はスキップ）
+        used = set(); final = {}
         for m in order:
             n = result_marks.get(m)
             if n is not None and n not in used:
-                final[m] = n
-                used.add(n)
-        # 足りない印はスコア順の未使用車で補完
+                final[m] = n; used.add(n)
         for m in order:
             if m not in final:
                 for no, _ in velobi_sorted:
                     if no not in used:
-                        final[m] = no
-                        used.add(no)
-                        break
+                        final[m] = no; used.add(no); break
         return final
 
-    # 最終化（重複解消）
     result_marks = finalize_marks_unique(result_marks, velobi_sorted)
 
-    # 表示（印入りランキング＋詳細内訳）
     rows = []
     for r, (no, sc) in enumerate(velobi_sorted, start=1):
         mark = [m for m, v in result_marks.items() if v == no]
@@ -607,24 +542,14 @@ else:
     st.markdown("### 🧩 補正内訳（合計スコア高い順）")
     st.dataframe(df_rank, use_container_width=True)
 
-    # タグ表示
     tag = f"開催日補正 +{DAY_DELTA.get(day_idx,1)}（有効周回={eff_laps}） / 風向:{st.session_state.selected_wind}"
     st.caption(tag)
 
-    # =========================================================
-    # ✅ note記事用（上下2行＋スコア順）— 必ず最後に表示
-    # =========================================================
+    # note記事用
     st.markdown("### 📋 note記事用（コピー可 / 上下2行＋スコア順）")
-
-    # 上段：ライン構成（UI入力を結合）
     line_text = "　".join([x for x in line_inputs if str(x).strip()])
-
-    # 中段：本来のスコア順（車番のみ）
     score_order_text = " ".join(str(no) for no, _ in velobi_sorted)
-
-    # 下段：最終印の並び（重複排除後の result_marks を使用）
     marks_order = ["◎","〇","▲","△","×","α","β"]
     marks_line = " ".join(f"{m}{result_marks[m]}" for m in marks_order if m in result_marks)
-
     note_text = f"ライン　{line_text}\nスコア順　{score_order_text}\n{marks_line}"
     st.text_area("note貼り付け用（この枠の内容をそのままコピー）", note_text, height=120)
