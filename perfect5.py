@@ -1,8 +1,12 @@
 # app.py
 # ヴェロビ 完全版（5〜9車対応 / 2連対率・3連対率 / 欠車対応 / 男子・ガールズ分岐）
-# ◎：母集団（得点の平均値以上）内のヴェロビ合計スコア首位
-# 〇▲：母集団内の「同ライン最上位」と「他ライン最上位」を直接比較し上位を〇・もう一方を▲（補完徹底）
-# note出力：3行のみ（手動コピー）
+# 仕様：
+#  - 母集団（男子）= 競争得点の平均値以上（得点降順で連続ブロック）
+#  - ◎ = 母集中のヴェロビ合計スコア首位
+#  - 〇▲ = 全体のスコア順から「同ライン首位」と「他ライン首位」を抽出し、直接比較して上位を〇・残りを▲（補完徹底）
+#  - △以下 = スコア順で埋める
+#  - 2連対率/3連対率は％入力OK（7 / 12.5 / ７ / 12.5% など）
+#  - note出力は3行のみ（手動コピー）
 
 from __future__ import annotations
 import streamlit as st
@@ -14,9 +18,9 @@ st.set_page_config(page_title="ヴェロビ 完全版（5〜9車対応）", layo
 
 """
 ヴェロビ（欠車対応・統一版 / 5〜9車立て対応 / 男子・ガールズ分岐 + note出力）
-— 前走/前々走の着順入力を廃止し、2連対率・3連対率で“着内実力”を反映 —
-— 男子：母集団＝得点の平均値以上（得点降順の連続ブロック）、
-          ◎は母集団内スコア首位、〇▲は同ライン最上位と他ライン最上位を直接比較し補完を徹底 —
+— 男子：母集団=得点の平均以上（得点降順で連続）→◎は母集中スコア首位。
+          〇▲は全体スコア順から「同ライン首位」「他ライン首位」を直接比較して上位を〇・残りを▲（補完徹底） —
+— ガールズ：得点上位（1〜4位）から◎〇、以下スコア順 —
 """
 
 # =========================================================
@@ -394,6 +398,7 @@ for row in score_parts:
 columns = ['車番','脚質','基本','風補正','得点補正','周回補正','SB印補正','ライン補正','バンク補正','周長補正','着内Δ','グループ補正','合計スコア']
 df = pd.DataFrame(final_score_parts, columns=columns)
 
+# 付加情報
 try:
     rating_map = {i + 1: rating[i] for i in range(N_MAX)}
     df['競争得点'] = df['車番'].map(rating_map)
@@ -412,14 +417,15 @@ else:
     df_rank = df.sort_values(by='合計スコア', ascending=False).reset_index(drop=True)
     velobi_sorted = list(zip(df_rank['車番'].tolist(), df_rank['合計スコア'].round(1).tolist()))
 
-    # 得点テーブル（activeのみ）
+    # 得点ベース（activeのみ）
     points_pairs = sorted([(i+1, float(rating[i])) for i in active_idx], key=lambda x: x[1], reverse=True)
     if points_pairs:
-        max_pt = points_pairs[0][1]
         mean_pt = sum(pts for _, pts in points_pairs) / len(points_pairs)
+        max_pt = points_pairs[0][1]
     else:
-        max_pt = 0.0
         mean_pt = 0.0
+        max_pt = 0.0
+
     delta_map = {no: round(max_pt - pts, 2) for no, pts in points_pairs}
 
     marks_order = ["◎","〇","▲","△","×","α","β"]
@@ -437,71 +443,70 @@ else:
         rest = [no for no, _ in velobi_sorted if no not in used]
         for m, n in zip([m for m in marks_order if m not in result_marks], rest):
             result_marks[m] = n
+
     else:
-        # ---- 男子：母集団C = 平均値以上（得点降順の連続ブロック）----
+        # ---- 男子：母集団 = 平均以上（得点降順で連続ブロック）----
         C = []
-        for no, pts in points_pairs:           # 降順なので平均未満になったら以降は全て未満
+        for no, pts in points_pairs:  # 降順なので平均未満に落ちたら以降は未満
             if pts + 1e-9 >= mean_pt:
                 C.append(no)
             else:
                 break
         if len(C) <= 1:
-            # まれに均質な場や入力揺れでも最低3頭は確保（フェイルセーフ）
+            # まれに均質な場などで最低3頭は確保（フェイルセーフ）
             C = [no for no, _ in points_pairs[:3]]
 
-        # 表示・選定順はスコア順（velobi_sorted）に揃える
+        # ◎：母集団内スコア首位（スコア順に合わせる）
         ordered_C = [no for no, _ in velobi_sorted if no in set(C)]
-
-        # ◎：母集団内スコア首位
         anchor_no = ordered_C[0]
         result_marks["◎"] = anchor_no
         reasons[anchor_no] = "本命(母集団=平均以上・スコア首位)"
 
-        # 〇▲：同ライン最上位 vs 他ライン最上位を直接比較（同ラインに微ボーナス）
-        EPS_SAME = 0.05  # 0.03〜0.10 で調整可
+        # 〇▲：全体スコア順から「同ライン首位」と「他ライン首位」を抽出して比較（補完徹底）
+        EPS_SAME = 0.05  # 同ライン微ボーナス（0.03〜0.10お好みで）
         vmap = dict(velobi_sorted)
         gmap = {car: g for g, members in line_def.items() for car in members}
         g_anchor = gmap.get(anchor_no, None)
 
-        cand = [no for no in ordered_C if no != anchor_no]
-        same_line = [no for no in cand if gmap.get(no) == g_anchor]
-        other_line = [no for no in cand if gmap.get(no) != g_anchor]
+        # 全体スコア順で候補抽出（母集団制限はかけない）
+        cand_all = [no for no, _ in velobi_sorted if no != anchor_no]
+        same_line  = [no for no in cand_all if gmap.get(no) == g_anchor]
+        other_line = [no for no in cand_all if gmap.get(no) != g_anchor]
 
         def eff_score(no):
             if no is None: return -9e9
             bonus = EPS_SAME if (g_anchor and gmap.get(no) == g_anchor) else 0.0
             return vmap.get(no, -9e9) + bonus
 
-        best_same  = same_line[0] if same_line else None
+        best_same  = same_line[0]  if same_line  else None
         best_other = other_line[0] if other_line else None
 
         if best_same and best_other:
-            # 直接比較：上位を〇・もう一方を▲（補完徹底）
             if eff_score(best_same) >= eff_score(best_other):
-                result_marks["〇"] = best_same;  reasons[best_same]  = "対抗(同ライン上位)"
-                result_marks["▲"] = best_other; reasons[best_other] = "単穴(他ライン上位)"
+                result_marks["〇"] = best_same;  reasons[best_same]  = "対抗(同ライン首位)"
+                result_marks["▲"] = best_other; reasons[best_other] = "単穴(他ライン首位)"
             else:
-                result_marks["〇"] = best_other; reasons[best_other] = "対抗(他ライン上位)"
-                result_marks["▲"] = best_same;  reasons[best_same]  = "単穴(同ライン上位)"
+                result_marks["〇"] = best_other; reasons[best_other] = "対抗(他ライン首位)"
+                result_marks["▲"] = best_same;  reasons[best_same]  = "単穴(同ライン首位)"
         elif best_same and not best_other:
-            # 他ライン候補がいない → 〇=同ライン、▲は残りのスコア次点（補完できない場合の保険）
-            result_marks["〇"] = best_same; reasons[best_same] = "対抗(同ライン上位)"
-            ordered_rest = [no for no, _ in velobi_sorted if no not in {anchor_no, result_marks["〇"]}]
-            if ordered_rest:
-                result_marks["▲"] = ordered_rest[0]; reasons[ordered_rest[0]] = "単穴(スコア次点)"
+            # 他ライン候補が不在 → 〇=同ライン首位、▲=残りスコア次点
+            result_marks["〇"] = best_same; reasons[best_same] = "対抗(同ライン首位)"
+            rest = [no for no in cand_all if no != best_same]
+            if rest:
+                result_marks["▲"] = rest[0]; reasons[rest[0]] = "単穴(スコア次点)"
         elif best_other and not best_same:
-            # 同ライン候補がいない → 〇=他ライン、▲は残りのスコア次点
-            result_marks["〇"] = best_other; reasons[best_other] = "対抗(他ライン上位)"
-            ordered_rest = [no for no, _ in velobi_sorted if no not in {anchor_no, result_marks["〇"]}]
-            if ordered_rest:
-                result_marks["▲"] = ordered_rest[0]; reasons[ordered_rest[0]] = "単穴(スコア次点)"
+            # 同ライン候補が不在 → 〇=他ライン首位、▲=残りスコア次点
+            result_marks["〇"] = best_other; reasons[best_other] = "対抗(他ライン首位)"
+            rest = [no for no in cand_all if no != best_other]
+            if rest:
+                result_marks["▲"] = rest[0]; reasons[rest[0]] = "単穴(スコア次点)"
         else:
-            # 候補が空（母集団1頭のみ等）→ スコア順で〇▲
-            ordered_rest = [no for no, _ in velobi_sorted if no != anchor_no]
-            if ordered_rest:
-                result_marks["〇"] = ordered_rest[0]; reasons[ordered_rest[0]] = "対抗(スコア上位)"
-            if len(ordered_rest) >= 2:
-                result_marks["▲"] = ordered_rest[1]; reasons[ordered_rest[1]] = "単穴(スコア次点)"
+            # どちらも不在（実質1頭場など） → スコア順で〇▲
+            rest = [no for no, _ in velobi_sorted if no != anchor_no]
+            if rest:
+                result_marks["〇"] = rest[0]; reasons[rest[0]] = "対抗(スコア上位)"
+            if len(rest) >= 2:
+                result_marks["▲"] = rest[1]; reasons[rest[1]] = "単穴(スコア次点)"
 
         # 残りはスコア順で埋める
         used = set(result_marks.values())
@@ -532,8 +537,8 @@ else:
         mark = [m for m, v in result_marks.items() if v == no]
         reason = reasons.get(no, "")
         pt = df.loc[df['車番'] == no, '競争得点'].iloc[0] if '競争得点' in df.columns else None
-        delta_pt = delta_map.get(no, None)
-        rows.append({"順": r, "印": "".join(mark), "車": no, "合計スコア": sc, "競争得点": pt, "Δ得点": delta_pt, "理由": reason})
+        dpt = delta_map.get(no, None)
+        rows.append({"順": r, "印": "".join(mark), "車": no, "合計スコア": sc, "競争得点": pt, "Δ得点": dpt, "理由": reason})
     view_df = pd.DataFrame(rows)
     st.dataframe(view_df, use_container_width=True)
 
