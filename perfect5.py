@@ -1,19 +1,19 @@
 # app.py
-# ヴェロビ 完全版（SB分離：◎=SBあり / 紐=SBなし）
-# - 5〜9車対応 / 欠車対応 / 男女統一
-# - 母集団C：競争得点の両端除外平均（1–1トリム）以上の連続ブロック
-# - ◎：C内の「SBあり総合スコア」首位
-# - 〇▲：全体「SBなし総合スコア」で ◎同ライン首位 vs 他ライン首位 を比較して決定
-# - △以下：SBなし総合スコア順
-# - 2連対率:3連対率 = 0.5 : 0.25（Z正規化→±2.5σ→α=0.30→寄与≈±0.25）
-
+# ヴェロビ（SB分離・完全版）5〜9車対応 / 欠車対応 / 男女統一
+# 仕様:
+# - 母集団C: 競争得点の両端除外平均(1–1トリム) 以上の「降順連続ブロック」
+# - ◎: C内から「SBあり総合(=素点_withSB + group_with)」の首位
+# - 〇▲: 「SBなし総合(=素点_woSB + group_without)」で ◎同ライン首位 vs 他ライン首位 を比較して決定
+# - △以下: SBなし総合の順で埋める
+# - 2連対率:3連対率 = 0.5:0.25（Z正規化→±2.5σ→α=0.30→寄与≈±0.25）
+# - JSコピーなし（noteは手動コピー）
 from __future__ import annotations
 import streamlit as st
 import pandas as pd
 import numpy as np
 import re, unicodedata
 
-st.set_page_config(page_title="ヴェロビ（SB分離版）", layout="wide")
+st.set_page_config(page_title="ヴェロビ（SB分離・完全版）", layout="wide")
 
 # =========================
 # 定数
@@ -170,33 +170,35 @@ def dynamic_params(n):
             {0:0.30, 1:0.32, 2:0.30, 3:0.25, 4:0.20, 5:0.18},
             8)
 
-def compute_group_bonus(score_parts, line_def, n):
-    if not line_def: return {}
-    alpha = 0.0 if n <= 7 else (0.25 if n == 8 else 0.5)
-    total_budget = 0.42 * ((max(n,1)/7.0) ** 0.5)
-    car_to_group = {car:g for g, mem in line_def.items() for car in mem}
-    sums = {g:0.0 for g in line_def}
-    sizes = {g:max(len(mem),1) for g,mem in line_def.items()}
-    for row in score_parts:
-        no, total = row[0], row[-1]
-        g = car_to_group.get(no)
-        if g: sums[g] += total
-    adj = {g:(sums[g]/(sizes[g]**alpha)) for g in line_def}
-    ordered = sorted(adj.items(), key=lambda x:x[1], reverse=True)
-    r=0.80; ws=[r**i for i in range(len(ordered))]; sw=sum(ws) or 1.0
-    bonuses=[(w/sw)*total_budget for w in ws]
-    return {g:bonuses[i] for i,(g,_) in enumerate(ordered)}
+# —— ライン強度（グループ補正）を「指定の素点の合計」で算出する（SBあり／なしで別々に呼ぶ）
+def compute_group_bonus_from_totals(line_def: dict[str,list[int]], car_total_map: dict[int,float], n_cars: int) -> dict[str,float]:
+    if not line_def: 
+        return {}
+    alpha = 0.0 if n_cars <= 7 else (0.25 if n_cars == 8 else 0.5)
+    total_budget = 0.42 * ((max(n_cars,1) / 7.0) ** 0.5)
+    sums = {g: 0.0 for g in line_def}
+    sizes = {g: max(len(mem), 1) for g, mem in line_def.items()}
+    for g, mem in line_def.items():
+        for no in mem:
+            sums[g] += float(car_total_map.get(no, 0.0))
+    adj = {g: (sums[g] / (sizes[g] ** alpha)) for g in line_def}
+    ordered = sorted(adj.items(), key=lambda x: x[1], reverse=True)
+    r = 0.80
+    ws = [r**i for i in range(len(ordered))]
+    sw = sum(ws) or 1.0
+    bonuses = [(w / sw) * total_budget for w in ws]
+    return {g: bonuses[i] for i, (g, _) in enumerate(ordered)}
 
 def get_group_bonus(car_no, line_def, bonus_map, a_head_bonus=True):
     for g, mem in line_def.items():
         if car_no in mem:
-            return bonus_map.get(g, 0.0) + (0.15 if (a_head_bonus and g=='A') else 0.0)
+            return bonus_map.get(g, 0.0) + (0.15 if (a_head_bonus and g == 'A') else 0.0)
     return 0.0
 
 # =========================
 # UI
 # =========================
-st.title("⭐ ヴェロビ（SB分離版 / 5〜9車・note用）⭐")
+st.title("⭐ ヴェロビ（SB分離・完全版 / 5〜9車・note用）⭐")
 N_MAX = st.slider("出走車数（5〜9）", 5, 9, 7, 1)
 
 # 風・バンク
@@ -254,7 +256,7 @@ for i,k in enumerate(['逃','両','追']):
             if 1 <= n <= N_MAX:
                 car_to_kakushitsu[n] = k
 
-# 得点
+# 競争得点
 st.subheader("▼ 競争得点")
 rating, invalid = [], []
 for i in range(N_MAX):
@@ -307,7 +309,7 @@ line_order_map = build_line_position_map(lines)
 line_order = [line_order_map.get(i+1, 0) for i in range(N_MAX)]
 
 # =========================
-# スコア計算（activeのみ）
+# スコア（activeのみ）
 # =========================
 active_idx = [i for i in range(N_MAX) if str(tairetsu[i]).isdigit()]
 n_cars = len(active_idx)
@@ -328,8 +330,8 @@ for j,i in enumerate(active_idx):
     delta = float(Z_R.iloc[j]) if len(Z_R)>j else 0.0
     Place_Delta[i] = round(np.clip(alpha*delta, -cap, cap)/3.0, 3)
 
-# 各種スコア（SB分離）
-score_rows = []
+# —— 素点（グループ補正を加える前の合計）を SBあり／なしで作る
+percar = []  # [no,kaku,base,wind,得点補正,lap,sb,line_b,bank_b,len_b,place, total_with_raw, total_without_raw]
 for i in active_idx:
     num = i+1
     kaku = car_to_kakushitsu.get(num, "追")
@@ -345,27 +347,33 @@ for i in active_idx:
     len_b = bank_length_adjust(kaku, bank_length)
     place = Place_Delta[i]
 
-    # SBあり／なし総合
-    total_with_sb    = base + wind + rating_score + lap + sb_bonus + line_b + bank_b + len_b + place
-    total_without_sb = base + wind + rating_score + lap           + line_b + bank_b + len_b + place
-
-    score_rows.append([num,kaku,base,wind,rating_score,lap,sb_bonus,line_b,bank_b,len_b,place,total_with_sb,total_without_sb])
+    total_with_raw    = base + wind + rating_score + lap + sb_bonus + line_b + bank_b + len_b + place
+    total_without_raw = base + wind + rating_score + lap           + line_b + bank_b + len_b + place
+    percar.append([num,kaku,base,wind, rating_score,lap,sb_bonus,line_b,bank_b,len_b,place, total_with_raw, total_without_raw])
 
 labels=["A","B","C","D","E","F","G"]
 line_def = {labels[idx]: line for idx, line in enumerate(lines) if line}
 car_to_group = {car:g for g,mem in line_def.items() for car in mem}
 
-# グループ補正は SBあり／なし双方に同値で加える（“ラインの地力”は両者で共通の仮定）
-group_bonus_map = compute_group_bonus(score_rows, line_def, n_cars)
-final_rows=[]
-for row in score_rows:
-    no = row[0]
-    g_corr = get_group_bonus(no, line_def, group_bonus_map, a_head_bonus=True)
-    total_with_sb    = row[-2] + g_corr
-    total_without_sb = row[-1] + g_corr
-    final_rows.append(row[:-2] + [g_corr, total_with_sb, total_without_sb])
+# —— ライン強度（グループ補正）を SBあり／なしで完全分離して算出
+car_total_with_map    = {row[0]: row[-2] for row in percar}  # total_with_raw
+car_total_without_map = {row[0]: row[-1] for row in percar}  # total_without_raw
 
-columns=['車番','脚質','基本','風補正','得点補正','周回補正','SB印補正','ライン補正','バンク補正','周長補正','着内Δ','グループ補正','合計_SBあり','合計_SBなし']
+group_with    = compute_group_bonus_from_totals(line_def, car_total_with_map,    n_cars)
+group_without = compute_group_bonus_from_totals(line_def, car_total_without_map, n_cars)
+
+# —— 最終スコア（SBあり世界 / SBなし世界）
+final_rows=[]
+for row in percar:
+    no = row[0]
+    g_with = get_group_bonus(no, line_def, group_with, a_head_bonus=True)
+    g_wo   = get_group_bonus(no, line_def, group_without, a_head_bonus=True)
+    total_with    = row[-2] + g_with
+    total_without = row[-1] + g_wo
+    final_rows.append(row[:-2] + [g_with, g_wo, total_with, total_without])
+
+columns=['車番','脚質','基本','風補正','得点補正','周回補正','SB印補正','ライン補正','バンク補正','周長補正','着内Δ',
+         'グループ補正_with','グループ補正_wo','合計_SBあり','合計_SBなし']
 df = pd.DataFrame(final_rows, columns=columns)
 
 # 付加表示列
@@ -377,24 +385,22 @@ except Exception:
     pass
 
 # =========================
-# 印決定
+# 印決定（◎=SBあり / 紐=SBなし）
 # =========================
-st.markdown("### 📊 ランキング & 印（SB分離ロジック）")
+st.markdown("### 📊 ランキング & 印（◎=SBあり / 紐=SBなし）")
 if df.empty:
     st.error("データが空です。入力を確認してください。")
 else:
-    # —— 得点（activeのみ）降順
+    # 得点降順
     points_pairs = sorted([(i+1, float(rating[i])) for i in active_idx], key=lambda x:x[1], reverse=True)
-    max_pt = points_pairs[0][1] if points_pairs else 0.0
-    delta_map = {no: round(max_pt - pts, 2) for no, pts in points_pairs}
-
-    # —— 母集団C：1–1トリム平均（両端除外）以上の連続ブロック
+    # 1–1トリム平均
     if len(points_pairs) >= 3:
         core_vals = [pts for _, pts in points_pairs][1:-1]
-        trimmed_mean = sum(core_vals)/len(core_vals) if core_vals else sum(pts for _,pts in points_pairs)/len(points_pairs)
+        trimmed_mean = (sum(core_vals)/len(core_vals)) if core_vals else (sum(pts for _,pts in points_pairs)/len(points_pairs))
     else:
-        trimmed_mean = sum(pts for _,pts in points_pairs)/len(points_pairs) if points_pairs else 0.0
+        trimmed_mean = (sum(pts for _,pts in points_pairs)/len(points_pairs)) if points_pairs else 0.0
 
+    # C（連続ブロック）
     C=[]
     for no, pts in points_pairs:
         if pts + 1e-9 >= trimmed_mean:
@@ -402,36 +408,34 @@ else:
         else:
             break
     if not C and points_pairs:
-        C = [no for no,_ in points_pairs[:3]]  # 保険
+        C = [no for no,_ in points_pairs[:3]]
 
-    # —— ◎：C内の「SBあり」スコア首位
+    # ◎：C内 SBあり首位
     df_with = df.sort_values(by='合計_SBあり', ascending=False).reset_index(drop=True)
     velobi_with = list(zip(df_with['車番'], df_with['合計_SBあり'].round(3)))
-    v_with = dict(velobi_with)
-    ordered_C_with = [no for no,_ in velobi_with if no in set(C)]
+    ordered_C_with = [no for no, _ in velobi_with if no in set(C)]
     anchor_no = ordered_C_with[0] if ordered_C_with else velobi_with[0][0]
 
     result_marks, reasons = {}, {}
     result_marks["◎"] = anchor_no
     reasons[anchor_no] = f"本命(SBあり首位 / C基準≥{trimmed_mean:.2f})"
 
-    # —— 〇▲：SBなしで「同ライン首位 vs 他ライン首位」を比較
-    df_without = df.sort_values(by='合計_SBなし', ascending=False).reset_index(drop=True)
-    velobi_without = list(zip(df_without['車番'], df_without['合計_SBなし'].round(3)))
-    v_without = dict(velobi_without)
-
+    # 〇▲：SBなしで 同ライン首位 vs 他ライン首位 を比較
+    df_wo = df.sort_values(by='合計_SBなし', ascending=False).reset_index(drop=True)
+    velobi_wo = list(zip(df_wo['車番'], df_wo['合計_SBなし'].round(3)))
+    v_wo = dict(velobi_wo)
     gmap = {car:g for g,mem in line_def.items() for car in mem}
     g_anchor = gmap.get(anchor_no, None)
 
-    cand_wo = [no for no,_ in velobi_without if no != anchor_no]
+    cand_wo = [no for no,_ in velobi_wo if no != anchor_no]
     same_line = [no for no in cand_wo if gmap.get(no) == g_anchor]
     other_line= [no for no in cand_wo if gmap.get(no) != g_anchor]
 
-    EPS_SAME = 0.05  # 僅差の同ライン寄せをしたい場合は0.07〜0.10へ
+    EPS_SAME = 0.05
     def eff_score_wo(no):
         if no is None: return -9e9
         bonus = EPS_SAME if (g_anchor and gmap.get(no) == g_anchor) else 0.0
-        return v_without.get(no, -9e9) + bonus
+        return v_wo.get(no, -9e9) + bonus
 
     best_same  = same_line[0]  if same_line  else None
     best_other = other_line[0] if other_line else None
@@ -454,48 +458,43 @@ else:
         if rest:
             result_marks["▲"] = rest[0]; reasons[rest[0]] = "単穴(次点/SBなし)"
     else:
-        rest = [no for no,_ in velobi_without if no != anchor_no]
+        rest = [no for no,_ in velobi_wo if no != anchor_no]
         if rest:
             result_marks["〇"] = rest[0]; reasons[rest[0]] = "対抗(上位/SBなし)"
         if len(rest) >= 2:
             result_marks["▲"] = rest[1]; reasons[rest[1]] = "単穴(次点/SBなし)"
 
-    # —— 残り印：SBなしスコア順で埋める
+    # 残り印：SBなし順で埋める
     used = set(result_marks.values())
-    tail = [no for no,_ in velobi_without if no not in used]
+    tail = [no for no,_ in velobi_wo if no not in used]
     for m, n in zip(["△","×","α","β"], tail):
         result_marks[m] = n
 
-    # —— 表示
+    # 表示
     rows=[]
-    for r, (no, sc_wo) in enumerate(velobi_without, start=1):
+    for r,(no,sc_wo) in enumerate(velobi_wo, start=1):
         mark = [m for m, v in result_marks.items() if v == no]
         reason = reasons.get(no, "")
         pt  = df.loc[df['車番']==no, '競争得点'].iloc[0] if '競争得点' in df.columns else None
-        sc_w= v_with.get(no, None)
-        dpt = delta_map.get(no, None)
+        sc_w= dict(velobi_with).get(no, None)
         rows.append({"順(SBなし)": r, "印": "".join(mark), "車": no,
                      "SBなしスコア": sc_wo, "SBありスコア": sc_w,
-                     "競争得点": pt, "Δ得点": dpt, "理由": reason})
-    view_df = pd.DataFrame(rows)
-    st.dataframe(view_df, use_container_width=True)
+                     "競争得点": pt, "理由": reason})
+    st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
-    st.markdown("### 🧩 補正内訳（SBあり・なしの両方を参照可能）")
-    show_cols = ['車番','脚質','基本','風補正','得点補正','周回補正','SB印補正','ライン補正','バンク補正','周長補正','着内Δ','グループ補正','合計_SBあり','合計_SBなし','競争得点','2連対率(%)','3連対率(%)']
-    df_show = df.merge(df[['車番']], on='車番')
-    df_rank = df[show_cols].sort_values(by='合計_SBなし', ascending=False)
-    st.dataframe(df_rank, use_container_width=True)
+    st.markdown("### 🧩 補正内訳（SBあり・なし比較）")
+    show_cols = ['車番','脚質','基本','風補正','得点補正','周回補正','SB印補正','ライン補正','バンク補正','周長補正','着内Δ',
+                 'グループ補正_with','グループ補正_wo','合計_SBあり','合計_SBなし','競争得点','2連対率(%)','3連対率(%)']
+    st.dataframe(df[show_cols].sort_values(by='合計_SBなし', ascending=False), use_container_width=True)
 
     tag = f"開催日補正 +{DAY_DELTA.get(day_idx,1)}（有効周回={eff_laps}） / 風向:{st.session_state.get('selected_wind','無風')} / 出走:{n_cars}車 / 得点トリム平均={trimmed_mean:.2f}"
     st.caption(tag)
 
-    # note用（手動コピー）
+    # note（手動コピー）— 紐基準（SBなし）順を採用
     st.markdown("### 📋 note記事用（手動コピー）")
     line_text = "　".join([x for x in line_inputs if str(x).strip()])
-    # 表示順はベット判断で使う“紐基準（SBなし）”の順にする
-    score_order_text = " ".join(str(no) for no,_ in velobi_without)
+    score_order_text = " ".join(str(no) for no,_ in velobi_wo)
     marks_line = " ".join(f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks)
     note_text = f"ライン　{line_text}\nスコア順（SBなし）　{score_order_text}\n{marks_line}"
     st.text_area("ここを選択してコピー", note_text, height=96)
-
 
