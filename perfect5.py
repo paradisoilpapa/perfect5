@@ -465,10 +465,30 @@ else:
     tag=f"開催日補正 +{DAY_DELTA.get(day_idx,1)}（有効周回={eff_laps}） / 風向:{st.session_state.get('selected_wind','無風')} / 出走:{n_cars}車 / μ_trim={mu_trim:.2f}"
     st.caption(tag)
 
-    # note（手動コピー）
-    st.markdown("### 📋 note記事用（手動コピー）")
-    line_text="　".join([x for x in line_inputs if str(x).strip()])
-    score_order_text=" ".join(str(no) for no,_ in velobi_wo)  # 紐基準（SBなし）
-    marks_line=" ".join(f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks)
-    note_text=f"ライン　{line_text}\nスコア順（SBなし）　{score_order_text}\n{marks_line}"
-    st.text_area("ここを選択してコピー", note_text, height=96)
+# =====================================================
+# note記事用（完成形テキストをそのままコピー）
+# =====================================================
+st.markdown("### 📋 note記事用（コピー可）")
+
+# 追加UI：レース番号 / 開催区分 / 級別
+race_no = st.selectbox("レース番号", list(range(1, 13)), index=0)  # 1〜12
+race_time = st.selectbox("開催区分", ["モーニング", "デイ", "ナイター", "ミッドナイト"])
+race_class = st.selectbox("級別", ["Ａ級チャレンジ", "Ａ級", "Ｓ級", "ガールズ"])
+
+# テキスト生成（スコア順は“紐基準=SBなし”の並びを使用）
+line_text = "　".join([x for x in line_inputs if str(x).strip()])
+score_order_text = " ".join(str(no) for no, _ in velobi_wo)
+marks_line = " ".join(
+    f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks
+)
+
+note_text = (
+    f"競輪場　{selected_track}{race_no}R\n"
+    f"{race_time}　{race_class}\n"
+    f"ライン　{line_text}\n"
+    f"スコア順（SBなし）　{score_order_text}\n"
+    f"{marks_line}"
+)
+
+st.text_area("ここを選択してコピー", note_text, height=160)
+
