@@ -526,7 +526,8 @@ else:
     ]
     buy_table = pd.DataFrame(buy_rows, columns=["券種","買い目（1=◎,2=〇/▲）","想定的中率","必要オッズ"])
 
-st.dataframe(buy_table, use_container_width=True) if 'buy_table' in locals() and buy_table is not None else None
+if 'buy_table' in locals() and buy_table is not None:
+    st.dataframe(buy_table, use_container_width=True)
 
 # note（手動コピー：買い目付き）
 st.markdown("### 📋 note記事用（手動コピー）")
