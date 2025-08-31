@@ -361,7 +361,7 @@ cand_scores_sorted = sorted(cand_scores, reverse=True)
 conf = cand_scores_sorted[0]-cand_scores_sorted[1] if len(cand_scores_sorted)>=2 else 0.0
 spread = float(np.std(list(v_wo.values()))) if len(v_wo)>=2 else 0.0
 norm = conf / (spread if spread>1e-6 else 1.0)
-confidence = "強" if norm>=1.0 else ("中" if norm>=0.5 else "弱")
+confidence = "優位" if norm>=1.0 else ("互角" if norm>=0.5 else "混線")
 
 # 〇：C残り → ◎除外でSB再計算 → 最大
 bonus_re,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff, exclude=anchor_no, cap=cap_SB_eff, enable=line_sb_enable)
@@ -451,7 +451,7 @@ st.dataframe(pd.DataFrame(show), use_container_width=True)
 st.caption(
     f"競輪場　{track}{race_no}R / {race_time}　{race_class} / "
     f"開催日：{day_label}（line係数={line_factor_eff:.2f}, SBcap±{cap_SB_eff:.2f}） / "
-    f"会場スタイル:{style:+.2f} / 風:{wind_dir} / 有効周回={eff_laps} / 自信度：**{confidence}**（Norm={norm:.2f}）"
+    f"会場スタイル:{style:+.2f} / 風:{wind_dir} / 有効周回={eff_laps} / 展開評価：**{confidence}**（Norm={norm:.2f}）"
 )
 
 # ==============================
@@ -547,7 +547,7 @@ note_text=(f"競輪場　{track}{race_no}R\n"
            f"ライン　{line_text}\n"
            f"スコア順（SBなし）　{score_order_text}\n"
            f"{marks_line}\n"
-           f"自信度：{confidence}\n"
+           f"展開評価：{confidence}\n"
            + (("\n"+buy_lines) if buy_lines else ""))
 
 st.text_area("ここを選択してコピー", note_text, height=260)
