@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import unicodedata, re, math, random, json
+import itertools
 
 # ==============================
 # ページ設定
@@ -179,7 +180,9 @@ base_laps = st.sidebar.number_input("周回（通常4）", 1, 10, 4, 1)
 day_label = st.sidebar.selectbox("開催日", ["初日","2日目","最終日"], 0)
 eff_laps = int(base_laps) + {"初日":1,"2日目":2,"最終日":3}[day_label]
 
-race_no = st.sidebar.selectbox("レース番号", list(range(1,13)), 0)
+# ★サイドバーからレース番号は撤去（メイン側で入力）
+# race_no = st.sidebar.selectbox("レース番号", list(range(1,13)), 0)
+
 race_time = st.sidebar.selectbox("開催区分", ["モーニング","デイ","ナイター","ミッドナイト"], 1)
 race_class = st.sidebar.selectbox("級別", ["Ｓ級","Ａ級","Ａ級チャレンジ","ガールズ"], 0)
 
@@ -229,6 +232,32 @@ st.sidebar.caption(
 # メイン
 # ==============================
 st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き）⭐")
+
+# ▼▼ レース番号（メイン側・ライン入力の前に配置） ▼▼
+st.subheader("レース番号（直前にサクッと変更）")
+if "race_no_main" not in st.session_state:
+    st.session_state["race_no_main"] = 1  # 初期R
+c1, c2, c3 = st.columns([6,2,2])
+with c1:
+    race_no_input = st.number_input(
+        "R", min_value=1, max_value=12, step=1,
+        value=int(st.session_state["race_no_main"]),
+        key="race_no_input"
+    )
+with c2:
+    prev_clicked = st.button("◀ 前のR", use_container_width=True)
+with c3:
+    next_clicked = st.button("次のR ▶", use_container_width=True)
+if prev_clicked:
+    st.session_state["race_no_main"] = max(1, int(race_no_input) - 1)
+    st.rerun()
+elif next_clicked:
+    st.session_state["race_no_main"] = min(12, int(race_no_input) + 1)
+    st.rerun()
+else:
+    st.session_state["race_no_main"] = int(race_no_input)
+race_no = int(st.session_state["race_no_main"])
+# ▲▲ ここまで挿入 ▲▲
 
 # ライン入力
 st.subheader("ライン構成（最大7：単騎も1ライン）")
@@ -347,8 +376,7 @@ v_wo = dict(zip(df["車番"], df["合計_SBなし"]))
 # ◎：C内で「SB加点 + SBなし合計」が最大
 def anchor_score(no):
     g = car_to_group.get(no, None); role = role_in_line(no, line_def)
-    # ★修正①：line_factorの二重掛けを解消（pos_coeffの第二引数を 1.0 固定）
-    sb = bonus_init.get(g,0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
+    sb = bonus_init.get(g,0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)  # 二重掛け回避
     zt = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
     zt_map = {n:float(zt[i]) for i,n in enumerate(active_cars)} if active_cars else {}
     return v_wo.get(no, -1e9) + sb + 0.01*zt_map.get(no, 0.0)
@@ -367,7 +395,6 @@ confidence = "優位" if norm>=1.0 else ("互角" if norm>=0.5 else "混線")
 bonus_re,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff, exclude=anchor_no, cap=cap_SB_eff, enable=line_sb_enable)
 def himo_score(no):
     g = car_to_group.get(no, None); role = role_in_line(no, line_def)
-    # ★修正①：二重掛け解消
     sb = bonus_re.get(g,0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
     return v_wo.get(no, -1e9) + sb
 
@@ -383,14 +410,12 @@ def venue_match(no):
     return style * (1.00*esc + 0.40*mak - 0.60*sashi - 0.25*mark)
 
 rank_wo = {int(df_sorted_wo.loc[i,"車番"]): i+1 for i in range(len(df_sorted_wo))}
-# ★修正③：下位40%しきい
 lower_rank_threshold = max(5, int(np.ceil(len(df_sorted_wo)*0.6)))
 lower_pool = [no for no in active_cars if rank_wo.get(no,99) >= lower_rank_threshold]
 
 p2_C_mean = np.mean([p2_eff[no] for no in C]) if C else 0.0
 min_p2 = 0.22 if race_class=="Ｓ級" else 0.20
 
-# ★修正②：生比率ではなく平滑 p2_eff を使用
 pool_filtered = [no for no in lower_pool
                  if no not in {anchor_no, o_no}
                  and ( p2_eff[no] >= min_p2 )
@@ -455,16 +480,17 @@ st.caption(
 )
 
 # ==============================
-# 買い目（想定的中率 / 必要オッズ / EV）
+# 買い目（想定的中率 → 必要オッズ=1/p）※車番順・実オッズは非表示
 # ==============================
-st.markdown("### 🎯 買い目（想定的中率 / 必要オッズ / EV）")
+st.markdown("### 🎯 買い目（想定的中率 → 必要オッズ=1/p）")
 
-one = result_marks.get("◎", None)
+one = result_marks.get("◎", None)   # 軸
 two = result_marks.get("〇", None)
 three = result_marks.get("▲", None)
+
 if one is None:
     st.warning("◎未決定のため買い目はスキップ")
-    buy_table = None
+    trioC_df = wide_df = qn_df = ex_df = None
 else:
     # 強さベクトル：SBなしスコア → 標準化softmax
     strength_map = dict(velobi_wo)
@@ -481,73 +507,153 @@ else:
         # Gumbel-Max
         g = -np.log(-np.log(np.clip(rng.random(len(probs)),1e-12,1-1e-12)))
         score = np.log(probs+1e-12) + g
-        order = np.argsort(-score)+1
+        order = np.argsort(-score)+1  # 1始まりの車番対応
         return order.tolist()
 
-    # 2列目候補セット
-    second_set = [x for x in [two, three] if x is not None]
-    rest = [i for i in range(1, n_cars+1) if i not in {one} | set(second_set)]
-    # 3連複A: ◎-（〇/▲）-{残り上位から最大5頭}
-    third_A = (second_set + rest)[:min(5, max(1, n_cars-2))]
-    # 3連複B: ◎-{二列候補4頭}-同枠
-    box_B = (second_set + rest)[:4]
-    # 3連複C: ◎-（〇/▲）-全
-    set_23 = second_set[:]
+    # 2列目候補（◎の相手集合）＝ 〇,▲ を優先
+    mates = [x for x in [two, three] if x is not None]
 
-    hit_A=hit_B=hit_C=hit_EX=hit_QN=hit_WD=0
+    # カウント用
+    trioC_counts = {}   # key=(a,b,one) 昇順タプル
+    wide_counts = {k:0 for k in range(1, n_cars+1) if k != one}
+    qn_counts   = {k:0 for k in range(1, n_cars+1) if k != one}
+    ex_counts   = {k:0 for k in range(1, n_cars+1) if k != one}
+
+    # 三連複C候補（◎-[mates]-全）：車番順で展開
+    all_others = [i for i in range(1, n_cars+1) if i != one]
+    trioC_list = []
+    if len(mates) > 0:
+        for a in all_others:
+            for b in all_others:
+                if a >= b: 
+                    continue
+                if (a in mates) or (b in mates):
+                    t = tuple(sorted([a, b, one]))  # a-b-one を昇順ソート
+                    trioC_list.append(t)
+        trioC_list = sorted(set(trioC_list))
+
+    # Monte Carlo
     for _ in range(trials):
         order = sample_order()
-        top2 = set(order[:2]); top3 = set(order[:3])
+        top2 = set(order[:2])
+        top3 = set(order[:3])
 
-        if (one in top3) and (len(top3 & set([two, three]))>=1) and (len(top3 & set(third_A))>=2):
-            hit_A += 1
-        if (one in top3) and (len(top3 & set(box_B))>=2):
-            hit_B += 1
-        if (one in top3) and (len(top3 & set(set_23))>=1):
-            hit_C += 1
+        # ワイド（◎-全）※車番順
+        if one in top3:
+            for k in wide_counts.keys():
+                if k in top3:
+                    wide_counts[k] += 1
+        # 二車複（◎-全）※車番順
+        if one in top2:
+            for k in qn_counts.keys():
+                if k in top2:
+                    qn_counts[k] += 1
+        # 二車単（◎→全）※車番順
+        if order[0] == one:
+            k2 = order[1]
+            if k2 in ex_counts:
+                ex_counts[k2] += 1
 
-        if len(set_23)>0 and order[0]==one and order[1] in set_23:
-            hit_EX += 1
-        if len(set_23)>0 and set(order[:2]) & set(set_23) and one in set(order[:2]):
-            hit_QN += 1
-        if (one in order[:3]) and (len(set(order[:3]) & set(set_23))>=1):
-            hit_WD += 1
+        # 三連複C（◎-[mates]-全）
+        if len(trioC_list) > 0 and one in top3:
+            others_in_top3 = list(top3 - {one})
+            if len(others_in_top3)==2:
+                a, b = sorted(others_in_top3)
+                if (a in mates) or (b in mates):
+                    t = tuple(sorted([a, b, one]))
+                    if t in trioC_list:
+                        trioC_counts[t] = trioC_counts.get(t, 0) + 1
 
-    def pct(x): return f"{(x/trials)*100:.1f}%"
-    def need(x): return "-" if x==0 else f"{trials/x:.2f}"
+    # 1/p（必要オッズ）の算出
+    def need_from_count(cnt: int) -> float | None:
+        if cnt <= 0:
+            return None
+        p = cnt / trials
+        return round(1.0 / p, 2)  # ピタリ基準・小数2桁
 
-    buy_rows = [
-        ["三連複A", f"{one}-{set_23 if set_23 else '—'}-{third_A}", pct(hit_A), need(hit_A)],
-        ["三連複B", f"{one}-{box_B}-{box_B}", pct(hit_B), need(hit_B)],
-        ["三連複C", f"{one}-{set_23 if set_23 else '—'}-全", pct(hit_C), need(hit_C)],
-        ["二車単",   f"{one}-{set_23}" , pct(hit_EX), need(hit_EX)],
-        ["二車複",   f"{one}-{set_23}" , pct(hit_QN), need(hit_QN)],
-        ["ワイド",   f"{one}-{set_23}" , pct(hit_WD), need(hit_WD)],
-    ]
-    buy_table = pd.DataFrame(buy_rows, columns=["券種","買い目（1=◎,2=〇/▲）","想定的中率","必要オッズ"])
+    # 三連複C（車番順）
+    if len(trioC_list) > 0:
+        rows = []
+        for t in trioC_list:
+            cnt = trioC_counts.get(t, 0)
+            p = cnt / trials
+            rows.append({
+                "買い目": f"{t[0]}-{t[1]}-{t[2]}",
+                "p(想定的中率)": round(p, 4),
+                "必要オッズ(=1/p)": "-" if cnt==0 else need_from_count(cnt)
+            })
+        trioC_df = pd.DataFrame(rows)
+        st.markdown("#### 三連複C（◎-[相手]-全）※車番順")
+        st.dataframe(trioC_df, use_container_width=True)
+    else:
+        trioC_df = None
+        st.info("三連複C：相手（〇/▲）が未設定のため表示なし")
 
-if 'buy_table' in locals() and buy_table is not None:
-    st.dataframe(buy_table, use_container_width=True)
+    # ワイド（◎-全）※車番順
+    rows = []
+    for k in sorted(wide_counts.keys()):
+        cnt = wide_counts[k]; p = cnt / trials
+        rows.append({
+            "買い目": f"{one}-{k}",
+            "p(想定的中率)": round(p, 4),
+            "必要オッズ(=1/p)": "-" if cnt==0 else need_from_count(cnt)
+        })
+    wide_df = pd.DataFrame(rows)
+    st.markdown("#### ワイド（◎-全）※車番順")
+    st.dataframe(wide_df, use_container_width=True)
 
-# note（手動コピー：買い目付き）
-st.markdown("### 📋 note記事用（手動コピー）")
-line_text="　".join([x for x in line_inputs if str(x).strip()])
-score_order_text=" ".join(str(no) for no,_ in velobi_wo)  # SBなし順
-marks_line=" ".join(f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks)
+    # 二車複（◎-全）※車番順
+    rows = []
+    for k in sorted(qn_counts.keys()):
+        cnt = qn_counts[k]; p = cnt / trials
+        rows.append({
+            "買い目": f"{one}-{k}",
+            "p(想定的中率)": round(p, 4),
+            "必要オッズ(=1/p)": "-" if cnt==0 else need_from_count(cnt)
+        })
+    qn_df = pd.DataFrame(rows)
+    st.markdown("#### 二車複（◎-全）※車番順")
+    st.dataframe(qn_df, use_container_width=True)
 
-buy_lines = ""
-if 'buy_table' in locals() and buy_table is not None:
-    bl = []
-    for _,r in buy_table.iterrows():
-        bl.append(f"{r['券種']}: {r['買い目（1=◎,2=〇/▲）']}  p={r['想定的中率']} 必要={r['必要オッズ']}倍")
-    buy_lines = "【買い目（想定的中率 / 必要オッズ）】\n" + "\n".join(bl)
+    # 二車単（◎→全）※車番順
+    rows = []
+    for k in sorted(ex_counts.keys()):
+        cnt = ex_counts[k]; p = cnt / trials
+        rows.append({
+            "買い目": f"{one}->{k}",
+            "p(想定的中率)": round(p, 4),
+            "必要オッズ(=1/p)": "-" if cnt==0 else need_from_count(cnt)
+        })
+    ex_df = pd.DataFrame(rows)
+    st.markdown("#### 二車単（◎→全）※車番順")
+    st.dataframe(ex_df, use_container_width=True)
 
-note_text=(f"競輪場　{track}{race_no}R\n"
-           f"{race_time}　{race_class}\n"
-           f"ライン　{line_text}\n"
-           f"スコア順（SBなし）　{score_order_text}\n"
-           f"{marks_line}\n"
-           f"展開評価：{confidence}\n"
-           + (("\n"+buy_lines) if buy_lines else ""))
+# ==============================
+# note（手動コピー）：買い目と必要オッズのみ（車番順）
+# ==============================
+st.markdown("### 📋 note用：買い目と必要オッズのみ")
 
-st.text_area("ここを選択してコピー", note_text, height=260)
+def lines_need(df, title):
+    """
+    DataFrameから「買い目=必要オッズ倍」を ' / ' で連結して1行に。
+    必要オッズが '-' または None は除外。
+    """
+    if df is None or len(df) == 0:
+        return f"{title}: -"
+    items = []
+    for _, r in df.iterrows():
+        need = r.get("必要オッズ(=1/p)")
+        if need in (None, "-", ""):
+            continue
+        items.append(f"{r['買い目']}={need}倍")
+    return f"{title}: " + (" / ".join(items) if items else "-")
+
+note_text = "\n".join([
+    lines_need(trioC_df, "三連複C（◎-[相手]-全）"),
+    lines_need(wide_df,  "ワイド（◎-全）"),
+    lines_need(qn_df,    "二車複（◎-全）"),
+    lines_need(ex_df,    "二車単（◎→全）"),
+])
+
+st.text_area("ここを選択してコピー", note_text, height=220)
+
