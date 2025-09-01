@@ -629,15 +629,12 @@ else:
     st.dataframe(ex_df, use_container_width=True)
 
 # ==============================
-# note（手動コピー）：買い目と必要オッズのみ（車番順）
+# note（手動コピー）：ヘッダー〜展開評価を維持＋必要オッズのみ
 # ==============================
-st.markdown("### 📋 note用：買い目と必要オッズのみ")
+st.markdown("### 📋 note用（ヘッダー〜展開評価＋必要オッズのみ）")
 
 def lines_need(df, title):
-    """
-    DataFrameから「買い目=必要オッズ倍」を ' / ' で連結して1行に。
-    必要オッズが '-' または None は除外。
-    """
+    """DataFrameから「買い目=必要オッズ倍」を ' / ' で連結。必要オッズが '-' or None は除外。"""
     if df is None or len(df) == 0:
         return f"{title}: -"
     items = []
@@ -648,12 +645,24 @@ def lines_need(df, title):
         items.append(f"{r['買い目']}={need}倍")
     return f"{title}: " + (" / ".join(items) if items else "-")
 
-note_text = "\n".join([
-    lines_need(trioC_df, "三連複C（◎-[相手]-全）"),
-    lines_need(wide_df,  "ワイド（◎-全）"),
-    lines_need(qn_df,    "二車複（◎-全）"),
-    lines_need(ex_df,    "二車単（◎→全）"),
-])
+# ヘッダー（ここは以前のフォーマットをそのまま踏襲）
+line_text = "　".join([x for x in line_inputs if str(x).strip()])
+score_order_text = " ".join(str(no) for no,_ in velobi_wo)  # SBなし順
+marks_line = " ".join(f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks)
 
-st.text_area("ここを選択してコピー", note_text, height=220)
+# 本文（ヘッダー〜展開評価は固定、以降は必要オッズのみ・車番順）
+note_text = (
+    f"競輪場　{track}{race_no}R\n"
+    f"{race_time}　{race_class}\n"
+    f"ライン　{line_text}\n"
+    f"スコア順（SBなし）　{score_order_text}\n"
+    f"{marks_line}\n"
+    f"展開評価：{confidence}\n"
+    f"\n【必要オッズ（=1/p）】\n"
+    f"{lines_need(trioC_df, '三連複C（◎-[相手]-全）')}\n"
+    f"{lines_need(wide_df,  'ワイド（◎-全）')}\n"
+    f"{lines_need(qn_df,    '二車複（◎-全）')}\n"
+    f"{lines_need(ex_df,    '二車単（◎→全）')}\n"
+)
 
+st.text_area("ここを選択してコピー", note_text, height=260)
