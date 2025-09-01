@@ -373,7 +373,7 @@ bonus_init,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff,
 
 v_wo = dict(zip(df["車番"], df["合計_SBなし"]))
 
-# ◎：C内で「SB加点 + SBなし合計」が最大
+# ◎スコア（共通関数）
 def anchor_score(no):
     g = car_to_group.get(no, None); role = role_in_line(no, line_def)
     sb = bonus_init.get(g,0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)  # 二重掛け回避
@@ -381,7 +381,22 @@ def anchor_score(no):
     zt_map = {n:float(zt[i]) for i,n in enumerate(active_cars)} if active_cars else {}
     return v_wo.get(no, -1e9) + sb + 0.01*zt_map.get(no, 0.0)
 
-anchor_no = max(C, key=lambda x: anchor_score(x)) if C else int(df_sorted_wo.loc[0,"車番"])
+# --- まず従来どおりに◎候補を算出（参考） ---
+anchor_no_pre = max(C, key=lambda x: anchor_score(x)) if C else int(df_sorted_wo.loc[0,"車番"])
+
+# --- ★ハードゲート：◎は「競走得点 上位4位以内」から選定 ---
+ratings_sorted = sorted(active_cars, key=lambda n: ratings_val[n], reverse=True)
+ratings_rank = {no: i+1 for i, no in enumerate(ratings_sorted)}  # 1位が最小
+ALLOWED_MAX_RANK = 4
+
+C_hard = [no for no in C if ratings_rank.get(no, 999) <= ALLOWED_MAX_RANK]
+C_use = C_hard if C_hard else ratings_sorted[:ALLOWED_MAX_RANK]
+
+anchor_no = max(C_use, key=lambda x: anchor_score(x))
+
+# 変更があった場合のみ軽く通知
+if anchor_no != anchor_no_pre:
+    st.caption(f"※ ◎は『競走得点 上位{ALLOWED_MAX_RANK}位以内』縛りにより {anchor_no_pre}→{anchor_no} に調整しています。")
 
 # 自信度（候補C内の差 / 広がり）
 cand_scores = [anchor_score(no) for no in C] if len(C)>=2 else [0,0]
@@ -428,7 +443,7 @@ if a_no is None:
 
 # 印集約
 result_marks, reasons = {}, {}
-result_marks["◎"] = anchor_no; reasons[anchor_no] = "本命(C上位3→ラインSB重視)※ガールズは個人要素のみ"
+result_marks["◎"] = anchor_no; reasons[anchor_no] = "本命(C上位3→得点4位以内ゲート→ラインSB重視)"
 if o_no is not None:
     result_marks["〇"] = o_no; reasons[o_no] = "対抗(C残り→◎除外SB再計算)"
 if a_no is not None:
@@ -440,7 +455,7 @@ for m,no in zip([m for m in ["△","×","α","β"] if m not in result_marks],
     result_marks[m]=no
 
 # 出力（SBなしランキング）
-st.markdown("### ランキング＆印（◎=ラインSB考慮 / 〇=安定 / ▲=逆襲）")
+st.markdown("### ランキング＆印（◎=得点4位以内ゲート / 〇=安定 / ▲=逆襲）")
 velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(), df_sorted_wo["合計_SBなし"].round(3).tolist()))
 
 rows_out=[]
@@ -645,12 +660,11 @@ def lines_need(df, title):
         items.append(f"{r['買い目']}={need}倍")
     return f"{title}: " + (" / ".join(items) if items else "-")
 
-# ヘッダー（ここは以前のフォーマットをそのまま踏襲）
+# ヘッダー（以前のフォーマットを踏襲）
 line_text = "　".join([x for x in line_inputs if str(x).strip()])
 score_order_text = " ".join(str(no) for no,_ in velobi_wo)  # SBなし順
 marks_line = " ".join(f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks)
 
-# 本文（ヘッダー〜展開評価は固定、以降は必要オッズのみ・車番順）
 note_text = (
     f"競輪場　{track}{race_no}R\n"
     f"{race_time}　{race_class}\n"
@@ -666,3 +680,4 @@ note_text = (
 )
 
 st.text_area("ここを選択してコピー", note_text, height=260)
+
