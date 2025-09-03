@@ -527,58 +527,69 @@ else:
     # 強さベクトル：SBなしスコア → 標準化softmax（base）
     strength_map = dict(velobi_wo)
     xs = np.array([strength_map.get(i,0.0) for i in range(1, n_cars+1)], dtype=float)
-    if xs.std()<1e-12:
+    if xs.std() < 1e-12:
         base = np.ones_like(xs)/len(xs)
     else:
         z = (xs - xs.mean())/(xs.std()+1e-12)
         base = np.exp(z); base = base/base.sum()
 
-    # --- 印ベースの実測率でキャリブレーション（Top3入りやすさ基準） ---
+    # --- 券種別キャリブレーションに使う：印を車番へ ---
     mark_by_car = {car: None for car in range(1, n_cars+1)}
     for mk, car in result_marks.items():
         if car is not None and 1 <= car <= n_cars:
             mark_by_car[car] = mk
 
-    expo = 0.7 if confidence=="優位" else (1.0 if confidence=="互角" else 1.3)
+    # 場の強弱（優位/互角/混線）でスケールの強さを調整
+    expo = 0.7 if confidence == "優位" else (1.0 if confidence == "互角" else 1.3)
 
-    m = np.ones(n_cars, dtype=float)
-    for idx, car in enumerate(range(1, n_cars+1)):
-        mk = mark_by_car.get(car)
-        if mk not in RANK_STATS:
-            mk = RANK_FALLBACK_MARK
-        tgt = RANK_STATS[mk]["pTop3"]            # 目標Top3率
-        ratio = tgt / max(base[idx], 1e-9)       # 目標/現状
-        m[idx] = float(np.clip(ratio**(0.5*expo), 0.25, 2.5))
+    def calibrate_probs(base_vec: np.ndarray, stat_key: str) -> np.ndarray:
+        """
+        stat_key ∈ {'p1','pTop2','pTop3'}
+        印ごとの目標率で base をスケーリングして確率分布に正規化
+        """
+        m = np.ones(n_cars, dtype=float)
+        for idx, car in enumerate(range(1, n_cars+1)):
+            mk = mark_by_car.get(car)
+            if mk not in RANK_STATS:
+                mk = RANK_FALLBACK_MARK
+            tgt = float(RANK_STATS[mk][stat_key])          # 'p1' / 'pTop2' / 'pTop3'
+            ratio = tgt / max(float(base_vec[idx]), 1e-9)  # 目標/現状
+            m[idx] = float(np.clip(ratio**(0.5*expo), 0.25, 2.5))
+        probs = base_vec * m
+        probs = probs / probs.sum()
+        return probs
 
-    probs = base * m
-    probs = probs / probs.sum()
+    # 券種ごとの分布：ワイド/三複=Top3、二複=Top2、二単/三単=1着
+    probs_p3 = calibrate_probs(base, "pTop3")  # ワイド・三連複
+    probs_p2 = calibrate_probs(base, "pTop2")  # 二車複
+    probs_p1 = calibrate_probs(base, "p1")     # 二車単・三連単
 
     rng = np.random.default_rng(20250830)
     trials = st.slider("シミュレーション試行回数", 1000, 20000, 8000, 1000)
 
-    def sample_order():
-        g = -np.log(-np.log(np.clip(rng.random(len(probs)),1e-12,1-1e-12)))
-        score = np.log(probs+1e-12) + g
-        order = np.argsort(-score)+1
-        return order.tolist()
+    def sample_order_from_probs(pvec: np.ndarray) -> list[int]:
+        # Plackett–Luce風のGumbelノイズ順位決定
+        g = -np.log(-np.log(np.clip(rng.random(len(pvec)), 1e-12, 1-1e-12)))
+        score = np.log(pvec+1e-12) + g
+        return (np.argsort(-score)+1).tolist()
 
     # 〇・▲（相手）
     mates = [x for x in [two, three] if x is not None]
+    all_others = [i for i in range(1, n_cars+1) if i != one]
 
     # === カウント器 ===
     trioC_counts = {}
-    wide_counts = {k:0 for k in range(1, n_cars+1) if k != one}
-    qn_counts   = {k:0 for k in range(1, n_cars+1) if k != one}
-    ex_counts   = {k:0 for k in range(1, n_cars+1) if k != one}
+    wide_counts = {k:0 for k in all_others}
+    qn_counts   = {k:0 for k in all_others}
+    ex_counts   = {k:0 for k in all_others}
     st3_counts  = {}  # 三連単（◎→[相手]→全）： key=(second,third) -> 回数
 
-    all_others = [i for i in range(1, n_cars+1) if i != one]
+    # 三連複Cの組み合わせ（◎-[相手]-全）
     trioC_list = []
     if len(mates) > 0:
         for a in all_others:
             for b in all_others:
-                if a >= b:
-                    continue
+                if a >= b: continue
                 if (a in mates) or (b in mates):
                     t = tuple(sorted([a, b, one]))
                     trioC_list.append(t)
@@ -586,48 +597,52 @@ else:
 
     # === シミュレーション ===
     for _ in range(trials):
-        order = sample_order()
-        top2 = set(order[:2])
-        top3 = set(order[:3])
+        # ワイド/三連複：Top3率ベース
+        order_p3 = sample_order_from_probs(probs_p3)
+        top3_p3 = set(order_p3[:3]); top2_p3 = set(order_p3[:2])
 
-        # ワイド：◎がTop3内かつ相手もTop3内
-        if one in top3:
+        if one in top3_p3:
             for k in wide_counts.keys():
-                if k in top3:
+                if k in top3_p3:
                     wide_counts[k] += 1
+            if len(trioC_list) > 0:
+                others = list(top3_p3 - {one})
+                if len(others) == 2:
+                    a, b = sorted(others)
+                    if (a in mates) or (b in mates):
+                        t = tuple(sorted([a, b, one]))
+                        if t in trioC_list:
+                            trioC_counts[t] = trioC_counts.get(t, 0) + 1
 
-        # 二車複：◎がTop2内かつ相手もTop2内
-        if one in top2:
+        # 二車複：連対率ベース
+        order_p2 = sample_order_from_probs(probs_p2)
+        top2_p2 = set(order_p2[:2])
+        if one in top2_p2:
             for k in qn_counts.keys():
-                if k in top2:
+                if k in top2_p2:
                     qn_counts[k] += 1
 
-        # 二車単：◎が1着、相手が2着
-        if order[0] == one:
-            k2 = order[1]
+        # 二車単/三連単：1着率ベース
+        order_p1 = sample_order_from_probs(probs_p1)
+        if order_p1[0] == one:
+            k2 = order_p1[1]
             if k2 in ex_counts:
                 ex_counts[k2] += 1
+            # 三連単（◎→[相手]→全）：2着は {〇,▲} 限定、3着は全（ただし重複不可）
+            if len(mates) > 0:
+                k3 = order_p1[2]
+                if (k2 in mates) and (k3 not in (one, k2)):
+                    st3_counts[(k2, k3)] = st3_counts.get((k2, k3), 0) + 1
 
-        # 三連複C：◎がTop3、相手のどちらかを含むTop3の組
-        if len(trioC_list) > 0 and one in top3:
-            others_in_top3 = list(top3 - {one})
-            if len(others_in_top3)==2:
-                a, b = sorted(others_in_top3)
-                if (a in mates) or (b in mates):
-                    t = tuple(sorted([a, b, one]))
-                    if t in trioC_list:
-                        trioC_counts[t] = trioC_counts.get(t, 0) + 1
-
-        # 三連単：◎が1着、2列目が {〇,▲}、3列目が残り全
-        if order[0] == one and two is not None:
-            sec = order[1]
-            thr = order[2]
-            if sec in mates and thr not in (one, sec):
-                st3_counts[(sec, thr)] = st3_counts.get((sec, thr), 0) + 1
+    # 便宜上：必要オッズ帯の係数（未定義ならデフォルトを採用）
+    P_FLOOR = globals().get("P_FLOOR", {
+        "sanpuku": 0.04, "wide": 0.07, "nifuku": 0.05, "nitan": 0.04, "santan": 0.03
+    })
+    E_MIN = globals().get("E_MIN", -0.12)   # 下側許容（-12%）
+    E_MAX = globals().get("E_MAX",  0.25)   # 上側許容（+25%）
 
     def need_from_count(cnt: int) -> float | None:
-        if cnt <= 0:
-            return None
+        if cnt <= 0: return None
         p = cnt / trials
         return round(1.0 / p, 2)
 
@@ -644,9 +659,7 @@ else:
             })
         trioC_df = pd.DataFrame(rows)
         st.markdown("#### 三連複C（◎-[相手]-全）※車番順")
-        # 車番順で並べ替え
-        def _key_nums_tri(s):
-            return list(map(int, re.findall(r"\d+", s)))
+        def _key_nums_tri(s): return list(map(int, re.findall(r"\d+", s)))
         trioC_df = trioC_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_tri)).reset_index(drop=True)
         st.dataframe(trioC_df, use_container_width=True)
     else:
@@ -696,8 +709,7 @@ else:
     rows = []
     for (sec, thr), cnt in st3_counts.items():
         p = cnt / trials
-        # Pフロア（santan）未満は除外（※P_FLOORに'santan'未追加でも0.03を既定に）
-        p_floor_santan = P_FLOOR["santan"] if "santan" in P_FLOOR else 0.03
+        p_floor_santan = P_FLOOR.get("santan", 0.03)
         if p < p_floor_santan or p <= 0:
             continue
         need = 1.0 / p
@@ -709,9 +721,7 @@ else:
         })
     if rows:
         santan_df = pd.DataFrame(rows)
-        # 車番順で整列
-        def _key_nums_st(s):
-            return list(map(int, re.findall(r"\d+", s)))
+        def _key_nums_st(s): return list(map(int, re.findall(r"\d+", s)))
         santan_df = santan_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_st)).reset_index(drop=True)
         st.markdown("#### 三連単（◎→[相手]→全）※車番順")
         st.dataframe(santan_df, use_container_width=True)
@@ -724,38 +734,38 @@ else:
 # ==============================
 st.markdown("### 📋 note用（ヘッダー〜展開評価＋“買えるオッズ帯”）")
 
-# 既存の _format_line_zone は P_FLOOR[bet_type] を参照するため、
-# 'santan' が未定義でも動くように、このブロック内だけ安全版を使う
+# 既存の _sort_key_by_numbers が無い場合の保険
+if '_sort_key_by_numbers' not in globals():
+    def _sort_key_by_numbers(s: str) -> tuple:
+        return tuple(map(int, re.findall(r"\d+", s)))
+
+# 既存の _format_line_zone が外側にある前提。無い場合の安全版を使用。
 def _format_line_zone_safe(name: str, bet_type: str, p: float) -> str | None:
     floor = P_FLOOR.get(bet_type, 0.03 if bet_type=="santan" else 0.0)
-    if p < floor:
-        return None
+    if p < floor: return None
     needed = 1.0 / max(p, 1e-12)
     low, high = needed*(1.0+E_MIN), needed*(1.0+E_MAX)
     return f"{name}：{low:.1f}〜{high:.1f}倍なら買い"
 
 def _zone_lines_from_df(df: pd.DataFrame | None, bet_type_key: str) -> list[str]:
-    """
-    DataFrame から ‘買える帯’ の文章行を作る。
-    - df には 「買い目」「p(想定的中率)」列がある前提（本ツールが直前で作成）
-    - Pフロア未満は非表示（=どんなオッズでも買わない）
-    - 車番順に整列
-    """
     if df is None or len(df) == 0 or "買い目" not in df.columns:
         return []
     rows = []
+    # 「必要オッズ(=1/p)」形式のDFと「買える帯」形式のDFに両対応
     for _, r in df.iterrows():
         name = str(r["買い目"])
         p = float(r.get("p(想定的中率)", 0.0) or 0.0)
-        line_txt = _format_line_zone_safe(name, bet_type_key, p)
-        if line_txt:
-            rows.append((name, line_txt))
+        if "買える帯" in r and r["買える帯"]:
+            rows.append((name, f"{name}：{r['買える帯']}"))
+        else:
+            line_txt = _format_line_zone_safe(name, bet_type_key, p)
+            if line_txt:
+                rows.append((name, line_txt))
     rows_sorted = sorted(rows, key=lambda x: _sort_key_by_numbers(x[0]))
     return [ln for _, ln in rows_sorted]
 
 def _section_text(title: str, lines: list[str]) -> str:
-    if not lines:
-        return f"{title}\n対象外"
+    if not lines: return f"{title}\n対象外"
     return f"{title}\n" + "\n".join(lines)
 
 line_text = "　".join([x for x in line_inputs if str(x).strip()])
@@ -790,4 +800,3 @@ note_text = (
 )
 
 st.text_area("ここを選択してコピー", note_text, height=360)
-
