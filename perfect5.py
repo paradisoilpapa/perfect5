@@ -80,6 +80,15 @@ RANK_STATS = {
 # 印が付かない車（8〜9車時の余り）へのフォールバック
 RANK_FALLBACK_MARK = "α"
 
+# ===== 期待値ルール（固定） =====
+P_FLOOR = {
+    "sanpuku": 0.06,  # 三連複
+    "nifuku" : 0.12,  # 二車複（7車）
+    "wide"   : 0.25,  # ワイド
+    "nitan"  : 0.07,  # 二車単
+}
+E_MIN, E_MAX = 0.10, 0.60  # EV +10% ～ +60%（買える帯）
+
 # ==============================
 # ユーティリティ
 # ==============================
@@ -172,6 +181,22 @@ def input_float_text(label: str, key: str, placeholder: str = "") -> float | Non
         st.warning(f"{label} は数値で入力してください（入力値: {s}）")
         return None
     return float(ss)
+
+# ==== ゾーン出力ヘルパー（文章形式・車番順） ====
+def _zone_from_p(p: float) -> tuple[float,float,float]:
+    needed = 1.0 / max(p, 1e-12)
+    return needed, needed*(1.0+E_MIN), needed*(1.0+E_MAX)
+
+def _format_line_zone(name: str, bet_type: str, p: float) -> str | None:
+    """pがPフロア未満なら None（非表示）。以上なら '3–4：x.x〜y.y倍なら買い' を返す"""
+    floor = P_FLOOR[bet_type]
+    if p < floor:
+        return None
+    _, low, high = _zone_from_p(p)
+    return f"{name}：{low:.1f}〜{high:.1f}倍なら買い"
+
+def _sort_key_by_numbers(name: str) -> list[int]:
+    return list(map(int, re.findall(r"\d+", str(name))))
 
 # ==============================
 # サイドバー：開催情報 / バンク・風・頭数
@@ -642,25 +667,48 @@ else:
     st.dataframe(ex_df, use_container_width=True)
 
 # ==============================
-# note（手動コピー）：ヘッダー〜展開評価を維持＋必要オッズのみ
+# note用：ヘッダー〜展開評価 ＋ 「買えるオッズ帯」（文章形式・車番順）
 # ==============================
-st.markdown("### 📋 note用（ヘッダー〜展開評価＋必要オッズのみ）")
+st.markdown("### 📋 note用（ヘッダー〜展開評価＋“買えるオッズ帯”）")
 
-def lines_need(df, title):
-    """DataFrameから「買い目=必要オッズ倍」を ' / ' で連結。必要オッズが '-' or None は除外。"""
-    if df is None or len(df) == 0:
-        return f"{title}: -"
-    items = []
+def _zone_lines_from_df(df: pd.DataFrame | None, bet_type_key: str) -> list[str]:
+    """
+    DataFrame から ‘買える帯’ の文章行を作る。
+    - df には 「買い目」「p(想定的中率)」列がある前提（本ツールが直前で作成）
+    - Pフロア未満は非表示（=どんなオッズでも買わない）
+    - 車番順に整列
+    """
+    if df is None or len(df) == 0 or "買い目" not in df.columns:
+        return []
+
+    rows = []
     for _, r in df.iterrows():
-        need = r.get("必要オッズ(=1/p)")
-        if need in (None, "-", ""):
-            continue
-        items.append(f"{r['買い目']}={need}倍")
-    return f"{title}: " + (" / ".join(items) if items else "-")
+        name = str(r["買い目"])
+        p = float(r.get("p(想定的中率)", 0.0) or 0.0)
+        line_txt = _format_line_zone(name, bet_type_key, p)
+        if line_txt:
+            rows.append((name, line_txt))
+
+    rows_sorted = sorted(rows, key=lambda x: _sort_key_by_numbers(x[0]))
+    return [ln for _, ln in rows_sorted]
+
+def _section_text(title: str, lines: list[str]) -> str:
+    if not lines:
+        return f"{title}\n対象外"
+    return f"{title}\n" + "\n".join(lines)
 
 line_text = "　".join([x for x in line_inputs if str(x).strip()])
 score_order_text = " ".join(str(no) for no,_ in velobi_wo)
 marks_line = " ".join(f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks)
+
+txt_trioC = _section_text("三連複C（◎-[相手]-全）",
+                          _zone_lines_from_df(trioC_df, "sanpuku"))
+txt_wide  = _section_text("ワイド（◎-全）",
+                          _zone_lines_from_df(wide_df, "wide"))
+txt_qn    = _section_text("二車複（◎-全）",
+                          _zone_lines_from_df(qn_df, "nifuku"))
+txt_ex    = _section_text("二車単（◎→全）",
+                          _zone_lines_from_df(ex_df, "nitan"))
 
 note_text = (
     f"競輪場　{track}{race_no}R\n"
@@ -669,12 +717,14 @@ note_text = (
     f"スコア順（SBなし）　{score_order_text}\n"
     f"{marks_line}\n"
     f"展開評価：{confidence}\n"
-    f"\n【必要オッズ（=1/p）】\n"
-    f"{lines_need(trioC_df, '三連複C（◎-[相手]-全）')}\n"
-    f"{lines_need(wide_df,  'ワイド（◎-全）')}\n"
-    f"{lines_need(qn_df,    '二車複（◎-全）')}\n"
-    f"{lines_need(ex_df,    '二車単（◎→全）')}\n"
+    f"\n"
+    f"{txt_trioC}\n\n"
+    f"{txt_wide}\n\n"
+    f"{txt_qn}\n\n"
+    f"{txt_ex}\n"
+    f"\n（※“対象外”＝Pフロア未満。どんなオッズでも買わない）"
 )
 
-st.text_area("ここを選択してコピー", note_text, height=260)
+st.text_area("ここを選択してコピー", note_text, height=320)
+
 
