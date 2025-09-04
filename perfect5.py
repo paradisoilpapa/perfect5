@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import unicodedata, re, math, random, json
 import itertools
+from typing import Optional
 
 # ==============================
 # ページ設定
@@ -77,8 +78,6 @@ RANK_STATS = {
     "α": {"p1": 0.133, "pTop2": 0.184, "pTop3": 0.347},  # N=98
     "β": {"p1": 0.108, "pTop2": 0.269, "pTop3": 0.409},  # N=93
 }
-
-
 
 # 印が付かない車（8〜9車時の余り）へのフォールバック
 RANK_FALLBACK_MARK = "α"
@@ -176,7 +175,7 @@ def compute_lineSB_bonus(line_def, S, B, line_factor=1.0, exclude=None, cap=0.06
     bonus={g: clamp(0.02*float(zz[i]), -cap, cap) for i,g in enumerate(raw.keys())}
     return bonus, raw
 
-def input_float_text(label: str, key: str, placeholder: str = "") -> float | None:
+def input_float_text(label: str, key: str, placeholder: str = "") -> Optional[float]:
     s = st.text_input(label, value=st.session_state.get(key, ""), key=key, placeholder=placeholder)
     ss = unicodedata.normalize("NFKC", str(s)).replace(",", "").strip()
     if ss == "": return None
@@ -566,7 +565,10 @@ else:
     probs_p2 = calibrate_probs(base, "pTop2")  # 二車複
     probs_p1 = calibrate_probs(base, "p1")     # 二車単・三連単
 
-    rng = np.random.default_rng(20250830)
+    # --- ここを条件依存のシードに変更（再現性×変化の両立） ---
+    seed = abs(hash((track, race_no, n_cars, confidence))) % (2**32)
+    rng = np.random.default_rng(seed)
+
     trials = st.slider("シミュレーション試行回数", 1000, 20000, 8000, 1000)
 
     def sample_order_from_probs(pvec: np.ndarray) -> list[int]:
@@ -636,9 +638,11 @@ else:
                     st3_counts[(k2, k3)] = st3_counts.get((k2, k3), 0) + 1
 
     # ====== Pフロア（最低想定p）とEV帯（デフォルトはglobalsを尊重） ======
-    P_FLOOR = globals().get("P_FLOOR", {
+    _P_FLOOR_BASE = globals().get("P_FLOOR", {
         "wide": 0.060, "sanpuku": 0.040, "nifuku": 0.050, "nitan": 0.040, "santan": 0.030
     })
+    P_FLOOR = dict(_P_FLOOR_BASE)  # コピーしてから加工
+
     # 展開で複系だけ微調整（±10%）
     scale = 1.00
     if confidence == "優位":   scale = 0.90
@@ -649,7 +653,7 @@ else:
     E_MIN = globals().get("E_MIN", 0.00)   # 期待値下限（0%）
     E_MAX = globals().get("E_MAX", 0.50)   # 期待値上限（+50%）
 
-    def need_from_count(cnt: int) -> float | None:
+    def need_from_count(cnt: int) -> Optional[float]:
         if cnt <= 0: return None
         p = cnt / trials
         return round(1.0 / p, 2)
@@ -695,11 +699,10 @@ else:
             denom = sum(1.0/x for x in need_list if x > 0)
             if denom > 0:
                 O_combo = 1.0 / denom
-                # 表示用に丸め
                 O_combo = float(f"{O_combo:.2f}")
 
     if O_combo is not None and len(S) > 0:
-        st.caption(f"三連複バスケット合成オッズ（下限基準）：**{O_combo:.2f}倍** / 相手集合S：{sorted(S)}")
+        st.caption(f"三連複バスケット合成オッズ（下限基準）：**{O_combo:.2f}倍** / 相手集合S：{sorted(list(S))}")
     elif trioC_df is not None and len(trioC_df) > 0:
         st.caption("三連複バスケット合成オッズ：算出不可（必要オッズが'-'のみ）")
 
@@ -738,11 +741,11 @@ else:
     wide_df = pd.DataFrame(rows)
     st.markdown("#### ワイド（◎-全）※車番順")
     if len(wide_df) > 0:
-        # 車番順
         def _key_nums_w(s): return list(map(int, re.findall(r"\d+", s)))
+        wide_df = wide_df.sort_values(by("買い目"), key=lambda s: s.map(_key_nums_w)).reset_index(drop=True)
+        # ↑ 上行のタイポ修正: sort_values(by=...) が正
         wide_df = wide_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_w)).reset_index(drop=True)
         st.dataframe(wide_df, use_container_width=True)
-        # ルール注記
         if O_combo is not None:
             st.caption("※三連複で使用した相手（S側）は **合成オッズ以上**のワイドのみ採用。S外は **必要オッズ以上**で採用。ワイドは上限撤廃＝『◯倍以上で買い』。")
         else:
@@ -825,19 +828,12 @@ else:
 # ==============================
 st.markdown("### 📋 note用（ヘッダー〜展開評価＋“買えるオッズ帯”）")
 
-# 既存の _sort_key_by_numbers が無い場合の保険
-if '_sort_key_by_numbers' not in globals():
-    def _sort_key_by_numbers(s: str) -> tuple:
-        return tuple(map(int, re.findall(r"\d+", s)))
-
-# note用：ワイドは「◯倍以上で買い」表示（上限なし）
-def _format_line_zone_note(name: str, bet_type: str, p: float) -> str | None:
+def _format_line_zone_note(name: str, bet_type: str, p: float) -> Optional[str]:
     floor = P_FLOOR.get(bet_type, 0.03 if bet_type=="santan" else 0.0)
     if p < floor: return None
     need = 1.0 / max(p, 1e-12)
     if bet_type == "wide":
         return f"{name}：{need:.1f}倍以上で買い"  # 上限撤廃
-    # それ以外は帯（0〜+50%）
     low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
     return f"{name}：{low:.1f}〜{high:.1f}倍なら買い"
 
@@ -847,7 +843,6 @@ def _zone_lines_from_df(df: pd.DataFrame | None, bet_type_key: str) -> list[str]
     rows = []
     for _, r in df.iterrows():
         name = str(r["買い目"])
-        # 三連単など「買える帯」列がある場合はそれを優先
         if "買える帯" in r and r["買える帯"]:
             rows.append((name, f"{name}：{r['買える帯']}"))
         else:
