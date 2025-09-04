@@ -12,7 +12,7 @@ from typing import Optional
 st.set_page_config(page_title="ヴェロビ：級別×日程ダイナミクス（5〜9車・買い目付き）", layout="wide")
 
 # ==============================
-# 定数
+# 定数（あなたの実測・既存値は変更しません）
 # ==============================
 WIND_COEFF = {
     "左上": -0.03, "上": -0.05, "右上": -0.035,
@@ -68,7 +68,7 @@ KEIRIN_DATA = {
     "手入力":{"bank_angle":30.0,"straight_length":52.0,"bank_length":400},
 }
 
-# --- 直近集計：印別の実測率（%→小数） ---
+# --- 直近集計：印別の実測率（%→小数） あなたの毎日更新をそのまま使う ---
 RANK_STATS = {
     "◎": {"p1": 0.200, "pTop2": 0.480, "pTop3": 0.610},
     "〇": {"p1": 0.200, "pTop2": 0.390, "pTop3": 0.470},
@@ -78,8 +78,6 @@ RANK_STATS = {
     "α": {"p1": 0.133, "pTop2": 0.184, "pTop3": 0.347},  # N=98
     "β": {"p1": 0.108, "pTop2": 0.269, "pTop3": 0.409},  # N=93
 }
-
-# 印が付かない車（8〜9車時の余り）へのフォールバック
 RANK_FALLBACK_MARK = "α"
 
 # ===== 期待値ルール（固定） =====
@@ -90,6 +88,16 @@ P_FLOOR = {
     "nitan"  : 0.07,  # 二車単
 }
 E_MIN, E_MAX = 0.10, 0.60  # EV +10% ～ +60%（買える帯）
+
+# ==============================
+# ◎ソフト制約＋底抜け防止（NEW）
+# ==============================
+K_SOFT = 4      # 得点ランク4位以内は素通り
+K_HARD = 7      # 得点ランク>7 は◎にしない（絶対NG）
+THETA_SB = {"優位": 0.025, "互角": 0.020, "混線": 0.015}  # 昇格チケット：SB差
+THETA_V  = {"優位": 0.020, "互角": 0.015, "混線": 0.010}  # 昇格チケット：会場適合
+P1_MIN_BY_CLASS = {"Ｓ級": 0.15, "Ａ級": 0.12, "Ａ級チャレンジ": 0.10, "ガールズ": 0.14}
+LAMBDA_BY_CONF = {"優位": 0.020, "互角": 0.015, "混線": 0.010}
 
 # ==============================
 # ユーティリティ
@@ -127,14 +135,9 @@ def pos_coeff(role, line_factor):
     base = {'head':1.0,'second':0.7,'thirdplus':0.5,'single':0.9}.get(role,0.9)
     return base * line_factor
 
+# =====（NEW）得点2–4位恒常上振れ補正はやめる：常時0 =====
 def tenscore_correction(tenscores):
-    n = len(tenscores)
-    if n<=2: return [0.0]*n
-    df = pd.DataFrame({"得点":tenscores})
-    df["順位"] = df["得点"].rank(ascending=False, method="min").astype(int)
-    hi = min(n,8); baseline = df[df["順位"].between(2,hi)]["得点"].mean()
-    def corr(row): return round(abs(baseline-row["得点"])*0.03, 3) if row["順位"] in [2,3,4] else 0.0
-    return df.apply(corr, axis=1).tolist()
+    return [0.0]*len(tenscores)
 
 def wind_adjust(wind_dir, wind_speed, role, prof_escape):
     if wind_dir=="無風" or wind_speed==0: return 0.0
@@ -154,6 +157,7 @@ def bank_length_adjust(bank_length, prof_oikomi):
     delta = clamp((float(bank_length)-411.0)/100.0, -0.05, 0.05)
     return round(delta*prof_oikomi, 3)
 
+# ===== ラインSB（NEW：/√N 正規化） =====
 def compute_lineSB_bonus(line_def, S, B, line_factor=1.0, exclude=None, cap=0.06, enable=True):
     if not enable or not line_def:
         return {g:0.0 for g in line_def.keys()} if line_def else {}, {}
@@ -170,7 +174,9 @@ def compute_lineSB_bonus(line_def, S, B, line_factor=1.0, exclude=None, cap=0.06
     for g in line_def.keys():
         s, b = Sg[g], Bg[g]
         ratioS = s/(s+b+1e-6)
-        raw[g] = (0.6*b + 0.4*s) * (0.6 + 0.4*ratioS)
+        r = (0.6*b + 0.4*s) * (0.6 + 0.4*ratioS)
+        n = max(1, len(line_def[g]))       # NEW: 人数で安定化
+        raw[g] = r / (n**0.5)
     zz = zscore_list(list(raw.values())) if raw else []
     bonus={g: clamp(0.02*float(zz[i]), -cap, cap) for i,g in enumerate(raw.keys())}
     return bonus, raw
@@ -190,7 +196,6 @@ def _zone_from_p(p: float) -> tuple[float,float,float]:
     return needed, needed*(1.0+E_MIN), needed*(1.0+E_MAX)
 
 def _format_line_zone(name: str, bet_type: str, p: float) -> str | None:
-    """pがPフロア未満なら None（非表示）。以上なら '3–4：x.x〜y.y倍なら買い' を返す"""
     floor = P_FLOOR[bet_type]
     if p < floor:
         return None
@@ -201,7 +206,7 @@ def _sort_key_by_numbers(name: str) -> list[int]:
     return list(map(int, re.findall(r"\d+", str(name))))
 
 # ==============================
-# サイドバー：開催情報 / バンク・風・頭数
+# サイドバー
 # ==============================
 st.sidebar.header("開催情報 / バンク・風・頭数")
 n_cars = st.sidebar.selectbox("出走数（5〜9）", [5,6,7,8,9], index=2)
@@ -265,7 +270,7 @@ st.sidebar.caption(
 # ==============================
 st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き）⭐")
 
-# ▼▼ レース番号 ▼▼
+# ▼ レース番号
 st.subheader("レース番号（直前にサクッと変更）")
 if "race_no_main" not in st.session_state:
     st.session_state["race_no_main"] = 1
@@ -285,7 +290,6 @@ elif next_clicked:
 else:
     st.session_state["race_no_main"] = int(race_no_input)
 race_no = int(st.session_state["race_no_main"])
-# ▲▲
 
 # ライン入力
 st.subheader("ライン構成（最大7：単騎も1ライン）")
@@ -324,7 +328,6 @@ for i, no in enumerate(active_cars):
         x3[no]  = st.number_input("3着", 0, 99, 0, key=f"x3_{no}")
         x_out[no]= st.number_input("着外", 0, 99, 0, key=f"xo_{no}")
 
-# 得点の実数（未入力は55.0）
 ratings_val = {no: (ratings[no] if ratings[no] is not None else 55.0) for no in active_cars}
 
 # 1着・2着の縮約（級別×会場の事前分布を混ぜる）
@@ -368,7 +371,7 @@ for no in active_cars:
     venue_bonus = k * style * ( +1.00*esc +0.40*mak -0.60*sashi -0.25*mark )
     prof_base[no] = base + clamp(venue_bonus, -0.06, +0.06)
 
-# SBなし合計（環境補正 + 得点微補正）
+# SBなし合計
 tens_list = [ratings_val[no] for no in active_cars]
 t_corr = tenscore_correction(tens_list) if active_cars else []
 tens_corr = {no:t_corr[i] for i,no in enumerate(active_cars)} if active_cars else {}
@@ -399,42 +402,40 @@ C = [kv[0] for kv in sorted(blend.items(), key=lambda x:x[1], reverse=True)[:min
 bonus_init,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff, exclude=None, cap=cap_SB_eff, enable=line_sb_enable)
 v_wo = dict(zip(df["車番"], df["合計_SBなし"]))
 
-def anchor_score(no):
-    g = car_to_group.get(no, None); role = role_in_line(no, line_def)
-    sb = bonus_init.get(g,0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
-    zt = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
-    zt_map = {n:float(zt[i]) for i,n in enumerate(active_cars)} if active_cars else {}
-    return v_wo.get(no, -1e9) + sb + 0.01*zt_map.get(no, 0.0)
-
-anchor_no_pre = max(C, key=lambda x: anchor_score(x)) if C else int(df_sorted_wo.loc[0,"車番"])
-
 ratings_sorted = sorted(active_cars, key=lambda n: ratings_val[n], reverse=True)
 ratings_rank = {no: i+1 for i, no in enumerate(ratings_sorted)}
-ALLOWED_MAX_RANK = 4
 
-C_hard = [no for no in C if ratings_rank.get(no, 999) <= ALLOWED_MAX_RANK]
-C_use = C_hard if C_hard else ratings_sorted[:ALLOWED_MAX_RANK]
-anchor_no = max(C_use, key=lambda x: anchor_score(x))
-
-if anchor_no != anchor_no_pre:
-    st.caption(f"※ ◎は『競走得点 上位{ALLOWED_MAX_RANK}位以内』縛りにより {anchor_no_pre}→{anchor_no} に調整しています。")
-
-cand_scores = [anchor_score(no) for no in C] if len(C)>=2 else [0,0]
-cand_scores_sorted = sorted(cand_scores, reverse=True)
-conf = cand_scores_sorted[0]-cand_scores_sorted[1] if len(cand_scores_sorted)>=2 else 0.0
+# ===== 展開評価（あとで◎ペナルティ強度に使う）=====
+cand_scores = [v_wo.get(no, -1e9) for no in C] if len(C)>=2 else [0,0]
+conf = (sorted(cand_scores, reverse=True)[0] - sorted(cand_scores, reverse=True)[1]) if len(cand_scores)>=2 else 0.0
 spread = float(np.std(list(v_wo.values()))) if len(v_wo)>=2 else 0.0
 norm = conf / (spread if spread>1e-6 else 1.0)
 confidence = "優位" if norm>=1.0 else ("互角" if norm>=0.5 else "混線")
 
-bonus_re,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff, exclude=anchor_no, cap=cap_SB_eff, enable=line_sb_enable)
-def himo_score(no):
-    g = car_to_group.get(no, None); role = role_in_line(no, line_def)
-    sb = bonus_re.get(g,0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
-    return v_wo.get(no, -1e9) + sb
+# =====（NEW）印連続係数：RANK_STATS→MARK_MULを毎回導出 =====
+def derive_mark_mul(rank_stats: dict, alpha: float = 0.5, lo: float = 0.90, hi: float = 1.20, eps: float = 1e-9) -> dict:
+    keys = ["p1", "pTop2", "pTop3"]
+    weights = {m: float(rs.get("N", 1.0)) for m, rs in rank_stats.items()}
+    wsum = sum(weights.values()) if weights else 1.0
+    base = {}
+    for k in keys:
+        num = 0.0
+        for m, rs in rank_stats.items():
+            num += weights[m] * float(rs.get(k, 0.0))
+        base[k] = num / max(wsum, eps)
+    mul = {}
+    for m, rs in rank_stats.items():
+        mul[m] = {}
+        for k in keys:
+            obs = float(rs.get(k, 0.0))
+            ref = base[k]
+            ratio = obs / max(ref, eps)
+            mul[m][k] = float(np.clip(ratio ** alpha, lo, hi))
+    return mul
+MARK_MUL = derive_mark_mul(RANK_STATS, alpha=0.5, lo=0.90, hi=1.20)
+MARK_FALLBACK = RANK_FALLBACK_MARK
 
-restC = [no for no in C if no!=anchor_no]
-o_no = max(restC, key=lambda x: himo_score(x)) if restC else None
-
+# =====（NEW）◎決定：ソフト制約＋底抜け防止＋昇格チケット =====
 def venue_match(no):
     tot = k_esc[no]+k_mak[no]+k_sashi[no]+k_mark[no]
     if tot==0: esc=mak=sashi=mark=0.25
@@ -442,28 +443,73 @@ def venue_match(no):
         esc=k_esc[no]/tot; mak=k_mak[no]/tot; sashi=k_sashi[no]/tot; mark=k_mark[no]/tot
     return style * (1.00*esc + 0.40*mak - 0.60*sashi - 0.25*mark)
 
+bonus_re,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff, exclude=None, cap=cap_SB_eff, enable=line_sb_enable)
+
+def eligible_promote(no, confidence):
+    rnk = ratings_rank.get(no, 999)
+    if rnk <= K_SOFT:
+        return True
+    if rnk > K_HARD:
+        return False
+    g = car_to_group.get(no, None)
+    role = role_in_line(no, line_def)
+    sb_with = bonus_init.get(g, 0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
+    sb_without = bonus_re.get(g, 0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
+    sb_adv = float(sb_with - sb_without)
+    vmatch = float(venue_match(no))
+    p1_min = P1_MIN_BY_CLASS.get(race_class, 0.12)
+    ok_form = (p1_eff.get(no, 0.0) >= p1_min)
+    return (sb_adv >= THETA_SB[confidence]) and (vmatch >= THETA_V[confidence]) and ok_form
+
+def anchor_score(no):
+    g = car_to_group.get(no, None); role = role_in_line(no, line_def)
+    sb = bonus_init.get(g,0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
+    zt = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
+    zt_map = {n:float(zt[i]) for i,n in enumerate(active_cars)} if active_cars else {}
+    base = v_wo.get(no, -1e9) + sb + 0.01*zt_map.get(no, 0.0)
+
+    rnk = ratings_rank.get(no, 999)
+    lam = LAMBDA_BY_CONF[confidence]
+    if rnk > K_HARD:
+        return base - 1.0
+    if rnk > K_SOFT and not eligible_promote(no, confidence):
+        return base - 10*lam
+    penalty = -lam * max(0, rnk - K_SOFT)
+    return base + penalty
+
+anchor_no = max(C, key=lambda x: anchor_score(x)) if C else (int(df_sorted_wo.loc[0,"車番"]) if not df_sorted_wo.empty else 1)
+
+# 対抗・単穴
+bonus_re_ex,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff, exclude=anchor_no, cap=cap_SB_eff, enable=line_sb_enable)
+def himo_score(no):
+    g = car_to_group.get(no, None); role = role_in_line(no, line_def)
+    sb = bonus_re_ex.get(g,0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
+    return v_wo.get(no, -1e9) + sb
+restC = [no for no in C if no!=anchor_no]
+o_no = max(restC, key=lambda x: himo_score(x)) if restC else None
+
 rank_wo = {int(df_sorted_wo.loc[i,"車番"]): i+1 for i in range(len(df_sorted_wo))}
 lower_rank_threshold = max(5, int(np.ceil(len(df_sorted_wo)*0.6)))
 lower_pool = [no for no in active_cars if rank_wo.get(no,99) >= lower_rank_threshold]
-
 p2_C_mean = np.mean([p2_eff[no] for no in C]) if C else 0.0
 min_p2 = 0.22 if race_class=="Ｓ級" else 0.20
-
 pool_filtered = [no for no in lower_pool
                  if no not in {anchor_no, o_no}
                  and ( p2_eff[no] >= min_p2 )
                  and ( p2_eff[no] <= p2_C_mean + 1e-9 )]
-
 a_no = max(pool_filtered, key=lambda x: venue_match(x)) if pool_filtered else None
 if a_no is None:
     fb = [no for no in lower_pool if no not in {anchor_no, o_no}]
     if fb: a_no = max(fb, key=lambda x: venue_match(x))
 
 # 印集約
+st.markdown("### ランキング＆印（◎=ソフト制約／昇格チケットあり）")
+velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(), df_sorted_wo["合計_SBなし"].round(3).tolist()))
+
 result_marks, reasons = {}, {}
-result_marks["◎"] = anchor_no; reasons[anchor_no] = "本命(C上位3→得点4位以内ゲート→ラインSB重視)"
+result_marks["◎"] = anchor_no; reasons[anchor_no] = "本命(ソフト制約+昇格チケット)"
 if o_no is not None:
-    result_marks["〇"] = o_no; reasons[o_no] = "対抗(C残り→◎除外SB再計算)"
+    result_marks["〇"] = o_no; reasons[o_no] = "対抗(◎除外SB再計算)"
 if a_no is not None:
     result_marks["▲"] = a_no; reasons[a_no] = "単穴(SBなし下位×会場適合×2着%)"
 
@@ -471,10 +517,6 @@ used = set(result_marks.values())
 for m,no in zip([m for m in ["△","×","α","β"] if m not in result_marks],
                 [int(df_sorted_wo.loc[i,"車番"]) for i in range(len(df_sorted_wo)) if int(df_sorted_wo.loc[i,"車番"]) not in used]):
     result_marks[m]=no
-
-# 出力（SBなしランキング）
-st.markdown("### ランキング＆印（◎=得点4位以内ゲート / 〇=安定 / ▲=逆襲）")
-velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(), df_sorted_wo["合計_SBなし"].round(3).tolist()))
 
 rows_out=[]
 for r,(no,sc) in enumerate(velobi_wo, start=1):
@@ -513,9 +555,9 @@ st.caption(
 )
 
 # ==============================
-# 買い目（想定的中率 → 必要オッズ=1/p）
+# 買い目（NEW：単一順位生成→全券種）
 # ==============================
-st.markdown("### 🎯 買い目（想定的中率 → 必要オッズ=1/p）")
+st.markdown("### 🎯 買い目（単一の順位サンプルから全券種を一貫評価）")
 
 one = result_marks.get("◎", None)
 two = result_marks.get("〇", None)
@@ -525,54 +567,41 @@ if one is None:
     st.warning("◎未決定のため買い目はスキップ")
     trioC_df = wide_df = qn_df = ex_df = santan_df = None
 else:
-    # 強さベクトル：SBなしスコア → 標準化softmax（base）
+    # 基底確率（softmax）
     strength_map = dict(velobi_wo)
     xs = np.array([strength_map.get(i,0.0) for i in range(1, n_cars+1)], dtype=float)
-    if xs.std() < 1e-12:
-        base = np.ones_like(xs)/len(xs)
+    if xs.std() < 1e-12: base = np.ones_like(xs)/len(xs)
     else:
         z = (xs - xs.mean())/(xs.std()+1e-12)
         base = np.exp(z); base = base/base.sum()
 
-    # --- 券種別キャリブレーション用：印→車番 ---
+    # 印係数で“軽く傾ける”（実測→毎回導出した MARK_MUL を使用）
     mark_by_car = {car: None for car in range(1, n_cars+1)}
     for mk, car in result_marks.items():
         if car is not None and 1 <= car <= n_cars:
             mark_by_car[car] = mk
 
-    # 展開評価でスケール
-    expo = 0.7 if confidence == "優位" else (1.0 if confidence == "互角" else 1.3)
-
-    def calibrate_probs(base_vec: np.ndarray, stat_key: str) -> np.ndarray:
-        """
-        stat_key ∈ {'p1','pTop2','pTop3'}
-        印ごとの目標率で base をスケーリングして正規化
-        """
+    def apply_mark_mul(base_vec: np.ndarray, key: str) -> np.ndarray:
         m = np.ones(n_cars, dtype=float)
+        expo = 0.7 if confidence == "優位" else (1.0 if confidence == "互角" else 1.3)
         for idx, car in enumerate(range(1, n_cars+1)):
-            mk = mark_by_car.get(car)
-            if mk not in RANK_STATS:
-                mk = RANK_FALLBACK_MARK
-            tgt = float(RANK_STATS[mk][stat_key])
-            ratio = tgt / max(float(base_vec[idx]), 1e-9)
-            m[idx] = float(np.clip(ratio**(0.5*expo), 0.25, 2.5))
-        probs = base_vec * m
-        probs = probs / probs.sum()
-        return probs
+            mk = mark_by_car.get(car) or MARK_FALLBACK
+            mul = MARK_MUL.get(mk, MARK_MUL[MARK_FALLBACK]).get(
+                "p1" if key=="p1" else ("pTop2" if key=="p2" else "pTop3"), 1.0
+            )
+            m[idx] = float(np.clip(mul**(0.5*expo), 0.85, 1.20))
+        vec = base_vec * m
+        return vec / vec.sum()
 
-    # 券種ごとの分布：ワイド/三複=Top3、二複=Top2、二単/三単=1着
-    probs_p3 = calibrate_probs(base, "pTop3")  # ワイド・三連複
-    probs_p2 = calibrate_probs(base, "pTop2")  # 二車複
-    probs_p1 = calibrate_probs(base, "p1")     # 二車単・三連単
+    # 単一の順位生成用確率（1着ベース）
+    probs_rank = apply_mark_mul(base, "p1")
 
-    # --- ここを条件依存のシードに変更（再現性×変化の両立） ---
+    # 条件依存シード（同条件=再現）
     seed = abs(hash((track, race_no, n_cars, confidence))) % (2**32)
     rng = np.random.default_rng(seed)
-
     trials = st.slider("シミュレーション試行回数", 1000, 20000, 8000, 1000)
 
     def sample_order_from_probs(pvec: np.ndarray) -> list[int]:
-        # Plackett–Luce風のGumbelノイズ順位決定
         g = -np.log(-np.log(np.clip(rng.random(len(pvec)), 1e-12, 1-1e-12)))
         score = np.log(pvec+1e-12) + g
         return (np.argsort(-score)+1).tolist()
@@ -580,14 +609,12 @@ else:
     mates = [x for x in [two, three] if x is not None]
     all_others = [i for i in range(1, n_cars+1) if i != one]
 
-    # === カウント器 ===
     trioC_counts = {}
     wide_counts = {k:0 for k in all_others}
     qn_counts   = {k:0 for k in all_others}
     ex_counts   = {k:0 for k in all_others}
-    st3_counts  = {}  # 三連単（◎→[相手]→全）： key=(second,third) -> 回数
+    st3_counts  = {}
 
-    # 三連複Cの組み合わせ（◎-[相手]-全）
     trioC_list = []
     if len(mates) > 0:
         for a in all_others:
@@ -598,18 +625,16 @@ else:
                     trioC_list.append(t)
         trioC_list = sorted(set(trioC_list))
 
-    # === シミュレーション ===
     for _ in range(trials):
-        # ワイド/三連複：Top3率ベース
-        order_p3 = sample_order_from_probs(probs_p3)
-        top3_p3 = set(order_p3[:3]); top2_p3 = set(order_p3[:2])
+        order = sample_order_from_probs(probs_rank)
+        top3 = set(order[:3]); top2 = set(order[:2])
 
-        if one in top3_p3:
+        if one in top3:
             for k in wide_counts.keys():
-                if k in top3_p3:
+                if k in top3:
                     wide_counts[k] += 1
             if len(trioC_list) > 0:
-                others = list(top3_p3 - {one})
+                others = list(top3 - {one})
                 if len(others) == 2:
                     a, b = sorted(others)
                     if (a in mates) or (b in mates):
@@ -617,48 +642,26 @@ else:
                         if t in trioC_list:
                             trioC_counts[t] = trioC_counts.get(t, 0) + 1
 
-        # 二車複：連対率ベース
-        order_p2 = sample_order_from_probs(probs_p2)
-        top2_p2 = set(order_p2[:2])
-        if one in top2_p2:
+        if one in top2:
             for k in qn_counts.keys():
-                if k in top2_p2:
+                if k in top2:
                     qn_counts[k] += 1
 
-        # 二車単/三連単：1着率ベース
-        order_p1 = sample_order_from_probs(probs_p1)
-        if order_p1[0] == one:
-            k2 = order_p1[1]
+        if order[0] == one:
+            k2 = order[1]
             if k2 in ex_counts:
                 ex_counts[k2] += 1
-            # 三連単（◎→[相手]→全）：2着は {〇,▲} 限定、3着は全（ただし重複不可）
             if len(mates) > 0:
-                k3 = order_p1[2]
+                k3 = order[2]
                 if (k2 in mates) and (k3 not in (one, k2)):
                     st3_counts[(k2, k3)] = st3_counts.get((k2, k3), 0) + 1
-
-    # ====== Pフロア（最低想定p）とEV帯（デフォルトはglobalsを尊重） ======
-    _P_FLOOR_BASE = globals().get("P_FLOOR", {
-        "wide": 0.060, "sanpuku": 0.040, "nifuku": 0.050, "nitan": 0.040, "santan": 0.030
-    })
-    P_FLOOR = dict(_P_FLOOR_BASE)  # コピーしてから加工
-
-    # 展開で複系だけ微調整（±10%）
-    scale = 1.00
-    if confidence == "優位":   scale = 0.90
-    elif confidence == "混線": scale = 1.10
-    for k in ("wide","sanpuku","nifuku"):
-        P_FLOOR[k] *= scale
-
-    E_MIN = globals().get("E_MIN", 0.00)   # 期待値下限（0%）
-    E_MAX = globals().get("E_MAX", 0.50)   # 期待値上限（+50%）
 
     def need_from_count(cnt: int) -> Optional[float]:
         if cnt <= 0: return None
         p = cnt / trials
         return round(1.0 / p, 2)
 
-    # === 三連複C ===
+    # 三連複C
     if len(trioC_list) > 0:
         rows = []
         for t in trioC_list:
@@ -671,7 +674,6 @@ else:
             })
         trioC_df = pd.DataFrame(rows)
         st.markdown("#### 三連複C（◎-[相手]-全）※車番順")
-        # 車番順でソート
         def _key_nums_tri(s): return list(map(int, re.findall(r"\d+", s)))
         trioC_df = trioC_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_tri)).reset_index(drop=True)
         st.dataframe(trioC_df, use_container_width=True)
@@ -679,71 +681,55 @@ else:
         trioC_df = None
         st.info("三連複C：相手（〇/▲）が未設定のため表示なし")
 
-    # === 三連複バスケット合成オッズと「相手集合S」 ===
-    S = set()
+    # 合成オッズと相手集合S
+    S_set = set()
     O_combo = None
     if trioC_df is not None and len(trioC_df) > 0:
         need_list = []
         for _, r in trioC_df.iterrows():
             name = str(r["買い目"])
             nums = list(map(int, re.findall(r"\d+", name)))
-            # ◎（one）以外を相手集合に加える
             others = [x for x in nums if x != one]
-            S.update(others)
-            # 下限必要オッズ（数値のみ集計）
+            S_set.update(others)
             need_val = r.get("必要オッズ(=1/p)")
-            if isinstance(need_val, (int, float)):
-                if float(need_val) > 0:
-                    need_list.append(float(need_val))
+            if isinstance(need_val, (int, float)) and float(need_val) > 0:
+                need_list.append(float(need_val))
         if need_list:
             denom = sum(1.0/x for x in need_list if x > 0)
             if denom > 0:
-                O_combo = 1.0 / denom
-                O_combo = float(f"{O_combo:.2f}")
+                O_combo = float(f"{(1.0 / denom):.2f}")
 
-    if O_combo is not None and len(S) > 0:
-        st.caption(f"三連複バスケット合成オッズ（下限基準）：**{O_combo:.2f}倍** / 相手集合S：{sorted(list(S))}")
+    if O_combo is not None and len(S_set) > 0:
+        st.caption(f"三連複バスケット合成オッズ（下限基準）：**{O_combo:.2f}倍** / 相手集合S：{sorted(list(S_set))}")
     elif trioC_df is not None and len(trioC_df) > 0:
         st.caption("三連複バスケット合成オッズ：算出不可（必要オッズが'-'のみ）")
 
-    # === ワイド（◎-全）— 三連複と被る側は合成オッズで足切り／漏れ側は必要オッズでOK ===
+    # ワイド
     rows = []
     for k in sorted(wide_counts.keys()):
-        cnt = wide_counts[k]
-        p = cnt / trials
-        # pフロアチェック（まず候補にする）
+        cnt = wide_counts[k]; p = cnt / trials
         if p < P_FLOOR.get("wide", 0.06):
             continue
         need = None if cnt == 0 else (1.0 / p)
-        if need is None or need <= 0:
-            continue
-
-        # 被り側（k ∈ S）は合成オッズ基準を適用
+        if need is None or need <= 0: continue
         eligible = True
         rule_note = "必要オッズ以上"
-        if (O_combo is not None) and (k in S):
+        if (O_combo is not None) and (k in S_set):
             if need >= O_combo:
-                eligible = True
                 rule_note = f"三複被り→合成{O_combo:.2f}倍以上"
             else:
                 eligible = False
-
-        if not eligible:
-            continue
-
+        if not eligible: continue
         rows.append({
             "買い目": f"{one}-{k}",
             "p(想定的中率)": round(p, 4),
             "必要オッズ(=1/p)": round(need, 2),
             "ルール": rule_note
         })
-
     wide_df = pd.DataFrame(rows)
     st.markdown("#### ワイド（◎-全）※車番順")
     if len(wide_df) > 0:
         def _key_nums_w(s): return list(map(int, re.findall(r"\d+", s)))
-        wide_df = wide_df.sort_values(by("買い目"), key=lambda s: s.map(_key_nums_w)).reset_index(drop=True)
-        # ↑ 上行のタイポ修正: sort_values(by=...) が正
         wide_df = wide_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_w)).reset_index(drop=True)
         st.dataframe(wide_df, use_container_width=True)
         if O_combo is not None:
@@ -753,11 +739,11 @@ else:
     else:
         st.info("ワイド：対象外（Pフロア未満、または合成オッズ基準で除外）")
 
-    # === 二車複 ===
+    # 二車複
     rows = []
     for k in sorted(qn_counts.keys()):
         cnt = qn_counts[k]; p = cnt / trials
-        if p < P_FLOOR.get("nifuku", 0.05):  # pフロア適用
+        if p < P_FLOOR.get("nifuku", 0.05):
             continue
         need = None if cnt==0 else (1.0/p)
         if need is None: continue
@@ -776,7 +762,7 @@ else:
     else:
         st.info("二車複：対象外")
 
-    # === 二車単 ===
+    # 二車単
     rows = []
     for k in sorted(ex_counts.keys()):
         cnt = ex_counts[k]; p = cnt / trials
@@ -799,9 +785,9 @@ else:
     else:
         st.info("二車単：対象外")
 
-    # === 三連単（◎→[相手]→全） ===
+    # 三連単
     rows = []
-    p_floor_santan = P_FLOOR.get("santan", 0.03)
+    p_floor_santan = 0.03
     for (sec, thr), cnt in st3_counts.items():
         p = cnt / trials
         if p < p_floor_santan or p <= 0:
@@ -824,16 +810,15 @@ else:
         st.info("三連単：対象外（Pフロア未満・相手未設定・該当なし）")
 
 # ==============================
-# note用：ヘッダー〜展開評価 ＋ 「買えるオッズ帯」（文章形式・車番順）
+# note用
 # ==============================
 st.markdown("### 📋 note用（ヘッダー〜展開評価＋“買えるオッズ帯”）")
-
 def _format_line_zone_note(name: str, bet_type: str, p: float) -> Optional[str]:
     floor = P_FLOOR.get(bet_type, 0.03 if bet_type=="santan" else 0.0)
     if p < floor: return None
     need = 1.0 / max(p, 1e-12)
     if bet_type == "wide":
-        return f"{name}：{need:.1f}倍以上で買い"  # 上限撤廃
+        return f"{name}：{need:.1f}倍以上で買い"
     low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
     return f"{name}：{low:.1f}〜{high:.1f}倍なら買い"
 
@@ -853,27 +838,20 @@ def _zone_lines_from_df(df: pd.DataFrame | None, bet_type_key: str) -> list[str]
     rows_sorted = sorted(rows, key=lambda x: _sort_key_by_numbers(x[0]))
     return [ln for _, ln in rows_sorted]
 
-def _section_text(title: str, lines: list[str]) -> str:
-    if not lines: return f"{title}\n対象外"
-    return f"{title}\n" + "\n".join(lines)
-
 line_text = "　".join([x for x in line_inputs if str(x).strip()])
 score_order_text = " ".join(str(no) for no,_ in velobi_wo)
 marks_line = " ".join(f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks)
 
-txt_trioC = _section_text("三連複C（◎-[相手]-全）",
-                          _zone_lines_from_df(trioC_df, "sanpuku"))
-txt_st    = _section_text("三連単（◎→[相手]→全）",
-                          _zone_lines_from_df(santan_df, "santan"))
-txt_wide  = _section_text("ワイド（◎-全）",
-                          _zone_lines_from_df(wide_df, "wide"))
-txt_qn    = _section_text("二車複（◎-全）",
-                          _zone_lines_from_df(qn_df, "nifuku"))
-txt_ex    = _section_text("二車単（◎→全）",
-                          _zone_lines_from_df(ex_df, "nitan"))
-
-# ルール注記（note下部）
-wide_rule_note = "（ワイドは上限撤廃：三連複で使用した相手は合成オッズ以上／三連複から漏れた相手は必要オッズ以上で買い）"
+txt_trioC = "対象外"; txt_st="対象外"; txt_wide="対象外"; txt_qn="対象外"; txt_ex="対象外"
+if one is not None:
+    def _sec(title, df, key):
+        arr = _zone_lines_from_df(df, key)
+        return f"{title}\n" + ("\n".join(arr) if arr else "対象外")
+    txt_trioC = _sec("三連複C（◎-[相手]-全）", locals().get("trioC_df"), "sanpuku")
+    txt_st    = _sec("三連単（◎→[相手]→全）", locals().get("santan_df"), "santan")
+    txt_wide  = _sec("ワイド（◎-全）",         locals().get("wide_df"),   "wide")
+    txt_qn    = _sec("二車複（◎-全）",         locals().get("qn_df"),     "nifuku")
+    txt_ex    = _sec("二車単（◎→全）",         locals().get("ex_df"),     "nitan")
 
 note_text = (
     f"競輪場　{track}{race_no}R\n"
@@ -882,14 +860,9 @@ note_text = (
     f"ライン　{line_text}\n"
     f"スコア順（SBなし）　{score_order_text}\n"
     f"{marks_line}\n"
-    f"\n"
-    f"{txt_trioC}\n\n"
-    f"{txt_st}\n\n"
-    f"{txt_wide}\n\n"
-    f"{txt_qn}\n\n"
-    f"{txt_ex}\n"
+    f"\n{txt_trioC}\n\n{txt_st}\n\n{txt_wide}\n\n{txt_qn}\n\n{txt_ex}\n"
     f"\n（※“対象外”＝Pフロア未満。どんなオッズでも買わない）\n"
-    f"{wide_rule_note}"
+    f"（ワイドは上限撤廃：三連複で使用した相手は合成オッズ以上／三連複から漏れた相手は必要オッズ以上で買い）"
 )
-
 st.text_area("ここを選択してコピー", note_text, height=380)
+
