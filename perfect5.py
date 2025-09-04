@@ -882,8 +882,8 @@ wide_rule_note = "（ワイドは上限撤廃：三連複で使用した相手�
 
 note_text = (
     f"競輪場　{track}{race_no}R\n"
-    f"{race_time}　{race_class}\n"
     f"展開評価：{confidence}\n"
+    f"{race_time}　{race_class}\n"
     f"ライン　{line_text}\n"
     f"スコア順（SBなし）　{score_order_text}\n"
     f"{marks_line}\n"
