@@ -558,13 +558,17 @@ mu = float(df["合計_SBなし_raw"].mean()) if not df.empty else 0.0
 df["合計_SBなし"] = mu + 1.0*(df["合計_SBなし_raw"] - mu)
 
 # ===== KO方式：最終並びの反映（男子のみ／ガールズは無効） =====
-v_wo = dict(zip(df["車番"], df["合計_SBなし"]))
+# キー型不一致対策：必ず int キー / float 値に統一
+v_wo = {
+    int(k): float(v)
+    for k, v in zip(df["車番"].astype(int), df["合計_SBなし"].astype(float))
+}
 
 _is_girls = (race_class == "ガールズ")
 head_scale = KO_HEADCOUNT_SCALE.get(int(n_cars), 1.0)
 ko_scale = (KO_GIRLS_SCALE if _is_girls else 1.0) * head_scale  # ガールズは0.0で無効
 
-if ko_scale > 0.0 and line_def and len(line_def)>=1:
+if ko_scale > 0.0 and line_def and len(line_def) >= 1:
     ko_order = _ko_order(v_wo, line_def, S, B, line_factor=line_factor_eff, gap_delta=KO_GAP_DELTA)
     vals = [v_wo[c] for c in v_wo.keys()]
     mu0  = float(np.mean(vals)); sd0 = float(np.std(vals) + 1e-12)
@@ -574,16 +578,23 @@ if ko_scale > 0.0 and line_def and len(line_def)>=1:
         rank_adjust = step * (len(ko_order) - rank)
         blended = (1.0 - ko_scale) * v_wo[car] + ko_scale * (mu0 + rank_adjust - (len(ko_order)/2.0 - 0.5)*step)
         new_scores[car] = blended
-    v_final = new_scores
+    # ここでも必ず int/float に統一
+    v_final = {int(k): float(v) for k, v in new_scores.items()}
 else:
-    v_final = v_wo
+    v_final = {int(k): float(v) for k, v in v_wo.items()}
+
+# --- 純SBなしランキング（KOまで／格上げ前）---
+df_sorted_pure = pd.DataFrame({
+    "車番": list(v_final.keys()),
+    "合計_SBなし": [round(float(v_final[c]), 6) for c in v_final.keys()]
+}).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
 
 # --- 一旦のランキング（◎選出の内部参照用・表示は後で格上げ版で上書き） ---
-# FIX-1: active_cars でフル化
 df_sorted_wo_tmp = pd.DataFrame({
     "車番": active_cars,
-    "合計_SBなし": [round(float(v_final.get(c, -1e9)), 6) for c in active_cars]
+    "合計_SBなし": [round(float(v_final[int(c)]), 6) for c in active_cars]
 }).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
+
 
 # ===== ここから（印選定→◎確定） =====
 # 候補C（得点×2着率ブレンド 上位3）
@@ -632,11 +643,10 @@ score_adj_map = apply_anchor_line_bonus(
     tenkai=confidence
 )
 
-# 表示・note・買い目の“SBなしランキング”は格上げ後で統一
-# FIX-2: active_cars でフル化（score_adj_mapに無い車もフォールバック）
+# 表示・note・買い目の“SBなしランキング”は格上げ後で統一（フォールバックに -1e9 は使わない）
 df_sorted_wo = pd.DataFrame({
     "車番": active_cars,
-    "合計_SBなし": [round(float(score_adj_map.get(c, v_final.get(c, -1e9))), 6) for c in active_cars]
+    "合計_SBなし": [round(float(score_adj_map.get(int(c), v_final[int(c)])), 6) for c in active_cars]
 }).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
 
 velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
@@ -692,9 +702,12 @@ for no,_ in velobi_wo:
     })
 st.dataframe(pd.DataFrame(show), use_container_width=True)
 
-# 「スコア順（SBなし）」のnote表記用（df_sorted_wo 起点）
-score_map_for_note = {int(r["車番"]): float(r["合計_SBなし"]) for _, r in df_sorted_wo.iterrows()}
-score_order_text = format_rank_all(score_map_for_note, P_floor_val=None)
+# 「スコア順（SBなし）」のnote表記用（格上げ前＝KOまで）
+score_order_text = format_rank_all(
+    {int(r["車番"]): float(r["合計_SBなし"]) for _, r in df_sorted_pure.iterrows()},
+    P_floor_val=None
+)
+
 
 st.caption(
     f"競輪場　{track}{race_no}R / {race_time}　{race_class} / "
