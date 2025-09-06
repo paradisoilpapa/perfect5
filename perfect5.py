@@ -92,7 +92,8 @@ KO_STEP_SIGMA = 0.4                # KOランクをスコアに写すときの�
 # ==============================
 # ユーティリティ
 # ==============================
-def clamp(x,a,b): return max(a, min(b, x))
+def clamp(x,a,b): 
+    return max(a, min(b, x))
 
 def zscore_list(arr):
     arr = np.array(arr, dtype=float)
@@ -100,7 +101,8 @@ def zscore_list(arr):
     return np.zeros_like(arr) if s==0 else (arr-m)/s
 
 def zscore_val(x, xs):
-    xs = np.array(xs, dtype=float); m, s = float(np.mean(xs)), float(np.std(xs))
+    xs = np.array(xs, dtype=float)
+    m, s = float(np.mean(xs)), float(np.std(xs))
     return 0.0 if s==0 else (float(x)-m)/s
 
 def extract_car_list(s, nmax):
@@ -116,7 +118,8 @@ def build_line_maps(lines):
 def role_in_line(car, line_def):
     for g, mem in line_def.items():
         if car in mem:
-            if len(mem)==1: return 'single'
+            if len(mem)==1: 
+                return 'single'
             idx = mem.index(car)
             return ['head','second','thirdplus'][idx] if idx<3 else 'thirdplus'
     return 'single'
@@ -130,12 +133,15 @@ def tenscore_correction(tenscores):
     if n<=2: return [0.0]*n
     df = pd.DataFrame({"得点":tenscores})
     df["順位"] = df["得点"].rank(ascending=False, method="min").astype(int)
-    hi = min(n,8); baseline = df[df["順位"].between(2,hi)]["得点"].mean()
-    def corr(row): return round(abs(baseline-row["得点"])*0.03, 3) if row["順位"] in [2,3,4] else 0.0
+    hi = min(n,8)
+    baseline = df[df["順位"].between(2,hi)]["得点"].mean()
+    def corr(row): 
+        return round(abs(baseline-row["得点"])*0.03, 3) if row["順位"] in [2,3,4] else 0.0
     return df.apply(corr, axis=1).tolist()
 
 def wind_adjust(wind_dir, wind_speed, role, prof_escape):
-    if wind_dir=="無風" or wind_speed==0: return 0.0
+    if wind_dir=="無風" or wind_speed==0: 
+        return 0.0
     wd = WIND_COEFF.get(wind_dir,0.0)
     pos_multi = {'head':0.32,'second':0.30,'thirdplus':0.25,'single':0.30}.get(role,0.30)
     coeff = 0.4 + 0.6*prof_escape
@@ -160,7 +166,8 @@ def compute_lineSB_bonus(line_def, S, B, line_factor=1.0, exclude=None, cap=0.06
     for g, mem in line_def.items():
         s=b=0.0
         for car in mem:
-            if exclude is not None and car==exclude: continue
+            if exclude is not None and car==exclude: 
+                continue
             w = w_pos_base[role_in_line(car, line_def)] * line_factor
             s += w*float(S.get(car,0)); b += w*float(B.get(car,0))
         Sg[g]=s; Bg[g]=b
@@ -176,7 +183,8 @@ def compute_lineSB_bonus(line_def, S, B, line_factor=1.0, exclude=None, cap=0.06
 def input_float_text(label: str, key: str, placeholder: str = "") -> float | None:
     s = st.text_input(label, value=st.session_state.get(key, ""), key=key, placeholder=placeholder)
     ss = unicodedata.normalize("NFKC", str(s)).replace(",", "").strip()
-    if ss == "": return None
+    if ss == "": 
+        return None
     if not re.fullmatch(r"[+-]?\d+(\.\d+)?", ss):
         st.warning(f"{label} は数値で入力してください（入力値: {s}）")
         return None
@@ -267,7 +275,7 @@ def _ko_order(v_base_map, line_def, S, B, line_factor=1.0, gap_delta=0.010):
 
     return order
 
-# ヘルパー：オッズ帯
+# --- ヘルパー：オッズ帯 ---
 def _zone_from_p(p: float):
     needed = 1.0 / max(p, 1e-12)
     return needed, needed*(1.0+E_MIN), needed*(1.0+E_MAX)
@@ -279,7 +287,7 @@ def _format_line_zone(name: str, bet_type: str, p: float) -> str | None:
     _, low, high = _zone_from_p(p)
     return f"{name}：{low:.1f}〜{high:.1f}倍なら買い"
 
-# 並べ替えキー（統一版）
+# --- 並べ替えキー（統一版） ---
 def _sort_key_by_numbers(name: str) -> list[int]:
     return list(map(int, re.findall(r"\d+", str(name))))
 
