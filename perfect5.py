@@ -592,7 +592,7 @@ df_sorted_pure = pd.DataFrame({
 # --- 一旦のランキング（◎選出の内部参照用・表示は後で格上げ版で上書き） ---
 df_sorted_wo_tmp = pd.DataFrame({
     "車番": active_cars,
-    "合計_SBなし": [round(float(v_final[int(c)]), 6) for c in active_cars]
+    "合計_SBなし": [round(float(v_final.get(int(c), float("-inf"))), 6) for c in active_cars]
 }).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
 
 
@@ -646,7 +646,7 @@ score_adj_map = apply_anchor_line_bonus(
 # 表示・note・買い目の“SBなしランキング”は格上げ後で統一（フォールバックに -1e9 は使わない）
 df_sorted_wo = pd.DataFrame({
     "車番": active_cars,
-    "合計_SBなし": [round(float(score_adj_map.get(int(c), v_final[int(c)])), 6) for c in active_cars]
+    "合計_SBなし": [round(float(score_adj_map.get(int(c), v_final.get(int(c), float("-inf")))), 6) for c in active_cars]
 }).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
 
 velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
