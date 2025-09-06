@@ -83,6 +83,12 @@ RANK_FALLBACK_MARK = "α"
 P_FLOOR = {"sanpuku": 0.06, "nifuku": 0.12, "wide": 0.25, "nitan": 0.07}
 E_MIN, E_MAX = 0.10, 0.60
 
+# --- KO(勝ち上がり) 係数（男子のみ有効／ガールズは無効化） ---
+KO_GIRLS_SCALE = 0.0               # ガールズは0.0=無効
+KO_HEADCOUNT_SCALE = {5:0.6, 6:0.8, 7:1.0, 8:1.0, 9:1.0}
+KO_GAP_DELTA = 0.010               # 同ライン連結の“隙間”閾値
+KO_STEP_SIGMA = 0.4                # KOランクをスコアに写すときの段差幅(σ倍率)
+
 # ==============================
 # ユーティリティ
 # ==============================
@@ -175,6 +181,91 @@ def input_float_text(label: str, key: str, placeholder: str = "") -> float | Non
         st.warning(f"{label} は数値で入力してください（入力値: {s}）")
         return None
     return float(ss)
+
+# --- KOユーティリティ ---
+def _role_of(car, mem):
+    if len(mem)==1: return 'single'
+    i = mem.index(car)
+    return ['head','second','thirdplus'][i] if i<3 else 'thirdplus'
+
+def _line_strength_raw(line_def, S, B, line_factor=1.0):
+    if not line_def: return {}
+    w_pos = {'head':1.0,'second':0.4,'thirdplus':0.2,'single':0.7}
+    raw={}
+    for g, mem in line_def.items():
+        s=b=0.0
+        for c in mem:
+            w = w_pos[_role_of(c, mem)] * line_factor
+            s += w*float(S.get(c,0)); b += w*float(B.get(c,0))
+        ratioS = s/(s+b+1e-6)
+        raw[g] = (0.6*b + 0.4*s) * (0.6 + 0.4*ratioS)
+    return raw
+
+def _top2_lines(line_def, S, B, line_factor=1.0):
+    raw = _line_strength_raw(line_def, S, B, line_factor)
+    order = sorted(raw.keys(), key=lambda g: raw[g], reverse=True)
+    return (order[0], order[1]) if len(order)>=2 else (order[0], None) if order else (None, None)
+
+def _extract_role_car(line_def, gid, role_name):
+    if gid is None or gid not in line_def: return None
+    mem = line_def[gid]
+    if role_name=='head':    return mem[0] if len(mem)>=1 else None
+    if role_name=='second':  return mem[1] if len(mem)>=2 else None
+    return None  # third+ は KO の others プールへ
+
+def _ko_order(v_base_map, line_def, S, B, line_factor=1.0, gap_delta=0.010):
+    cars = list(v_base_map.keys())
+    if not line_def or len(line_def)<1:
+        return [c for c,_ in sorted(v_base_map.items(), key=lambda x:x[1], reverse=True)]
+
+    g1, g2 = _top2_lines(line_def, S, B, line_factor)
+    head1 = _extract_role_car(line_def, g1, 'head')
+    head2 = _extract_role_car(line_def, g2, 'head')
+    sec1  = _extract_role_car(line_def, g1, 'second')
+    sec2  = _extract_role_car(line_def, g2, 'second')
+
+    others=[]
+    if g1:
+        mem = line_def[g1]
+        if len(mem)>=3: others += mem[2:]
+    if g2:
+        mem = line_def[g2]
+        if len(mem)>=3: others += mem[2:]
+    for g, mem in line_def.items():
+        if g not in {g1,g2}:
+            others += mem
+
+    order = []
+    head_pair = [x for x in [head1, head2] if x is not None]
+    order += sorted(head_pair, key=lambda c: v_base_map.get(c, -1e9), reverse=True)
+    sec_pair = [x for x in [sec1, sec2] if x is not None]
+    order += sorted(sec_pair, key=lambda c: v_base_map.get(c, -1e9), reverse=True)
+
+    others = list(dict.fromkeys([c for c in others if c is not None]))
+    others_sorted = sorted(others, key=lambda c: v_base_map.get(c, -1e9), reverse=True)
+    order += [c for c in others_sorted if c not in order]
+
+    for c in cars:
+        if c not in order:
+            order.append(c)
+
+    def _same_group(a,b):
+        if a is None or b is None: return False
+        ga = next((g for g,mem in line_def.items() if a in mem), None)
+        gb = next((g for g,mem in line_def.items() if b in mem), None)
+        return ga is not None and ga==gb
+
+    i=0
+    while i < len(order)-2:
+        a, b, c = order[i], order[i+1], order[i+2]
+        if _same_group(a, b):
+            vx = v_base_map.get(b,0.0) - v_base_map.get(c,0.0)
+            if vx >= -gap_delta:
+                order.pop(i+2)
+                order.insert(i+1, b)
+        i += 1
+
+    return order
 
 # ヘルパー：オッズ帯
 def _zone_from_p(p: float):
@@ -421,29 +512,58 @@ for no in active_cars:
 df = pd.DataFrame(rows, columns=["車番","役割","脚質基準(会場)","風補正","得点補正","バンク補正","周長補正","周回補正","個人補正","合計_SBなし_raw"])
 mu = float(df["合計_SBなし_raw"].mean()) if not df.empty else 0.0
 df["合計_SBなし"] = mu + 1.0*(df["合計_SBなし_raw"] - mu)
-df_sorted_wo = df.sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
+
+# ===== KO方式：最終並びの反映（男子のみ／ガールズは無効） =====
+# まずは“SBなし”のスコアマップを用意
+v_wo = dict(zip(df["車番"], df["合計_SBなし"]))
+
+# KOスケール（頭数とガールズで調整）
+_is_girls = (race_class == "ガールズ")
+head_scale = KO_HEADCOUNT_SCALE.get(int(n_cars), 1.0)
+ko_scale = (KO_GIRLS_SCALE if _is_girls else 1.0) * head_scale  # ガールズは0.0で無効
+
+if ko_scale > 0.0 and line_def and len(line_def)>=1:
+    ko_order = _ko_order(v_wo, line_def, S, B, line_factor=line_factor_eff, gap_delta=KO_GAP_DELTA)
+    vals = [v_wo[c] for c in v_wo.keys()]
+    mu0  = float(np.mean(vals)); sd0 = float(np.std(vals) + 1e-12)
+    step = KO_STEP_SIGMA * sd0
+    new_scores = {}
+    for rank, car in enumerate(ko_order, start=1):
+        rank_adjust = step * (len(ko_order) - rank)
+        # ブレンド：元スコア(1−ko_scale) + KO階段(ko_scale)
+        blended = (1.0 - ko_scale) * v_wo[car] + ko_scale * (mu0 + rank_adjust - (len(ko_order)/2.0 - 0.5)*step)
+        new_scores[car] = blended
+    v_final = new_scores
+else:
+    v_final = v_wo
+
+# 以降は v_final を採用してランキング作成
+df_sorted_wo = pd.DataFrame({
+    "車番": list(v_final.keys()),
+    "合計_SBなし": [round(v_final[c], 6) for c in v_final.keys()]
+}).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
+
+# ===== ここからは従来どおり（印選定→買い目評価） =====
 
 # 候補C（得点×2着率ブレンド 上位3）
 blend = {no: (ratings_val[no] + min(50.0, p2_eff[no]*100.0))/2.0 for no in active_cars}
 C = [kv[0] for kv in sorted(blend.items(), key=lambda x:x[1], reverse=True)[:min(3,len(blend))]]
 
-# ラインSB
+# ラインSB（◎選出用）
 bonus_init,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff, exclude=None, cap=cap_SB_eff, enable=line_sb_enable)
-v_wo = dict(zip(df["車番"], df["合計_SBなし"]))
 
 def anchor_score(no):
     g = car_to_group.get(no, None); role = role_in_line(no, line_def)
     sb = bonus_init.get(g,0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
     zt = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
     zt_map = {n:float(zt[i]) for i,n in enumerate(active_cars)} if active_cars else {}
-    return v_wo.get(no, -1e9) + sb + 0.01*zt_map.get(no, 0.0)
+    return v_final.get(no, -1e9) + sb + 0.01*zt_map.get(no, 0.0)
 
 anchor_no_pre = max(C, key=lambda x: anchor_score(x)) if C else int(df_sorted_wo.loc[0,"車番"])
 
 ratings_sorted2 = sorted(active_cars, key=lambda n: ratings_val[n], reverse=True)
 ratings_rank2 = {no: i+1 for i, no in enumerate(ratings_sorted2)}
 ALLOWED_MAX_RANK = 4
-
 C_hard = [no for no in C if ratings_rank2.get(no, 999) <= ALLOWED_MAX_RANK]
 C_use = C_hard if C_hard else ratings_sorted2[:ALLOWED_MAX_RANK]
 anchor_no = max(C_use, key=lambda x: anchor_score(x))
@@ -454,7 +574,7 @@ if anchor_no != anchor_no_pre:
 cand_scores = [anchor_score(no) for no in C] if len(C)>=2 else [0,0]
 cand_scores_sorted = sorted(cand_scores, reverse=True)
 conf = cand_scores_sorted[0]-cand_scores_sorted[1] if len(cand_scores_sorted)>=2 else 0.0
-spread = float(np.std(list(v_wo.values()))) if len(v_wo)>=2 else 0.0
+spread = float(np.std(list(v_final.values()))) if len(v_final)>=2 else 0.0
 norm = conf / (spread if spread>1e-6 else 1.0)
 confidence = "優位" if norm>=1.0 else ("互角" if norm>=0.5 else "混線")
 
@@ -462,7 +582,7 @@ bonus_re,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff, e
 def himo_score(no):
     g = car_to_group.get(no, None); role = role_in_line(no, line_def)
     sb = bonus_re.get(g,0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
-    return v_wo.get(no, -1e9) + sb
+    return v_final.get(no, -1e9) + sb
 
 restC = [no for no in C if no!=anchor_no]
 o_no = max(restC, key=lambda x: himo_score(x)) if restC else None
@@ -493,7 +613,7 @@ if a_no is None:
 
 # 印集約
 result_marks, reasons = {}, {}
-result_marks["◎"] = anchor_no; reasons[anchor_no] = "本命(C上位3→得点4位以内ゲート→ラインSB重視)"
+result_marks["◎"] = anchor_no; reasons[anchor_no] = "本命(C上位3→得点4位以内ゲート→ラインSB重視＋KO並び)"
 if o_no is not None:
     result_marks["〇"] = o_no; reasons[o_no] = "対抗(C残り→◎除外SB再計算)"
 if a_no is not None:
@@ -542,7 +662,7 @@ st.dataframe(pd.DataFrame(show), use_container_width=True)
 st.caption(
     f"競輪場　{track}{race_no}R / {race_time}　{race_class} / "
     f"開催日：{day_label}（line係数={line_factor_eff:.2f}, SBcap±{cap_SB_eff:.2f}） / "
-    f"会場スタイル:{style:+.2f} / 風:{wind_dir} / 有効周回={eff_laps} / 展開評価：**{confidence}**（Norm={norm:.2f}）"
+    f"会場スタイル:{style:+.2f} / 風:{wind_dir} / 有効周回={eff_laps} / 展開評価：**{confidence}**（Norm={norm:.2f})"
 )
 
 # ==============================
@@ -558,7 +678,7 @@ if one is None:
     st.warning("◎未決定のため買い目はスキップ")
     trioC_df = wide_df = qn_df = ex_df = santan_df = None
 else:
-    # base：SBなしスコア → softmax
+    # base：最終スコア v_final → softmax
     strength_map = dict(velobi_wo)
     xs = np.array([strength_map.get(i,0.0) for i in range(1, n_cars+1)], dtype=float)
     if xs.std() < 1e-12:
@@ -689,7 +809,7 @@ else:
         st.info("三連複C：相手（〇/▲）が未設定のため表示なし")
 
     # 三連複バスケット合成オッズと相手集合S
-    S = set()
+    Sset = set()
     O_combo = None
     if trioC_df is not None and len(trioC_df) > 0:
         need_list = []
@@ -697,7 +817,7 @@ else:
             name = str(r["買い目"])
             nums = list(map(int, re.findall(r"\d+", name)))
             others = [x for x in nums if x != one]
-            S.update(others)
+            Sset.update(others)
             need_val = r.get("必要オッズ(=1/p)")
             if isinstance(need_val, (int, float)) and float(need_val) > 0:
                 need_list.append(float(need_val))
@@ -706,15 +826,26 @@ else:
             if denom > 0:
                 O_combo = float(f"{(1.0 / denom):.2f}")
 
-    if O_combo is not None and len(S) > 0:
-        st.caption(f"三連複バスケット合成オッズ（下限基準）：**{O_combo:.2f}倍** / 相手集合S：{sorted(S)}")
+    if O_combo is not None and len(Sset) > 0:
+        st.caption(f"三連複バスケット合成オッズ（下限基準）：**{O_combo:.2f}倍** / 相手集合S：{sorted(Sset)}")
     elif trioC_df is not None and len(trioC_df) > 0:
         st.caption("三連複バスケット合成オッズ：算出不可（必要オッズが'-'のみ）")
 
     # ワイド（◎-全）
     rows = []
-    for k in sorted(wide_counts.keys()):
-        cnt = wide_counts[k]
+    # ワイドの母数は「Top3同居」なので probs_p3 に連動
+    # ここでは従来どおり：S側は合成オッズ以上、S外は必要オッズ以上
+    for k in sorted([i for i in range(1, n_cars+1) if i != one]):
+        # 出走外の安全チェック
+        if k not in range(1, n_cars+1): 
+            continue
+        # カウントが無ければスキップ（p=0）
+        # （wide_counts を使わず、trialsから直接p推定する運用でも可）
+        # ここは既存実装を尊重して wide_counts を活用
+    # wide_counts は上の試行で更新済み
+    rows = []
+    for k in sorted([i for i in range(1, n_cars+1) if i != one]):
+        cnt = wide_counts.get(k, 0)
         p = cnt / trials
         if p < P_FLOOR.get("wide", 0.06):
             continue
@@ -723,7 +854,7 @@ else:
             continue
         eligible = True
         rule_note = "必要オッズ以上"
-        if (O_combo is not None) and (k in S):
+        if (O_combo is not None) and (k in Sset):
             if need >= O_combo:
                 eligible = True
                 rule_note = f"三複被り→合成{O_combo:.2f}倍以上"
@@ -737,12 +868,11 @@ else:
             "必要オッズ(=1/p)": round(need, 2),
             "ルール": rule_note
         })
-
     wide_df = pd.DataFrame(rows)
     st.markdown("#### ワイド（◎-全）※車番順")
     if len(wide_df) > 0:
         def _key_nums_w(s): return list(map(int, re.findall(r"\d+", s)))
-        wide_df = wide_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_w)).reset_index(drop=True)
+        wide_df = wide_df.sort_values(by("買い目"), key=lambda s: s.map(_key_nums_w)).reset_index(drop=True)
         st.dataframe(wide_df, use_container_width=True)
         if O_combo is not None:
             st.caption("※三連複で使用した相手（S側）は **合成オッズ以上**のワイドのみ採用。S外は **必要オッズ以上**で採用。ワイドは上限撤廃＝『◯倍以上で買い』。")
@@ -753,8 +883,8 @@ else:
 
     # 二車複
     rows = []
-    for k in sorted(qn_counts.keys()):
-        cnt = qn_counts[k]; p = cnt / trials
+    for k in sorted([i for i in range(1, n_cars+1) if i != one]):
+        cnt = qn_counts.get(k, 0); p = cnt / trials
         if p < P_FLOOR.get("nifuku", 0.05):
             continue
         need = None if cnt==0 else (1.0/p)
@@ -776,8 +906,8 @@ else:
 
     # 二車単
     rows = []
-    for k in sorted(ex_counts.keys()):
-        cnt = ex_counts[k]; p = cnt / trials
+    for k in sorted([i for i in range(1, n_cars+1) if i != one]):
+        cnt = ex_counts.get(k, 0); p = cnt / trials
         if p < P_FLOOR.get("nitan", 0.04):
             continue
         need = None if cnt==0 else (1.0/p)
