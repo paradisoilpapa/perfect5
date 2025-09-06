@@ -652,22 +652,65 @@ df_sorted_wo = pd.DataFrame({
 velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
                      df_sorted_wo["合計_SBなし"].round(3).tolist()))
 
-# 印集約（従来通り：◎は決定済み）
-rank_wo = {int(df_sorted_wo.loc[i,"車番"]): i+1 for i in range(len(df_sorted_wo))}
+# 印集約（◎ライン優先：同ラインを上から順に採用）
+rank_wo = {int(df_sorted_wo.loc[i, "車番"]): i+1 for i in range(len(df_sorted_wo))}
 result_marks, reasons = {}, {}
-result_marks["◎"] = anchor_no; reasons[anchor_no] = "本命(C上位3→得点4位以内ゲート→ラインSB重視＋KO並び)"
+result_marks["◎"] = anchor_no
+reasons[anchor_no] = "本命(C上位3→得点4位以内ゲート→ラインSB重視＋KO並び)"
 
-# 対抗/単穴は格上げ後スコアで選ぶ
-others_sorted = [int(df_sorted_wo.loc[i,"車番"]) for i in range(len(df_sorted_wo)) if int(df_sorted_wo.loc[i,"車番"]) != anchor_no]
-if others_sorted:
-    result_marks["〇"] = others_sorted[0]; reasons[others_sorted[0]] = "対抗（格上げ後SBなしスコア順）"
-if len(others_sorted) > 1:
-    result_marks["▲"] = others_sorted[1]; reasons[others_sorted[1]] = "単穴（格上げ後SBなしスコア順）"
+# スコア辞書（格上げ後）
+score_map = {int(df_sorted_wo.loc[i, "車番"]): float(df_sorted_wo.loc[i, "合計_SBなし"])
+             for i in range(len(df_sorted_wo))}
+
+# 全体並び（◎除外）
+overall_rest = [int(df_sorted_wo.loc[i, "車番"])
+                for i in range(len(df_sorted_wo))
+                if int(df_sorted_wo.loc[i, "車番"]) != anchor_no]
+
+# ◎のラインメンバー（◎を除外）をスコア降順に
+a_gid = car_to_group.get(anchor_no, None)
+mates_sorted = []
+if a_gid is not None and a_gid in line_def:
+    mates_sorted = sorted(
+        [c for c in line_def[a_gid] if c != anchor_no],
+        key=lambda x: (-score_map.get(x, -1e9), x)
+    )
+
+# 〇：全体トップ（◎除外）
+if overall_rest:
+    result_marks["〇"] = overall_rest[0]
+    reasons[overall_rest[0]] = "対抗（格上げ後SBなしスコア順）"
 
 used = set(result_marks.values())
-for m,no in zip([m for m in ["△","×","α","β"] if m not in result_marks],
-                [int(df_sorted_wo.loc[i,"車番"]) for i in range(len(df_sorted_wo)) if int(df_sorted_wo.loc[i,"車番"]) not in used]):
-    result_marks[m]=no
+
+# ▲：◎ラインから最上位を“強制”採用（〇が同ラインなら次点）
+mate_candidates = [c for c in mates_sorted if c not in used]
+if mate_candidates:
+    pick = mate_candidates[0]
+    result_marks["▲"] = pick
+    reasons[pick] = "単穴（◎ライン優先：同ライン最上位を採用）"
+else:
+    # 同ラインに候補が無い（単騎など）のときは全体次点
+    rest_global = [c for c in overall_rest if c not in used]
+    if rest_global:
+        pick = rest_global[0]
+        result_marks["▲"] = pick
+        reasons[pick] = "単穴（格上げ後SBなしスコア順）"
+
+used = set(result_marks.values())
+
+# 残り印（△ → × → α → β）は“◎ライン残メンバーを先に消化”、その後に全体残り
+tail_priority = [c for c in mates_sorted if c not in used]
+tail_priority += [c for c in overall_rest if c not in used and c not in tail_priority]
+
+for mk in ["△","×","α","β"]:
+    if mk in result_marks:
+        continue
+    if not tail_priority:
+        break
+    no = tail_priority.pop(0)
+    result_marks[mk] = no
+    reasons[no] = f"{mk}（◎ライン優先→残りスコア順）"
 
 # 出力（SBなしランキング）
 st.markdown("### ランキング＆印（◎ライン格上げ反映済み）")
