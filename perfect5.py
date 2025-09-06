@@ -576,7 +576,7 @@ cand_scores_sorted = sorted(cand_scores, reverse=True)
 conf = cand_scores_sorted[0]-cand_scores_sorted[1] if len(cand_scores_sorted)>=2 else 0.0
 spread = float(np.std(list(v_final.values()))) if len(v_final)>=2 else 0.0
 norm = conf / (spread if spread>1e-6 else 1.0)
-confidence = "優位" if norm>=1.0 else ("互角" if norm>=0.5 else "混線")
+confidence = "優位" if norm>=1.0 else ("互角" if norm>=0.5 else "混戦")
 
 bonus_re,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff, exclude=anchor_no, cap=cap_SB_eff, enable=line_sb_enable)
 def himo_score(no):
@@ -776,7 +776,7 @@ else:
     P_FLOOR = globals().get("P_FLOOR", {"wide": 0.060, "sanpuku": 0.040, "nifuku": 0.050, "nitan": 0.040, "santan": 0.030})
     scale = 1.00
     if confidence == "優位":   scale = 0.90
-    elif confidence == "混闘": scale = 1.10
+    elif confidence == "混戦": scale = 1.10
     for k in ("wide","sanpuku","nifuku"):
         P_FLOOR[k] *= scale
 
