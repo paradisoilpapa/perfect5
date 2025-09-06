@@ -182,7 +182,7 @@ def input_float_text(label: str, key: str, placeholder: str = "") -> float | Non
         return None
     return float(ss)
 
-# --- KOユーティリティ ---
+# --- KOユーティリティ（ライン対ラインの勝ち上がりシード） ---
 def _role_of(car, mem):
     if len(mem)==1: return 'single'
     i = mem.index(car)
@@ -279,6 +279,7 @@ def _format_line_zone(name: str, bet_type: str, p: float) -> str | None:
     _, low, high = _zone_from_p(p)
     return f"{name}：{low:.1f}〜{high:.1f}倍なら買い"
 
+# 並べ替えキー（統一版）
 def _sort_key_by_numbers(name: str) -> list[int]:
     return list(map(int, re.findall(r"\d+", str(name))))
 
