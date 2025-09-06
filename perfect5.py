@@ -1007,3 +1007,80 @@ else:
     else:
         santan_df = None
         st.info("三連単：対象外（Pフロア未満・相手未設定・該当なし）")
+# ==============================
+# note用：ヘッダー〜展開評価＋“買えるオッズ帯”
+# ==============================
+st.markdown("### 📋 note用（ヘッダー〜展開評価＋“買えるオッズ帯”）")
+
+def _zone_lines_from_df(df: pd.DataFrame | None, bet_type_key: str) -> list[str]:
+    if df is None or len(df) == 0 or ("買い目" not in df.columns):
+        return []
+    rows = []
+    for _, r in df.iterrows():
+        name = str(r.get("買い目", ""))
+        if not name:
+            continue
+        if "買える帯" in r and pd.notna(r["買える帯"]) and str(r["買える帯"]).strip():
+            rows.append((name, f"{name}：{r['買える帯']}"))
+            continue
+        need_val = r.get("必要オッズ(=1/p)")
+        if need_val is None or need_val == "-" or (isinstance(need_val, float) and not np.isfinite(need_val)):
+            continue
+        try:
+            need = float(need_val)
+        except Exception:
+            continue
+        if need <= 0:
+            continue
+        if bet_type_key == "wide":
+            rows.append((name, f"{name}：{need:.1f}倍以上で買い"))
+        else:
+            low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
+            rows.append((name, f"{name}：{low:.1f}〜{high:.1f}倍なら買い"))
+    rows_sorted = sorted(rows, key=lambda x: _sort_key_by_numbers(x[0]))
+    return [ln for _, ln in rows_sorted]
+
+def _section_text(title: str, lines: list[str]) -> str:
+    if not lines: return f"{title}\n対象外"
+    return f"{title}\n" + "\n".join(lines)
+
+line_text = "　".join([x for x in line_inputs if str(x).strip()])
+# score_order_text は格上げ適用後に作成済み。未定義フォールバック：
+try:
+    score_order_text
+except NameError:
+    score_order_text = " ".join(str(no) for no,_ in velobi_wo)
+
+marks_line = " ".join(f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks)
+
+txt_trioC = _section_text("三連複C（◎-[相手]-全）",
+                          _zone_lines_from_df(trioC_df, "sanpuku") if one is not None else [])
+txt_st    = _section_text("三連単（◎→[相手]→全）",
+                          _zone_lines_from_df(santan_df, "santan") if one is not None else [])
+txt_wide  = _section_text("ワイド（◎-全）",
+                          _zone_lines_from_df(wide_df, "wide") if one is not None else [])
+txt_qn    = _section_text("二車複（◎-全）",
+                          _zone_lines_from_df(qn_df, "nifuku") if one is not None else [])
+txt_ex    = _section_text("二車単（◎→全）",
+                          _zone_lines_from_df(ex_df, "nitan") if one is not None else [])
+
+wide_rule_note = "（ワイドは上限撤廃：三連複で使用した相手は合成オッズ以上／三連複から漏れた相手は必要オッズ以上で買い）"
+
+note_text = (
+    f"競輪場　{track}{race_no}R\n"
+    f"展開評価：{confidence}\n"
+    f"{race_time}　{race_class}\n"
+    f"ライン　{line_text}\n"
+    f"スコア順（SBなし）　{score_order_text}\n"
+    f"{marks_line}\n"
+    f"\n"
+    f"{txt_trioC}\n\n"
+    f"{txt_st}\n\n"
+    f"{txt_wide}\n\n"
+    f"{txt_qn}\n\n"
+    f"{txt_ex}\n"
+    f"\n（※“対象外”＝Pフロア未満。どんなオッズでも買わない）\n"
+    f"{wide_rule_note}"
+)
+
+st.text_area("ここを選択してコピー", note_text, height=380)
