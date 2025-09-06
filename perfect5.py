@@ -763,6 +763,21 @@ st.caption(
 # ==============================
 st.markdown("### 🎯 買い目（想定的中率 → 必要オッズ=1/p）")
 
+# ===== 必要オッズの安全フロア（表示・判定兼用） =====
+MIN_ODDS_FLOOR = {
+    "wide":   1.20,   # ワイドは最低でも1.2倍以上で提示
+    "sanpuku":1.50,   # 三連複C
+    "nifuku": 1.30,   # 二車複
+    "nitan":  1.50,   # 二車単
+    "santan": 1.70,   # 三連単
+}
+def _adjust_need(bet_type: str, need: float | None) -> float | None:
+    if need is None or not np.isfinite(need) or need <= 0:
+        return None
+    floor = float(MIN_ODDS_FLOOR.get(bet_type, 1.0))
+    return float(max(need, floor))
+
+
 one = result_marks.get("◎", None)
 two = result_marks.get("〇", None)
 three = result_marks.get("▲", None)
