@@ -921,7 +921,7 @@ else:
     st.markdown("#### ワイド（◎-全）※車番順")
     if len(wide_df) > 0:
         def _key_nums_w(s): return list(map(int, re.findall(r"\d+", s)))
-        wide_df = wide_df.sort_values(by("買い目"), key=lambda s: s.map(_sort_key_by_numbers)).reset_index(drop=True)
+        wide_df = wide_df.sort_values(by"買い目", key=lambda s: s.map(_sort_key_by_numbers)).reset_index(drop=True)
         st.dataframe(wide_df, use_container_width=True)
         if O_combo is not None:
             st.caption("※三連複で使用した相手（S側）は **合成オッズ以上**のワイドのみ採用。S外は **必要オッズ以上**で採用。ワイドは上限撤廃＝『◯倍以上で買い』。")
