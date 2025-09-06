@@ -95,8 +95,7 @@ LINE_BONUS = {"second": 0.08, "thirdplus": 0.04}  # 役割別ボーナス（番�
 LINE_BONUS_CAP = 0.10
 
 # === （任意）確率乗数（B方式：デフォルト無効=0.0） ===================
-# ワイド/三連複Cの“◎同ライン・番手/三番手”にだけ微小ブーストを掛けたい場合に使用
-PROB_U = {"second": 0.00, "thirdplus": 0.00}  # 例: {"second":0.15, "thirdplus":0.08}
+PROB_U = {"second": 0.00, "thirdplus": 0.00}
 
 # ==============================
 # ユーティリティ
@@ -580,9 +579,10 @@ else:
     v_final = v_wo
 
 # --- 一旦のランキング（◎選出の内部参照用・表示は後で格上げ版で上書き） ---
+# FIX-1: active_cars でフル化
 df_sorted_wo_tmp = pd.DataFrame({
-    "車番": list(v_final.keys()),
-    "合計_SBなし": [round(v_final[c], 6) for c in v_final.keys()]
+    "車番": active_cars,
+    "合計_SBなし": [round(float(v_final.get(c, -1e9)), 6) for c in active_cars]
 }).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
 
 # ===== ここから（印選定→◎確定） =====
@@ -633,9 +633,10 @@ score_adj_map = apply_anchor_line_bonus(
 )
 
 # 表示・note・買い目の“SBなしランキング”は格上げ後で統一
+# FIX-2: active_cars でフル化（score_adj_mapに無い車もフォールバック）
 df_sorted_wo = pd.DataFrame({
-    "車番": list(score_adj_map.keys()),
-    "合計_SBなし": [round(score_adj_map[c], 6) for c in score_adj_map.keys()]
+    "車番": active_cars,
+    "合計_SBなし": [round(float(score_adj_map.get(c, v_final.get(c, -1e9))), 6) for c in active_cars]
 }).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
 
 velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
@@ -691,8 +692,9 @@ for no,_ in velobi_wo:
     })
 st.dataframe(pd.DataFrame(show), use_container_width=True)
 
-# 「スコア順（SBなし）」のnote表記用
-score_order_text = format_rank_all({int(r["車番"]): float(r["合計_SBなし"]) for _, r in df_sorted_wo.iterrows()}, P_floor_val=None)
+# 「スコア順（SBなし）」のnote表記用（df_sorted_wo 起点）
+score_map_for_note = {int(r["車番"]): float(r["合計_SBなし"]) for _, r in df_sorted_wo.iterrows()}
+score_order_text = format_rank_all(score_map_for_note, P_floor_val=None)
 
 st.caption(
     f"競輪場　{track}{race_no}R / {race_time}　{race_class} / "
@@ -808,7 +810,6 @@ else:
                     st3_counts[(k2, k3)] = st3_counts.get((k2, k3), 0) + 1
 
     # ===== ここで（任意）B方式の微小ブーストを適用（デフォルト0.0で無効） =====
-    # 「◎同ラインの番手/三番手」に対して、ワイド/三連複Cのヒット回数を微増させるフック
     if any(v > 0 for v in PROB_U.values()):
         a_line = car_to_group.get(one, None)
         def role_of(i):
@@ -1045,13 +1046,12 @@ def _section_text(title: str, lines: list[str]) -> str:
     return f"{title}\n" + "\n".join(lines)
 
 line_text = "　".join([x for x in line_inputs if str(x).strip()])
-# score_order_text は格上げ適用後に作成済み。未定義フォールバック：
-try:
-    score_order_text
-except NameError:
-    score_order_text = " ".join(str(no) for no,_ in velobi_wo)
 
 marks_line = " ".join(f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks)
+
+# FIX-3: 必ず df_sorted_wo から全車順を作成
+score_map_for_note = {int(r["車番"]): float(r["合計_SBなし"]) for _, r in df_sorted_wo.iterrows()}
+score_order_text = format_rank_all(score_map_for_note, P_floor_val=None)
 
 txt_trioC = _section_text("三連複C（◎-[相手]-全）",
                           _zone_lines_from_df(trioC_df, "sanpuku") if one is not None else [])
