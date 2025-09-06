@@ -776,7 +776,7 @@ else:
     P_FLOOR = globals().get("P_FLOOR", {"wide": 0.060, "sanpuku": 0.040, "nifuku": 0.050, "nitan": 0.040, "santan": 0.030})
     scale = 1.00
     if confidence == "優位":   scale = 0.90
-    elif confidence == "混線": scale = 1.10
+    elif confidence == "混闘": scale = 1.10
     for k in ("wide","sanpuku","nifuku"):
         P_FLOOR[k] *= scale
 
