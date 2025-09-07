@@ -847,7 +847,8 @@ def _ensure_counts(one: int, car_list: list[int]):
     _w_role = {'head':1.0, 'second':0.7, 'thirdplus':0.5, 'single':0.8}
     role_of = {c: (role_in_line(c, line_def) if line_def else 'single') for c in car_list}
     w_by_car = {c: _w_role.get(role_of[c], 0.8) for c in car_list}
-    gid_by_car = {c: car_to_group.get(c, None)}
+    gid_by_car = {c: car_to_group.get(c, None) for c in car_list}
+
 
     # 共通ショック強度（line係数＆自信度で調整）
     sigma_line = float(min(0.6, max(0.15, 0.45 * line_factor_eff)))  # 0.15〜0.6
