@@ -722,242 +722,169 @@ one = result_marks.get("◎", None)
 two = result_marks.get("〇", None)
 three = result_marks.get("▲", None)
 
-# ── ここが今回の重要追加：未定義でも落ちないよう安全取得 ──
-trio_counts = dict(globals().get("trio_counts", {}))
-wide_counts = dict(globals().get("wide_counts", {}))
-qn_counts   = dict(globals().get("qn_counts", {}))
-ex_counts   = dict(globals().get("ex_counts", {}))
-st3_counts  = dict(globals().get("st3_counts", {}))
-
-# trials を安全に取得（スライダー値→セッション→既存→デフォルト）
-trials = (
-    st.session_state.get("_trials_last")
-    or globals().get("trials", None)
-    or 8000
-)
-
-# 表示フォーマット系ユーティリティ
-def _ceil_to(x: float, step: float) -> float:
-    if not np.isfinite(x): return x
-    return math.ceil(x/step)*step
-
-def _need_from_cnt(cnt: int, trials: int) -> tuple[float, float]:
-    """
-    ラプラス平滑 p=(cnt+0.5)/(trials+1) で 0/1 を排除。
-    need=1/p を2桁で切り上げ、最小1.01に強制（1.00は出さない）。
-    """
-    p = (cnt + 0.5) / float(trials + 1)
-    p = min(max(p, 1e-6), 1 - 1e-6)
-    need = 1.0 / p
-    need = _ceil_to(need, 0.01)
-    need = max(need, 1.01)
-    return p, need
-
-def _band_from_need(need: float) -> tuple[float, float]:
-    low  = need*(1.0+E_MIN)
-    high = need*(1.0+E_MAX)
-    return _ceil_to(low, 0.01), _ceil_to(high, 0.01)
-
-def _fmt_range(low: float, high: float) -> str:
-    return f"{low:.2f}〜{high:.2f}倍なら買い"
-
-def _fmt_above(need: float) -> str:
-    return f"{need:.2f}倍以上で買い"
-
-# 推奨判定（Pフロアは非表示でなく“☆”用）
-P_F = dict(P_FLOOR)
-if confidence == "優位":   scale_pf = 0.90
-elif confidence == "混戦": scale_pf = 1.10
-else:                      scale_pf = 1.00
-for k in ("wide","sanpuku","nifuku"):
-    P_F[k] *= scale_pf
-
 trio_df = wide_df = qn_df = ex_df = santan_df = None
 
 if one is None:
     st.warning("◎未決定のため買い目はスキップ")
 else:
-    # 実使用する車番列
     car_list = sorted(active_cars)
-    others = [c for c in car_list if c != one]
+    car_to_idx = {c:i for i,c in enumerate(car_list)}
+    idx_to_car = {i:c for c,i in car_to_idx.items()}
 
-    # ===== 三連複（◎-全：全組合せ） =====
-    rows = []
+    strength_map = dict(velobi_wo)
+    xs = np.array([strength_map.get(c, 0.0) for c in car_list], dtype=float)
+    if xs.std() < 1e-12:
+        base = np.ones_like(xs)/len(xs)
+    else:
+        z = (xs - xs.mean())/(xs.std()+1e-12)
+        base = np.exp(z); base = base/base.sum()
+
+    mark_by_car = {c: None for c in car_list}
+    for mk, car in result_marks.items():
+        if car in mark_by_car:
+            mark_by_car[car] = mk
+
+    expo = 0.7 if confidence == "優位" else (1.0 if confidence == "互角" else 1.3)
+
+    def calibrate_probs(base_vec: np.ndarray, stat_key: str) -> np.ndarray:
+        m = np.ones(len(car_list), dtype=float)
+        for idx, car in enumerate(car_list):
+            mk = mark_by_car.get(car, RANK_FALLBACK_MARK)
+            tgt = float(RANK_STATS[mk][stat_key])
+            ratio = tgt / max(float(base_vec[idx]), 1e-9)
+            m[idx] = float(np.clip(ratio**(0.5*expo), 0.25, 2.5))
+        probs = base_vec * m
+        return probs / probs.sum()
+
+    probs_p3 = calibrate_probs(base, "pTop3")
+    probs_p2 = calibrate_probs(base, "pTop2")
+    probs_p1 = calibrate_probs(base, "p1")
+
+    rng = np.random.default_rng(20250907)
+    trials = st.slider("シミュレーション試行回数", 1000, 20000, 8000, 1000)
+
+    def sample_order_from_probs(pvec: np.ndarray) -> list[int]:
+        g = -np.log(-np.log(np.clip(rng.random(len(pvec)), 1e-12, 1-1e-12)))
+        score = np.log(pvec+1e-12) + g
+        order_idx = np.argsort(-score).tolist()
+        return [idx_to_car[i] for i in order_idx]
+
+    mates = [x for x in [two, three] if x is not None]
+    all_others = [c for c in car_list if c != one]
+
+    trio_counts = {}
+    wide_counts = {k:0 for k in all_others}
+    qn_counts   = {k:0 for k in all_others}
+    ex_counts   = {k:0 for k in all_others}
+    st3_counts  = {}
+
     trio_list_all = []
-    for i in range(len(others)):
-        for j in range(i+1, len(others)):
-            a, b = others[i], others[j]
-            t = tuple(sorted([one, a, b]))
+    for i in range(len(all_others)):
+        for j in range(i+1, len(all_others)):
+            t = tuple(sorted([one, all_others[i], all_others[j]]))
             trio_list_all.append(t)
 
-    for t in trio_list_all:
-        cnt = int(trio_counts.get(t, 0) or 0)
-        p, need = _need_from_cnt(cnt, trials)
-        low, high = _band_from_need(need)
-        name = f"{t[0]}-{t[1]}-{t[2]}"
-        star = "☆" if p >= P_F["sanpuku"] else ""
-        rows.append({
-            "☆": star,
-            "買い目": name,
-            "p(想定的中率)": round(p, 5),
-            "買える帯": _fmt_range(low, high)
-        })
-    trio_df = pd.DataFrame(rows).sort_values(
-        by="買い目", key=lambda s: s.map(_sort_key_by_numbers)
-    ).reset_index(drop=True)
-    st.markdown("#### 三連複（◎-全）※車番順（☆=推奨）")
-    st.dataframe(trio_df, use_container_width=True)
+    # --- シミュレーション ---
+    for _ in range(trials):
+        order_p3 = sample_order_from_probs(probs_p3)
+        top3_p3 = set(order_p3[:3])
+        if one in top3_p3:
+            for k in wide_counts.keys():
+                if k in top3_p3:
+                    wide_counts[k] += 1
+            others = sorted(list(top3_p3 - {one}))
+            if len(others) == 2:
+                t = tuple(sorted([one, *others]))
+                trio_counts[t] = trio_counts.get(t, 0) + 1
 
-    # ===== ワイド（◎-全） =====
-    rows = []
-    for k in others:
-        cnt = int(wide_counts.get(k, 0) or 0)
-        p, need = _need_from_cnt(cnt, trials)
-        star = "☆" if p >= P_F["wide"] else ""
-        rows.append({
-            "☆": star,
-            "買い目": f"{one}-{k}",
-            "p(想定的中率)": round(p, 4),
-            "必要オッズ(=1/p)": float(f"{need:.2f}"),
-            "ルール": _fmt_above(need)
-        })
-    wide_df = pd.DataFrame(rows).sort_values(
-        by="買い目", key=lambda s: s.map(_sort_key_by_numbers)
-    ).reset_index(drop=True)
-    st.markdown("#### ワイド（◎-全）※車番順（☆=推奨）")
-    st.dataframe(wide_df, use_container_width=True)
-    st.caption("※ワイドは **必要オッズ(=1/p)以上** を目安。☆はPフロア以上（推奨）。")
+        order_p2 = sample_order_from_probs(probs_p2)
+        top2_p2 = set(order_p2[:2])
+        if one in top2_p2:
+            for k in qn_counts.keys():
+                if k in top2_p2:
+                    qn_counts[k] += 1
 
-    # ===== 二車複（◎-全） =====
-    rows = []
-    for k in others:
-        cnt = int(qn_counts.get(k, 0) or 0)
-        p, need = _need_from_cnt(cnt, trials)
-        low, high = _band_from_need(need)
-        star = "☆" if p >= P_F["nifuku"] else ""
-        rows.append({
-            "☆": star,
-            "買い目": f"{one}-{k}",
-            "p(想定的中率)": round(p, 4),
-            "買える帯": _fmt_range(low, high)
-        })
-    qn_df = pd.DataFrame(rows).sort_values(
-        by="買い目", key=lambda s: s.map(_sort_key_by_numbers)
-    ).reset_index(drop=True)
-    st.markdown("#### 二車複（◎-全）※車番順（☆=推奨）")
-    st.dataframe(qn_df, use_container_width=True)
+        order_p1 = sample_order_from_probs(probs_p1)
+        if order_p1[0] == one:
+            k2 = order_p1[1]
+            if k2 in ex_counts:
+                ex_counts[k2] += 1
+            if mates and len(order_p1) >= 3 and (k2 in mates):
+                k3 = order_p1[2]
+                if k3 not in (one, k2):
+                    st3_counts[(k2, k3)] = st3_counts.get((k2, k3), 0) + 1
 
-    # ===== 二車単（◎→全） =====
-    rows = []
-    for k in others:
-        cnt = int(ex_counts.get(k, 0) or 0)
-        p, need = _need_from_cnt(cnt, trials)
-        low, high = _band_from_need(need)
-        star = "☆" if p >= P_F["nitan"] else ""
-        rows.append({
-            "☆": star,
-            "買い目": f"{one}->{k}",
-            "p(想定的中率)": round(p, 4),
-            "買える帯": _fmt_range(low, high)
-        })
-    ex_df = pd.DataFrame(rows).sort_values(
-        by="買い目", key=lambda s: s.map(_sort_key_by_numbers)
-    ).reset_index(drop=True)
-    st.markdown("#### 二車単（◎→全）※車番順（☆=推奨）")
-    st.dataframe(ex_df, use_container_width=True)
+    # ===== 出力共通ヘルパー =====
+    def _safe_need(cnt: int) -> float:
+        p = (cnt+0.5)/(trials+1)  # 平滑化
+        p = min(max(p, 0.001), 0.999)
+        return 1.0/p
 
-# ---------- 三連単（◎→[〇/▲]→全） ----------
-rows = []
-p_floor_santan = float(P_F["santan"])
-mates = [x for x in [two, three] if x is not None]
-
-if mates:
-    for (sec, thr), cnt in st3_counts.items():
-        p, need = _need_from_cnt(int(cnt or 0), trials)
-        if p < p_floor_santan:
-            continue
-        low, high = _band_from_need(need)
-        star = "☆" if p >= p_floor_santan else ""
-        rows.append({
-            "☆": star,
-            "買い目": f"{one}->{sec}->{thr}",
-            "p(想定的中率)": round(p, 5),
-            "買える帯": _fmt_range(low, high)
-        })
-
-# 安全ソート（空でも落とさない）
-if rows:
-    santan_df = pd.DataFrame(rows)
-    if "買い目" in santan_df.columns:
-        santan_df = santan_df.sort_values(
-            by="買い目",
-            key=lambda s: s.map(_sort_key_by_numbers)
-        ).reset_index(drop=True)
-else:
-    santan_df = pd.DataFrame(columns=["☆","買い目","p(想定的中率)","買える帯"])
-
-st.markdown("#### 三連単（◎→[〇/▲]→全）※車番順（☆=推奨）")
-if len(santan_df) > 0:
-    st.dataframe(santan_df, use_container_width=True)
-else:
-    st.info("三連単：〇/▲が未設定、または該当組合せ無し")
-
-
-# ==============================
-# note用：ヘッダー〜“買えるオッズ帯”
-# ==============================
-st.markdown("### 📋 note用（ヘッダー〜“買えるオッズ帯”）")
-
-def _zone_lines_from_df(df: pd.DataFrame | None, bet_type_key: str) -> list[str]:
-    if df is None or len(df) == 0 or ("買い目" not in df.columns):
-        return []
-    rows = []
-    for _, r in df.iterrows():
-        name = str(r.get("買い目", ""))
-        if not name:
-            continue
-        if "買える帯" in r and pd.notna(r["買える帯"]) and str(r["買える帯"]).strip():
-            rows.append((name, f"{name}：{r['買える帯']}")); 
-            continue
-        need_val = r.get("必要オッズ(=1/p)")
-        if need_val is None or (isinstance(need_val, float) and not np.isfinite(need_val)):
-            continue
-        need = float(need_val)
-        if bet_type_key == "wide":
-            rows.append((name, f"{name}：{_fmt_above(need)}"))
+    def _format_range(need: float, bet_type: str, is_floor: bool) -> str:
+        if bet_type == "wide":
+            return f"{need:.1f}倍以上" + (" ☆" if is_floor else "")
         else:
-            low, high = _band_from_need(need)
-            rows.append((name, f"{name}：{_fmt_range(low, high)}"))
-    rows_sorted = sorted(rows, key=lambda x: _sort_key_by_numbers(x[0]))
-    out = []
-    for n, t in rows_sorted:
-        s = str(t)
-        out.append(f"{n}：{s.split('：',1)[1]}" if "：" in s else f"{n}：{s}")
-    return out
+            low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
+            return f"{low:.1f}〜{high:.1f}倍" + (" ☆" if is_floor else "")
 
-line_text = "　".join([x for x in line_inputs if str(x).strip()])
-marks_line = " ".join(f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks)
-score_map_for_note = {int(r["車番"]): float(r["合計_SBなし"]) for _, r in df_sorted_wo.iterrows()}
-score_order_text = format_rank_all(score_map_for_note, P_floor_val=None)
+    # ===== 三連複 =====
+    rows = []
+    for t in trio_list_all:
+        cnt = trio_counts.get(t, 0)
+        need = _safe_need(cnt)
+        p = 1.0/need
+        is_floor = (p >= P_FLOOR["sanpuku"])
+        rows.append({"買い目": f"{t[0]}-{t[1]}-{t[2]}", "帯": _format_range(need,"sanpuku",is_floor)})
+    trio_df = pd.DataFrame(rows).sort_values("買い目", key=lambda s: s.map(_sort_key_by_numbers))
+    st.markdown("#### 三連複（◎-全）")
+    st.dataframe(trio_df.reset_index(drop=True), use_container_width=True)
 
-txt_trio  = "三連複（◎-全）\n" + ("\n".join(_zone_lines_from_df(trio_df,  "sanpuku")) if one is not None else "対象外")
-txt_st    = "三連単（◎→[〇/▲]→全）\n" + ("\n".join(_zone_lines_from_df(santan_df,"santan")) if one is not None else "対象外")
-txt_wide  = "ワイド（◎-全）\n" + ("\n".join(_zone_lines_from_df(wide_df,  "wide"))    if one is not None else "対象外")
-txt_qn    = "二車複（◎-全）\n" + ("\n".join(_zone_lines_from_df(qn_df,    "nifuku"))  if one is not None else "対象外")
-txt_ex    = "二車単（◎→全）\n" + ("\n".join(_zone_lines_from_df(ex_df,    "nitan"))   if one is not None else "対象外")
+    # ===== ワイド =====
+    rows = []
+    for k in all_others:
+        cnt = wide_counts.get(k, 0)
+        need = _safe_need(cnt)
+        p = 1.0/need
+        is_floor = (p >= P_FLOOR["wide"])
+        rows.append({"買い目": f"{one}-{k}", "帯": _format_range(need,"wide",is_floor)})
+    wide_df = pd.DataFrame(rows).sort_values("買い目", key=lambda s: s.map(_sort_key_by_numbers))
+    st.markdown("#### ワイド（◎-全）")
+    st.dataframe(wide_df.reset_index(drop=True), use_container_width=True)
 
-risk_note = "※このオッズ以下は期待値以下を想定しています。また、このオッズから高オッズに離れるほどに的中率バランスが崩れハイリスクになります。"
+    # ===== 二車複 =====
+    rows = []
+    for k in all_others:
+        cnt = qn_counts.get(k, 0)
+        need = _safe_need(cnt)
+        p = 1.0/need
+        is_floor = (p >= P_FLOOR["nifuku"])
+        rows.append({"買い目": f"{one}-{k}", "帯": _format_range(need,"nifuku",is_floor)})
+    qn_df = pd.DataFrame(rows).sort_values("買い目", key=lambda s: s.map(_sort_key_by_numbers))
+    st.markdown("#### 二車複（◎-全）")
+    st.dataframe(qn_df.reset_index(drop=True), use_container_width=True)
 
-note_text = (
-    f"競輪場　{track}{race_no}R\n"
-    f"展開評価：{confidence}\n"
-    f"{race_time}　{race_class}\n"
-    f"ライン　{line_text}\n"
-    f"スコア順（SBなし）　{score_order_text}\n"
-    f"{marks_line}\n"
-    f"\n{txt_trio}\n\n{txt_st}\n\n{txt_wide}\n\n{txt_qn}\n\n{txt_ex}\n"
-    f"\n（※“対象外”＝Pフロア未満でも全買い目を表示。☆はPフロア以上＝推奨）\n"
-    f"{risk_note}"
-)
-st.text_area("ここを選択してコピー", note_text, height=380)
+    # ===== 二車単 =====
+    rows = []
+    for k in all_others:
+        cnt = ex_counts.get(k, 0)
+        need = _safe_need(cnt)
+        p = 1.0/need
+        is_floor = (p >= P_FLOOR["nitan"])
+        rows.append({"買い目": f"{one}->{k}", "帯": _format_range(need,"nitan",is_floor)})
+    ex_df = pd.DataFrame(rows).sort_values("買い目", key=lambda s: s.map(_sort_key_by_numbers))
+    st.markdown("#### 二車単（◎→全）")
+    st.dataframe(ex_df.reset_index(drop=True), use_container_width=True)
 
+    # ===== 三連単 =====
+    rows = []
+    for (sec, thr), cnt in st3_counts.items():
+        need = _safe_need(cnt)
+        p = 1.0/need
+        is_floor = (p >= P_FLOOR["santan"])
+        rows.append({"買い目": f"{one}->{sec}->{thr}", "帯": _format_range(need,"santan",is_floor)})
+    santan_df = pd.DataFrame(rows).sort_values("買い目", key=lambda s: s.map(_sort_key_by_numbers))
+    st.markdown("#### 三連単（◎→[〇/▲]→全）")
+    st.dataframe(santan_df.reset_index(drop=True), use_container_width=True)
+
+st.caption("（※“対象外”＝Pフロア未満でも全買い目を表示。☆はPフロア以上＝推奨）")
+st.caption("※このオッズ以下は期待値以下を想定しています。また、このオッズから高オッズに離れるほどに的中率バランスが崩れハイリスクになります。")
