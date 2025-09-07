@@ -720,24 +720,30 @@ st.markdown("### 🎯 買い目（想定的中率 → 必要オッズ=1/p）")
 
 one = result_marks.get("◎", None)
 
-# ---- ヘルパ ----
+# ---------- ヘルパ ----------
+import re
+
+def _sort_key_by_numbers(name: str) -> list[int]:
+    """'1-2-3' や '1->2' を数値順に並べるキー"""
+    return list(map(int, re.findall(r"\d+", str(name))))
+
 def _to_prob_from_count(cnt: int, trials: int) -> float:
-    # ラプラス平滑化（0回でもゼロ割回避）
+    """カウント→確率（ラプラス平滑化）"""
     return (cnt + 0.5) / (trials + 1)
 
 def _finalize_df(rows, bet_type: str, p_floor: float) -> pd.DataFrame:
     """
     rows: [{"買い目": "...", "想定的中率": p(0-1)}]
     出力: 「帯」列は
-      - wide: '下限のみ + ☆(対象内)'
-      - 他:   '下限〜上限 + ☆(対象内)'
-      - 対象外: '対象外'（☆なし）
+      - ワイド: '下限のみ'（Pフロア以上なら末尾に ☆）
+      - その他: '下限〜上限'（Pフロア以上なら末尾に ☆）
+      - ※ 全件出力。対象外は作らない。
     """
     df = pd.DataFrame(rows or [])
     if df.empty:
         return pd.DataFrame(columns=["買い目","帯","想定的中率","必要オッズ"])
 
-    # 想定的中率の正規化（万一%が来ても0-1に揃える）
+    # 想定的中率を0-1に正規化（%が来ても安全）
     def _norm_p(x):
         try:
             fx = float(x)
@@ -745,28 +751,24 @@ def _finalize_df(rows, bet_type: str, p_floor: float) -> pd.DataFrame:
         except:
             s = str(x)
             if s.endswith("%"):
-                try:
-                    return float(s[:-1]) / 100.0
-                except:
-                    return 0.0
+                try: return float(s[:-1])/100.0
+                except: return 0.0
             return 0.0
 
     df["想定的中率"] = df["想定的中率"].apply(_norm_p)
-    df["必要オッズ"] = df["想定的中率"].apply(lambda p: np.inf if p <= 0 else 1.0 / max(min(p, 1.0), 1e-9))
+    df["必要オッズ"] = df["想定的中率"].apply(lambda p: np.inf if p <= 0 else 1.0 / max(min(p,1.0), 1e-9))
 
     def _fmt_band(p, need):
-        if p < p_floor:
-            return "対象外"
         if bet_type == "wide":
-            return f"{need:.1f}倍以上 ☆"
+            return f"{need:.1f}倍以上" + (" ☆" if p >= p_floor else "")
         lo, hi = need*(1.0+E_MIN), need*(1.0+E_MAX)
-        return f"{lo:.1f}〜{hi:.1f}倍 ☆"
+        return f"{lo:.1f}〜{hi:.1f}倍" + (" ☆" if p >= p_floor else "")
 
     df["帯"] = [ _fmt_band(p, n) for p, n in zip(df["想定的中率"], df["必要オッズ"]) ]
     df = df.sort_values("買い目", key=lambda s: s.map(_sort_key_by_numbers)).reset_index(drop=True)
     return df[["買い目","帯","想定的中率","必要オッズ"]]
 
-# ===== フォールバック：カウント未定義ならここで再計算 =====
+# ---------- フォールバック：カウント未定義なら再計算 ----------
 def _ensure_counts(one: int, car_list: list[int]):
     """trio_counts / wide_counts / qn_counts / ex_counts を保証（未定義なら内部でシミュレーションして生成）"""
     import numpy as _np
@@ -775,11 +777,10 @@ def _ensure_counts(one: int, car_list: list[int]):
     need_wide = "wide_counts" not in globals()
     need_qn   = "qn_counts"   not in globals()
     need_ex   = "ex_counts"   not in globals()
-
     if not (need_trio or need_wide or need_qn or need_ex):
-        return  # すでに全て存在
+        return  # 既に存在
 
-    # 既存の 'trials' が無ければスライダーで作る（キーを分けてUI衝突回避）
+    # 既存 trials が無ければ作る（UIキー衝突回避）
     try:
         _ = trials  # noqa
     except NameError:
@@ -787,8 +788,8 @@ def _ensure_counts(one: int, car_list: list[int]):
 
     all_others = [c for c in car_list if c != one]
 
-    # ---- 既存情報から確率ベクトルを再構築 ----
-    strength_map = dict(velobi_wo)  # (車, スコア)
+    # base確率（スコア→softmax）
+    strength_map = dict(velobi_wo)
     xs = _np.array([strength_map.get(c, 0.0) for c in car_list], dtype=float)
     if xs.std() < 1e-12:
         base = _np.ones_like(xs)/len(xs)
@@ -796,6 +797,7 @@ def _ensure_counts(one: int, car_list: list[int]):
         z = (xs - xs.mean())/(_np.std(xs)+1e-12)
         base = _np.exp(z); base = base/base.sum()
 
+    # 印で校正
     mark_by_car = {c: None for c in car_list}
     for mk, car in result_marks.items():
         if car in mark_by_car:
@@ -826,22 +828,22 @@ def _ensure_counts(one: int, car_list: list[int]):
         idx_to_car = {i:c for i,c in enumerate(car_list)}
         return [idx_to_car[i] for i in order_idx]
 
-    # ---- カウント用辞書を（不足分だけ）用意 ----
+    # カウント辞書を用意
     if need_trio: globals()["trio_counts"] = {}
     if need_wide: globals()["wide_counts"] = {k:0 for k in all_others}
     if need_qn:   globals()["qn_counts"]   = {k:0 for k in all_others}
     if need_ex:   globals()["ex_counts"]   = {k:0 for k in all_others}
 
-    # 三連複の全パターン（◎＋相手2名）
+    # 三連複パターン（◎＋相手2名）
     trio_list_all = []
     for i in range(len(all_others)):
         for j in range(i+1, len(all_others)):
             t = tuple(sorted([one, all_others[i], all_others[j]]))
             trio_list_all.append(t)
 
-    # ---- シミュレーションでカウント ----
+    # シミュレーション
     for _ in range(trials):
-        # Top3
+        # Top3：ワイド＆三連複
         order_p3 = sample_order_from_probs(probs_p3)
         top3_p3 = set(order_p3[:3])
         if one in top3_p3:
@@ -853,7 +855,7 @@ def _ensure_counts(one: int, car_list: list[int]):
                 t = tuple(sorted([one, *others]))
                 globals()["trio_counts"][t] = globals()["trio_counts"].get(t, 0) + 1
 
-        # Top2
+        # Top2：二車複
         order_p2 = sample_order_from_probs(probs_p2)
         top2_p2 = set(order_p2[:2])
         if one in top2_p2:
@@ -861,24 +863,24 @@ def _ensure_counts(one: int, car_list: list[int]):
                 if k in top2_p2:
                     globals()["qn_counts"][k] += 1
 
-        # 1着
+        # 1着：二車単（◎→相手）
         order_p1 = sample_order_from_probs(probs_p1)
         if order_p1[0] == one:
             k2 = order_p1[1]
             if k2 in globals()["ex_counts"]:
                 globals()["ex_counts"][k2] += 1
 
-# ===== ここから本処理 =====
+# ---------- 本処理 ----------
 if one is None:
     st.warning("◎未決定のため買い目はスキップ")
 else:
     car_list   = sorted(active_cars)
     all_others = [c for c in car_list if c != one]
 
-    # カウントが未定義ならここで作る
+    # カウント未定義ならフォールバックで計算
     _ensure_counts(one, car_list)
 
-    # --- 三連複（◎-全：◎を含む相手2名の全組合せ） ---
+    # 三連複（◎-全）
     trio_rows = []
     trio_list_all = []
     for i in range(len(all_others)):
@@ -893,7 +895,7 @@ else:
     st.markdown("#### 三連複（◎-全）")
     st.dataframe(trio_df, use_container_width=True)
 
-    # --- ワイド（◎-全） ---
+    # ワイド（◎-全）
     wide_rows = []
     for k in all_others:
         cnt = int(wide_counts.get(k, 0))
@@ -903,7 +905,7 @@ else:
     st.markdown("#### ワイド（◎-全）")
     st.dataframe(wide_df, use_container_width=True)
 
-    # --- 二車複（◎-全） ---
+    # 二車複（◎-全）
     qn_rows = []
     for k in all_others:
         cnt = int(qn_counts.get(k, 0))
@@ -913,7 +915,7 @@ else:
     st.markdown("#### 二車複（◎-全）")
     st.dataframe(qn_df, use_container_width=True)
 
-    # --- 二車単（◎→全） ---
+    # 二車単（◎→全）
     ex_rows = []
     for k in all_others:
         cnt = int(ex_counts.get(k, 0))
@@ -923,48 +925,58 @@ else:
     st.markdown("#### 二車単（◎→全）")
     st.dataframe(ex_df, use_container_width=True)
 
-st.caption("（※“対象外”＝Pフロア未満。対象内は必ず ☆ が付きます）")
+st.caption("※ ☆はPフロア以上（推奨域）の目印です。☆なしも参考オッズとして全件表示します。")
 
 # ==============================
-# note記事用テキスト出力（文章形式）
+# note記事用テキスト出力（文章列挙・固定フォーマット）
 # ==============================
 def bets_to_text(df: pd.DataFrame, title: str) -> str:
-    """買い目DF→文章列挙。「対象外」はそのまま、対象内は『なら買い』を付与"""
+    """買い目DF→文章列挙。全件オッズを出し、☆がある行だけ『なら買い』を付ける。"""
     if df is None or df.empty:
-        return f"{title}\n対象外\n\n"
+        return f"{title}\n（該当データなし）\n\n"
     lines = [title]
     for _, row in df.iterrows():
         bm = str(row["買い目"])
         band = str(row["帯"])
-        if "対象外" in band:
-            lines.append(f"{bm}：対象外")
+        if "☆" in band:
+            lines.append(f"{bm}：{band}なら買い")
         else:
-            lines.append(f"{bm}：{band}なら買い")  # 帯に☆を含む
+            lines.append(f"{bm}：{band}")
     return "\n".join(lines) + "\n"
 
-# ===== note記事本文を組み立て =====
+# 固定フォーマット（全レース共通）
 note_lines = []
 note_lines.append(f"競輪場　{track}{race_no}R ")
 note_lines.append(f"展開評価：{confidence}\n")
 note_lines.append(f"{race_time}　{race_class}")
+# ライン（lines は [[3,1,7],[2],...] 形式）
 note_lines.append("ライン　" + ("　".join(str(x) for g in lines for x in g) if lines else "-"))
+# スコア順（SBなし）：格上げ後 df_sorted_wo の車番順
 note_lines.append("スコア順（SBなし）　" + " ".join(map(str, df_sorted_wo["車番"].tolist())))
+# 印列挙（出走数に応じて可変）
 note_lines.append(" ".join([f"{mk}{no}" for mk, no in result_marks.items()]))
 note_lines.append("")
+
+# 券種（◎-全のみ）
 note_lines.append(bets_to_text(trio_df, "三連複C（◎-全）"))
 note_lines.append(bets_to_text(wide_df, "ワイド（◎-全）"))
 note_lines.append(bets_to_text(qn_df,   "二車複（◎-全）"))
 note_lines.append(bets_to_text(ex_df,   "二車単（◎→全）"))
+
+# フッタ注意書き（固定／全レース共通）
 note_lines.append("（※“対象外”＝Pフロア未満。どんなオッズでも買わない）")
 note_lines.append("（ワイドは上限撤廃：三連複で使用した相手は合成オッズ以上／三連複から漏れた相手は必要オッズ以上で買い）")
+note_lines.append("※このオッズ以下は期待値以下を想定しています。また、このオッズから高オッズに離れるほどに的中率バランスが崩れハイリスクになります。")
+
 note_text = "\n".join(note_lines)
 
-# ===== Streamlit表示とダウンロード =====
-st.markdown("### 📝 note記事プレビュー（文章形式）")
-st.text(note_text)
+# コピペ用プレビュー＋DL
+st.markdown("### 📝 note記事プレビュー（コピペ用）")
+st.text_area("ここから全文コピーしてください", note_text, height=420, key="note_copy")
+
 st.download_button(
     "📥 note記事テキストをダウンロード",
     data=note_text.encode("utf-8"),
-    file_name=f"velobi_{track}{race_no}R.txt",
+    file_name=f"{track}{race_no}R_note.txt",  # レースごと
     mime="text/plain",
 )
