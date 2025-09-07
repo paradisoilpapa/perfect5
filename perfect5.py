@@ -866,28 +866,42 @@ else:
     st.markdown("#### 二車単（◎→全）※車番順（☆=推奨）")
     st.dataframe(ex_df, use_container_width=True)
 
-    # ===== 三連単（◎→[〇/▲]→全） =====
-    rows = []
-    mates = [x for x in [two, three] if x is not None]
-    if mates:
-        for (sec, thr), cnt in st3_counts.items():
-            p, need = _need_from_cnt(int(cnt or 0), trials)
-            low, high = _band_from_need(need)
-            star = "☆" if p >= P_F["santan"] else ""
-            rows.append({
-                "☆": star,
-                "買い目": f"{one}->{sec}->{thr}",
-                "p(想定的中率)": round(p, 5),
-                "買える帯": _fmt_range(low, high)
-            })
-    santan_df = pd.DataFrame(rows).sort_values(
-        by="買い目", key=lambda s: s.map(_sort_key_by_numbers)
-    ).reset_index(drop=True)
-    st.markdown("#### 三連単（◎→[〇/▲]→全）※車番順（☆=推奨）")
-    if len(santan_df) > 0:
-        st.dataframe(santan_df, use_container_width=True)
-    else:
-        st.info("三連単：〇/▲が未設定、または該当組合せ無し")
+# ---------- 三連単（◎→[〇/▲]→全） ----------
+rows = []
+p_floor_santan = float(P_F["santan"])
+mates = [x for x in [two, three] if x is not None]
+
+if mates:
+    for (sec, thr), cnt in st3_counts.items():
+        p, need = _need_from_cnt(int(cnt or 0), trials)
+        if p < p_floor_santan:
+            continue
+        low, high = _band_from_need(need)
+        star = "☆" if p >= p_floor_santan else ""
+        rows.append({
+            "☆": star,
+            "買い目": f"{one}->{sec}->{thr}",
+            "p(想定的中率)": round(p, 5),
+            "買える帯": _fmt_range(low, high)
+        })
+
+# 安全ソート（空でも落とさない）
+if rows:
+    santan_df = pd.DataFrame(rows)
+    if "買い目" in santan_df.columns:
+        santan_df = santan_df.sort_values(
+            by="買い目",
+            key=lambda s: s.map(_sort_key_by_numbers)
+        ).reset_index(drop=True)
+else:
+    santan_df = pd.DataFrame(columns=["☆","買い目","p(想定的中率)","買える帯"])
+
+st.markdown("#### 三連単（◎→[〇/▲]→全）※車番順（☆=推奨）")
+if len(santan_df) > 0:
+    st.dataframe(santan_df, use_container_width=True)
+else:
+    st.info("三連単：〇/▲が未設定、または該当組合せ無し")
+
 
 # ==============================
 # note用：ヘッダー〜“買えるオッズ帯”
