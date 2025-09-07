@@ -952,6 +952,18 @@ else:
     elif trioC_df is not None and len(trioC_df) > 0:
         st.caption("三連複バスケット合成オッズ：算出不可（必要オッズが'-'のみ）")
 
+# --- 安全初期化：三連複Cが対象外でも後段で参照するため ---
+try:
+    Sset  # 相手集合（ワイド側で合成オッズ縛りに使う）
+except NameError:
+    Sset = set()
+
+try:
+    O_combo  # 三連複バスケット合成オッズ（下限）
+except NameError:
+    O_combo = None
+
+
 # ワイド（◎-全）
 rows = []
 for k in sorted([i for i in range(1, n_cars+1) if i != one]):
