@@ -841,59 +841,113 @@ else:
         p = min(max(cnt / float(trials), 1e-6), 0.9999)  # p=1.0を避ける
         return 1.0 / p
 
-    # ---------- 三連複 ----------
-    rows = []
-    for t in trio_list_all:
-        need = _safe_need_from_cnt(trio_counts.get(t, 0))
-        if need is None: continue
-        p = 1.0 / need
-        if p < float(P_F["sanpuku"]): continue
-        low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
-        rows.append({"買い目": f"{t[0]}-{t[1]}-{t[2]}", "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"})
-    trio_df = pd.DataFrame(rows)
+# ---------- 三連複（◎-全：全通り） ----------
+rows = []
+for t in trio_list_all:  # (one, a, b) の全組合せ
+    need = _safe_need_from_cnt(trio_counts.get(t, 0))
+    if need is None:
+        continue  # 極端に希少で1度も出なければスキップ
+    p = 1.0 / need
+    low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
+    rows.append({
+        "買い目": f"{t[0]}-{t[1]}-{t[2]}",
+        "p(想定的中率)": round(p, 5),
+        "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"
+    })
+trio_df = pd.DataFrame(rows)
+st.markdown("#### 三連複（◎-全）※車番順")
+if len(trio_df) > 0:
+    trio_df = trio_df.sort_values(by="買い目", key=lambda s: s.map(_sort_key_by_numbers)).reset_index(drop=True)
+    st.dataframe(trio_df, use_container_width=True)
+else:
+    st.info("三連複：該当なし")
 
-    # ---------- ワイド ----------
-    rows = []
-    for k in sorted(all_others):
-        need = _safe_need_from_cnt(wide_counts.get(k, 0))
-        if need is None: continue
-        p = 1.0 / need
-        if p < float(P_F["wide"]): continue
-        rows.append({"買い目": f"{one}-{k}", "買える帯": f"{need:.2f}倍以上で買い"})
-    wide_df = pd.DataFrame(rows)
+# ---------- ワイド（◎-全：全通り） ----------
+rows = []
+for k in sorted(all_others):
+    need = _safe_need_from_cnt(wide_counts.get(k, 0))
+    if need is None:
+        continue
+    p = 1.0 / need
+    rows.append({
+        "買い目": f"{one}-{k}",
+        "p(想定的中率)": round(p, 4),
+        # ワイドは「◯倍以上で買い」
+        "必要オッズ(=1/p)": round(need, 2),
+        "ルール": "必要オッズ以上"
+    })
+wide_df = pd.DataFrame(rows)
+st.markdown("#### ワイド（◎-全）※車番順")
+if len(wide_df) > 0:
+    wide_df = wide_df.sort_values(by="買い目", key=lambda s: s.map(_sort_key_by_numbers)).reset_index(drop=True)
+    st.dataframe(wide_df, use_container_width=True)
+    st.caption("※ワイドは **必要オッズ(=1/p)以上**で採用（上限撤廃）。")
+else:
+    st.info("ワイド：該当なし")
 
-    # ---------- 二車複 ----------
-    rows = []
-    for k in sorted(all_others):
-        need = _safe_need_from_cnt(qn_counts.get(k, 0))
-        if need is None: continue
-        p = 1.0 / need
-        if p < float(P_F["nifuku"]): continue
-        low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
-        rows.append({"買い目": f"{one}-{k}", "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"})
-    qn_df = pd.DataFrame(rows)
+# ---------- 二車複（◎-全：全通り） ----------
+rows = []
+for k in sorted(all_others):
+    need = _safe_need_from_cnt(qn_counts.get(k, 0))
+    if need is None:
+        continue
+    p = 1.0 / need
+    low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
+    rows.append({
+        "買い目": f"{one}-{k}",
+        "p(想定的中率)": round(p, 4),
+        "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"
+    })
+qn_df = pd.DataFrame(rows)
+st.markdown("#### 二車複（◎-全）※車番順")
+if len(qn_df) > 0:
+    qn_df = qn_df.sort_values(by="買い目", key=lambda s: s.map(_sort_key_by_numbers)).reset_index(drop=True)
+    st.dataframe(qn_df, use_container_width=True)
+else:
+    st.info("二車複：該当なし")
 
-    # ---------- 二車単 ----------
-    rows = []
-    for k in sorted(all_others):
-        need = _safe_need_from_cnt(ex_counts.get(k, 0))
-        if need is None: continue
-        p = 1.0 / need
-        if p < float(P_F["nitan"]): continue
-        low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
-        rows.append({"買い目": f"{one}->{k}", "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"})
-    ex_df = pd.DataFrame(rows)
+# ---------- 二車単（◎→全：全通り） ----------
+rows = []
+for k in sorted(all_others):
+    need = _safe_need_from_cnt(ex_counts.get(k, 0))
+    if need is None:
+        continue
+    p = 1.0 / need
+    low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
+    rows.append({
+        "買い目": f"{one}->{k}",
+        "p(想定的中率)": round(p, 4),
+        "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"
+    })
+ex_df = pd.DataFrame(rows)
+st.markdown("#### 二車単（◎→全）※車番順")
+if len(ex_df) > 0:
+    ex_df = ex_df.sort_values(by="買い目", key=lambda s: s.map(_sort_key_by_numbers)).reset_index(drop=True)
+    st.dataframe(ex_df, use_container_width=True)
+else:
+    st.info("二車単：該当なし")
 
-    # ---------- 三連単 ----------
-    rows = []
-    for (sec, thr), cnt in st3_counts.items():
-        need = _safe_need_from_cnt(cnt)
-        if need is None: continue
-        p = 1.0 / need
-        if p < float(P_F["santan"]): continue
-        low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
-        rows.append({"買い目": f"{one}->{sec}->{thr}", "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"})
-    santan_df = pd.DataFrame(rows)
+# ---------- 三連単（◎→[〇/▲]→全：2着だけ〇/▲に限定、Pフロアは使わない） ----------
+rows = []
+for (sec, thr), cnt in st3_counts.items():
+    need = _safe_need_from_cnt(cnt)
+    if need is None:
+        continue
+    p = 1.0 / need
+    low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
+    rows.append({
+        "買い目": f"{one}->{sec}->{thr}",
+        "p(想定的中率)": round(p, 5),
+        "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"
+    })
+if rows:
+    santan_df = pd.DataFrame(rows).sort_values(by="買い目", key=lambda s: s.map(_sort_key_by_numbers)).reset_index(drop=True)
+    st.markdown("#### 三連単（◎→[〇/▲]→全）※車番順")
+    st.dataframe(santan_df, use_container_width=True)
+else:
+    santan_df = None
+    st.info("三連単：該当なし（◎→[〇/▲]→全の並びが出なかった）")
+
 
 # === 表示 ===
 def show_df(title, df):
@@ -915,3 +969,65 @@ st.markdown(
     "※このオッズ以下は期待値以下を想定しています。"
     "また、このオッズから高オッズに離れるほどに的中率バランスが崩れハイリスクになります。"
 )
+# ==============================
+# note用：ヘッダー〜“買えるオッズ帯”
+# ==============================
+st.markdown("### 📋 note用（ヘッダー〜“買えるオッズ帯”）")
+
+def _zone_lines_from_df(df: pd.DataFrame | None, bet_type_key: str) -> list[str]:
+    if df is None or len(df) == 0 or ("買い目" not in df.columns):
+        return []
+    rows = []
+    for _, r in df.iterrows():
+        name = str(r.get("買い目", ""))
+        if not name:
+            continue
+        if "買える帯" in r and pd.notna(r["買える帯"]) and str(r["買える帯"]).strip():
+            rows.append(f"{name}：{r['買える帯']}")
+            continue
+        need_val = r.get("必要オッズ(=1/p)")
+        if need_val is None or need_val == "-" or (isinstance(need_val,float) and not np.isfinite(need_val)):
+            continue
+        try:
+            need = float(need_val)
+        except:
+            continue
+        if need <= 0:
+            continue
+        if bet_type_key == "wide":
+            rows.append(f"{name}：{need:.2f}倍以上で買い")
+        else:
+            low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
+            rows.append(f"{name}：{low:.1f}〜{high:.1f}倍なら買い")
+    return rows
+
+def _section_text(title: str, lines: list[str]) -> str:
+    if not lines: return f"{title}\n対象外"
+    return f"{title}\n" + "\n".join(lines)
+
+line_text = "　".join([x for x in line_inputs if str(x).strip()])
+marks_line = " ".join(f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α","β"] if m in result_marks)
+score_map_for_note = {int(r["車番"]): float(r["合計_SBなし"]) for _, r in df_sorted_wo.iterrows()}
+score_order_text = format_rank_all(score_map_for_note, P_floor_val=None)
+
+txt_trio  = _section_text("三連複（◎-全）", _zone_lines_from_df(trio_df,  "sanpuku") if one is not None else [])
+txt_st    = _section_text("三連単（◎→[〇/▲]→全）", _zone_lines_from_df(santan_df,"santan") if one is not None else [])
+txt_wide  = _section_text("ワイド（◎-全）", _zone_lines_from_df(wide_df,  "wide") if one is not None else [])
+txt_qn    = _section_text("二車複（◎-全）", _zone_lines_from_df(qn_df,    "nifuku") if one is not None else [])
+txt_ex    = _section_text("二車単（◎→全）", _zone_lines_from_df(ex_df,    "nitan")  if one is not None else [])
+
+risk_note = "※このオッズ以下は期待値以下を想定しています。また、このオッズから高オッズに離れるほどに的中率バランスが崩れハイリスクになります。"
+
+note_text = (
+    f"競輪場　{track}{race_no}R\n"
+    f"展開評価：{confidence}\n"
+    f"{race_time}　{race_class}\n"
+    f"ライン　{line_text}\n"
+    f"スコア順（SBなし）　{score_order_text}\n"
+    f"{marks_line}\n\n"
+    f"{txt_trio}\n\n{txt_st}\n\n{txt_wide}\n\n{txt_qn}\n\n{txt_ex}\n\n"
+    f"（※“対象外”＝Pフロア未満。どんなオッズでも買わない）\n"
+    f"{risk_note}"
+)
+
+st.text_area("ここを選択してコピー", note_text, height=380)
