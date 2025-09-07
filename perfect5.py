@@ -766,11 +766,117 @@ def _finalize_df(rows, bet_type: str, p_floor: float) -> pd.DataFrame:
     df = df.sort_values("買い目", key=lambda s: s.map(_sort_key_by_numbers)).reset_index(drop=True)
     return df[["買い目","帯","想定的中率","必要オッズ"]]
 
+# ===== フォールバック：カウント未定義ならここで再計算 =====
+def _ensure_counts(one: int, car_list: list[int]):
+    """trio_counts / wide_counts / qn_counts / ex_counts を保証（未定義なら内部でシミュレーションして生成）"""
+    import numpy as _np
+
+    need_trio = "trio_counts" not in globals()
+    need_wide = "wide_counts" not in globals()
+    need_qn   = "qn_counts"   not in globals()
+    need_ex   = "ex_counts"   not in globals()
+
+    if not (need_trio or need_wide or need_qn or need_ex):
+        return  # すでに全て存在
+
+    # 既存の 'trials' が無ければスライダーで作る（キーを分けてUI衝突回避）
+    try:
+        _ = trials  # noqa
+    except NameError:
+        globals()["trials"] = st.slider("シミュレーション試行回数（フォールバック）", 1000, 20000, 8000, 1000, key="trials_fallback")
+
+    all_others = [c for c in car_list if c != one]
+
+    # ---- 既存情報から確率ベクトルを再構築 ----
+    strength_map = dict(velobi_wo)  # (車, スコア)
+    xs = _np.array([strength_map.get(c, 0.0) for c in car_list], dtype=float)
+    if xs.std() < 1e-12:
+        base = _np.ones_like(xs)/len(xs)
+    else:
+        z = (xs - xs.mean())/(_np.std(xs)+1e-12)
+        base = _np.exp(z); base = base/base.sum()
+
+    mark_by_car = {c: None for c in car_list}
+    for mk, car in result_marks.items():
+        if car in mark_by_car:
+            mark_by_car[car] = mk
+
+    expo = 0.7 if confidence == "優位" else (1.0 if confidence == "互角" else 1.3)
+
+    def calibrate_probs(base_vec: _np.ndarray, stat_key: str) -> _np.ndarray:
+        m = _np.ones(len(car_list), dtype=float)
+        for idx, car in enumerate(car_list):
+            mk = mark_by_car.get(car, RANK_FALLBACK_MARK)
+            tgt = float(RANK_STATS[mk][stat_key])
+            ratio = tgt / max(float(base_vec[idx]), 1e-9)
+            m[idx] = float(_np.clip(ratio**(0.5*expo), 0.25, 2.5))
+        probs = base_vec * m
+        return probs / probs.sum()
+
+    probs_p3 = calibrate_probs(base, "pTop3")
+    probs_p2 = calibrate_probs(base, "pTop2")
+    probs_p1 = calibrate_probs(base, "p1")
+
+    rng = _np.random.default_rng(20250907)
+
+    def sample_order_from_probs(pvec: _np.ndarray) -> list[int]:
+        g = -_np.log(-_np.log(_np.clip(rng.random(len(pvec)), 1e-12, 1-1e-12)))
+        score = _np.log(pvec+1e-12) + g
+        order_idx = _np.argsort(-score).tolist()
+        idx_to_car = {i:c for i,c in enumerate(car_list)}
+        return [idx_to_car[i] for i in order_idx]
+
+    # ---- カウント用辞書を（不足分だけ）用意 ----
+    if need_trio: globals()["trio_counts"] = {}
+    if need_wide: globals()["wide_counts"] = {k:0 for k in all_others}
+    if need_qn:   globals()["qn_counts"]   = {k:0 for k in all_others}
+    if need_ex:   globals()["ex_counts"]   = {k:0 for k in all_others}
+
+    # 三連複の全パターン（◎＋相手2名）
+    trio_list_all = []
+    for i in range(len(all_others)):
+        for j in range(i+1, len(all_others)):
+            t = tuple(sorted([one, all_others[i], all_others[j]]))
+            trio_list_all.append(t)
+
+    # ---- シミュレーションでカウント ----
+    for _ in range(trials):
+        # Top3
+        order_p3 = sample_order_from_probs(probs_p3)
+        top3_p3 = set(order_p3[:3])
+        if one in top3_p3:
+            for k in list(globals()["wide_counts"].keys()):
+                if k in top3_p3:
+                    globals()["wide_counts"][k] += 1
+            others = sorted(list(top3_p3 - {one}))
+            if len(others) == 2:
+                t = tuple(sorted([one, *others]))
+                globals()["trio_counts"][t] = globals()["trio_counts"].get(t, 0) + 1
+
+        # Top2
+        order_p2 = sample_order_from_probs(probs_p2)
+        top2_p2 = set(order_p2[:2])
+        if one in top2_p2:
+            for k in list(globals()["qn_counts"].keys()):
+                if k in top2_p2:
+                    globals()["qn_counts"][k] += 1
+
+        # 1着
+        order_p1 = sample_order_from_probs(probs_p1)
+        if order_p1[0] == one:
+            k2 = order_p1[1]
+            if k2 in globals()["ex_counts"]:
+                globals()["ex_counts"][k2] += 1
+
+# ===== ここから本処理 =====
 if one is None:
     st.warning("◎未決定のため買い目はスキップ")
 else:
     car_list   = sorted(active_cars)
     all_others = [c for c in car_list if c != one]
+
+    # カウントが未定義ならここで作る
+    _ensure_counts(one, car_list)
 
     # --- 三連複（◎-全：◎を含む相手2名の全組合せ） ---
     trio_rows = []
@@ -841,29 +947,21 @@ note_lines = []
 note_lines.append(f"競輪場　{track}{race_no}R ")
 note_lines.append(f"展開評価：{confidence}\n")
 note_lines.append(f"{race_time}　{race_class}")
-# ライン入力（lines は [[3,1,7],[2],...] 形式）
 note_lines.append("ライン　" + ("　".join(str(x) for g in lines for x in g) if lines else "-"))
-# スコア順（SBなし）は格上げ後の df_sorted_wo を使用
 note_lines.append("スコア順（SBなし）　" + " ".join(map(str, df_sorted_wo["車番"].tolist())))
-# 印
 note_lines.append(" ".join([f"{mk}{no}" for mk, no in result_marks.items()]))
 note_lines.append("")
-
-# 券種（◎-全のみ）
 note_lines.append(bets_to_text(trio_df, "三連複C（◎-全）"))
 note_lines.append(bets_to_text(wide_df, "ワイド（◎-全）"))
 note_lines.append(bets_to_text(qn_df,   "二車複（◎-全）"))
 note_lines.append(bets_to_text(ex_df,   "二車単（◎→全）"))
-
 note_lines.append("（※“対象外”＝Pフロア未満。どんなオッズでも買わない）")
 note_lines.append("（ワイドは上限撤廃：三連複で使用した相手は合成オッズ以上／三連複から漏れた相手は必要オッズ以上で買い）")
-
 note_text = "\n".join(note_lines)
 
 # ===== Streamlit表示とダウンロード =====
 st.markdown("### 📝 note記事プレビュー（文章形式）")
 st.text(note_text)
-
 st.download_button(
     "📥 note記事テキストをダウンロード",
     data=note_text.encode("utf-8"),
