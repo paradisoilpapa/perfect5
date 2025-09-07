@@ -1063,32 +1063,52 @@ else:
 st.markdown("### 📋 note用（ヘッダー〜展開評価＋“買えるオッズ帯”）")
 
 def _zone_lines_from_df(df: pd.DataFrame | None, bet_type_key: str) -> list[str]:
+    """
+    DataFrame から note 出力用の「買える帯」行を安全に作る。
+    - '買える帯' があればそれを優先
+    - 無ければ '必要オッズ(=1/p)' から帯を作る（wide は '以上で買い'、その他は EV 帯）
+    - いずれも無ければスキップ
+    返り値は '買い目：テキスト' の完全な行の配列
+    """
     if df is None or len(df) == 0 or ("買い目" not in df.columns):
         return []
-    rows = []
+
+    out_rows: list[tuple[str, str]] = []  # (name, line_text)
     for _, r in df.iterrows():
-        name = str(r.get("買い目", ""))
+        name = str(r.get("買い目", "")).strip()
         if not name:
             continue
-        if "買える帯" in r and pd.notna(r["買える帯"]) and str(r["買える帯"]).strip():
-            rows.append((name, f"{name}：{r['買える帯']}"))
-            continue
-        need_val = r.get("必要オッズ(=1/p)")
-        if need_val is None or need_val == "-" or (isinstance(need_val, float) and not np.isfinite(need_val)):
-            continue
-        try:
-            need = float(need_val)
-        except Exception:
-            continue
-        if need <= 0:
-            continue
-        if bet_type_key == "wide":
-            rows.append((name, f"{need:.1f}倍以上で買い"))
-        else:
-            low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
-            rows.append((name, f"{low:.1f}〜{high:.1f}倍なら買い"))
-    rows_sorted = sorted(rows, key=lambda x: _sort_key_by_numbers(x[0]))
-    return [f"{n}：{t.split('：',1)[1]}" for n, t in rows_sorted]
+
+        # 1) 既に「買える帯」があるならそれを使う
+        line_txt = None
+        if "買える帯" in r and pd.notna(r["買える帯"]):
+            s = str(r["買える帯"]).strip()
+            if s:
+                line_txt = f"{name}：{s}"
+
+        # 2) 無ければ「必要オッズ(=1/p)」から作る
+        if line_txt is None:
+            need_val = r.get("必要オッズ(=1/p)")
+            if need_val is not None and need_val != "-" and str(need_val).strip() != "":
+                try:
+                    need = float(need_val)
+                    if np.isfinite(need) and need > 0:
+                        if bet_type_key == "wide":
+                            line_txt = f"{name}：{need:.1f}倍以上で買い"
+                        else:
+                            low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
+                            line_txt = f"{name}：{low:.1f}〜{high:.1f}倍なら買い"
+                except Exception:
+                    pass  # 変換失敗は無視
+
+        if line_txt:
+            out_rows.append((name, line_txt))
+
+    # 買い目の数字順に並べ替え
+    out_rows_sorted = sorted(out_rows, key=lambda x: _sort_key_by_numbers(x[0]))
+    # ここで完成テキストだけ返す（splitは使わない）
+    return [t for _, t in out_rows_sorted]
+
 
 def _section_text(title: str, lines: list[str]) -> str:
     if not lines: return f"{title}\n対象外"
