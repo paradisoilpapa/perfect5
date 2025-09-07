@@ -725,6 +725,10 @@ three = result_marks.get("▲", None)
 
 trio_df = wide_df = qn_df = ex_df = santan_df = None
 
+# 安全側の2桁切り上げ
+def ceil2(x: float) -> float:
+    return math.ceil(float(x) * 100.0) / 100.0
+
 if one is None:
     st.warning("◎未決定のため買い目はスキップ")
 else:
@@ -872,7 +876,8 @@ else:
         p = 1.0 / need
         if p < float(P_F["wide"]):
             continue
-        rows.append({"買い目": f"{one}-{k}", "p(想定的中率)": round(p, 4), "必要オッズ(=1/p)": round(need, 2), "ルール": "必要オッズ以上"})
+        need_disp = ceil2(need)  # ★安全側2桁切り上げ
+        rows.append({"買い目": f"{one}-{k}", "p(想定的中率)": round(p, 4), "必要オッズ(=1/p)": need_disp, "ルール": "必要オッズ以上"})
     wide_df = pd.DataFrame(rows)
     st.markdown("#### ワイド（◎-全）※車番順")
     if len(wide_df) > 0:
@@ -951,35 +956,32 @@ def _zone_lines_from_df(df: pd.DataFrame | None, bet_type_key: str) -> list[str]
         return []
     rows = []
     for _, r in df.iterrows():
-        name = str(r.get("買い目", ""))
+        name = str(r.get("買い目", "")).strip()
         if not name: 
             continue
         # 優先：買える帯がある
-        if "買える帯" in r and pd.notna(r["買える帯"]) and str(r["買える帯"]).strip():
-            rows.append((name, f"{name}：{r['買える帯']}")); 
+        band = r.get("買える帯")
+        if isinstance(band, str) and band.strip():
+            rows.append((name, f"{name}：{band}"))
             continue
         # 次点：必要オッズがある（ワイド想定）
         need_val = r.get("必要オッズ(=1/p)")
-        if need_val is None or need_val == "-" or (isinstance(need_val, float) and not np.isfinite(need_val)):
-            continue
         try:
             need = float(need_val)
-        except Exception:
+        except (TypeError, ValueError):
             continue
-        if need <= 0: 
+        if not np.isfinite(need) or need <= 0:
             continue
         if bet_type_key == "wide":
-            rows.append((name, f"{name}：{need:.1f}倍以上で買い"))
+            # ★note 側も2桁切り上げで安全表示
+            need_disp = ceil2(need)
+            rows.append((name, f"{name}：{need_disp:.2f}倍以上で買い"))
         else:
             low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
             rows.append((name, f"{name}：{low:.1f}〜{high:.1f}倍なら買い"))
     rows_sorted = sorted(rows, key=lambda x: _sort_key_by_numbers(x[0]))
-    # 二重の「name：」を避ける整形
-    out = []
-    for n, t in rows_sorted:
-        s = str(t)
-        out.append(f"{n}：{s.split('：',1)[1]}" if "：" in s else f"{n}：{s}")
-    return out
+    # 右側に買い目名が入っているので、そのまま返す
+    return [text for _, text in rows_sorted]
 
 def _section_text(title: str, lines: list[str]) -> str:
     if not lines: return f"{title}\n対象外"
