@@ -722,27 +722,40 @@ one = result_marks.get("◎", None)
 two = result_marks.get("〇", None)
 three = result_marks.get("▲", None)
 
-# 表示フォーマット
+# ── ここが今回の重要追加：未定義でも落ちないよう安全取得 ──
+trio_counts = dict(globals().get("trio_counts", {}))
+wide_counts = dict(globals().get("wide_counts", {}))
+qn_counts   = dict(globals().get("qn_counts", {}))
+ex_counts   = dict(globals().get("ex_counts", {}))
+st3_counts  = dict(globals().get("st3_counts", {}))
+
+# trials を安全に取得（スライダー値→セッション→既存→デフォルト）
+trials = (
+    st.session_state.get("_trials_last")
+    or globals().get("trials", None)
+    or 8000
+)
+
+# 表示フォーマット系ユーティリティ
 def _ceil_to(x: float, step: float) -> float:
     if not np.isfinite(x): return x
     return math.ceil(x/step)*step
 
 def _need_from_cnt(cnt: int, trials: int) -> tuple[float, float]:
     """
-    ラプラス平滑 p = (cnt + 0.5)/(trials + 1) で 0/1 を排除。
-    さらに安全クリップして 1/p に丸め上げ（1.01未満は強制1.01）
+    ラプラス平滑 p=(cnt+0.5)/(trials+1) で 0/1 を排除。
+    need=1/p を2桁で切り上げ、最小1.01に強制（1.00は出さない）。
     """
     p = (cnt + 0.5) / float(trials + 1)
-    p = min(max(p, 1e-6), 1 - 1e-6)  # 明示的に(0,1)へ
+    p = min(max(p, 1e-6), 1 - 1e-6)
     need = 1.0 / p
-    need = _ceil_to(need, 0.01)       # 小数2桁に“切り上げ”
-    need = max(need, 1.01)            # 1.00 を絶対に出さない
+    need = _ceil_to(need, 0.01)
+    need = max(need, 1.01)
     return p, need
 
 def _band_from_need(need: float) -> tuple[float, float]:
     low  = need*(1.0+E_MIN)
     high = need*(1.0+E_MAX)
-    # 券種の帯は2桁固定に丸め上げ（上ぶれ安全側）
     return _ceil_to(low, 0.01), _ceil_to(high, 0.01)
 
 def _fmt_range(low: float, high: float) -> str:
@@ -751,7 +764,7 @@ def _fmt_range(low: float, high: float) -> str:
 def _fmt_above(need: float) -> str:
     return f"{need:.2f}倍以上で買い"
 
-# 推奨判定（Pフロアは非表示ではなく“☆”フラグ用にのみ使用）
+# 推奨判定（Pフロアは非表示でなく“☆”用）
 P_F = dict(P_FLOOR)
 if confidence == "優位":   scale_pf = 0.90
 elif confidence == "混戦": scale_pf = 1.10
@@ -764,19 +777,12 @@ trio_df = wide_df = qn_df = ex_df = santan_df = None
 if one is None:
     st.warning("◎未決定のため買い目はスキップ")
 else:
-    # ---- car_list を固定（active_cars の実車番順）----
+    # 実使用する車番列
     car_list = sorted(active_cars)
-
-    # ==== 事前に計算済みのカウント群から p/必要オッズ を出す ====
-    trials = st.session_state.get("_trials_last", None)
-    if trials is None:
-        # 既存ロジックで trials スライダーを置いている場合はその値を使う
-        # なければデフォルトを採用
-        trials = 8000
-
-    # ===== 三連複（◎-全：全組み合わせ） =====
-    rows = []
     others = [c for c in car_list if c != one]
+
+    # ===== 三連複（◎-全：全組合せ） =====
+    rows = []
     trio_list_all = []
     for i in range(len(others)):
         for j in range(i+1, len(others)):
@@ -799,7 +805,6 @@ else:
     trio_df = pd.DataFrame(rows).sort_values(
         by="買い目", key=lambda s: s.map(_sort_key_by_numbers)
     ).reset_index(drop=True)
-
     st.markdown("#### 三連複（◎-全）※車番順（☆=推奨）")
     st.dataframe(trio_df, use_container_width=True)
 
@@ -819,7 +824,6 @@ else:
     wide_df = pd.DataFrame(rows).sort_values(
         by="買い目", key=lambda s: s.map(_sort_key_by_numbers)
     ).reset_index(drop=True)
-
     st.markdown("#### ワイド（◎-全）※車番順（☆=推奨）")
     st.dataframe(wide_df, use_container_width=True)
     st.caption("※ワイドは **必要オッズ(=1/p)以上** を目安。☆はPフロア以上（推奨）。")
@@ -840,7 +844,6 @@ else:
     qn_df = pd.DataFrame(rows).sort_values(
         by="買い目", key=lambda s: s.map(_sort_key_by_numbers)
     ).reset_index(drop=True)
-
     st.markdown("#### 二車複（◎-全）※車番順（☆=推奨）")
     st.dataframe(qn_df, use_container_width=True)
 
@@ -860,7 +863,6 @@ else:
     ex_df = pd.DataFrame(rows).sort_values(
         by="買い目", key=lambda s: s.map(_sort_key_by_numbers)
     ).reset_index(drop=True)
-
     st.markdown("#### 二車単（◎→全）※車番順（☆=推奨）")
     st.dataframe(ex_df, use_container_width=True)
 
@@ -869,7 +871,7 @@ else:
     mates = [x for x in [two, three] if x is not None]
     if mates:
         for (sec, thr), cnt in st3_counts.items():
-            p, need = _need_from_cnt(cnt, trials)
+            p, need = _need_from_cnt(int(cnt or 0), trials)
             low, high = _band_from_need(need)
             star = "☆" if p >= P_F["santan"] else ""
             rows.append({
@@ -881,7 +883,6 @@ else:
     santan_df = pd.DataFrame(rows).sort_values(
         by="買い目", key=lambda s: s.map(_sort_key_by_numbers)
     ).reset_index(drop=True)
-
     st.markdown("#### 三連単（◎→[〇/▲]→全）※車番順（☆=推奨）")
     if len(santan_df) > 0:
         st.dataframe(santan_df, use_container_width=True)
@@ -945,3 +946,4 @@ note_text = (
     f"{risk_note}"
 )
 st.text_area("ここを選択してコピー", note_text, height=380)
+
