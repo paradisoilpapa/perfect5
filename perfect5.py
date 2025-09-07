@@ -721,33 +721,33 @@ st.markdown("### 🎯 買い目（想定的中率 → 必要オッズ=1/p）")
 one = result_marks.get("◎", None)
 
 # ---------- ヘルパ ----------
-import re
-
-def _sort_key_by_numbers(name: str) -> list[int]:
-    """'1-2-3' や '1->2' を数値順に並べるキー"""
-    return list(map(int, re.findall(r"\d+", str(name))))
+import re, math
+if "_sort_key_by_numbers" not in globals():
+    def _sort_key_by_numbers(name: str) -> list[int]:
+        return list(map(int, re.findall(r"\d+", str(name))))
 
 def _to_prob_from_count(cnt: int, trials: int) -> float:
     """カウント→確率（ラプラス平滑化）"""
     return (cnt + 0.5) / (trials + 1)
 
+# ========== 表示フォーマットの中核：極端値の丸め＋☆付け ==========
 def _finalize_df(rows, bet_type: str, p_floor: float) -> pd.DataFrame:
     """
     rows: [{"買い目": "...", "想定的中率": p(0-1)}]
-    出力: 「帯」列は
-      - ワイド: '下限のみ'（Pフロア以上なら末尾に ☆）
-      - その他: '下限〜上限'（Pフロア以上なら末尾に ☆）
-      - ※ 全件出力。対象外は作らない。
+    仕様:
+      - ワイド: 下限（Pフロア以上なら末尾に ☆）
+      - その他: 下限〜上限（Pフロア以上なら末尾に ☆）
+      - 全件出力（対象外は作らない）
+      - 極端値（理論上限付近）は「≧上限」に切替
     """
     df = pd.DataFrame(rows or [])
     if df.empty:
         return pd.DataFrame(columns=["買い目","帯","想定的中率","必要オッズ"])
 
-    # 想定的中率を0-1に正規化（%が来ても安全）
+    # 想定的中率→0-1正規化
     def _norm_p(x):
         try:
-            fx = float(x)
-            return fx/100.0 if fx > 1.0 else fx
+            fx = float(x);  return fx/100.0 if fx > 1.0 else fx
         except:
             s = str(x)
             if s.endswith("%"):
@@ -758,19 +758,44 @@ def _finalize_df(rows, bet_type: str, p_floor: float) -> pd.DataFrame:
     df["想定的中率"] = df["想定的中率"].apply(_norm_p)
     df["必要オッズ"] = df["想定的中率"].apply(lambda p: np.inf if p <= 0 else 1.0 / max(min(p,1.0), 1e-9))
 
+    # 表示整形（大数は千倍/万倍）
+    def _fmt_odds_value(v: float) -> str:
+        if v >= 10000: return f"{v/10000:.1f}万倍"
+        if v >= 1000:  return f"{v/1000:.1f}千倍"
+        return f"{v:.1f}倍"
+
+    # Laplace平滑の理論上限 p_min = 0.5/(trials+1) → need_max = 1/p_min
+    try:
+        need_max = 2.0 * (trials + 1)
+    except NameError:
+        need_max = 2.0 * (8000 + 1)  # フォールバック（8000試行想定）
+    cutoff = 0.98 * need_max  # 98%を超えたら「≧上限」
+
     def _fmt_band(p, need):
+        star = " ☆" if p >= p_floor else ""
+        if (not math.isfinite(need)) or (need >= cutoff):
+            return f"≧{_fmt_odds_value(need_max)}{star}"
         if bet_type == "wide":
-            return f"{need:.1f}倍以上" + (" ☆" if p >= p_floor else "")
+            return f"{_fmt_odds_value(need)}{star}"
         lo, hi = need*(1.0+E_MIN), need*(1.0+E_MAX)
-        return f"{lo:.1f}〜{hi:.1f}倍" + (" ☆" if p >= p_floor else "")
+        if hi >= cutoff:
+            return f"≧{_fmt_odds_value(need_max)}{star}"
+        return f"{_fmt_odds_value(lo)}〜{_fmt_odds_value(hi)}{star}"
 
     df["帯"] = [ _fmt_band(p, n) for p, n in zip(df["想定的中率"], df["必要オッズ"]) ]
     df = df.sort_values("買い目", key=lambda s: s.map(_sort_key_by_numbers)).reset_index(drop=True)
     return df[["買い目","帯","想定的中率","必要オッズ"]]
 
-# ---------- フォールバック：カウント未定義なら再計算 ----------
+# ========== フォールバック：カウント未定義なら再計算（ライン相関あり） ==========
 def _ensure_counts(one: int, car_list: list[int]):
-    """trio_counts / wide_counts / qn_counts / ex_counts を保証（未定義なら内部でシミュレーションして生成）"""
+    """
+    trio_counts / wide_counts / qn_counts / ex_counts を保証。
+    ライン相関を導入：
+       score_i = log(p_i) + ε_i（Gumbel） + w_role(i) * η_group(i)
+       ・η_group は各ライン共通ショック（正規乱数）
+       ・◎の所属ラインは平均>0ブースト（confidenceで強弱）
+       ・役割重み: head>second>thirdplus>single
+    """
     import numpy as _np
 
     need_trio = "trio_counts" not in globals()
@@ -778,9 +803,9 @@ def _ensure_counts(one: int, car_list: list[int]):
     need_qn   = "qn_counts"   not in globals()
     need_ex   = "ex_counts"   not in globals()
     if not (need_trio or need_wide or need_qn or need_ex):
-        return  # 既に存在
+        return
 
-    # 既存 trials が無ければ作る（UIキー衝突回避）
+    # trials 未定義ならフォールバックUI
     try:
         _ = trials  # noqa
     except NameError:
@@ -789,7 +814,7 @@ def _ensure_counts(one: int, car_list: list[int]):
     all_others = [c for c in car_list if c != one]
 
     # base確率（スコア→softmax）
-    strength_map = dict(velobi_wo)
+    strength_map = dict(velobi_wo)  # (車, スコア)
     xs = _np.array([strength_map.get(c, 0.0) for c in car_list], dtype=float)
     if xs.std() < 1e-12:
         base = _np.ones_like(xs)/len(xs)
@@ -800,8 +825,7 @@ def _ensure_counts(one: int, car_list: list[int]):
     # 印で校正
     mark_by_car = {c: None for c in car_list}
     for mk, car in result_marks.items():
-        if car in mark_by_car:
-            mark_by_car[car] = mk
+        if car in mark_by_car: mark_by_car[car] = mk
 
     expo = 0.7 if confidence == "優位" else (1.0 if confidence == "互角" else 1.3)
 
@@ -819,16 +843,39 @@ def _ensure_counts(one: int, car_list: list[int]):
     probs_p2 = calibrate_probs(base, "pTop2")
     probs_p1 = calibrate_probs(base, "p1")
 
+    # ライン相関：役割重み
+    _w_role = {'head':1.0, 'second':0.7, 'thirdplus':0.5, 'single':0.8}
+    role_of = {c: (role_in_line(c, line_def) if line_def else 'single') for c in car_list}
+    w_by_car = {c: _w_role.get(role_of[c], 0.8) for c in car_list}
+    gid_by_car = {c: car_to_group.get(c, None)}
+
+    # 共通ショック強度（line係数＆自信度で調整）
+    sigma_line = float(min(0.6, max(0.15, 0.45 * line_factor_eff)))  # 0.15〜0.6
+    mu_anchor  = {'優位': 0.35, '互角': 0.18, '混戦': 0.08}.get(confidence, 0.15)
+    a_gid = gid_by_car.get(one, None)
+
     rng = _np.random.default_rng(20250907)
 
-    def sample_order_from_probs(pvec: _np.ndarray) -> list[int]:
-        g = -_np.log(-_np.log(_np.clip(rng.random(len(pvec)), 1e-12, 1-1e-12)))
-        score = _np.log(pvec+1e-12) + g
-        order_idx = _np.argsort(-score).tolist()
+    def _sample_orders():
+        # ライン共通ショック η_g ~ N(μ_g, σ)
+        eta_g = {}
+        if line_def:
+            for g in line_def.keys():
+                mu = (mu_anchor if (a_gid is not None and g == a_gid) else 0.0)
+                eta_g[g] = rng.normal(loc=mu, scale=sigma_line)
+        # 個別Gumbel
+        eps = rng.gumbel(size=len(car_list))
         idx_to_car = {i:c for i,c in enumerate(car_list)}
-        return [idx_to_car[i] for i in order_idx]
+        def _order_for(pvec):
+            score = []
+            for i, c in enumerate(car_list):
+                add = (w_by_car[c] * eta_g.get(gid_by_car[c], 0.0)) if line_def else 0.0
+                score.append(_np.log(max(pvec[i], 1e-12)) + eps[i] + add)
+            order_idx = _np.argsort(-_np.array(score)).tolist()
+            return [idx_to_car[i] for i in order_idx]
+        return _order_for(probs_p3), _order_for(probs_p2), _order_for(probs_p1)
 
-    # カウント辞書を用意
+    # カウント辞書
     if need_trio: globals()["trio_counts"] = {}
     if need_wide: globals()["wide_counts"] = {k:0 for k in all_others}
     if need_qn:   globals()["qn_counts"]   = {k:0 for k in all_others}
@@ -843,28 +890,27 @@ def _ensure_counts(one: int, car_list: list[int]):
 
     # シミュレーション
     for _ in range(trials):
+        order_p3, order_p2, order_p1 = _sample_orders()
+
         # Top3：ワイド＆三連複
-        order_p3 = sample_order_from_probs(probs_p3)
-        top3_p3 = set(order_p3[:3])
-        if one in top3_p3:
+        top3 = set(order_p3[:3])
+        if one in top3:
             for k in list(globals()["wide_counts"].keys()):
-                if k in top3_p3:
+                if k in top3:
                     globals()["wide_counts"][k] += 1
-            others = sorted(list(top3_p3 - {one}))
+            others = sorted(list(top3 - {one}))
             if len(others) == 2:
                 t = tuple(sorted([one, *others]))
                 globals()["trio_counts"][t] = globals()["trio_counts"].get(t, 0) + 1
 
         # Top2：二車複
-        order_p2 = sample_order_from_probs(probs_p2)
-        top2_p2 = set(order_p2[:2])
-        if one in top2_p2:
+        top2 = set(order_p2[:2])
+        if one in top2:
             for k in list(globals()["qn_counts"].keys()):
-                if k in top2_p2:
+                if k in top2:
                     globals()["qn_counts"][k] += 1
 
         # 1着：二車単（◎→相手）
-        order_p1 = sample_order_from_probs(probs_p1)
         if order_p1[0] == one:
             k2 = order_p1[1]
             if k2 in globals()["ex_counts"]:
@@ -877,7 +923,7 @@ else:
     car_list   = sorted(active_cars)
     all_others = [c for c in car_list if c != one]
 
-    # カウント未定義ならフォールバックで計算
+    # カウント未定義ならフォールバックで計算（ライン相関あり）
     _ensure_counts(one, car_list)
 
     # 三連複（◎-全）
@@ -934,22 +980,22 @@ def bets_to_text(df: pd.DataFrame, title: str) -> str:
     """買い目DF→文章列挙。全件オッズを出し、☆がある行だけ『なら買い』を付ける。"""
     if df is None or df.empty:
         return f"{title}\n（該当データなし）\n\n"
-    lines = [title]
+    lines_txt = [title]
     for _, row in df.iterrows():
         bm = str(row["買い目"])
         band = str(row["帯"])
         if "☆" in band:
-            lines.append(f"{bm}：{band}なら買い")
+            lines_txt.append(f"{bm}：{band}なら買い")
         else:
-            lines.append(f"{bm}：{band}")
-    return "\n".join(lines) + "\n"
+            lines_txt.append(f"{bm}：{band}")
+    return "\n".join(lines_txt) + "\n"
 
 # 固定フォーマット（全レース共通）
 note_lines = []
 note_lines.append(f"競輪場　{track}{race_no}R ")
 note_lines.append(f"展開評価：{confidence}\n")
 note_lines.append(f"{race_time}　{race_class}")
-# ライン（lines は [[3,1,7],[2],...] 形式）
+# ライン（入力 lines = [[3,1,7],[2],...] を平坦化）
 note_lines.append("ライン　" + ("　".join(str(x) for g in lines for x in g) if lines else "-"))
 # スコア順（SBなし）：格上げ後 df_sorted_wo の車番順
 note_lines.append("スコア順（SBなし）　" + " ".join(map(str, df_sorted_wo["車番"].tolist())))
@@ -977,6 +1023,6 @@ st.text_area("ここから全文コピーしてください", note_text, height=
 st.download_button(
     "📥 note記事テキストをダウンロード",
     data=note_text.encode("utf-8"),
-    file_name=f"{track}{race_no}R_note.txt",  # レースごと
+    file_name=f"{track}{race_no}R_note.txt",
     mime="text/plain",
 )
