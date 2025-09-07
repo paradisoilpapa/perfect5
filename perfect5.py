@@ -763,19 +763,6 @@ st.caption(
 # ==============================
 st.markdown("### 🎯 買い目（想定的中率 → 必要オッズ=1/p）")
 
-# ===== 必要オッズの安全フロア（表示・判定兼用） =====
-MIN_ODDS_FLOOR = {
-    "wide":   1.20,   # ワイドは最低でも1.2倍以上で提示
-    "sanpuku":1.50,   # 三連複C
-    "nifuku": 1.30,   # 二車複
-    "nitan":  1.50,   # 二車単
-    "santan": 1.70,   # 三連単
-}
-def _adjust_need(bet_type: str, need: float | None) -> float | None:
-    if need is None or not np.isfinite(need) or need <= 0:
-        return None
-    floor = float(MIN_ODDS_FLOOR.get(bet_type, 1.0))
-    return float(max(need, floor))
 
 
 one = result_marks.get("◎", None)
@@ -920,25 +907,27 @@ else:
         p = cnt / trials
         return round(1.0 / p, 2)
 
-    # 三連複C
-    if len(trioC_list) > 0:
-        rows = []
-        for t in trioC_list:
-            cnt = trioC_counts.get(t, 0)
-            p = cnt / trials
-            rows.append({
-                "買い目": f"{t[0]}-{t[1]}-{t[2]}",
-                "p(想定的中率)": round(p, 4),
-                "必要オッズ(=1/p)": "-" if cnt==0 else need_from_count(cnt)
-            })
-        trioC_df = pd.DataFrame(rows)
-        st.markdown("#### 三連複C（◎-[相手]-全）※車番順")
-        def _key_nums_tri(s): return list(map(int, re.findall(r"\d+", s)))
-        trioC_df = trioC_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_tri)).reset_index(drop=True)
-        st.dataframe(trioC_df, use_container_width=True)
-    else:
-        trioC_df = None
-        st.info("三連複C：相手（〇/▲）が未設定のため表示なし")
+# 三連複C
+if len(trioC_list) > 0:
+    rows = []
+    for t in trioC_list:
+        cnt = trioC_counts.get(t, 0)
+        p = cnt / trials
+        rows.append({
+            "買い目": f"{t[0]}-{t[1]}-{t[2]}",
+            "p(想定的中率)": round(p, 4),
+            # EV下限=1/p をそのまま出す（表示側で帯に変換）
+            "必要オッズ(=1/p)": "-" if cnt==0 else round(1.0/p, 2)
+        })
+    trioC_df = pd.DataFrame(rows)
+    st.markdown("#### 三連複C（◎-[相手]-全）※車番順")
+    def _key_nums_tri(s): return list(map(int, re.findall(r"\d+", s)))
+    trioC_df = trioC_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_tri)).reset_index(drop=True)
+    st.dataframe(trioC_df, use_container_width=True)
+else:
+    trioC_df = None
+    st.info("三連複C：相手（〇/▲）が未設定のため表示なし")
+
 
     # 三連複バスケット合成オッズと相手集合S
     Sset = set()
@@ -963,122 +952,123 @@ else:
     elif trioC_df is not None and len(trioC_df) > 0:
         st.caption("三連複バスケット合成オッズ：算出不可（必要オッズが'-'のみ）")
 
-    # ワイド（◎-全）
-    rows = []
-    for k in sorted([i for i in range(1, n_cars+1) if i != one]):
-        cnt = int(wide_counts.get(k, 0) or 0)
-        p = cnt / float(trials)
-        if p < float(P_FLOOR.get("wide", 0.06)):
-            continue
-        if cnt <= 0:
-            continue
-        need = 1.0 / p
-        if not np.isfinite(need) or need <= 0:
-            continue
-        eligible = True
+# ワイド（◎-全）
+rows = []
+for k in sorted([i for i in range(1, n_cars+1) if i != one]):
+    cnt = int(wide_counts.get(k, 0) or 0)
+    p = cnt / float(trials)
+    if p < float(P_FLOOR.get("wide", 0.06)):
+        continue
+    if cnt <= 0:
+        continue
+    need = 1.0 / p  # EV下限
+    # 三連複の相手集合Sに該当する場合は「合成オッズ」も下限に加える
+    if (O_combo is not None) and (k in Sset):
+        need = max(need, float(O_combo))
+        rule_note = f"三複被り→合成{float(O_combo):.2f}倍以上"
+    else:
         rule_note = "必要オッズ以上"
-        if (O_combo is not None) and (k in Sset):
-            if need >= float(O_combo):
-                eligible = True
-                rule_note = f"三複被り→合成{float(O_combo):.2f}倍以上"
-            else:
-                eligible = False
-        if not eligible:
-            continue
-        rows.append({
-            "買い目": f"{one}-{k}",
-            "p(想定的中率)": round(p, 4),
-            "必要オッズ(=1/p)": round(need, 2),
-            "ルール": rule_note
-        })
-    wide_df = pd.DataFrame(rows)
-    st.markdown("#### ワイド（◎-全）※車番順")
-    if len(wide_df) > 0:
-        wide_df = wide_df.sort_values(by="買い目", key=lambda s: s.map(_sort_key_by_numbers)).reset_index(drop=True)
-        st.dataframe(wide_df, use_container_width=True)
-        if O_combo is not None:
-            st.caption("※三連複で使用した相手（S側）は **合成オッズ以上**のワイドのみ採用。S外は **必要オッズ以上**で採用。ワイドは上限撤廃＝『◯倍以上で買い』。")
-        else:
-            st.caption("※三連複が無い／合成不可の場合、ワイドは **必要オッズ以上**で採用（上限撤廃）。")
-    else:
-        st.info("ワイド：対象外（Pフロア未満、または合成オッズ基準で除外）")
 
-    # 二車複
-    rows = []
-    for k in sorted([i for i in range(1, n_cars+1) if i != one]):
-        cnt = int(qn_counts.get(k, 0) or 0)
-        p = cnt / float(trials)
-        if p < float(P_FLOOR.get("nifuku", 0.05)):
-            continue
-        if cnt <= 0:
-            continue
-        need = 1.0 / p
-        low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
-        rows.append({
-            "買い目": f"{one}-{k}",
-            "p(想定的中率)": round(p, 4),
-            "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"
-        })
-    qn_df = pd.DataFrame(rows)
-    st.markdown("#### 二車複（◎-全）※車番順")
-    if len(qn_df) > 0:
-        def _key_nums_qn(s): return list(map(int, re.findall(r"\d+", s)))
-        qn_df = qn_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_qn)).reset_index(drop=True)
-        st.dataframe(qn_df, use_container_width=True)
-    else:
-        st.info("二車複：対象外")
+    if not np.isfinite(need) or need <= 0:
+        continue
 
-    # 二車単
-    rows = []
-    for k in sorted([i for i in range(1, n_cars+1) if i != one]):
-        cnt = int(ex_counts.get(k, 0) or 0)
-        p = cnt / float(trials)
-        if p < float(P_FLOOR.get("nitan", 0.04)):
-            continue
-        if cnt <= 0:
-            continue
-        need = 1.0 / p
-        low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
-        rows.append({
-            "買い目": f"{one}->{k}",
-            "p(想定的中率)": round(p, 4),
-            "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"
-        })
-    ex_df = pd.DataFrame(rows)
-    st.markdown("#### 二車単（◎→全）※車番順")
-    if len(ex_df) > 0:
-        def _key_nums_ex(s): return list(map(int, re.findall(r"\d+", s)))
-        ex_df = ex_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_ex)).reset_index(drop=True)
-        st.dataframe(ex_df, use_container_width=True)
+    rows.append({
+        "買い目": f"{one}-{k}",
+        "p(想定的中率)": round(p, 4),
+        "必要オッズ(=1/p)": round(need, 2),
+        "ルール": rule_note
+    })
+wide_df = pd.DataFrame(rows)
+st.markdown("#### ワイド（◎-全）※車番順")
+if len(wide_df) > 0:
+    wide_df = wide_df.sort_values(by="買い目", key=lambda s: s.map(_sort_key_by_numbers)).reset_index(drop=True)
+    st.dataframe(wide_df, use_container_width=True)
+    if O_combo is not None:
+        st.caption("※三連複で使用した相手（S側）は **max(必要オッズ, 合成オッズ)** 以上で採用。S外は **必要オッズ以上**で採用。")
     else:
-        st.info("二車単：対象外")
+        st.caption("※ワイドは **必要オッズ(=1/p)以上**で採用（上限撤廃）。")
+else:
+    st.info("ワイド：対象外（Pフロア未満、または合成オッズ基準で除外）")
 
-    # 三連単（◎→[相手]→全）
-    rows = []
-    p_floor_santan = float(P_FLOOR.get("santan", 0.03))
-    for (sec, thr), cnt in st3_counts.items():
-        cnt = int(cnt or 0)
-        if cnt <= 0:
-            continue
-        p = cnt / float(trials)
-        if p < p_floor_santan:
-            continue
-        need = 1.0 / p
-        low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
-        rows.append({
-            "買い目": f"{one}->{sec}->{thr}",
-            "p(想定的中率)": round(p, 5),
-            "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"
-        })
-    if rows:
-        santan_df = pd.DataFrame(rows)
-        def _key_nums_st(s): return list(map(int, re.findall(r"\d+", s)))
-        santan_df = santan_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_st)).reset_index(drop=True)
-        st.markdown("#### 三連単（◎→[相手]→全）※車番順")
-        st.dataframe(santan_df, use_container_width=True)
-    else:
-        santan_df = None
-        st.info("三連単：対象外（Pフロア未満・相手未設定・該当なし）")
+# 二車複
+rows = []
+for k in sorted([i for i in range(1, n_cars+1) if i != one]):
+    cnt = int(qn_counts.get(k, 0) or 0)
+    p = cnt / float(trials)
+    if p < float(P_FLOOR.get("nifuku", 0.05)):
+        continue
+    if cnt <= 0:
+        continue
+    need = 1.0 / p  # EV下限
+    low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
+    rows.append({
+        "買い目": f"{one}-{k}",
+        "p(想定的中率)": round(p, 4),
+        "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"
+    })
+qn_df = pd.DataFrame(rows)
+st.markdown("#### 二車複（◎-全）※車番順")
+if len(qn_df) > 0:
+    def _key_nums_qn(s): return list(map(int, re.findall(r"\d+", s)))
+    qn_df = qn_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_qn)).reset_index(drop=True)
+    st.dataframe(qn_df, use_container_width=True)
+else:
+    st.info("二車複：対象外")
+
+
+   # 二車単
+rows = []
+for k in sorted([i for i in range(1, n_cars+1) if i != one]):
+    cnt = int(ex_counts.get(k, 0) or 0)
+    p = cnt / float(trials)
+    if p < float(P_FLOOR.get("nitan", 0.04)):
+        continue
+    if cnt <= 0:
+        continue
+    need = 1.0 / p  # EV下限
+    low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
+    rows.append({
+        "買い目": f"{one}->{k}",
+        "p(想定的中率)": round(p, 4),
+        "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"
+    })
+ex_df = pd.DataFrame(rows)
+st.markdown("#### 二車単（◎→全）※車番順")
+if len(ex_df) > 0:
+    def _key_nums_ex(s): return list(map(int, re.findall(r"\d+", s)))
+    ex_df = ex_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_ex)).reset_index(drop=True)
+    st.dataframe(ex_df, use_container_width=True)
+else:
+    st.info("二車単：対象外")
+
+
+   # 三連単（◎→[相手]→全）
+rows = []
+p_floor_santan = float(P_FLOOR.get("santan", 0.03))
+for (sec, thr), cnt in st3_counts.items():
+    cnt = int(cnt or 0)
+    if cnt <= 0:
+        continue
+    p = cnt / float(trials)
+    if p < p_floor_santan:
+        continue
+    need = 1.0 / p  # EV下限
+    low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
+    rows.append({
+        "買い目": f"{one}->{sec}->{thr}",
+        "p(想定的中率)": round(p, 5),
+        "買える帯": f"{low:.1f}〜{high:.1f}倍なら買い"
+    })
+if rows:
+    santan_df = pd.DataFrame(rows)
+    def _key_nums_st(s): return list(map(int, re.findall(r"\d+", s)))
+    santan_df = santan_df.sort_values(by="買い目", key=lambda s: s.map(_key_nums_st)).reset_index(drop=True)
+    st.markdown("#### 三連単（◎→[相手]→全）※車番順")
+    st.dataframe(santan_df, use_container_width=True)
+else:
+    santan_df = None
+    st.info("三連単：対象外（Pフロア未満・相手未設定・該当なし）")
+
 # ==============================
 # note用：ヘッダー〜展開評価＋“買えるオッズ帯”
 # ==============================
