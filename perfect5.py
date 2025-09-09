@@ -860,14 +860,11 @@ velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
                      df_sorted_wo["合計_SBなし"].round(3).tolist()))
 
 # ===== 印集約（◎ライン優先：同ラインを上から順に採用） =====
-# 先にβを固定（来ない枠）
+# 先にβを固定（来ない枠）—◎は候補から除外
 beta_id = select_beta([c for c in active_cars if c != anchor_no])
-
 
 rank_wo = {int(df_sorted_wo.loc[i, "車番"]): i+1 for i in range(len(df_sorted_wo))}
 result_marks, reasons = {}, {}
-
-# ◎は現行ロジックどおり
 result_marks["◎"] = anchor_no
 reasons[anchor_no] = "本命(C上位3→得点4位以内ゲート→ラインSB重視＋KO並び)"
 
@@ -876,11 +873,25 @@ if beta_id is not None:
     result_marks["β"] = beta_id
     reasons[beta_id] = "β（来ない枠：低3着率×位置×得点×SB空回り）"
 
-# ◎とβが同ラインなら、別ライFン最上位に◎をシフト（常時）
+# ◎とβが同ラインなら、別ライン最上位に◎をシフト（常時）
 beta_gid = car_to_group.get(beta_id, None) if beta_id is not None else None
+old_anchor = None
+if beta_gid is not None and car_to_group.get(anchor_no, None) == beta_gid:
+    pool = [int(df_sorted_wo.loc[i, "車番"]) for i in range(len(df_sorted_wo))]
+    pool = [c for c in pool if car_to_group.get(c, None) != beta_gid]
+    if pool:
+        old_anchor = anchor_no
+        anchor_no = max(pool, key=lambda x: anchor_score(x))
+        result_marks["◎"] = anchor_no
+        reasons[anchor_no] = f"本命（β同居ライン回避→{old_anchor}からシフト）"
 
-# 〇：全体トップ（◎・β除外）…をベースに、旧アンカーを優先
-# === ◎がβ同居ライン回避で変わった可能性があるので、プールを作り直す ===
+# スコアマップを再構築（以降の並べ替えで使用）
+score_map = {
+    int(df_sorted_wo.loc[i, "車番"]): float(df_sorted_wo.loc[i, "合計_SBなし"])
+    for i in range(len(df_sorted_wo))
+}
+
+# ◎が変わった可能性があるので、プールを作り直す
 pool_all = [int(df_sorted_wo.loc[i, "車番"]) for i in range(len(df_sorted_wo))]
 overall_rest = [c for c in pool_all if c not in {anchor_no, beta_id}]
 
@@ -892,55 +903,15 @@ if a_gid is not None and a_gid in line_def:
         key=lambda x: (-score_map.get(x, -1e9), x)
     )
 
-
-    if preferred_second is not None and preferred_second in overall_rest:
-        result_marks["〇"] = preferred_second
-    else:
-        result_marks["〇"] = overall_rest[0]
-    reasons[result_marks["〇"]] = "対抗（格上げ後SBなしスコア順/旧◎優先）"
-
-
-if beta_gid is not None and car_to_group.get(anchor_no, None) == beta_gid:
-    # 候補プール：同ラインを除外して上位から選ぶ（anchor_scoreで評価）
-    pool = [int(df_sorted_wo.loc[i, "車番"]) for i in range(len(df_sorted_wo))]
-    pool = [c for c in pool if car_to_group.get(c, None) != beta_gid]
-    if pool:
-        old_anchor = anchor_no
-        anchor_no = max(pool, key=lambda x: anchor_score(x))
-        result_marks["◎"] = anchor_no
-        reasons[anchor_no] = f"本命（β同居ライン回避→{old_anchor}からシフト）"
-
-
-score_map = {int(df_sorted_wo.loc[i, "車番"]): float(df_sorted_wo.loc[i, "合計_SBなし"])
-             for i in range(len(df_sorted_wo))}
-
-overall_rest = [int(df_sorted_wo.loc[i, "車番"])
-                for i in range(len(df_sorted_wo))
-                if int(df_sorted_wo.loc[i, "車番"]) not in {anchor_no, beta_id}]
-
-a_gid = car_to_group.get(anchor_no, None)
-mates_sorted = []
-if a_gid is not None and a_gid in line_def:
-    mates_sorted = sorted(
-        [c for c in line_def[a_gid] if c not in {anchor_no, beta_id}],
-        key=lambda x: (-score_map.get(x, -1e9), x)
-    )
-
-# 〇：全体トップ（◎・β除外）…旧◎を優先（定義されていれば）
+# 〇：全体トップ（◎・β除外）…旧◎を優先（シフトがあれば）
 preferred_second = None
-# old_anchor は「◎をβ同居ラインからシフトした時だけ」定義される。未定義でもOKなように守る。
-if "old_anchor" in locals():
-    if old_anchor is not None and old_anchor != beta_id:
-        preferred_second = old_anchor
+if old_anchor is not None and old_anchor != beta_id:
+    preferred_second = old_anchor
 
 if overall_rest:
-    if preferred_second is not None and preferred_second in overall_rest:
-        pick2 = preferred_second
-    else:
-        pick2 = overall_rest[0]
+    pick2 = preferred_second if (preferred_second is not None and preferred_second in overall_rest) else overall_rest[0]
     result_marks["〇"] = pick2
     reasons[pick2] = "対抗（格上げ後SBなしスコア順/旧◎優先）"
-
 
 used = set(result_marks.values())
 
@@ -970,8 +941,9 @@ for mk in ["△","×","α"]:
     result_marks[mk] = no
     reasons[no] = f"{mk}（◎ライン優先→残りスコア順）"
 
-# αの“当たりすぎ”抑制：禁止条件を適用し、必要ならα欠番も許容
+# αの“当たりすぎ”抑制：禁止条件を適用（必ず誰かに付与する版）
 result_marks = enforce_alpha_eligibility(result_marks)
+
 
 
 # ===== 表示：ランキング＆内訳 =====
