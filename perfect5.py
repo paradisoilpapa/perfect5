@@ -822,7 +822,8 @@ velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
 
 # ===== 印集約（◎ライン優先：同ラインを上から順に採用） =====
 # 先にβを固定（来ない枠）
-beta_id = select_beta(active_cars)
+beta_id = select_beta([c for c in active_cars if c != anchor_no])
+
 
 rank_wo = {int(df_sorted_wo.loc[i, "車番"]): i+1 for i in range(len(df_sorted_wo))}
 result_marks, reasons = {}, {}
