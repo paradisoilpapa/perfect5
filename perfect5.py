@@ -876,11 +876,23 @@ if beta_id is not None:
     result_marks["β"] = beta_id
     reasons[beta_id] = "β（来ない枠：低3着率×位置×得点×SB空回り）"
 
-# ◎とβが同ラインなら、別ライン最上位に◎をシフト（常時）
+# ◎とβが同ラインなら、別ライFン最上位に◎をシフト（常時）
 beta_gid = car_to_group.get(beta_id, None) if beta_id is not None else None
 
 # 〇：全体トップ（◎・β除外）…をベースに、旧アンカーを優先
-if overall_rest:
+# === ◎がβ同居ライン回避で変わった可能性があるので、プールを作り直す ===
+pool_all = [int(df_sorted_wo.loc[i, "車番"]) for i in range(len(df_sorted_wo))]
+overall_rest = [c for c in pool_all if c not in {anchor_no, beta_id}]
+
+a_gid = car_to_group.get(anchor_no, None)
+mates_sorted = []
+if a_gid is not None and a_gid in line_def:
+    mates_sorted = sorted(
+        [c for c in line_def[a_gid] if c not in {anchor_no, beta_id}],
+        key=lambda x: (-score_map.get(x, -1e9), x)
+    )
+
+
     if preferred_second is not None and preferred_second in overall_rest:
         result_marks["〇"] = preferred_second
     else:
