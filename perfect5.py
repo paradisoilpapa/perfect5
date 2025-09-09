@@ -944,6 +944,16 @@ for mk in ["△","×","α"]:
 # αの“当たりすぎ”抑制：禁止条件を適用（必ず誰かに付与する版）
 result_marks = enforce_alpha_eligibility(result_marks)
 
+# --- ハードフォールバック：それでもαが欠番なら、未使用の最弱を必ずαに割当 ---
+if "α" not in result_marks:
+    used_now = set(result_marks.values())
+    pool = [int(df_sorted_wo.loc[i, "車番"]) for i in range(len(df_sorted_wo))]
+    # 既に使った印・βは除外し、SBなしスコアが一番低いものを採用
+    pool = [c for c in pool if c not in used_now and c != beta_id]
+    if pool:
+        alpha_pick = pool[-1]  # 最弱
+        result_marks["α"] = alpha_pick
+        reasons[alpha_pick] = "α（フォールバック：禁止条件全滅→最弱を採用）"
 
 
 # ===== 表示：ランキング＆内訳 =====
