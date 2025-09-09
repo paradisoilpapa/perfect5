@@ -926,10 +926,21 @@ if a_gid is not None and a_gid in line_def:
         key=lambda x: (-score_map.get(x, -1e9), x)
     )
 
-# 〇：全体トップ（◎・β除外）
+# 〇：全体トップ（◎・β除外）…旧◎を優先（定義されていれば）
+preferred_second = None
+# old_anchor は「◎をβ同居ラインからシフトした時だけ」定義される。未定義でもOKなように守る。
+if "old_anchor" in locals():
+    if old_anchor is not None and old_anchor != beta_id:
+        preferred_second = old_anchor
+
 if overall_rest:
-    result_marks["〇"] = overall_rest[0]
-    reasons[overall_rest[0]] = "対抗（格上げ後SBなしスコア順）"
+    if preferred_second is not None and preferred_second in overall_rest:
+        pick2 = preferred_second
+    else:
+        pick2 = overall_rest[0]
+    result_marks["〇"] = pick2
+    reasons[pick2] = "対抗（格上げ後SBなしスコア順/旧◎優先）"
+
 
 used = set(result_marks.values())
 
