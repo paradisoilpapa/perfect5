@@ -395,6 +395,45 @@ def _alpha_forbidden(no: int) -> bool:
 
 def enforce_alpha_eligibility(result_marks: dict[str,int]) -> dict[str,int]:
     """
+    α禁止条件を適用。禁止に該当したら×へ降格し、代替αを選出。
+    それでも見つからない場合はフォールバックで“最弱”をαに必ず割当。
+    """
+    marks = dict(result_marks)
+    used = set(marks.values())
+    beta_id = marks.get("β", None)
+
+    # 現αの妥当性チェック
+    alpha_id = marks.get("α", None)
+    if alpha_id is not None and _alpha_forbidden(alpha_id):
+        if "×" not in marks:
+            marks["×"] = alpha_id
+        del marks["α"]
+        used = set(marks.values())
+
+    # 代替α（適格者から）
+    if "α" not in marks:
+        pool_sorted = [int(df_sorted_wo.loc[i,"車番"]) for i in range(len(df_sorted_wo))]
+        for no in reversed(pool_sorted):  # 低スコア側から
+            if no in used: continue
+            if beta_id is not None and no == beta_id: continue
+            if not _alpha_forbidden(no):
+                marks["α"] = no
+                used.add(no)
+                break
+
+    # フォールバック：それでも無いなら最弱を必ずαに
+    if "α" not in marks:
+        pool_sorted = [int(df_sorted_wo.loc[i,"車番"]) for i in range(len(df_sorted_wo))]
+        for no in reversed(pool_sorted):
+            if no in used: continue
+            if beta_id is not None and no == beta_id: continue
+            marks["α"] = no
+            used.add(no)
+            break
+
+    return marks
+
+    """
     既に割り振ったαをチェックし、禁止なら×へ降格し代替αを選出。
     適格者がいなければα欠番（=付けない）。
     """
@@ -836,6 +875,19 @@ reasons[anchor_no] = "本命(C上位3→得点4位以内ゲート→ラインSB�
 if beta_id is not None:
     result_marks["β"] = beta_id
     reasons[beta_id] = "β（来ない枠：低3着率×位置×得点×SB空回り）"
+
+# ◎とβが同ラインなら、別ライン最上位に◎をシフト（常時）
+beta_gid = car_to_group.get(beta_id, None) if beta_id is not None else None
+if beta_gid is not None and car_to_group.get(anchor_no, None) == beta_gid:
+    # 候補プール：同ラインを除外して上位から選ぶ（anchor_scoreで評価）
+    pool = [int(df_sorted_wo.loc[i, "車番"]) for i in range(len(df_sorted_wo))]
+    pool = [c for c in pool if car_to_group.get(c, None) != beta_gid]
+    if pool:
+        old_anchor = anchor_no
+        anchor_no = max(pool, key=lambda x: anchor_score(x))
+        result_marks["◎"] = anchor_no
+        reasons[anchor_no] = f"本命（β同居ライン回避→{old_anchor}からシフト）"
+
 
 score_map = {int(df_sorted_wo.loc[i, "車番"]): float(df_sorted_wo.loc[i, "合計_SBなし"])
              for i in range(len(df_sorted_wo))}
