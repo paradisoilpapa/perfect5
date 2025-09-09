@@ -878,6 +878,16 @@ if beta_id is not None:
 
 # ◎とβが同ラインなら、別ライン最上位に◎をシフト（常時）
 beta_gid = car_to_group.get(beta_id, None) if beta_id is not None else None
+
+# 〇：全体トップ（◎・β除外）…をベースに、旧アンカーを優先
+if overall_rest:
+    if preferred_second is not None and preferred_second in overall_rest:
+        result_marks["〇"] = preferred_second
+    else:
+        result_marks["〇"] = overall_rest[0]
+    reasons[result_marks["〇"]] = "対抗（格上げ後SBなしスコア順/旧◎優先）"
+
+
 if beta_gid is not None and car_to_group.get(anchor_no, None) == beta_gid:
     # 候補プール：同ラインを除外して上位から選ぶ（anchor_scoreで評価）
     pool = [int(df_sorted_wo.loc[i, "車番"]) for i in range(len(df_sorted_wo))]
