@@ -310,6 +310,209 @@ def format_rank_all(score_map: dict[int,float], P_floor_val: float | None = None
             rows.append(f"{i}" if score_map[i] >= P_floor_val else f"{i}(P未満)")
     return " ".join(rows)
 
+# === ◎ライン格上げ ===
+def apply_anchor_line_bonus(score_raw: dict[int,float],
+                            line_of: dict[int,int],
+                            role_map: dict[int,str],
+                            anchor: int,
+                            tenkai: str) -> dict[int,float]:
+    a_line = line_of.get(anchor, None)
+    is_on = (tenkai in LINE_BONUS_ON_TENKAI) and (a_line is not None)
+    score_adj: dict[int,float] = {}
+    for i, s in score_raw.items():
+        bonus = 0.0
+        if is_on and line_of.get(i) == a_line and i != anchor:
+            role = role_map.get(i, "single")
+            bonus = min(max(0.0, LINE_BONUS.get(role, 0.0)), LINE_BONUS_CAP)
+        score_adj[i] = s + bonus
+    return score_adj
+
+def format_rank_all(score_map: dict[int,float], P_floor_val: float | None = None) -> str:
+    order = sorted(score_map.keys(), key=lambda k: (-score_map[k], k))
+    rows = []
+    for i in order:
+        if P_floor_val is None:
+            rows.append(f"{i}")
+        else:
+            rows.append(f"{i}" if score_map[i] >= P_floor_val else f"{i}(P未満)")
+    return " ".join(rows)
+
+# ======== AlphaBeta helpers（追記） ========
+def _shrink_p3in(no: int, k: int = 12) -> float:
+    """直近3着内率の収縮推定（Empirical Bayes）"""
+    n = x1.get(no,0)+x2.get(no,0)+x3.get(no,0)+x_out.get(no,0)
+    s = x1.get(no,0)+x2.get(no,0)+x3.get(no,0)
+    # クラス×頭数でざっくりベース（必要に応じて級別で微調整可）
+    if n_cars <= 6: p0 = 0.40
+    elif n_cars == 7: p0 = 0.35
+    else: p0 = 0.30
+    return (s + k*p0) / (n + k) if (n+k)>0 else p0
+
+def _pos_penalty(no: int) -> float:
+    role = role_in_line(no, line_def)
+    return 0.08 if role == 'thirdplus' else (0.05 if role == 'single' else 0.0)
+
+def _score_neg(no: int) -> float:
+    zs = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
+    zmap = {n: float(zs[i]) for i,n in enumerate(active_cars)} if active_cars else {}
+    z = zmap.get(no, 0.0)
+    if z <= -1.0: return 0.10
+    if z <= -0.5: return 0.05
+    return 0.0
+
+def _sb_ineff(no: int) -> float:
+    """SB多いのに入着率が低い＝空回り先行の微ペナルティ"""
+    sb = float(S.get(no,0)) + float(B.get(no,0))
+    return 0.05 if (sb >= 5 and _shrink_p3in(no) < 0.25) else 0.0
+
+def select_beta(cars: list[int]) -> int | None:
+    """“来ない”を先に1名だけ固定（7車想定）。該当薄ければ None"""
+    if not cars: return None
+    ko = {}
+    for no in cars:
+        p3 = _shrink_p3in(no)
+        ko[no] = (
+            0.70 * max(0.25 - p3, 0.0) +
+            0.15 * _pos_penalty(no) +
+            0.10 * _score_neg(no) +
+            0.05 * _sb_ineff(no)
+        )
+    return max(ko, key=ko.get) if len(ko)>0 else None
+
+def _alpha_forbidden(no: int) -> bool:
+    """αにしてはいけないタイプ（当たりすぎ抑制）"""
+    role = role_in_line(no, line_def)
+    # 1) 番手は原則α禁止
+    if role == 'second': return True
+    # 2) “終いで滑り込む”多走タイプ（総走10以上かつ3着3回以上）はα禁止
+    n = x1.get(no,0)+x2.get(no,0)+x3.get(no,0)+x_out.get(no,0)
+    if n >= 10 and x3.get(no,0) >= 3: return True
+    # 3) 得点上位2はα禁止（◎側に近い）
+    order = sorted(active_cars, key=lambda n: ratings_val[n], reverse=True)
+    top2 = set(order[:min(2, len(order))])
+    if no in top2: return True
+    return False
+
+def enforce_alpha_eligibility(result_marks: dict[str,int]) -> dict[str,int]:
+    """
+    既に割り振ったαをチェックし、禁止なら×へ降格し代替αを選出。
+    適格者がいなければα欠番（=付けない）。
+    """
+    marks = dict(result_marks)
+    used = set(marks.values())
+    beta_id = marks.get("β", None)
+
+    # 現αの妥当性をチェック
+    alpha_id = marks.get("α", None)
+    if alpha_id is not None and _alpha_forbidden(alpha_id):
+        if "×" not in marks:
+            marks["×"] = alpha_id
+        del marks["α"]
+        used = set(marks.values())
+
+    # 代替αが必要か？
+    if "α" not in marks:
+        # 低スコア側から未使用・β以外・禁止でない者を探す
+        pool_sorted = [int(df_sorted_wo.loc[i,"車番"]) for i in range(len(df_sorted_wo))]
+        for no in reversed(pool_sorted):  # 低い→高いの順
+            if no in used: continue
+            if beta_id is not None and no == beta_id: continue
+            if not _alpha_forbidden(no):
+                marks["α"] = no
+                used.add(no)
+                break
+        # 見つからなければα欠番
+    return marks
+
+
+# ======== AlphaBeta helpers（追記） ========
+def _shrink_p3in(no: int, k: int = 12) -> float:
+    """直近3着内率の収縮推定（Empirical Bayes）"""
+    n = x1.get(no,0)+x2.get(no,0)+x3.get(no,0)+x_out.get(no,0)
+    s = x1.get(no,0)+x2.get(no,0)+x3.get(no,0)
+    # クラス×頭数でざっくりベース（後で必要なら級別で微調整）
+    if n_cars <= 6: p0 = 0.40
+    elif n_cars == 7: p0 = 0.35
+    else: p0 = 0.30
+    return (s + k*p0) / (n + k) if (n+k)>0 else p0
+
+def _pos_penalty(no: int) -> float:
+    role = role_in_line(no, line_def)
+    return 0.08 if role == 'thirdplus' else (0.05 if role == 'single' else 0.0)
+
+def _score_neg(no: int) -> float:
+    zs = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
+    zmap = {n: float(zs[i]) for i,n in enumerate(active_cars)} if active_cars else {}
+    z = zmap.get(no, 0.0)
+    if z <= -1.0: return 0.10
+    if z <= -0.5: return 0.05
+    return 0.0
+
+def _sb_ineff(no: int) -> float:
+    """SB多いのに入着率が低い＝空回り先行の微ペナルティ"""
+    sb = float(S.get(no,0)) + float(B.get(no,0))
+    return 0.05 if (sb >= 5 and _shrink_p3in(no) < 0.25) else 0.0
+
+def select_beta(cars: list[int]) -> int | None:
+    """“来ない”を先に1名だけ固定（7車想定）。該当薄ければ None"""
+    if not cars: return None
+    ko = {}
+    for no in cars:
+        p3 = _shrink_p3in(no)
+        ko[no] = (
+            0.70 * max(0.25 - p3, 0.0) +
+            0.15 * _pos_penalty(no) +
+            0.10 * _score_neg(no) +
+            0.05 * _sb_ineff(no)
+        )
+    return max(ko, key=ko.get) if len(ko)>0 else None
+
+def _alpha_forbidden(no: int) -> bool:
+    """αにしてはいけないタイプ（当たりすぎ抑制）"""
+    role = role_in_line(no, line_def)
+    # 1) 番手は原則α禁止
+    if role == 'second': return True
+    # 2) “終いで滑り込む”多走タイプ（総走10以上かつ3着3回以上）はα禁止
+    n = x1.get(no,0)+x2.get(no,0)+x3.get(no,0)+x_out.get(no,0)
+    if n >= 10 and x3.get(no,0) >= 3: return True
+    # 3) 得点上位2はα禁止（◎側に近い）
+    order = sorted(active_cars, key=lambda n: ratings_val[n], reverse=True)
+    top2 = set(order[:min(2, len(order))])
+    if no in top2: return True
+    return False
+
+def enforce_alpha_eligibility(result_marks: dict[str,int]) -> dict[str,int]:
+    """
+    既に割り振ったαをチェックし、禁止なら×へ降格し代替αを選出。
+    適格者がいなければα欠番（=付けない）。
+    """
+    marks = dict(result_marks)
+    used = set(marks.values())
+    beta_id = marks.get("β", None)
+
+    # 現αの妥当性をチェック
+    alpha_id = marks.get("α", None)
+    if alpha_id is not None and _alpha_forbidden(alpha_id):
+        if "×" not in marks:
+            marks["×"] = alpha_id
+        del marks["α"]
+        used = set(marks.values())
+
+    # 代替αが必要か？
+    if "α" not in marks:
+        # 低スコア側から未使用・β以外・禁止でない者を探す
+        pool_sorted = [int(df_sorted_wo.loc[i,"車番"]) for i in range(len(df_sorted_wo))]
+        for no in reversed(pool_sorted):  # 低い→高いの順
+            if no in used: continue
+            if beta_id is not None and no == beta_id: continue
+            if not _alpha_forbidden(no):
+                marks["α"] = no
+                used.add(no)
+                break
+        # 見つからなければα欠番
+    return marks
+
+
 # ==============================
 # サイドバー：開催情報 / バンク・風・頭数
 # ==============================
@@ -618,27 +821,37 @@ velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
                      df_sorted_wo["合計_SBなし"].round(3).tolist()))
 
 # ===== 印集約（◎ライン優先：同ラインを上から順に採用） =====
+# 先にβを固定（来ない枠）
+beta_id = select_beta(active_cars)
+
 rank_wo = {int(df_sorted_wo.loc[i, "車番"]): i+1 for i in range(len(df_sorted_wo))}
 result_marks, reasons = {}, {}
+
+# ◎は現行ロジックどおり
 result_marks["◎"] = anchor_no
 reasons[anchor_no] = "本命(C上位3→得点4位以内ゲート→ラインSB重視＋KO並び)"
+
+# βはここで確定（以降の母集団からは除外）
+if beta_id is not None:
+    result_marks["β"] = beta_id
+    reasons[beta_id] = "β（来ない枠：低3着率×位置×得点×SB空回り）"
 
 score_map = {int(df_sorted_wo.loc[i, "車番"]): float(df_sorted_wo.loc[i, "合計_SBなし"])
              for i in range(len(df_sorted_wo))}
 
 overall_rest = [int(df_sorted_wo.loc[i, "車番"])
                 for i in range(len(df_sorted_wo))
-                if int(df_sorted_wo.loc[i, "車番"]) != anchor_no]
+                if int(df_sorted_wo.loc[i, "車番"]) not in {anchor_no, beta_id}]
 
 a_gid = car_to_group.get(anchor_no, None)
 mates_sorted = []
 if a_gid is not None and a_gid in line_def:
     mates_sorted = sorted(
-        [c for c in line_def[a_gid] if c != anchor_no],
+        [c for c in line_def[a_gid] if c not in {anchor_no, beta_id}],
         key=lambda x: (-score_map.get(x, -1e9), x)
     )
 
-# 〇：全体トップ（◎除外）
+# 〇：全体トップ（◎・β除外）
 if overall_rest:
     result_marks["〇"] = overall_rest[0]
     reasons[overall_rest[0]] = "対抗（格上げ後SBなしスコア順）"
@@ -660,15 +873,20 @@ else:
 
 used = set(result_marks.values())
 
-# 残り印（△ → × → α → β）：◎ライン残→全体残
+# 残り印（△ → × → α）：◎ライン残→全体残（βは確定済み）
 tail_priority = [c for c in mates_sorted if c not in used]
 tail_priority += [c for c in overall_rest if c not in used and c not in tail_priority]
-for mk in ["△","×","α","β"]:
+
+for mk in ["△","×","α"]:
     if mk in result_marks: continue
     if not tail_priority: break
     no = tail_priority.pop(0)
     result_marks[mk] = no
     reasons[no] = f"{mk}（◎ライン優先→残りスコア順）"
+
+# αの“当たりすぎ”抑制：禁止条件を適用し、必要ならα欠番も許容
+result_marks = enforce_alpha_eligibility(result_marks)
+
 
 # ===== 表示：ランキング＆内訳 =====
 st.markdown("### ランキング＆印（◎ライン格上げ反映済み）")
