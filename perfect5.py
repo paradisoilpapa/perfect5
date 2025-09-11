@@ -1049,27 +1049,34 @@ for c, mk in enumerate(marks):
     p2[c] = float(d["pTop2"])
     p3[c] = float(d["pTop3"])
 
-# ---- Pフロア（表示上の☆判定用）...
-P_FLOOR = {"sanpuku": 0.06, "nifuku": 0.12, "wide": 0.25, "nitan": 0.07, "sant_
+# ---- Pフロア（表示上の☆判定用）----
+P_FLOOR = {
+    "sanpuku": 0.06,
+    "nifuku":  0.12,
+    "wide":    0.25,
+    "nitan":   0.07,
+    "santan":  0.03,
+}
 
-    # 共通ヘルパー
-    def _need_from_p(p: float) -> float:
-        p = max(min(float(p), 0.999), 1e-6)  # 安全域
-        return 1.0 / p
+# EVのバランス帯（表示用の幅）
+E_MIN, E_MAX = 0.10, 0.60  # 例：必要オッズ×(1+E_MIN 〜 1+E_MAX)
 
-    def _fmt_band(need: float, bet_type: str, star: bool) -> str:
-        if bet_type == "wide":
-            s = f"{need:.1f}倍以上"
-        else:
-            low, high = need*(1.0+E_MIN), need*(1.0+E_MAX)
-            s = f"{low:.1f}〜{high:.1f}倍"
-        return s + (" ☆" if star else "")
+# 共通ヘルパー
+def _need_from_p(p: float) -> float:
+    p = max(min(float(p), 0.999), 1e-6)  # 安全域
+    return 1.0 / p
 
-    # 数字抽出で車番順ソート
-    def _numkey(s):
-        return list(map(int, re.findall(r"\d+", str(s))))
+def _fmt_band(need: float, bet_type: str, star: bool) -> str:
+    if bet_type == "wide":
+        s = f"{need:.1f}倍以上"
+    else:
+        low, high = need * (1.0 + E_MIN), need * (1.0 + E_MAX)
+        s = f"{low:.1f}〜{high:.1f}倍"
+    return s + (" ☆" if star else "")
 
-    others = [c for c in car_list if c != one]
+# 数字抽出で車番順ソート
+def _numkey(s):
+    return list(map(int, re.findall(r"\d+", str(s))))
 
     # ---------- 三連複（◎-全） ----------
     rows = []
