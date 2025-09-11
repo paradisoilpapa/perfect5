@@ -70,13 +70,28 @@ KEIRIN_DATA = {
 # 直近集計：印別の実測率（%→小数）
 RANK_STATS = {
     "◎": {"p1": 0.216, "pTop2": 0.456, "pTop3": 0.624},
-    "〇": {"p1": 0.193, "pTop2": 0.360, "pTop3": 0.512},
+    "〇": {"p1": 0.193, "pTop2": 0.360, "pTop3": 0.512},  # ← 全コードで "〇" に統一（"○"と混在させない）
     "▲": {"p1": 0.208, "pTop2": 0.384, "pTop3": 0.552},
     "△": {"p1": 0.152, "pTop2": 0.248, "pTop3": 0.384},
     "×": {"p1": 0.128, "pTop2": 0.256, "pTop3": 0.384},
     "α": {"p1": 0.088, "pTop2": 0.152, "pTop3": 0.312},
     "β": {"p1": 0.076, "pTop2": 0.151, "pTop3": 0.244},
 }
+
+# フォールバック用の印：RANK_STATSに必ず存在するキーにする
+RANK_FALLBACK_MARK = "△"
+
+# 防御的チェック（任意）
+if RANK_FALLBACK_MARK not in RANK_STATS:
+    # もし誤って消えていたら、RANK_STATSの先頭を暫定フォールバックに
+    RANK_FALLBACK_MARK = next(iter(RANK_STATS.keys()))
+
+# 未知mkでも落ちないための二段get（既定値も用意）
+FALLBACK_DIST = RANK_STATS.get(
+    RANK_FALLBACK_MARK,
+    {"p1": 0.15, "pTop2": 0.30, "pTop3": 0.45}
+)
+
 
 
 # 期待値ルール（固定）: 1.0倍付近が出ないようPフロアは十分高め
@@ -1026,7 +1041,9 @@ else:
     p3 = {}
     for c in car_list:
         mk = _mark_of(c)
-        d = RANK_STATS.get(mk, RANK_STATS[RANK_FALLBACK_MARK])
+        # 事前に定義した FALLBACK_DIST を使う
+d = RANK_STATS.get(mk, FALLBACK_DIST)
+
         p1[c] = float(d["p1"])
         p2[c] = float(d["pTop2"])
         p3[c] = float(d["pTop3"])
