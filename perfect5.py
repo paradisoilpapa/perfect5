@@ -1027,6 +1027,36 @@ st.caption(
 # ==============================
 # 買い目（固定値：印→実測率 / 期待値レンジ表示）
 # ==============================
+
+# --- 先に必要ヘルパーと定数（未定義ならデフォルト） ---
+try:
+    E_MIN, E_MAX  # type: ignore
+except NameError:
+    E_MIN, E_MAX = 0.10, 0.60
+
+try:
+    P_FLOOR  # type: ignore
+except NameError:
+    P_FLOOR = {
+        "sanpuku": 0.06,
+        "nifuku":  0.12,
+        "wide":    0.25,
+        "nitan":   0.07,
+        "santan":  0.03,
+    }
+
+def _need_from_p(p: float) -> float:
+    p = max(min(float(p), 0.999), 1e-6)  # 安全域
+    return 1.0 / p
+
+def _fmt_band(need: float, bet_type: str, star: bool) -> str:
+    if bet_type == "wide":
+        s = f"{need:.1f}倍以上"
+    else:
+        low, high = need * (1.0 + E_MIN), need * (1.0 + E_MAX)
+        s = f"{low:.1f}〜{high:.1f}倍"
+    return s + (" ☆" if star else "")
+
 st.markdown("### 🎯 買い目（固定値：印→実測率→必要オッズ=1/p）")
 
 one = result_marks.get("◎", None)
@@ -1125,8 +1155,6 @@ else:
     wide_df = pd.DataFrame(rows).sort_values("買い目", key=lambda s: s.map(_numkey)).reset_index(drop=True)
     st.markdown("#### ワイド（◎-全）")
     st.dataframe(wide_df, use_container_width=True)
-
-
 
 st.caption("（※“対象外”＝Pフロア未満でも全買い目を表示。☆はPフロア以上＝推奨）")
 st.caption("※このオッズ以下は期待値以下を想定しています。また、このオッズから高オッズに離れるほどに的中率バランスが崩れハイリスクになります。")
