@@ -875,17 +875,22 @@ bonus_init,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff,
 
 def anchor_score(no:int) -> float:
     base = float(v_final.get(no, -1e9))
-    # ラインSB（既存ロジック踏襲）
     role = role_in_line(no, line_def)
-    sb = float(bonus_init.get(car_to_group.get(no, None), 0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
-    # 着順（連対率z）
-    finish_term = FINISH_WEIGHT * float(p2z_map.get(no, 0.0))
-    # 位置加点（固定ではない）
+    sb = float(bonus_init.get(car_to_group.get(no, None), 0.0) *
+               (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
     pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
-    # 得点zの微加点（現行の癖を維持）
     zt = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
     zt_map = {n:float(zt[i]) for i,n in enumerate(active_cars)} if active_cars else {}
-    return base + sb + finish_term + pos_term + SMALL_Z_RATING*zt_map.get(no, 0.0)
+
+    if _is_girls:
+        # ガールズ：位置＋SBを有効化、着順補正は半分に
+        finish_term = FINISH_WEIGHT_G * float(p2z_map.get(no, 0.0))
+        return base + sb + pos_term + finish_term + SMALL_Z_RATING*zt_map.get(no, 0.0)
+    else:
+        # 男子：従来どおり（位置＋SB＋着順フルウェイト）
+        finish_term = FINISH_WEIGHT * float(p2z_map.get(no, 0.0))
+        return base + sb + pos_term + finish_term + SMALL_Z_RATING*zt_map.get(no, 0.0)
+
 
 # --- ◎選出候補C：得点平均方式を廃止し、統合スコア上位3に一本化 ---
 cand_sorted = sorted(active_cars, key=lambda n: anchor_score(n), reverse=True)
