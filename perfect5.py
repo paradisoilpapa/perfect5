@@ -1057,8 +1057,7 @@ else:
         for j in range(i+1, len(others)):
             a, b = others[i], others[j]
             name = f"{one}-{a}-{b}"
-            # 独立近似：3者がTop3に入る
-            prob = p3[one] * p3[a] * p3[b]
+            prob = p3[one] * p3[a] * p3[b]     # 独立近似
             need = _need_from_p(prob)
             star = (prob >= P_FLOOR["sanpuku"])
             rows.append({"買い目": name, "帯": _fmt_band(need, "sanpuku", star)})
@@ -1073,8 +1072,7 @@ else:
         for sec in mates:
             for thr in [c for c in car_list if c not in (one, sec)]:
                 name = f"{one}->{sec}->{thr}"
-                # 近似：1着=◎、2着=sec(連対) 、3着=thr(Top3)
-                prob = p1[one] * p2[sec] * p3[thr]
+                prob = p1[one] * p2[sec] * p3[thr]   # 近似
                 need = _need_from_p(prob)
                 star = (prob >= P_FLOOR["santan"])
                 rows.append({"買い目": name, "帯": _fmt_band(need, "santan", star)})
@@ -1086,8 +1084,7 @@ else:
     rows = []
     for b in others:
         name = f"{one}-{b}"
-        # 独立近似：両者がTop2
-        prob = p2[one] * p2[b]
+        prob = p2[one] * p2[b]                 # 近似：両者がTop2
         need = _need_from_p(prob)
         star = (prob >= P_FLOOR["nifuku"])
         rows.append({"買い目": name, "帯": _fmt_band(need, "nifuku", star)})
@@ -1099,8 +1096,7 @@ else:
     rows = []
     for b in others:
         name = f"{one}->{b}"
-        # 近似：1着=◎、相手が連対圏
-        prob = p1[one] * p2[b]
+        prob = p1[one] * p2[b]                 # 近似：1着=◎、相手が連対
         need = _need_from_p(prob)
         star = (prob >= P_FLOOR["nitan"])
         rows.append({"買い目": name, "帯": _fmt_band(need, "nitan", star)})
@@ -1112,14 +1108,14 @@ else:
     rows = []
     for b in others:
         name = f"{one}-{b}"
-        # 近似：両者がTop3
-        prob = p3[one] * p3[b]
+        prob = p3[one] * p3[b]                 # 近似：両者がTop3
         need = _need_from_p(prob)
         star = (prob >= P_FLOOR["wide"])
         rows.append({"買い目": name, "帯": _fmt_band(need, "wide", star)})
     wide_df = pd.DataFrame(rows).sort_values("買い目", key=lambda s: s.map(_numkey)).reset_index(drop=True)
     st.markdown("#### ワイド（◎-全）")
     st.dataframe(wide_df, use_container_width=True)
+
 
 
 st.caption("（※“対象外”＝Pフロア未満でも全買い目を表示。☆はPフロア以上＝推奨）")
