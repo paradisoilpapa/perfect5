@@ -812,13 +812,20 @@ df["合計_SBなし"] = mu + 1.0*(df["合計_SBなし_raw"] - mu)
 v_wo = {int(k): float(v) for k, v in zip(df["車番"].astype(int), df["合計_SBなし"].astype(float))}
 _is_girls = (race_class == "ガールズ")
 head_scale = KO_HEADCOUNT_SCALE.get(int(n_cars), 1.0)
-ko_scale = (KO_GIRLS_SCALE if _is_girls else 1.0) * head_scale
+
+# --- KOの“効かせ過ぎ”抑制（並びの価値を戻す） ---
+# 既存のKO_GIRLS_SCALEは尊重。全体のko_scaleを控えめにクランプ。
+ko_scale_raw = (KO_GIRLS_SCALE if _is_girls else 1.0) * head_scale
+KO_SCALE_MAX = 0.45   # ← ここで上限。強すぎる整列を防ぐ
+ko_scale = min(ko_scale_raw, KO_SCALE_MAX)
 
 if ko_scale > 0.0 and line_def and len(line_def) >= 1:
     ko_order = _ko_order(v_wo, line_def, S, B, line_factor=line_factor_eff, gap_delta=KO_GAP_DELTA)
     vals = [v_wo[c] for c in v_wo.keys()]
     mu0  = float(np.mean(vals)); sd0 = float(np.std(vals) + 1e-12)
-    step = KO_STEP_SIGMA * sd0
+    # KOの段差（等間隔化）も弱める
+    KO_STEP_SIGMA_LOCAL = max(0.25, KO_STEP_SIGMA * 0.7)  # 既定より控えめ
+    step = KO_STEP_SIGMA_LOCAL * sd0
     new_scores = {}
     for rank, car in enumerate(ko_order, start=1):
         rank_adjust = step * (len(ko_order) - rank)
@@ -834,32 +841,70 @@ df_sorted_pure = pd.DataFrame({
     "合計_SBなし": [round(float(v_final[c]), 6) for c in v_final.keys()]
 }).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
 
-# --- ◎選出候補C（得点×2着率ブレンド 上位3）
-blend = {no: (ratings_val[no] + min(50.0, p2_eff[no]*100.0))/2.0 for no in active_cars}
-C = [kv[0] for kv in sorted(blend.items(), key=lambda x:x[1], reverse=True)[:min(3,len(blend))]]
+# ===== ここから：印用スコアの“中身”のみ調整（手順は不変） =====
 
-# ラインSB（◎選出用）
+# --- 連対率 p2_eff を素直に効かせる（上限カット廃止、場内z化） ---
+p2_list = [float(p2_eff[n]) for n in active_cars]
+if len(p2_list) >= 1:
+    mu_p2  = float(np.mean(p2_list))
+    sd_p2  = float(np.std(p2_list) + 1e-12)
+else:
+    mu_p2, sd_p2 = 0.0, 1.0
+p2z_map = {n: (float(p2_eff[n]) - mu_p2) / sd_p2 for n in active_cars}
+
+# --- 位置（並び）ボーナス：固定ではなく“加点”として明示 ---
+# 番手0=先頭。値は控えめ。必要に応じてチューニング可。
+POS_BONUS = {0: 0.0, 1: -0.6, 2: -0.9, 3: -1.2, 4: -1.4}
+POS_WEIGHT = 1.0     # 位置ボーナス全体の効き
+FINISH_WEIGHT = 6.0  # 着順（連対率z）の効き
+SMALL_Z_RATING = 0.01  # 得点zの微加点（現行踏襲）
+
+def _pos_idx(no:int) -> int:
+    g = car_to_group.get(no, None)
+    if g is None or g not in line_def: 
+        return 0
+    grp = line_def[g]
+    try:
+        return max(0, int(grp.index(no)))
+    except Exception:
+        return 0
+
+# --- ◎選出で使う評価スコア（一本化） ---
+# v_final（KO後SBなし）＋ ラインSB ＋ FINISH_WEIGHT*z(p2) ＋ POS_WEIGHT*POS_BONUS ＋ small*Z得点
 bonus_init,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff, exclude=None, cap=cap_SB_eff, enable=line_sb_enable)
 
-def anchor_score(no):
-    g = car_to_group.get(no, None); role = role_in_line(no, line_def)
-    sb = bonus_init.get(g,0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
+def anchor_score(no:int) -> float:
+    base = float(v_final.get(no, -1e9))
+    # ラインSB（既存ロジック踏襲）
+    role = role_in_line(no, line_def)
+    sb = float(bonus_init.get(car_to_group.get(no, None), 0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
+    # 着順（連対率z）
+    finish_term = FINISH_WEIGHT * float(p2z_map.get(no, 0.0))
+    # 位置加点（固定ではない）
+    pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
+    # 得点zの微加点（現行の癖を維持）
     zt = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
     zt_map = {n:float(zt[i]) for i,n in enumerate(active_cars)} if active_cars else {}
-    return v_final.get(no, -1e9) + sb + 0.01*zt_map.get(no, 0.0)
+    return base + sb + finish_term + pos_term + SMALL_Z_RATING*zt_map.get(no, 0.0)
 
-anchor_no_pre = max(C, key=lambda x: anchor_score(x)) if C else int(df_sorted_pure.loc[0,"車番"])
+# --- ◎選出候補C：得点平均方式を廃止し、統合スコア上位3に一本化 ---
+cand_sorted = sorted(active_cars, key=lambda n: anchor_score(n), reverse=True)
+C = cand_sorted[:min(3, len(cand_sorted))]
+
+# --- 得点ゲートは残す（縛りを一段だけ緩める） ---
 ratings_sorted2 = sorted(active_cars, key=lambda n: ratings_val[n], reverse=True)
 ratings_rank2 = {no: i+1 for i, no in enumerate(ratings_sorted2)}
-ALLOWED_MAX_RANK = 4
+ALLOWED_MAX_RANK = 5  # ← 4だと着順優位が潰れやすい。まずは5で運用。
 C_hard = [no for no in C if ratings_rank2.get(no, 999) <= ALLOWED_MAX_RANK]
 C_use = C_hard if C_hard else ratings_sorted2[:ALLOWED_MAX_RANK]
-anchor_no = max(C_use, key=lambda x: anchor_score(x))
 
+# --- ◎決定（ロジック踏襲） ---
+anchor_no_pre = max(C, key=lambda x: anchor_score(x)) if C else int(df_sorted_pure.loc[0,"車番"])
+anchor_no = max(C_use, key=lambda x: anchor_score(x)) if C_use else anchor_no_pre
 if anchor_no != anchor_no_pre:
     st.caption(f"※ ◎は『競走得点 上位{ALLOWED_MAX_RANK}位以内』縛りにより {anchor_no_pre}→{anchor_no} に調整。")
 
-# --- ◎ライン格上げ（A方式）適用：表示用スコアを上書き ---
+# --- ◎ライン格上げ（A方式）適用：表示用スコアを上書き（現行踏襲） ---
 role_map = {no: role_in_line(no, line_def) for no in active_cars}
 cand_scores = [anchor_score(no) for no in C] if len(C)>=2 else [0,0]
 cand_scores_sorted = sorted(cand_scores, reverse=True)
@@ -885,20 +930,20 @@ velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
                      df_sorted_wo["合計_SBなし"].round(3).tolist()))
 
 # ===== 印集約（◎ライン優先：同ラインを上から順に採用） =====
-# 先にβを固定（来ない枠）—◎は候補から除外
+# 先にβを固定（来ない枠）—◎は候補から除外（現行踏襲）
 beta_id = select_beta([c for c in active_cars if c != anchor_no])
 
 rank_wo = {int(df_sorted_wo.loc[i, "車番"]): i+1 for i in range(len(df_sorted_wo))}
 result_marks, reasons = {}, {}
 result_marks["◎"] = anchor_no
-reasons[anchor_no] = "本命(C上位3→得点4位以内ゲート→ラインSB重視＋KO並び)"
+reasons[anchor_no] = "本命(C上位3→得点ゲート→ラインSB重視＋KO並び＋着順z＋位置加点)"
 
 # βはここで確定（以降の母集団からは除外）
 if beta_id is not None:
     result_marks["β"] = beta_id
     reasons[beta_id] = "β（来ない枠：低3着率×位置×得点×SB空回り）"
 
-# ◎とβが同ラインなら、別ライン最上位に◎をシフト（常時）
+# ◎とβが同ラインなら、別ライン最上位に◎をシフト（現行踏襲）
 beta_gid = car_to_group.get(beta_id, None) if beta_id is not None else None
 old_anchor = None
 if beta_gid is not None and car_to_group.get(anchor_no, None) == beta_gid:
@@ -928,7 +973,7 @@ if a_gid is not None and a_gid in line_def:
         key=lambda x: (-score_map.get(x, -1e9), x)
     )
 
-# 〇：全体トップ（◎・β除外）…旧◎を優先（シフトがあれば）
+# 〇：全体トップ（◎・β除外）…旧◎を優先（シフトがあれば）（現行踏襲）
 preferred_second = None
 if old_anchor is not None and old_anchor != beta_id:
     preferred_second = old_anchor
@@ -940,7 +985,7 @@ if overall_rest:
 
 used = set(result_marks.values())
 
-# ▲：◎ラインから最上位を“強制”採用（〇が同ラインなら次点）
+# ▲：◎ラインから最上位を“強制”採用（〇が同ラインなら次点）（現行踏襲）
 mate_candidates = [c for c in mates_sorted if c not in used]
 if mate_candidates:
     pick = mate_candidates[0]
@@ -955,21 +1000,23 @@ else:
 
 used = set(result_marks.values())
 
-# 残り印（△ → × → α）：◎ライン残→全体残（βは確定済み）
+# 残り印（△ → × → α）：◎ライン残→全体残（βは確定済み）（現行踏襲）
 tail_priority = [c for c in mates_sorted if c not in used]
 tail_priority += [c for c in overall_rest if c not in used and c not in tail_priority]
 
 for mk in ["△","×","α"]:
-    if mk in result_marks: continue
-    if not tail_priority: break
+    if mk in result_marks: 
+        continue
+    if not tail_priority: 
+        break
     no = tail_priority.pop(0)
     result_marks[mk] = no
     reasons[no] = f"{mk}（◎ライン優先→残りスコア順）"
 
-# αの“当たりすぎ”抑制：禁止条件を適用（必ず誰かに付与する版）
+# αの“当たりすぎ”抑制：禁止条件を適用（必ず誰かに付与する版）（現行踏襲）
 result_marks = enforce_alpha_eligibility(result_marks)
 
-# --- ハードフォールバック：それでもαが欠番なら、未使用の最弱を必ずαに割当 ---
+# --- ハードフォールバック：それでもαが欠番なら、未使用の最弱を必ずαに割当（現行踏襲） ---
 if "α" not in result_marks:
     used_now = set(result_marks.values())
     pool = [int(df_sorted_wo.loc[i, "車番"]) for i in range(len(df_sorted_wo))]
@@ -979,6 +1026,7 @@ if "α" not in result_marks:
         alpha_pick = pool[-1]  # 最弱
         result_marks["α"] = alpha_pick
         reasons[alpha_pick] = "α（フォールバック：禁止条件全滅→最弱を採用）"
+
 
 
 # ===== 表示：ランキング＆内訳 =====
