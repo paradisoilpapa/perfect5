@@ -1042,15 +1042,15 @@ else:
     for c in car_list:
         mk = _mark_of(c)
         # 事前に定義した FALLBACK_DIST を使う
-d = RANK_STATS.get(mk, FALLBACK_DIST)
+for c, mk in enumerate(marks):
+    d = RANK_STATS.get(mk, FALLBACK_DIST)
 
-        p1[c] = float(d["p1"])
-        p2[c] = float(d["pTop2"])
-        p3[c] = float(d["pTop3"])
+    p1[c] = float(d["p1"])
+    p2[c] = float(d["pTop2"])
+    p3[c] = float(d["pTop3"])
 
-    # ---- Pフロア（表示上の☆判定用）。“出力は全買い目”、☆=推奨（Pフロア以上） ----
-    P_FLOOR = {"sanpuku": 0.06, "nifuku": 0.12, "wide": 0.25, "nitan": 0.07, "santan": 0.03}
-    E_MIN, E_MAX = 0.10, 0.60  # バランス帯
+# ---- Pフロア（表示上の☆判定用）...
+P_FLOOR = {"sanpuku": 0.06, "nifuku": 0.12, "wide": 0.25, "nitan": 0.07, "sant_
 
     # 共通ヘルパー
     def _need_from_p(p: float) -> float:
