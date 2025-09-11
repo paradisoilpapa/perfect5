@@ -1017,12 +1017,27 @@ st.caption(
 # ==============================
 # 買い目（固定値：印→実測率 / 期待値レンジ表示）
 # ==============================
+st.markdown("### 🎯 買い目（固定値：印→実測率→必要オッズ=1/p）")
+
+one = result_marks.get("◎", None)
+two = result_marks.get("〇", None)
+three = result_marks.get("▲", None)
+
+trio_df = wide_df = qn_df = ex_df = santan_df = None
+
+if one is None:
+    st.warning("◎未決定のため買い目はスキップ")
+else:
+    # 対象車と相手集合
+    car_list = sorted(active_cars)
+    others = [c for c in car_list if c != one]
+
     # ---- 印→各車の(p1, pTop2, pTop3)を決定（未知はフォールバック）----
     def _mark_of(car: int) -> str:
         for mk, c in result_marks.items():
             if c == car:
                 return mk
-        return RANK_FALLBACK_MARK  # 例: "△" に統一推奨
+        return RANK_FALLBACK_MARK  # 例: "△"
 
     p1, p2, p3 = {}, {}, {}
     for c in car_list:
@@ -1032,35 +1047,9 @@ st.caption(
         p2[c] = float(d["pTop2"])
         p3[c] = float(d["pTop3"])
 
-
-# ---- Pフロア（表示上の☆判定用）----
-P_FLOOR = {
-    "sanpuku": 0.06,
-    "nifuku":  0.12,
-    "wide":    0.25,
-    "nitan":   0.07,
-    "santan":  0.03,
-}
-
-# EVのバランス帯（表示用の幅）
-E_MIN, E_MAX = 0.10, 0.60  # 例：必要オッズ×(1+E_MIN 〜 1+E_MAX)
-
-# 共通ヘルパー
-def _need_from_p(p: float) -> float:
-    p = max(min(float(p), 0.999), 1e-6)  # 安全域
-    return 1.0 / p
-
-def _fmt_band(need: float, bet_type: str, star: bool) -> str:
-    if bet_type == "wide":
-        s = f"{need:.1f}倍以上"
-    else:
-        low, high = need * (1.0 + E_MIN), need * (1.0 + E_MAX)
-        s = f"{low:.1f}〜{high:.1f}倍"
-    return s + (" ☆" if star else "")
-
-# 数字抽出で車番順ソート
-def _numkey(s):
-    return list(map(int, re.findall(r"\d+", str(s))))
+    # 数字抽出で車番順ソート
+    def _numkey(s):
+        return list(map(int, re.findall(r"\d+", str(s))))
 
     # ---------- 三連複（◎-全） ----------
     rows = []
@@ -1069,9 +1058,9 @@ def _numkey(s):
             a, b = others[i], others[j]
             name = f"{one}-{a}-{b}"
             # 独立近似：3者がTop3に入る
-            p = p3[one]*p3[a]*p3[b]
-            need = _need_from_p(p)
-            star = (p >= P_FLOOR["sanpuku"])
+            prob = p3[one] * p3[a] * p3[b]
+            need = _need_from_p(prob)
+            star = (prob >= P_FLOOR["sanpuku"])
             rows.append({"買い目": name, "帯": _fmt_band(need, "sanpuku", star)})
     trio_df = pd.DataFrame(rows).sort_values("買い目", key=lambda s: s.map(_numkey)).reset_index(drop=True)
     st.markdown("#### 三連複（◎-全）")
@@ -1084,10 +1073,10 @@ def _numkey(s):
         for sec in mates:
             for thr in [c for c in car_list if c not in (one, sec)]:
                 name = f"{one}->{sec}->{thr}"
-                # 独立近似：1着=◎、2着=sec(連対) 、3着=thr(Top3)
-                p = p1[one]*p2[sec]*p3[thr]
-                need = _need_from_p(p)
-                star = (p >= P_FLOOR["santan"])
+                # 近似：1着=◎、2着=sec(連対) 、3着=thr(Top3)
+                prob = p1[one] * p2[sec] * p3[thr]
+                need = _need_from_p(prob)
+                star = (prob >= P_FLOOR["santan"])
                 rows.append({"買い目": name, "帯": _fmt_band(need, "santan", star)})
     santan_df = pd.DataFrame(rows).sort_values("買い目", key=lambda s: s.map(_numkey)).reset_index(drop=True)
     st.markdown("#### 三連単（◎→[〇/▲]→全）")
@@ -1098,9 +1087,9 @@ def _numkey(s):
     for b in others:
         name = f"{one}-{b}"
         # 独立近似：両者がTop2
-        p = p2[one]*p2[b]
-        need = _need_from_p(p)
-        star = (p >= P_FLOOR["nifuku"])
+        prob = p2[one] * p2[b]
+        need = _need_from_p(prob)
+        star = (prob >= P_FLOOR["nifuku"])
         rows.append({"買い目": name, "帯": _fmt_band(need, "nifuku", star)})
     qn_df = pd.DataFrame(rows).sort_values("買い目", key=lambda s: s.map(_numkey)).reset_index(drop=True)
     st.markdown("#### 二車複（◎-全）")
@@ -1111,9 +1100,9 @@ def _numkey(s):
     for b in others:
         name = f"{one}->{b}"
         # 近似：1着=◎、相手が連対圏
-        p = p1[one]*p2[b]
-        need = _need_from_p(p)
-        star = (p >= P_FLOOR["nitan"])
+        prob = p1[one] * p2[b]
+        need = _need_from_p(prob)
+        star = (prob >= P_FLOOR["nitan"])
         rows.append({"買い目": name, "帯": _fmt_band(need, "nitan", star)})
     ex_df = pd.DataFrame(rows).sort_values("買い目", key=lambda s: s.map(_numkey)).reset_index(drop=True)
     st.markdown("#### 二車単（◎→全）")
@@ -1124,13 +1113,14 @@ def _numkey(s):
     for b in others:
         name = f"{one}-{b}"
         # 近似：両者がTop3
-        p = p3[one]*p3[b]
-        need = _need_from_p(p)
-        star = (p >= P_FLOOR["wide"])
+        prob = p3[one] * p3[b]
+        need = _need_from_p(prob)
+        star = (prob >= P_FLOOR["wide"])
         rows.append({"買い目": name, "帯": _fmt_band(need, "wide", star)})
     wide_df = pd.DataFrame(rows).sort_values("買い目", key=lambda s: s.map(_numkey)).reset_index(drop=True)
     st.markdown("#### ワイド（◎-全）")
     st.dataframe(wide_df, use_container_width=True)
+
 
 st.caption("（※“対象外”＝Pフロア未満でも全買い目を表示。☆はPフロア以上＝推奨）")
 st.caption("※このオッズ以下は期待値以下を想定しています。また、このオッズから高オッズに離れるほどに的中率バランスが崩れハイリスクになります。")
