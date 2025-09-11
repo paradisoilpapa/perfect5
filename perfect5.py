@@ -1017,37 +1017,21 @@ st.caption(
 # ==============================
 # 買い目（固定値：印→実測率 / 期待値レンジ表示）
 # ==============================
-st.markdown("### 🎯 買い目（固定値：印→実測率→必要オッズ=1/p）")
-
-one = result_marks.get("◎", None)
-two = result_marks.get("〇", None)
-three = result_marks.get("▲", None)
-
-trio_df = wide_df = qn_df = ex_df = santan_df = None
-
-if one is None:
-    st.warning("◎未決定のため買い目はスキップ")
-else:
-    car_list = sorted(active_cars)
-    # ---- 印→各車の(p1, pTop2, pTop3)を決定（未知はαフォールバック）----
+    # ---- 印→各車の(p1, pTop2, pTop3)を決定（未知はフォールバック）----
     def _mark_of(car: int) -> str:
         for mk, c in result_marks.items():
             if c == car:
                 return mk
-        return RANK_FALLBACK_MARK  # 例: "α"
+        return RANK_FALLBACK_MARK  # 例: "△" に統一推奨
 
-    p1 = {}
-    p2 = {}
-    p3 = {}
+    p1, p2, p3 = {}, {}, {}
     for c in car_list:
         mk = _mark_of(c)
-        # 事前に定義した FALLBACK_DIST を使う
-for c, mk in enumerate(marks):
-    d = RANK_STATS.get(mk, FALLBACK_DIST)
+        d = RANK_STATS.get(mk, FALLBACK_DIST)
+        p1[c] = float(d["p1"])
+        p2[c] = float(d["pTop2"])
+        p3[c] = float(d["pTop3"])
 
-    p1[c] = float(d["p1"])
-    p2[c] = float(d["pTop2"])
-    p3[c] = float(d["pTop3"])
 
 # ---- Pフロア（表示上の☆判定用）----
 P_FLOOR = {
