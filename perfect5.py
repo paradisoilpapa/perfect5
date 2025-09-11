@@ -808,23 +808,21 @@ df = pd.DataFrame(rows, columns=["車番","役割","脚質基準(会場)","風�
 mu = float(df["合計_SBなし_raw"].mean()) if not df.empty else 0.0
 df["合計_SBなし"] = mu + 1.0*(df["合計_SBなし_raw"] - mu)
 
-# ===== KO方式：最終並びの反映（男子のみ／ガールズは無効） =====
+# ===== KO方式：最終並びの反映（男子／ガールズとも処理。ただしスケールは控えめ） =====
 v_wo = {int(k): float(v) for k, v in zip(df["車番"].astype(int), df["合計_SBなし"].astype(float))}
 _is_girls = (race_class == "ガールズ")
 head_scale = KO_HEADCOUNT_SCALE.get(int(n_cars), 1.0)
 
-# --- KOの“効かせ過ぎ”抑制（並びの価値を戻す） ---
-# 既存のKO_GIRLS_SCALEは尊重。全体のko_scaleを控えめにクランプ。
+# KOの効かせ過ぎを抑制（整列はするが過度にスコアを均すのを阻止）
 ko_scale_raw = (KO_GIRLS_SCALE if _is_girls else 1.0) * head_scale
-KO_SCALE_MAX = 0.45   # ← ここで上限。強すぎる整列を防ぐ
+KO_SCALE_MAX = 0.45
 ko_scale = min(ko_scale_raw, KO_SCALE_MAX)
 
 if ko_scale > 0.0 and line_def and len(line_def) >= 1:
     ko_order = _ko_order(v_wo, line_def, S, B, line_factor=line_factor_eff, gap_delta=KO_GAP_DELTA)
     vals = [v_wo[c] for c in v_wo.keys()]
     mu0  = float(np.mean(vals)); sd0 = float(np.std(vals) + 1e-12)
-    # KOの段差（等間隔化）も弱める
-    KO_STEP_SIGMA_LOCAL = max(0.25, KO_STEP_SIGMA * 0.7)  # 既定より控えめ
+    KO_STEP_SIGMA_LOCAL = max(0.25, KO_STEP_SIGMA * 0.7)
     step = KO_STEP_SIGMA_LOCAL * sd0
     new_scores = {}
     for rank, car in enumerate(ko_order, start=1):
@@ -841,27 +839,45 @@ df_sorted_pure = pd.DataFrame({
     "合計_SBなし": [round(float(v_final[c]), 6) for c in v_final.keys()]
 }).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
 
-# ===== ここから：印用スコアの“中身”のみ調整（手順は不変） =====
+# ===== 印用スコア調整：共通定数・安全弁の定義 =====
+# 着順ウェイト（男子／女子別）
+FINISH_WEIGHT   = globals().get("FINISH_WEIGHT", 6.0)    # 男子用既定
+FINISH_WEIGHT_G = globals().get("FINISH_WEIGHT_G", 3.0)  # ガールズ用（半分目安）
 
-# --- 連対率 p2_eff を素直に効かせる（上限カット廃止、場内z化） ---
-p2_list = [float(p2_eff[n]) for n in active_cars]
+# 位置ボーナス（先頭優位は原則。加点方式）
+POS_BONUS  = globals().get("POS_BONUS", {0: 0.0, 1: -0.6, 2: -0.9, 3: -1.2, 4: -1.4})
+POS_WEIGHT = globals().get("POS_WEIGHT", 1.0)
+
+# 得点微加点
+SMALL_Z_RATING = globals().get("SMALL_Z_RATING", 0.01)
+
+# 実績の暴れ防止（finish_term クリップ）と僅差タイブレーク
+FINISH_CLIP = globals().get("FINISH_CLIP", 4.0)   # ±値で頭打ち
+TIE_EPSILON  = globals().get("TIE_EPSILON", 0.8)  # 1位/2位差がこの未満なら得点順位優先
+
+# p2 (連対率) の場内 z 化（存在チェック）
+p2_list = [float(p2_eff.get(n, 0.0)) for n in active_cars]
 if len(p2_list) >= 1:
     mu_p2  = float(np.mean(p2_list))
     sd_p2  = float(np.std(p2_list) + 1e-12)
 else:
     mu_p2, sd_p2 = 0.0, 1.0
-p2z_map = {n: (float(p2_eff[n]) - mu_p2) / sd_p2 for n in active_cars}
+p2z_map = {n: (float(p2_eff.get(n, 0.0)) - mu_p2) / sd_p2 for n in active_cars}
 
-# --- 位置（並び）ボーナス：固定ではなく“加点”として明示 ---
-# 番手0=先頭。値は控えめ。必要に応じてチューニング可。
-POS_BONUS = {0: 0.0, 1: -0.6, 2: -0.9, 3: -1.2, 4: -1.4}
-POS_WEIGHT = 1.0     # 位置ボーナス全体の効き
-FINISH_WEIGHT = 6.0  # 着順（連対率z）の効き
-SMALL_Z_RATING = 0.01  # 得点zの微加点（現行踏襲）
+# p1 (勝率) safe map（なければ0）
+p1_eff_safe = {n: float(p1_eff.get(n, 0.0)) if 'p1_eff' in globals() and p1_eff is not None else 0.0 for n in active_cars}
 
+# p2_only (2着寄与) map - will be used in girls logic if needed
+p2only_map = {n: max(0.0, float(p2_eff.get(n, 0.0)) - float(p1_eff_safe.get(n, 0.0))) for n in active_cars}
+
+# small z of ratings (微加点) precompute
+zt = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
+zt_map = {n: float(zt[i]) for i, n in enumerate(active_cars)} if active_cars else {}
+
+# --- helper: pos index in line ---
 def _pos_idx(no:int) -> int:
     g = car_to_group.get(no, None)
-    if g is None or g not in line_def: 
+    if g is None or g not in line_def:
         return 0
     grp = line_def[g]
     try:
@@ -869,54 +885,79 @@ def _pos_idx(no:int) -> int:
     except Exception:
         return 0
 
-# --- ◎選出で使う評価スコア（一本化） ---
-# v_final（KO後SBなし）＋ ラインSB ＋ FINISH_WEIGHT*z(p2) ＋ POS_WEIGHT*POS_BONUS ＋ small*Z得点
+# ラインSB（既存ロジック）：必ずこの位置より上で compute_lineSB_bonus が定義されていること前提
 bonus_init,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff, exclude=None, cap=cap_SB_eff, enable=line_sb_enable)
 
+# ===== anchor_score（男女対応／ガールズは位置＋SB有効・着順半分） =====
 def anchor_score(no:int) -> float:
     base = float(v_final.get(no, -1e9))
     role = role_in_line(no, line_def)
-    sb = float(bonus_init.get(car_to_group.get(no, None), 0.0) *
-               (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
+    # ラインSBは男女共通で計算しているのでここで乗せる（ガールズでも有効）
+    sb = float(bonus_init.get(car_to_group.get(no, None), 0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
     pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
-    zt = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
-    zt_map = {n:float(zt[i]) for i,n in enumerate(active_cars)} if active_cars else {}
-
+    # finish term（クリップ適用して暴れを抑制）
     if _is_girls:
-        # ガールズ：位置＋SBを有効化、着順補正は半分に
-        finish_term = FINISH_WEIGHT_G * float(p2z_map.get(no, 0.0))
-        return base + sb + pos_term + finish_term + SMALL_Z_RATING*zt_map.get(no, 0.0)
+        raw_finish = FINISH_WEIGHT_G * float(p2z_map.get(no, 0.0))
     else:
-        # 男子：従来どおり（位置＋SB＋着順フルウェイト）
-        finish_term = FINISH_WEIGHT * float(p2z_map.get(no, 0.0))
-        return base + sb + pos_term + finish_term + SMALL_Z_RATING*zt_map.get(no, 0.0)
+        raw_finish = FINISH_WEIGHT * float(p2z_map.get(no, 0.0))
+    # クリップ
+    finish_term = max(-FINISH_CLIP, min(FINISH_CLIP, raw_finish))
+    # 統合スコア
+    return base + sb + pos_term + finish_term + SMALL_Z_RATING * zt_map.get(no, 0.0)
 
-
-# --- ◎選出候補C：得点平均方式を廃止し、統合スコア上位3に一本化 ---
+# ===== ◎選出候補C（統合スコア上位3） =====
 cand_sorted = sorted(active_cars, key=lambda n: anchor_score(n), reverse=True)
 C = cand_sorted[:min(3, len(cand_sorted))]
 
-# --- 得点ゲートは残す（縛りを一段だけ緩める） ---
+# ===== 得点ゲート（例：上位5位）と緩和ロジック =====
 ratings_sorted2 = sorted(active_cars, key=lambda n: ratings_val[n], reverse=True)
 ratings_rank2 = {no: i+1 for i, no in enumerate(ratings_sorted2)}
-ALLOWED_MAX_RANK = 5  # ← 4だと着順優位が潰れやすい。まずは5で運用。
+ALLOWED_MAX_RANK = globals().get("ALLOWED_MAX_RANK", 5)
+
+# ガールズ特例：得点1位は必ず候補に入れたい場合の保証（安全弁）
+guarantee_top_rating = True
+if guarantee_top_rating and _is_girls and len(ratings_sorted2) >= 1:
+    top_rating_car = ratings_sorted2[0]
+    if top_rating_car not in C:
+        # 強制的にCに含める（入れ替えで1枠目に）
+        C = [top_rating_car] + [c for c in C if c != top_rating_car]
+        C = C[:min(3, len(cand_sorted))]
+
 C_hard = [no for no in C if ratings_rank2.get(no, 999) <= ALLOWED_MAX_RANK]
 C_use = C_hard if C_hard else ratings_sorted2[:ALLOWED_MAX_RANK]
 
-# --- ◎決定（ロジック踏襲） ---
-anchor_no_pre = max(C, key=lambda x: anchor_score(x)) if C else int(df_sorted_pure.loc[0,"車番"])
+# ===== ◎決定（統合スコア＋得点ゲート） =====
+# まず仮の最上位 (anchor_no_pre)
+anchor_no_pre = max(C, key=lambda x: anchor_score(x)) if C else int(df_sorted_pure.loc[0, "車番"])
 anchor_no = max(C_use, key=lambda x: anchor_score(x)) if C_use else anchor_no_pre
+
+# 僅差タイブレーク：1位と2位が非常に近い場合は得点順位1位を優先して説明性を保つ
+# （ただし大差でscoreが上ならそのまま採用）
+try:
+    # 上位2のスコアを取り、差分を確認
+    top_candidates = sorted(C_use, key=lambda x: anchor_score(x), reverse=True)[:2]
+    if len(top_candidates) >= 2:
+        s1 = anchor_score(top_candidates[0])
+        s2 = anchor_score(top_candidates[1])
+        if (s1 - s2) < TIE_EPSILON:
+            # s1が得点順位で2番手より下なら、得点上位を優先する
+            better_by_rating = min(top_candidates, key=lambda x: ratings_rank2.get(x, 999))
+            anchor_no = better_by_rating
+except Exception:
+    # ここで落ちても anchor_no は既に決まっているので続行
+    pass
+
 if anchor_no != anchor_no_pre:
     st.caption(f"※ ◎は『競走得点 上位{ALLOWED_MAX_RANK}位以内』縛りにより {anchor_no_pre}→{anchor_no} に調整。")
 
-# --- ◎ライン格上げ（A方式）適用：表示用スコアを上書き（現行踏襲） ---
+# ===== ◎ライン格上げ（A方式）適用：表示用スコアを上書き（現行踏襲） =====
 role_map = {no: role_in_line(no, line_def) for no in active_cars}
-cand_scores = [anchor_score(no) for no in C] if len(C)>=2 else [0,0]
+cand_scores = [anchor_score(no) for no in C] if len(C) >= 2 else [0, 0]
 cand_scores_sorted = sorted(cand_scores, reverse=True)
-conf_gap = cand_scores_sorted[0]-cand_scores_sorted[1] if len(cand_scores_sorted)>=2 else 0.0
-spread = float(np.std(list(v_final.values()))) if len(v_final)>=2 else 0.0
-norm = conf_gap / (spread if spread>1e-6 else 1.0)
-confidence = "優位" if norm>=1.0 else ("互角" if norm>=0.5 else "混戦")
+conf_gap = cand_scores_sorted[0] - cand_scores_sorted[1] if len(cand_scores_sorted) >= 2 else 0.0
+spread = float(np.std(list(v_final.values()))) if len(v_final) >= 2 else 0.0
+norm = conf_gap / (spread if spread > 1e-6 else 1.0)
+confidence = "優位" if norm >= 1.0 else ("互角" if norm >= 0.5 else "混戦")
 
 score_adj_map = apply_anchor_line_bonus(
     score_raw=v_final,
@@ -933,6 +974,11 @@ df_sorted_wo = pd.DataFrame({
 
 velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
                      df_sorted_wo["合計_SBなし"].round(3).tolist()))
+
+# ===== 印集約（◎ライン優先：同ラインを上から順に採用） =====
+# ここから下はあなたの既存ロジック（◎→β→○→▲→△→×→α）をそのまま呼び出す想定です。
+# 以降のコードは差し替え不要です（そのまま動きます）。
+
 
 # ===== 印集約（◎ライン優先：同ラインを上から順に採用） =====
 # 先にβを固定（来ない枠）—◎は候補から除外（現行踏襲）
