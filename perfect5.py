@@ -1258,6 +1258,60 @@ else:
 st.caption("（※“対象外”＝Pフロア未満でも全買い目を表示。☆はPフロア以上＝推奨）")
 st.caption("※このオッズ以下は期待値以下を想定しています。また、このオッズから高オッズに離れるほどに的中率バランスが崩れハイリスクになります。")
 
+# --- 推奨買い目（全買い目の前に差し込む） ---
+reco_lines = []
+
+# 本線：◎-▲-全（β除外） → 4点
+if one is not None and three is not None:
+    beta_id = result_marks.get("β", None)
+    # “全”＝◎・▲以外。βは除外。
+    others_for_main = [c for c in car_list if c not in (one, three)]
+    if beta_id in others_for_main:
+        others_for_main.remove(beta_id)
+
+    main_rows = []
+    for k in others_for_main:
+        name = f"{one}-{three}-{k}"
+        prob = p3[one] * p3[three] * p3[k]           # 独立近似
+        need = _need_from_p(prob)
+        star = (prob >= P_FLOOR["sanpuku"])
+        main_rows.append(f"{name}：{_fmt_band(need, 'sanpuku', star)}")
+    if main_rows:
+        reco_lines += ["三連複（◎-▲-全・β除外）"] + main_rows
+
+# 妙味：◯-X-◎▲ → 2点（X＝“×”記号ではなく、他ラインの評価トップ）
+x_pick = None
+if two is not None:
+    g_anchor = car_to_group.get(one, None)
+    g_two    = car_to_group.get(two, None)
+    # ◎ライン・◯ライン以外の“各ラインのトップ”候補を抽出
+    cand = []
+    for g, mem in line_def.items():
+        if g in {g_anchor, g_two} or not mem:
+            continue
+        # そのライン内で SBなしスコアが最も高い者をそのラインの“頭”とみなす
+        c_best = max(mem, key=lambda c: score_map.get(int(c), float('-inf')))
+        cand.append(c_best)
+    # 複数ラインある場合は“全体で最も評価が高い頭”をXに採用
+    if cand:
+        x_pick = max(cand, key=lambda c: score_map.get(int(c), float('-inf')))
+
+if two is not None and x_pick is not None:
+    sub_rows = []
+    for sec in [one, three]:
+        if sec is None:
+            continue
+        name = f"{two}-{x_pick}-{sec}"
+        prob = p3[two] * p3[x_pick] * p3[sec]
+        need = _need_from_p(prob)
+        star = (prob >= P_FLOOR["sanpuku"])
+        sub_rows.append(f"{name}：{_fmt_band(need, 'sanpuku', star)}")
+    if sub_rows:
+        reco_lines += ["", "三連複（◯-X-◎▲）"] + sub_rows
+
+reco_text = "🎯 推奨買い目\n" + "\n".join([ln for ln in reco_lines if ln.strip()]) if reco_lines else "🎯 推奨買い目\n（該当なし）"
+
+
 # ==============================
 # note用（ヘッダー〜“買えるオッズ帯”）
 # ==============================
@@ -1277,11 +1331,12 @@ score_order_text = format_rank_all(score_map_for_note, P_floor_val=None)
 
 note_text = (
     f"競輪場　{track}{race_no}R\n"
-    f"展開評価：{confidence}\n"
+    f"展開評価：{confidence}\n\n"
     f"{race_time}　{race_class}\n"
     f"ライン　{line_text}\n"
     f"スコア順（SBなし）　{score_order_text}\n"
     f"{marks_line}\n\n"
+    + reco_text + "\n\n"   # ←← ここで“推奨”を先頭に差し込み
     + _lines_from_df(trio_df,  "三連複（◎-全）") + "\n\n"
     + _lines_from_df(santan_df,"三連単（◎→[〇/▲]→全）") + "\n\n"
     + _lines_from_df(qn_df,    "二車複（◎-全）") + "\n\n"
@@ -1290,4 +1345,5 @@ note_text = (
     + "（※“対象外”＝Pフロア未満でも全買い目を表示。☆はPフロア以上＝推奨）\n"
     + "※このオッズ以下は期待値以下を想定しています。また、このオッズから高オッズに離れるほどに的中率バランスが崩れハイリスクになります。"
 )
+
 st.text_area("ここを選択してコピー", note_text, height=420)
