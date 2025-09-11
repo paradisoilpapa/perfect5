@@ -67,10 +67,10 @@ KEIRIN_DATA = {
     "手入力":{"bank_angle":30.0,"straight_length":52.0,"bank_length":400},
 }
 
-# 直近集計：印別の実測率（%→小数）
+# --- 最新の印別実測率（これを更新したいだけ、ここだけ差し替え） ---
 RANK_STATS = {
     "◎": {"p1": 0.216, "pTop2": 0.456, "pTop3": 0.624},
-    "〇": {"p1": 0.193, "pTop2": 0.360, "pTop3": 0.512},  # ← 全コードで "〇" に統一（"○"と混在させない）
+    "〇": {"p1": 0.193, "pTop2": 0.360, "pTop3": 0.512},
     "▲": {"p1": 0.208, "pTop2": 0.384, "pTop3": 0.552},
     "△": {"p1": 0.152, "pTop2": 0.248, "pTop3": 0.384},
     "×": {"p1": 0.128, "pTop2": 0.256, "pTop3": 0.384},
@@ -78,19 +78,29 @@ RANK_STATS = {
     "β": {"p1": 0.076, "pTop2": 0.151, "pTop3": 0.244},
 }
 
-# フォールバック用の印：RANK_STATSに必ず存在するキーにする
+# フォールバック用の印（必ず RANK_STATS のキーに合わせる）
 RANK_FALLBACK_MARK = "△"
 
-# 防御的チェック（任意）
+# 防御的チェック（念のため）
 if RANK_FALLBACK_MARK not in RANK_STATS:
-    # もし誤って消えていたら、RANK_STATSの先頭を暫定フォールバックに
     RANK_FALLBACK_MARK = next(iter(RANK_STATS.keys()))
 
-# 未知mkでも落ちないための二段get（既定値も用意）
+# FALLBACK_DIST：mkが見つからない場合に使う既定値（絶対落ちないように）
 FALLBACK_DIST = RANK_STATS.get(
     RANK_FALLBACK_MARK,
     {"p1": 0.15, "pTop2": 0.30, "pTop3": 0.45}
 )
+
+# Pフロア / 表示レンジ（既に別箇所で定義しているなら二重定義は削除してください）
+P_FLOOR = {
+    "sanpuku": 0.06,
+    "nifuku":  0.12,
+    "wide":    0.25,
+    "nitan":   0.07,
+    "santan":  0.03,
+}
+E_MIN, E_MAX = 0.10, 0.60
+
 
 
 
