@@ -713,6 +713,43 @@ tens_list = [ratings_val[no] for no in active_cars]
 t_corr = tenscore_correction(tens_list) if active_cars else []
 tens_corr = {no:t_corr[i] for i,no in enumerate(active_cars)} if active_cars else {}
 
+# === 安定度（着順分布）スコア：偏差値Tの“本体”に入れるための指標（自立版） ===
+def stability_score(no: int) -> float:
+    """
+    着順分布から安定度を算出して返す（+は評価↑、-は評価↓）。
+    ・3着内率が高いほど加点
+    ・着外率が高いほど減点
+    ・サンプルが少ないほど控えめ
+    ※ total_raw に直接加算して、レース内T（標準化）の母集団に含める。
+    """
+    # 依存：clamp, STAB_W_IN3, STAB_W_OUT, STAB_W_LOWN, STAB_PRIOR_IN3, STAB_PRIOR_OUT
+    n1 = x1.get(no, 0); n2 = x2.get(no, 0); n3 = x3.get(no, 0); nOut = x_out.get(no, 0)
+    n  = n1 + n2 + n3 + nOut
+    if n <= 0:
+        return 0.0
+
+    # 少サンプル縮約（この関数内で n0 を完結させる）
+    if n <= 6:   n0 = 12
+    elif n <= 14: n0 = 8
+    elif n <= 29: n0 = 5
+    else:         n0 = 3
+
+    in3  = (n1 + n2 + n3 + n0 * STAB_PRIOR_IN3) / (n + n0)
+    out_ = (nOut          + n0 * STAB_PRIOR_OUT) / (n + n0)
+
+    bonus = 0.0
+    bonus += STAB_W_IN3 * (in3 - STAB_PRIOR_IN3) * 2.0
+    bonus -= STAB_W_OUT * (out_ - STAB_PRIOR_OUT) * 2.0
+
+    if n < 10:
+        bonus -= STAB_W_LOWN * (10 - n) / 10.0
+
+    return clamp(bonus, -0.12, +0.12)
+
+# サニティチェック（デバッグ用。動作確認後は消してOK）
+assert callable(stability_score), "stability_score is not defined"
+
+
 rows = []
 _wind_func = wind_adjust
 eff_wind_dir   = globals().get("eff_wind_dir",   wind_dir)
