@@ -765,30 +765,32 @@ eff_wind_speed = globals().get("eff_wind_speed", wind_speed)
 
 for no in active_cars:
     role = role_in_line(no, line_def)
-    wind = _wind_func(eff_wind_dir, float(eff_wind_speed or 0.0), role, float(prof_escape[no]))
-    extra = max(eff# 置換前:
-# extra = max(eff_laps - 2, 0)
 
-# 置換後:
-extra = fatigue_extra(eff_laps, day_label, n_cars, race_class)
-_laps - 2, 0)
-    fatigue_scale = (1.0 if race_class == "Ｓ級" else 1.1 if race_class == "Ａ級" else 1.2 if race_class == "Ａ級チャレンジ" else 1.05)
-    laps_adj = (-0.10 * extra * (1.0 if prof_escape[no] > 0.5 else 0.0)
-                + 0.05 * extra * (1.0 if prof_oikomi[no] > 0.4 else 0.0)) * fatigue_scale
-    bank_b = bank_character_bonus(bank_angle, straight_length, prof_escape[no], prof_sashi[no])
+    # 周回疲労（DAY×頭数×級別を反映）
+    extra = fatigue_extra(eff_laps, day_label, n_cars, race_class)
+    fatigue_scale = (1.0 if race_class == "Ｓ級" else
+                     1.1 if race_class == "Ａ級" else
+                     1.2 if race_class == "Ａ級チャレンジ" else
+                     1.05)
+    laps_adj = (
+        -0.10 * extra * (1.0 if prof_escape[no] > 0.5 else 0.0)
+        + 0.05 * extra * (1.0 if prof_oikomi[no] > 0.4 else 0.0)
+    ) * fatigue_scale
+
+    wind = _wind_func(eff_wind_dir, float(eff_wind_speed or 0.0), role, float(prof_escape[no]))
+    bank_b   = bank_character_bonus(bank_angle, straight_length, prof_escape[no], prof_sashi[no])
     length_b = bank_length_adjust(bank_length, prof_oikomi[no])
     indiv = extra_bonus.get(no, 0.0)
-    stab  = stability_score(no)   # ★ 追加：安定度
+    stab  = stability_score(no)  # 安定度
 
     total_raw = (prof_base[no] + wind + cf["spread"] * tens_corr.get(no, 0.0)
-                 + bank_b + length_b + laps_adj + indiv
-                 + stab)  # ★ ここで合流
+                 + bank_b + length_b + laps_adj + indiv + stab)
 
     rows.append([int(no), role, round(prof_base[no],3), round(wind,3),
                  round(cf["spread"] * tens_corr.get(no, 0.0),3),
                  round(bank_b,3), round(length_b,3), round(laps_adj,3),
-                 round(indiv,3), round(stab,3),   # 表示列
-                 total_raw])
+                 round(indiv,3), round(stab,3), total_raw])
+
 
 df = pd.DataFrame(rows, columns=[
     "車番","役割","脚質基準(会場)","風補正","得点補正","バンク補正",
