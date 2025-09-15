@@ -176,6 +176,18 @@ LINE_BONUS = {"second": 0.08, "thirdplus": 0.04}
 LINE_BONUS_CAP = 0.10
 PROB_U = {"second": 0.00, "thirdplus": 0.00}
 
+# --- 安定度（着順分布）をT本体に入れるための重み ---
+STAB_W_IN3  = 0.10   # 3着内率の重み
+STAB_W_OUT  = 0.12   # 着外率の重み（マイナス補正）
+STAB_W_LOWN = 0.05   # サンプル不足補正
+STAB_PRIOR_IN3 = 0.33
+STAB_PRIOR_OUT = 0.45
+def _stab_n0(n: int) -> int:
+    """サンプル不足時の事前分布の強さ（nが小さいほど強く効かせる）"""
+    if n <= 6: return 12
+    if n <= 14: return 8
+    if n <= 29: return 5
+    return 3
 # ==============================
 # ユーティリティ
 # ==============================
@@ -704,17 +716,24 @@ for no in active_cars:
     bank_b = bank_character_bonus(bank_angle, straight_length, prof_escape[no], prof_sashi[no])
     length_b = bank_length_adjust(bank_length, prof_oikomi[no])
     indiv = extra_bonus.get(no, 0.0)
+    stab  = stability_score(no)   # ★ 追加：安定度
+
     total_raw = (prof_base[no] + wind + cf["spread"] * tens_corr.get(no, 0.0)
-                 + bank_b + length_b + laps_adj + indiv)
+                 + bank_b + length_b + laps_adj + indiv
+                 + stab)  # ★ ここで合流
+
     rows.append([int(no), role, round(prof_base[no],3), round(wind,3),
                  round(cf["spread"] * tens_corr.get(no, 0.0),3),
                  round(bank_b,3), round(length_b,3), round(laps_adj,3),
-                 round(indiv,3), total_raw])
+                 round(indiv,3), round(stab,3),   # ★ 表示列
+                 total_raw])
+
 
 df = pd.DataFrame(rows, columns=[
     "車番","役割","脚質基準(会場)","風補正","得点補正","バンク補正",
-    "周長補正","周回補正","個人補正","合計_SBなし_raw",
+    "周長補正","周回補正","個人補正","安定度","合計_SBなし_raw",  # ★ 追加
 ])
+
 mu = float(df["合計_SBなし_raw"].mean()) if not df.empty else 0.0
 df["合計_SBなし"] = mu + 1.0 * (df["合計_SBなし_raw"] - mu)
 
@@ -855,6 +874,38 @@ df_sorted_wo = pd.DataFrame({
 
 velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
                      df_sorted_wo["合計_SBなし"].round(3).tolist()))
+
+# === 安定度（着順分布）スコア：偏差値Tの“本体”に入れるための指標 ===
+def stability_score(no: int) -> float:
+    """
+    着順分布から安定度を算出して返す（+は評価↑、-は評価↓）。
+    ・3着内率が高いほど加点
+    ・着外率が高いほど減点
+    ・サンプルが少ないほど控えめ（追加ペナルティ）
+    ※ この戻り値は total_raw に直接加算して、レース内T（標準化）の母集団に含める。
+    """
+    n1 = x1.get(no, 0); n2 = x2.get(no, 0); n3 = x3.get(no, 0); nOut = x_out.get(no, 0)
+    n  = n1 + n2 + n3 + nOut
+    if n <= 0:
+        return 0.0
+
+    # 少サンプル縮約（事前分布に寄せる）
+    n0 = _stab_n0(n)
+    in3  = (n1 + n2 + n3 + n0*STAB_PRIOR_IN3) / (n + n0)
+    out_ = (nOut          + n0*STAB_PRIOR_OUT) / (n + n0)
+
+    # 事前より良ければ強めに加点／悪ければ強めに減点
+    bonus = 0.0
+    bonus += STAB_W_IN3 * (in3 - STAB_PRIOR_IN3) * 2.0
+    bonus -= STAB_W_OUT * (out_ - STAB_PRIOR_OUT) * 2.0
+
+    # サンプル不足ペナルティ（n<10 で最大 STAB_W_LOWN）
+    if n < 10:
+        bonus -= STAB_W_LOWN * (10 - n) / 10.0
+
+    # クリップ（暴走防止）
+    return clamp(bonus, -0.12, +0.12)
+
 
 # ===== 既存の印集約（維持）
 def _shrink_p3in(no: int, k: int = 12) -> float:
