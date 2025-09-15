@@ -526,7 +526,11 @@ CLASS_FACTORS = {
 }
 cf = CLASS_FACTORS[race_class]
 
-DAY_FACTOR = {"初日":1.00, "2日目":0.60, "最終日":0.85}
+# 旧：
+# DAY_FACTOR = {"初日":1.00, "2日目":0.60, "最終日":0.85}
+
+# 新（まずは完全フラット）：
+DAY_FACTOR = {"初日":1.00, "2日目":1.00, "最終日":1.00}
 day_factor = DAY_FACTOR[day_label]
 
 cap_base = clamp(0.06 + 0.02*style, 0.04, 0.08)
@@ -535,6 +539,25 @@ cap_SB_eff = cap_base * day_factor
 if race_time == "ミッドナイト":
     line_factor_eff *= 0.95
     cap_SB_eff *= 0.95
+
+# ===== 日程・級別・頭数で“周回疲労の効き”を薄くシフト（出力には出さない） =====
+DAY_SHIFT = {"初日": -0.5, "2日目": 0.0, "最終日": +0.5}
+CLASS_SHIFT = {"Ｓ級": 0.0, "Ａ級": +0.10, "Ａ級チャレンジ": +0.20, "ガールズ": -0.10}
+HEADCOUNT_SHIFT = {5: -0.20, 6: -0.10, 7: -0.05, 8: 0.0, 9: +0.10}
+
+def fatigue_extra(eff_laps: int, day_label: str, n_cars: int, race_class: str) -> float:
+    """
+    既存の extra = max(eff_laps - 2, 0) をベースに、
+    ・日程シフト：初日 -0.5／2日目 0／最終日 +0.5
+    ・級別シフト：A級/チャレンジをやや重め、ガールズはやや軽め
+    ・頭数シフト：9車は少し重く、5〜7車は少し軽く
+    """
+    d = float(DAY_SHIFT.get(day_label, 0.0))
+    c = float(CLASS_SHIFT.get(race_class, 0.0))
+    h = float(HEADCOUNT_SHIFT.get(int(n_cars), 0.0))
+    x = (float(eff_laps) - 2.0) + d + c + h
+    return max(0.0, x)
+
 
 line_sb_enable = (race_class != "ガールズ")
 
@@ -743,7 +766,12 @@ eff_wind_speed = globals().get("eff_wind_speed", wind_speed)
 for no in active_cars:
     role = role_in_line(no, line_def)
     wind = _wind_func(eff_wind_dir, float(eff_wind_speed or 0.0), role, float(prof_escape[no]))
-    extra = max(eff_laps - 2, 0)
+    extra = max(eff# 置換前:
+# extra = max(eff_laps - 2, 0)
+
+# 置換後:
+extra = fatigue_extra(eff_laps, day_label, n_cars, race_class)
+_laps - 2, 0)
     fatigue_scale = (1.0 if race_class == "Ｓ級" else 1.1 if race_class == "Ａ級" else 1.2 if race_class == "Ａ級チャレンジ" else 1.05)
     laps_adj = (-0.10 * extra * (1.0 if prof_escape[no] > 0.5 else 0.0)
                 + 0.05 * extra * (1.0 if prof_oikomi[no] > 0.4 else 0.0)) * fatigue_scale
