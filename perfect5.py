@@ -696,6 +696,18 @@ def bank_length_adjust(bank_length, prof_oikomi):
     dC = (+0.4 if bank_length>=480 else 0.0 if bank_length>=380 else -0.4)
     return round(0.03*(-dC)*float(prof_oikomi), 3)
 
+# --- 安定度（着順分布）をT本体に入れるための重み ---
+STAB_W_IN3  = 0.10
+STAB_W_OUT  = 0.12
+STAB_W_LOWN = 0.05
+STAB_PRIOR_IN3 = 0.33
+STAB_PRIOR_OUT = 0.45
+def _stab_n0(n: int) -> int:
+    if n <= 6: return 12
+    if n <= 14: return 8
+    if n <= 29: return 5
+    return 3
+
 # ===== SBなし合計（環境補正 + 得点微補正 + 個人補正 + 周回疲労） =====
 tens_list = [ratings_val[no] for no in active_cars]
 t_corr = tenscore_correction(tens_list) if active_cars else []
@@ -875,17 +887,6 @@ df_sorted_wo = pd.DataFrame({
 velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
                      df_sorted_wo["合計_SBなし"].round(3).tolist()))
 
-# --- 安定度（着順分布）をT本体に入れるための重み ---
-STAB_W_IN3  = 0.10
-STAB_W_OUT  = 0.12
-STAB_W_LOWN = 0.05
-STAB_PRIOR_IN3 = 0.33
-STAB_PRIOR_OUT = 0.45
-def _stab_n0(n: int) -> int:
-    if n <= 6: return 12
-    if n <= 14: return 8
-    if n <= 29: return 5
-    return 3
 
 # === 安定度スコア ===
 def stability_score(no: int) -> float:
