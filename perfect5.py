@@ -645,7 +645,6 @@ for no in active_cars:
         esc=k_esc[no]/tot; mak=k_mak[no]/tot; sashi=k_sashi[no]/tot; mark=k_mark[no]/tot
     prof_escape[no]=esc; prof_sashi[no]=sashi; prof_oikomi[no]=mark
     base = esc*BASE_BY_KAKU["逃"] + mak*BASE_BY_KAKU["捲"] + sashi*BASE_BY_KAKU["差"] + mark*BASE_BY_KAKU["マ"]
-    # ここを “得意会場平均基準のstyle” に合わせて個別反映
     vmix = style
     venue_bonus = 0.06 * vmix * ( +1.00*esc + 0.40*mak - 0.60*sashi - 0.25*mark )
     prof_base[no] = base + clamp(venue_bonus, -0.06, +0.06)
@@ -696,46 +695,26 @@ def bank_length_adjust(bank_length, prof_oikomi):
     dC = (+0.4 if bank_length>=480 else 0.0 if bank_length>=380 else -0.4)
     return round(0.03*(-dC)*float(prof_oikomi), 3)
 
-# --- 安定度（着順分布）をT本体に入れるための重み ---
-STAB_W_IN3  = 0.10
-STAB_W_OUT  = 0.12
-STAB_W_LOWN = 0.05
+# --- 安定度（着順分布）をT本体に入れるための重み（強化版） ---
+STAB_W_IN3  = 0.18   # 3着内の寄与
+STAB_W_OUT  = 0.22   # 着外のペナルティ
+STAB_W_LOWN = 0.06   # サンプル不足ペナルティ
 STAB_PRIOR_IN3 = 0.33
 STAB_PRIOR_OUT = 0.45
-def _stab_n0(n: int) -> int:
-    if n <= 6: return 12
-    if n <= 14: return 8
-    if n <= 29: return 5
-    return 3
 
-# ===== SBなし合計（環境補正 + 得点微補正 + 個人補正 + 周回疲労） =====
-tens_list = [ratings_val[no] for no in active_cars]
-t_corr = tenscore_correction(tens_list) if active_cars else []
-tens_corr = {no:t_corr[i] for i,no in enumerate(active_cars)} if active_cars else {}
-
-# === 安定度（着順分布）スコア：偏差値Tの“本体”に入れるための指標（自立版） ===
 def stability_score(no: int) -> float:
-    """
-    着順分布から安定度を算出して返す（+は評価↑、-は評価↓）。
-    ・3着内率が高いほど加点
-    ・着外率が高いほど減点
-    ・サンプルが少ないほど控えめ
-    ※ total_raw に直接加算して、レース内T（標準化）の母集団に含める。
-    """
-    # 依存：clamp, STAB_W_IN3, STAB_W_OUT, STAB_W_LOWN, STAB_PRIOR_IN3, STAB_PRIOR_OUT
     n1 = x1.get(no, 0); n2 = x2.get(no, 0); n3 = x3.get(no, 0); nOut = x_out.get(no, 0)
     n  = n1 + n2 + n3 + nOut
     if n <= 0:
         return 0.0
-
-    # 少サンプル縮約（この関数内で n0 を完結させる）
-    if n <= 6:   n0 = 12
+    # 少サンプル縮約（この関数内で完結）
+    if n <= 6:    n0 = 12
     elif n <= 14: n0 = 8
     elif n <= 29: n0 = 5
     else:         n0 = 3
 
-    in3  = (n1 + n2 + n3 + n0 * STAB_PRIOR_IN3) / (n + n0)
-    out_ = (nOut          + n0 * STAB_PRIOR_OUT) / (n + n0)
+    in3  = (n1 + n2 + n3 + n0*STAB_PRIOR_IN3) / (n + n0)
+    out_ = (nOut          + n0*STAB_PRIOR_OUT) / (n + n0)
 
     bonus = 0.0
     bonus += STAB_W_IN3 * (in3 - STAB_PRIOR_IN3) * 2.0
@@ -744,11 +723,17 @@ def stability_score(no: int) -> float:
     if n < 10:
         bonus -= STAB_W_LOWN * (10 - n) / 10.0
 
-    return clamp(bonus, -0.12, +0.12)
+    # キャップ：nに応じて段階的に広げる（±0.35〜±0.45）
+    cap = 0.35
+    if n >= 15: cap = 0.45
+    elif n >= 10: cap = 0.40
 
-# サニティチェック（デバッグ用。動作確認後は消してOK）
-assert callable(stability_score), "stability_score is not defined"
+    return clamp(bonus, -cap, +cap)
 
+# ===== SBなし合計（環境補正 + 得点微補正 + 個人補正 + 周回疲労 + 安定度） =====
+tens_list = [ratings_val[no] for no in active_cars]
+t_corr = tenscore_correction(tens_list) if active_cars else []
+tens_corr = {no:t_corr[i] for i,no in enumerate(active_cars)} if active_cars else {}
 
 rows = []
 _wind_func = wind_adjust
@@ -774,19 +759,17 @@ for no in active_cars:
     rows.append([int(no), role, round(prof_base[no],3), round(wind,3),
                  round(cf["spread"] * tens_corr.get(no, 0.0),3),
                  round(bank_b,3), round(length_b,3), round(laps_adj,3),
-                 round(indiv,3), round(stab,3),   # ★ 表示列
+                 round(indiv,3), round(stab,3),   # 表示列
                  total_raw])
-
 
 df = pd.DataFrame(rows, columns=[
     "車番","役割","脚質基準(会場)","風補正","得点補正","バンク補正",
-    "周長補正","周回補正","個人補正","安定度","合計_SBなし_raw",  # ★ 追加
+    "周長補正","周回補正","個人補正","安定度","合計_SBなし_raw",
 ])
-
 mu = float(df["合計_SBなし_raw"].mean()) if not df.empty else 0.0
 df["合計_SBなし"] = mu + 1.0 * (df["合計_SBなし_raw"] - mu)
 
-# ===== KO方式（既存運用を維持：印に混ぜず 展開・ケンで利用する前提の値づくり） =====
+# ===== KO方式（印に混ぜず：展開・ケンで利用） =====
 v_wo = {int(k): float(v) for k, v in zip(df["車番"].astype(int), df["合計_SBなし"].astype(float))}
 _is_girls = (race_class == "ガールズ")
 head_scale = KO_HEADCOUNT_SCALE.get(int(n_cars), 1.0)
@@ -924,84 +907,6 @@ df_sorted_wo = pd.DataFrame({
 velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
                      df_sorted_wo["合計_SBなし"].round(3).tolist()))
 
-
-# === 安定度スコア ===
-def stability_score(no: int) -> float:
-    n1 = x1.get(no, 0); n2 = x2.get(no, 0); n3 = x3.get(no, 0); nOut = x_out.get(no, 0)
-    n  = n1 + n2 + n3 + nOut
-    if n <= 0:
-        return 0.0
-    n0 = _stab_n0(n)
-    in3  = (n1 + n2 + n3 + n0*STAB_PRIOR_IN3) / (n + n0)
-    out_ = (nOut          + n0*STAB_PRIOR_OUT) / (n + n0)
-    bonus = 0.0
-    bonus += STAB_W_IN3 * (in3 - STAB_PRIOR_IN3) * 2.0
-    bonus -= STAB_W_OUT * (out_ - STAB_PRIOR_OUT) * 2.0
-    if n < 10:
-        bonus -= STAB_W_LOWN * (10 - n) / 10.0
-    return clamp(bonus, -0.12, +0.12)
-
-
-# ===== 既存の印集約（維持）
-def _shrink_p3in(no: int, k: int = 12) -> float:
-    n = x1.get(no,0)+x2.get(no,0)+x3.get(no,0)+x_out.get(no,0)
-    s = x1.get(no,0)+x2.get(no,0)+x3.get(no,0)
-    if n_cars <= 6: p0 = 0.40
-    elif n_cars == 7: p0 = 0.35
-    else: p0 = 0.30
-    return (s + k*p0) / (n + k) if (n+k)>0 else p0
-
-def _pos_penalty(no: int) -> float:
-    role = role_in_line(no, line_def)
-    return 0.08 if role == 'thirdplus' else (0.05 if role == 'single' else 0.0)
-def _score_neg(no: int) -> float:
-    zs = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
-    zmap = {n: float(zs[i]) for i,n in enumerate(active_cars)} if active_cars else {}
-    z = zmap.get(no, 0.0)
-    if z <= -1.0: return 0.10
-    if z <= -0.5: return 0.05
-    return 0.0
-def _sb_ineff(no: int) -> float:
-    sb = float(S.get(no,0)) + float(B.get(no,0))
-    return 0.05 if (sb >= 5 and _shrink_p3in(no) < 0.25) else 0.0
-def select_beta(cars: list[int]) -> int | None:
-    if not cars: return None
-    ko = {}
-    for no in cars:
-        p3 = _shrink_p3in(no)
-        ko[no] = (0.70 * max(0.25 - p3, 0.0) + 0.15 * _pos_penalty(no)
-                  + 0.10 * _score_neg(no) + 0.05 * _sb_ineff(no))
-    return max(ko, key=ko.get) if len(ko)>0 else None
-def _alpha_forbidden(no: int) -> bool:
-    role = role_in_line(no, line_def)
-    if role == 'second': return True
-    n = x1.get(no,0)+x2.get(no,0)+x3.get(no,0)+x_out.get(no,0)
-    if n >= 10 and x3.get(no,0) >= 3: return True
-    order = sorted(active_cars, key=lambda n: ratings_val[n], reverse=True)
-    top2 = set(order[:min(2, len(order))])
-    if no in top2: return True
-    return False
-def enforce_alpha_eligibility(result_marks: dict[str,int]) -> dict[str,int]:
-    marks = dict(result_marks)
-    used = set(marks.values())
-    beta_id = marks.get("β", None)
-    alpha_id = marks.get("α", None)
-    if alpha_id is not None and _alpha_forbidden(alpha_id):
-        if "×" not in marks:
-            marks["×"] = alpha_id
-        del marks["α"]
-        used = set(marks.values())
-    if "α" not in marks:
-        pool_sorted = [int(df_sorted_wo.loc[i,"車番"]) for i in range(len(df_sorted_wo))]
-        for no in reversed(pool_sorted):
-            if no in used: continue
-            if beta_id is not None and no == beta_id: continue
-            if not _alpha_forbidden(no):
-                marks["α"] = no
-                used.add(no)
-                break
-    return marks
-
 # ==============================
 # ★ レース内T偏差値 → 印 → 買い目 → note出力（2車系対応＋会場個性浸透版）
 # ==============================
@@ -1133,7 +1038,7 @@ if missing.any():
         xs_race_t[ii] = 50.0 + delta * (center - r)
 
 # 5) dict化・表示用
-race_t = {USED_IDS[idx]: float(round(xs_race_t[idx], HEN_DEC_PLACES)) for idx in range(M)}
+race_t = {USED_IDS[idx]: float(round(xs_race_t[idx], HEN_DEC_PLACES)) for idx in range(M)]
 race_z = (xs_race_t - 50.0) / 10.0
 
 hen_df = pd.DataFrame({
@@ -1247,7 +1152,6 @@ def _trio_score(a,b,c): return S_BASE_MAP.get(a,0.0) + S_BASE_MAP.get(b,0.0) + S
 pairs  = [(a,b,_pair_score(a,b))     for (a,b)     in combinations(USED_IDS, 2)]
 trios  = [(a,b,c,_trio_score(a,b,c)) for (a,b,c)   in combinations(USED_IDS, 3)]
 
-pairs_qn  = sorted([(a,b,s)   for (a,b,s)   in pairs if s >= S_QN_MIN],    key=lambda x:(-x[2], x[0], x[1]))
 pairs_w   = sorted([(a,b,s)   for (a,b,s)   in pairs if s >= S_WIDE_MIN],  key=lambda x:(-x[2], x[0], x[1]))
 trios_all = sorted([(a,b,c,s) for (a,b,c,s) in trios if s >= S_TRIO_MIN],  key=lambda x:(-x[3], x[0], x[1], x[2]))
 
@@ -1271,11 +1175,9 @@ def _min_required_from_trios(rows, p_func, roi: float) -> float|None:
     m = min(reqs)
     return math.floor(m*2 + 0.5) / 2.0
 
-min_odds_qn   = _min_required_from_pairs(pairs_qn,  prob_top2_pair_pl,   TARGET_ROI["qn"])
 min_odds_wide = _min_required_from_pairs(pairs_w,   prob_wide_pair_pl,   TARGET_ROI["wide"])
 min_odds_trio = _min_required_from_trios(trios_all, prob_top3_triple_pl, TARGET_ROI["trio"])
 
-if min_odds_qn   is not None: min_odds_qn   = max(min_odds_qn,   ODDS_FLOOR_QN)
 if min_odds_wide is not None: min_odds_wide = max(min_odds_wide, ODDS_FLOOR_WIDE)
 
 def _df_trio(rows):
@@ -1300,16 +1202,6 @@ hensachi_win  = {i: float(round(x,1)) for i,x in zip(USED_IDS, _to_hensachi([p1_
 
 def _pair_score_top2(a,b): return hensachi_top2.get(a,50.0) + hensachi_top2.get(b,50.0)
 
-# ====== 表示 ======
-# 三連複
-if trios_all:
-    hdr = "#### 三連複（偏差値S＝レース内基準）"
-    if min_odds_trio is not None:
-        hdr += f"　/　**最低限オッズ {min_odds_trio:.1f}倍以上**（目標回収率{int(TARGET_ROI['trio']*100)}%）"
-    st.markdown(hdr); st.dataframe(_df_trio(trios_all), use_container_width=True)
-else:
-    st.markdown("#### 三連複（該当なし）")
-
 # 二車複（新：連対率偏差値）
 S_QN2_MIN = 122.0
 pairs_qn2 = []
@@ -1318,26 +1210,6 @@ for (a,b) in combinations(USED_IDS, 2):
     if s >= S_QN2_MIN:
         pairs_qn2.append((a,b,s))
 pairs_qn2.sort(key=lambda x:(-x[2], x[0], x[1]))
-
-if pairs_qn2:
-    hdr = "#### 二車複（連対率偏差値｜合計S2）"
-    if min_odds_qn is not None:
-        hdr += f"　/　**最低限オッズ {min_odds_qn:.1f}倍以上**（目標回収率{int(TARGET_ROI['qn']*100)}%）"
-    st.markdown(hdr)
-    st.dataframe(pd.DataFrame(
-        [{"買い目":f"{a}-{b}","S2(連対偏差値合計)":round(s,1)} for (a,b,s) in pairs_qn2]
-    ), use_container_width=True)
-else:
-    st.markdown("#### 二車複（該当なし｜連対率偏差値）")
-
-# ワイド（従来）
-if pairs_w:
-    hdr = "#### ワイド（偏差値S＝レース内基準）"
-    if min_odds_wide is not None:
-        hdr += f"　/　**最低限オッズ {min_odds_wide:.1f}倍以上**（目標回収率{int(TARGET_ROI['wide']*100)}%）"
-    st.markdown(hdr); st.dataframe(_df_pair(pairs_w), use_container_width=True)
-else:
-    st.markdown("#### ワイド（該当なし）")
 
 # 二車単（新：勝率偏差値）
 S_NITAN_MIN = 124.0
@@ -1349,13 +1221,49 @@ for (a,b) in combinations(USED_IDS, 2):
     if s_ba >= S_NITAN_MIN: rows_nitan.append((f"{b}-{a}", s_ba))
 rows_nitan.sort(key=lambda x:(-x[1], x[0]))
 
+# ====== 表示 ======
+# 三連複
+if trios_all:
+    hdr = "#### 三連複（偏差値S＝レース内基準）"
+    if min_odds_trio is not None:
+        hdr += f"　/　**最低限オッズ {min_odds_trio:.1f}倍以上**（目標回収率{int(TARGET_ROI['trio']*100)}%）"
+    st.markdown(hdr); st.dataframe(_df_trio(trios_all), use_container_width=True)
+else:
+    st.markdown("#### 三連複（該当なし）")
+
+# 二車複（新：連対率偏差値）
+if pairs_qn2:
+    min_odds_qn = _min_required_from_pairs(pairs_qn2, prob_top2_pair_pl, TARGET_ROI["qn"])
+    if min_odds_qn is not None: min_odds_qn = max(min_odds_qn, ODDS_FLOOR_QN)
+    hdr = "#### 二車複（連対率偏差値｜合計S2）"
+    if min_odds_qn is not None:
+        hdr += f"　/　**最低限オッズ {min_odds_qn:.1f}倍以上**（目標回収率{int(TARGET_ROI['qn']*100)}%）"
+    st.markdown(hdr)
+    st.dataframe(pd.DataFrame(
+        [{"買い目":f"{a}-{b}","S2(連対偏差値合計)":round(s,1)} for (a,b,s) in pairs_qn2]
+    ), use_container_width=True)
+else:
+    st.markdown("  二車複（該当なし｜連対率偏差値）")
+
+# ワイド（従来）
+if pairs_w:
+    hdr = "#### ワイド（偏差値S＝レース内基準）"
+    if min_odds_wide is not None:
+        hdr += f"　/　**最低限オッズ {min_odds_wide:.1f}倍以上**（目標回収率{int(TARGET_ROI['wide']*100)}%）"
+    st.markdown(hdr); st.dataframe(_df_pair(pairs_w), use_container_width=True)
+else:
+    st.markdown("#### ワイド（該当なし）")
+
+# 二車単（新：勝率偏差値）
 if rows_nitan:
     st.markdown("#### 二車単（勝率偏差値｜合計S1）")
     st.dataframe(pd.DataFrame(
         [{"買い目":k, "S1(勝率偏差値合計)":round(v,1)} for (k,v) in rows_nitan]
     ), use_container_width=True)
+else:
+    st.markdown("#### 二車単（該当なし）")
 
-# 9) note用出力（ヘッダー順変更：{track}{race_no}R → 展開評価 → 推奨）
+# 9) note用出力（ヘッダー順：{track}{race_no}R → 展開評価 → 推奨）
 def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
     out = []
     for n in ids:
@@ -1370,7 +1278,7 @@ score_order_text = _format_rank_from_array(USED_IDS, xs_base_raw)
 header_lines = [
     f"{track}{race_no}R",
     f"展開評価：{confidence}",
-    f"{'推奨 3連複' if len(trios_all)>=1 else ('推奨 2車複・ワイド' if (len(pairs_qn)+len(pairs_w))>=1 else '推奨 ケン')}",
+    f"{'推奨 3連複' if len(trios_all)>=1 else ('推奨 2車複・ワイド' if (len(pairs_qn2)+len(pairs_w))>=1 else '推奨 ケン')}",
 ]
 header_text = "\n".join(header_lines)
 
@@ -1385,9 +1293,9 @@ note_text = (
     f"{_fmt_hen_lines(race_t, USED_IDS)}\n\n"
     + (("三連複（基準" + str(int(S_TRIO_MIN)) + "以上／最低限オッズ " + (f"{min_odds_trio:.1f}" if min_odds_trio is not None else "—") + "倍以上）\n" +
         ("\n".join([f"{row['買い目']}（S={row['偏差値S']:.1f}）" for _, row in _df_trio(trios_all).iterrows()]) if trios_all else "対象外") + "\n\n"))
-    + (("二車複（連対率偏差値 合計S2≥" + str(int(S_QN2_MIN)) + "／最低限オッズ " + (f"{min_odds_qn:.1f}" if min_odds_qn is not None else "—") + "倍以上）\n" +
+    + (("二車複（連対率偏差値 合計S2≥" + str(int(S_QN2_MIN)) + "）\n" +
         ("\n".join([f"{a}-{b}（S2={s:.1f}）" for (a,b,s) in pairs_qn2]) if pairs_qn2 else "対象外") + "\n\n"))
-    + (("ワイド（基準" + str(int(S_WIDE_MIN)) + "以上／最低限オッズ " + (f"{min_odds_wide:.1f}" if min_odds_wide is not None else "—") + "倍以上）\n" +
+    + (("ワイド（基準" + str(int(S_WIDE_MIN)) + "以上）\n" +
         ("\n".join([f"{row['買い目']}（S={row['偏差値S']:.1f}）" for _, row in _df_pair(pairs_w).iterrows()]) if pairs_w else "対象外") + "\n\n"))
     + (("二車単（勝率偏差値 合計S1≥" + str(int(S_NITAN_MIN)) + "）\n" +
         ("\n".join([f"{k}（S1={v:.1f}）" for (k,v) in rows_nitan]) if rows_nitan else "対象外")))
@@ -1395,3 +1303,4 @@ note_text = (
 
 st.markdown("### 📋 note用（コピーエリア）")
 st.text_area("ここを選択してコピー", note_text, height=520)
+
