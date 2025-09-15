@@ -875,35 +875,32 @@ df_sorted_wo = pd.DataFrame({
 velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
                      df_sorted_wo["合計_SBなし"].round(3).tolist()))
 
-# === 安定度（着順分布）スコア：偏差値Tの“本体”に入れるための指標 ===
+# --- 安定度（着順分布）をT本体に入れるための重み ---
+STAB_W_IN3  = 0.10
+STAB_W_OUT  = 0.12
+STAB_W_LOWN = 0.05
+STAB_PRIOR_IN3 = 0.33
+STAB_PRIOR_OUT = 0.45
+def _stab_n0(n: int) -> int:
+    if n <= 6: return 12
+    if n <= 14: return 8
+    if n <= 29: return 5
+    return 3
+
+# === 安定度スコア ===
 def stability_score(no: int) -> float:
-    """
-    着順分布から安定度を算出して返す（+は評価↑、-は評価↓）。
-    ・3着内率が高いほど加点
-    ・着外率が高いほど減点
-    ・サンプルが少ないほど控えめ（追加ペナルティ）
-    ※ この戻り値は total_raw に直接加算して、レース内T（標準化）の母集団に含める。
-    """
     n1 = x1.get(no, 0); n2 = x2.get(no, 0); n3 = x3.get(no, 0); nOut = x_out.get(no, 0)
     n  = n1 + n2 + n3 + nOut
     if n <= 0:
         return 0.0
-
-    # 少サンプル縮約（事前分布に寄せる）
     n0 = _stab_n0(n)
     in3  = (n1 + n2 + n3 + n0*STAB_PRIOR_IN3) / (n + n0)
     out_ = (nOut          + n0*STAB_PRIOR_OUT) / (n + n0)
-
-    # 事前より良ければ強めに加点／悪ければ強めに減点
     bonus = 0.0
     bonus += STAB_W_IN3 * (in3 - STAB_PRIOR_IN3) * 2.0
     bonus -= STAB_W_OUT * (out_ - STAB_PRIOR_OUT) * 2.0
-
-    # サンプル不足ペナルティ（n<10 で最大 STAB_W_LOWN）
     if n < 10:
         bonus -= STAB_W_LOWN * (10 - n) / 10.0
-
-    # クリップ（暴走防止）
     return clamp(bonus, -0.12, +0.12)
 
 
