@@ -1038,7 +1038,8 @@ if missing.any():
         xs_race_t[ii] = 50.0 + delta * (center - r)
 
 # 5) dict化・表示用
-race_t = {USED_IDS[idx]: float(round(xs_race_t[idx], HEN_DEC_PLACES)) for idx in range(M)]
+race_t = {USED_IDS[idx]: float(round(xs_race_t[idx], HEN_DEC_PLACES)) for idx in range(M)}
+
 race_z = (xs_race_t - 50.0) / 10.0
 
 hen_df = pd.DataFrame({
