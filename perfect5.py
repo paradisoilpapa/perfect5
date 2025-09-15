@@ -1115,6 +1115,24 @@ if "select_beta" not in globals():
 if "enforce_alpha_eligibility" not in globals():
     def enforce_alpha_eligibility(m): return m
 
+# ===== βラベル付与（単なる順位ラベル） =====
+def assign_beta_label(result_marks: dict[str,int], used_ids: list[int], df_sorted) -> dict[str,int]:
+    marks = dict(result_marks)
+    # 6車以下は出さない（集計仕様）
+    if len(used_ids) <= 6:
+        return marks
+    # 既にβがあれば何もしない
+    if "β" in marks:
+        return marks
+    try:
+        last_car = int(df_sorted.loc[len(df_sorted)-1, "車番"])
+        if last_car not in marks.values():
+            marks["β"] = last_car
+    except Exception:
+        pass
+    return marks
+
+
 try:
     beta_id = beta_id if ('beta_id' in globals() and beta_id is not None) else select_beta(list(USED_IDS))
 except Exception:
@@ -1165,6 +1183,9 @@ for mk in ["△","×","α"]:
     reasons[no] = f"{mk}（◎ライン優先→残りスコア順）"
 
 result_marks = enforce_alpha_eligibility(result_marks)
+
+result_marks = assign_beta_label(result_marks, USED_IDS, df_sorted_wo)
+
 
 if "α" not in result_marks:
     used_now = set(result_marks.values())
