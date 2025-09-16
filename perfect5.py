@@ -1283,6 +1283,41 @@ for (a,b) in combinations(USED_IDS, 2):
     if s_ba >= S_NITAN_MIN: rows_nitan.append((f"{b}-{a}", s_ba))
 rows_nitan.sort(key=lambda x:(-x[1], x[0]))
 
+# ===== 三連単生成（新：二車単＋三連複対応） =====
+def _gen_trifecta_from_nitan(trios_rows, nitan_pairs):
+    """
+    trios_rows: [(a,b,c,s)]  # 三連複候補（Sは元の三複S）
+    nitan_pairs: [(h,t)]     # 二車単合格ペア（順序あり：h→t）
+    return: [{"買い目":"h-t-x","元三連複S":s}, ...]
+    """
+    out = []
+    for (a,b,c,s) in trios_rows:
+        comb = {a,b,c}
+        for (h,t) in nitan_pairs:
+            if h in comb and t in comb:
+                third = a if a not in (h,t) else (b if b not in (h,t) else c)
+                out.append((f"{h}-{t}-{third}", s))
+    # 重複はSが高い方を採用
+    dedup = {}
+    for k, s in out:
+        if s > dedup.get(k, -1e18):
+            dedup[k] = s
+    return [{"買い目": k, "元三連複S": round(v,1)} for k,v in
+            sorted(dedup.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+# 二車単の合格ペア（順序あり）を抽出
+_nitan_pairs = []
+for k, _s in rows_nitan:
+    try:
+        h, t = map(int, k.split("-"))
+        _nitan_pairs.append((h, t))
+    except Exception:
+        pass
+
+# 三連単候補を生成（マルチなし：h→t固定のみ）
+rows_trifecta = _gen_trifecta_from_nitan(trios_all, _nitan_pairs)
+
+
 # ====== 表示 ======
 # 三連複
 if trios_all:
@@ -1325,6 +1360,14 @@ if rows_nitan:
 else:
     st.markdown("#### 二車単（該当なし）")
 
+# 三連単（二車単＋三連複対応）
+if rows_trifecta:
+    st.markdown("#### 三連単（二車単＋三連複対応）")
+    st.dataframe(pd.DataFrame(rows_trifecta), use_container_width=True)
+else:
+    st.markdown("#### 三連単（二車単＋三連複対応）\n対象外")
+
+
 # 9) note用出力（ヘッダー順：{track}{race_no}R → 展開評価 → 推奨）
 def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
     out = []
@@ -1353,21 +1396,31 @@ note_text = (
     "偏差値（風・ライン込み）\n"
     "— レース内基準（平均50・SD10） —\n"
     f"{_fmt_hen_lines(race_t, USED_IDS)}\n\n"
-+ (("三連複（基準" + str(int(S_TRIO_MIN)) + "以上／最低限オッズ "
-    + (f"{min_odds_trio:.1f}" if min_odds_trio is not None else "—")
-    + "倍以上）\n"
-    + ("\n".join([f"{row['買い目']}（S={row['偏差値S']:.1f}）"
-                  for _, row in _df_trio(trios_all).iterrows()])
-       if trios_all else "対象外")
-    + "\n\n※「☆」は◎が絡む買い目 → ◎の３着率を考えると、絞るならここだけでも。\n\n"))
-
-    + (("二車複（連対率偏差値 合計S2≥" + str(int(S_QN2_MIN)) + "）\n" +
-        ("\n".join([f"{a}-{b}（S2={s:.1f}）" for (a,b,s) in pairs_qn2]) if pairs_qn2 else "対象外") + "\n\n"))
-    + (("ワイド（基準" + str(int(S_WIDE_MIN)) + "以上）\n" +
-        ("\n".join([f"{row['買い目']}（S={row['偏差値S']:.1f}）" for _, row in _df_pair(pairs_w).iterrows()]) if pairs_w else "対象外") + "\n\n"))
-    + (("二車単（勝率偏差値 合計S1≥" + str(int(S_NITAN_MIN)) + "）\n" +
-        ("\n".join([f"{k}（S1={v:.1f}）" for (k,v) in rows_nitan]) if rows_nitan else "対象外")))
+    + ("三連複（基準" + str(int(S_TRIO_MIN)) + "以上／最低限オッズ "
+       + (f"{min_odds_trio:.1f}" if min_odds_trio is not None else "—")
+       + "倍以上）\n"
+       + ("\n".join([f"{row['買い目']}（S={row['偏差値S']:.1f}）"
+                     for _, row in _df_trio(trios_all).iterrows()])
+          if trios_all else "対象外")
+       + "\n\n")
+    + ("二車複（連対率偏差値 合計S2≥" + str(int(S_QN2_MIN)) + "）\n"
+       + ("\n".join([f"{a}-{b}（S2={s:.1f}）" for (a,b,s) in pairs_qn2])
+          if pairs_qn2 else "対象外")
+       + "\n\n")
+    + ("ワイド（基準" + str(int(S_WIDE_MIN)) + "以上）\n"
+       + ("\n".join([f"{row['買い目']}（S={row['偏差値S']:.1f}）"
+                     for _, row in _df_pair(pairs_w).iterrows()])
+          if pairs_w else "対象外")
+       + "\n\n")
+    + ("二車単（勝率偏差値 合計S1≥" + str(int(S_NITAN_MIN)) + "）\n"
+       + ("\n".join([f"{k}（S1={v:.1f}）" for (k,v) in rows_nitan])
+          if rows_nitan else "対象外")
+       + "\n\n")
+    + ("三連単（二車単＋三連複対応）\n"
+       + ("\n".join([f"{row['買い目']}" for row in rows_trifecta])
+          if rows_trifecta else "対象外"))
 )
+
 
 st.markdown("### 📋 note用（コピーエリア）")
 st.text_area("ここを選択してコピー", note_text, height=520)
