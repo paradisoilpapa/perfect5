@@ -947,7 +947,7 @@ import streamlit as st
 from itertools import combinations
 
 # しきい値（S＝偏差値Tの合算）
-S_TRIO_MIN = 164.0
+S_TRIO_MIN = 158.0
 S_QN_MIN   = 122.0
 S_WIDE_MIN = 116.0
 
@@ -1232,8 +1232,18 @@ min_odds_trio = _min_required_from_trios(trios_all, prob_top3_triple_pl, TARGET_
 
 if min_odds_wide is not None: min_odds_wide = max(min_odds_wide, ODDS_FLOOR_WIDE)
 
+anchor_no = result_marks.get("◎", None)
+
 def _df_trio(rows):
-    return pd.DataFrame([{"買い目":"-".join(map(str,sorted([a,b,c]))), "偏差値S":round(s,1)} for (a,b,c,s) in rows])
+    out = []
+    for (a,b,c,s) in rows:
+        combo = sorted([a,b,c])
+        label = "-".join(map(str, combo))
+        if anchor_no in combo:
+            label += "☆"
+        out.append({"買い目": label, "偏差値S": round(s,1)})
+    return pd.DataFrame(out)
+
 def _df_pair(rows):
     return pd.DataFrame([{"買い目":f"{a}-{b}", "偏差値S":round(s,1)} for (a,b,s) in rows])
 
@@ -1343,8 +1353,14 @@ note_text = (
     "偏差値（風・ライン込み）\n"
     "— レース内基準（平均50・SD10） —\n"
     f"{_fmt_hen_lines(race_t, USED_IDS)}\n\n"
-    + (("三連複（基準" + str(int(S_TRIO_MIN)) + "以上／最低限オッズ " + (f"{min_odds_trio:.1f}" if min_odds_trio is not None else "—") + "倍以上）\n" +
-        ("\n".join([f"{row['買い目']}（S={row['偏差値S']:.1f}）" for _, row in _df_trio(trios_all).iterrows()]) if trios_all else "対象外") + "\n\n"))
++ (("三連複（基準" + str(int(S_TRIO_MIN)) + "以上／最低限オッズ "
+    + (f"{min_odds_trio:.1f}" if min_odds_trio is not None else "—")
+    + "倍以上）\n"
+    + ("\n".join([f"{row['買い目']}（S={row['偏差値S']:.1f}）"
+                  for _, row in _df_trio(trios_all).iterrows()])
+       if trios_all else "対象外")
+    + "\n\n※「☆」は◎が絡む買い目 → ◎の３着率を考えると、絞るならここだけでも。\n\n"))
+
     + (("二車複（連対率偏差値 合計S2≥" + str(int(S_QN2_MIN)) + "）\n" +
         ("\n".join([f"{a}-{b}（S2={s:.1f}）" for (a,b,s) in pairs_qn2]) if pairs_qn2 else "対象外") + "\n\n"))
     + (("ワイド（基準" + str(int(S_WIDE_MIN)) + "以上）\n" +
