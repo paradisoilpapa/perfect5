@@ -1223,27 +1223,21 @@ trios_wide_raw = [(a,b,c,s) for (a,b,c,s) in trios if (S_TRIO_MIN_WIDE <= s < S_
 trios_core = _trio_rows_with_star(trios_core_raw, anchor_no)
 trios_wide = _trio_rows_with_star(trios_wide_raw, anchor_no)
 
-# ====== min_odds 計算関数 ======
-def _min_required_from_pairs(rows, p_func, roi: float) -> float|None:
-    if not rows: return None
-    reqs = []
-    for a,b,*_ in rows:
-        p = p_func(a,b)
-        if p > EPS: reqs.append(roi / p)
-    if not reqs: return None
-    m = min(reqs)
-    return math.floor(m*2 + 0.5) / 2.0
+# --- 三連複を 164 以上(core) / 158〜163.9(wide) に分割した直後に置く ---
+all_trios_for_odds = trios_core_raw + trios_wide_raw
 
 def _min_required_from_trios(rows, p_func, roi: float) -> float|None:
-    if not rows: return None
+    if not rows: 
+        return None
     reqs = []
     for a,b,c,s in rows:
         p = p_func(a,b,c)
-        if p > EPS: reqs.append(roi / p)
-    if not reqs: return None
+        if p > EPS:
+            reqs.append(roi / p)
+    if not reqs:
+        return None
     m = min(reqs)
     return math.floor(m*2 + 0.5) / 2.0
-
 
 
 
