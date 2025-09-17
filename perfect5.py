@@ -1241,7 +1241,6 @@ pairs_w = sorted([(a,b,s) for (a,b,s) in pairs if s >= S_WIDE_MIN], key=lambda x
 
 
 min_odds_wide = _min_required_from_pairs(pairs_w,   prob_wide_pair_pl,   TARGET_ROI["wide"])
-min_odds_trio = _min_required_from_trios(trios_all, prob_top3_triple_pl, TARGET_ROI["trio"])
 
 if min_odds_wide is not None: min_odds_wide = max(min_odds_wide, ODDS_FLOOR_WIDE)
 
