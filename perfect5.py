@@ -1223,7 +1223,17 @@ trios_wide_raw = [(a,b,c,s) for (a,b,c,s) in trios if (S_TRIO_MIN_WIDE <= s < S_
 trios_core = _trio_rows_with_star(trios_core_raw, anchor_no)
 trios_wide = _trio_rows_with_star(trios_wide_raw, anchor_no)
 
-# 既存の min_odds（参考値）計算は“全候補”に対してでOK
+# ====== min_odds 計算関数 ======
+def _min_required_from_pairs(rows, p_func, roi: float) -> float|None:
+    if not rows: return None
+    reqs = []
+    for a,b,*_ in rows:
+        p = p_func(a,b)
+        if p > EPS: reqs.append(roi / p)
+    if not reqs: return None
+    m = min(reqs)
+    return math.floor(m*2 + 0.5) / 2.0
+
 def _min_required_from_trios(rows, p_func, roi: float) -> float|None:
     if not rows: return None
     reqs = []
@@ -1233,6 +1243,7 @@ def _min_required_from_trios(rows, p_func, roi: float) -> float|None:
     if not reqs: return None
     m = min(reqs)
     return math.floor(m*2 + 0.5) / 2.0
+
 
 
 
