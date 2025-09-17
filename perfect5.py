@@ -1367,6 +1367,41 @@ if trios_wide:
 else:
     st.markdown("#### 三連複（手広く 158〜163.9：該当なし）")
 
+# === 二車複（連対率偏差値） ===
+if pairs_qn2:
+    min_odds_qn = _min_required_from_pairs(pairs_qn2, prob_top2_pair_pl, TARGET_ROI["qn"])
+    if min_odds_qn is not None:
+        min_odds_qn = max(min_odds_qn, ODDS_FLOOR_QN)
+    hdr = "#### 二車複（連対率偏差値｜合計S2≥122）"
+    if min_odds_qn is not None:
+        hdr += f"　/　**最低限オッズ {min_odds_qn:.1f}倍以上**"
+    st.markdown(hdr)
+    st.dataframe(pd.DataFrame(
+        [{"買い目":f"{a}-{b}", "S2(連対偏差値合計)":round(s,1)} for (a,b,s) in pairs_qn2]
+    ), use_container_width=True)
+else:
+    st.markdown("#### 二車複（該当なし｜連対率偏差値）")
+
+# === ワイド（偏差値S＝レース内基準） ===
+if pairs_w:
+    hdr = "#### ワイド（偏差値S＝レース内基準）"
+    if min_odds_wide is not None:
+        hdr += f"　/　**最低限オッズ {min_odds_wide:.1f}倍以上**"
+    st.markdown(hdr)
+    st.dataframe(_df_pair(pairs_w), use_container_width=True)
+else:
+    st.markdown("#### ワイド（該当なし）")
+
+# === 二車単（勝率偏差値） ===
+if rows_nitan:
+    st.markdown("#### 二車単（勝率偏差値｜合計S1≥124）")
+    st.dataframe(pd.DataFrame(
+        [{"買い目":k, "S1(勝率偏差値合計)":round(v,1)} for (k,v) in rows_nitan]
+    ), use_container_width=True)
+else:
+    st.markdown("#### 二車単（該当なし）")
+
+
 # 三連単（連動）
 if rows_trifecta:
     st.markdown("#### 三連単（**二車単＋三連複** 連動・S≥164）")
