@@ -1197,7 +1197,11 @@ if "α" not in result_marks:
         result_marks["α"] = alpha_pick
         reasons[alpha_pick] = reasons.get(alpha_pick, "α（フォールバック：禁止条件全滅→最弱を採用）")
 
-# 偏差値ベースの合算
+# ===== 偏差値ベースの合算（S＝レース内T） =====
+S_TRIO_MIN_WIDE = globals().get("S_TRIO_MIN_WIDE", 158.0)  # 三連複 手広く
+S_TRIO_MIN_CORE = globals().get("S_TRIO_MIN_CORE", 164.0)  # 三連複 基準クリア
+S_TRIFECTA_MIN  = globals().get("S_TRIFECTA_MIN", 164.0)  # 三連単もしきい値164以上で絞る
+
 S_BASE_MAP = {i: float(race_t[i]) for i in USED_IDS}
 
 def _pair_score(a,b):   return S_BASE_MAP.get(a,0.0) + S_BASE_MAP.get(b,0.0)
@@ -1206,15 +1210,17 @@ def _trio_score(a,b,c): return S_BASE_MAP.get(a,0.0) + S_BASE_MAP.get(b,0.0) + S
 pairs = [(a,b,_pair_score(a,b)) for (a,b) in combinations(USED_IDS, 2)]
 trios = [(a,b,c,_trio_score(a,b,c)) for (a,b,c) in combinations(USED_IDS, 3)]
 
+# ◎（anchor）を先に取得しておく
+anchor_no = result_marks.get("◎", None)
+
 # 三連複を「基準クリア(>=164)」「手広く(158〜163.9)」に分割
 def _trio_rows_with_star(rows, anchor):
     out = []
     for (a,b,c,s) in rows:
-        buy = "-".join(map(str, sorted([a,b,c])))
+        buy  = "-".join(map(str, sorted([a,b,c])))
         star = "☆" if (anchor in (a,b,c)) else ""
-        out.append((buy, round(s,1), star))
-    # 表示は S↓ → 買い目文字列↑
-    out.sort(key=lambda x: (-x[1], x[0]))
+        out.append((buy, round(s,1), star))  # (買い目, S, ☆/空)
+    out.sort(key=lambda x: (-x[1], x[0]))    # S↓ → 文字列↑
     return out
 
 trios_core_raw = [(a,b,c,s) for (a,b,c,s) in trios if s >= S_TRIO_MIN_CORE]
@@ -1223,9 +1229,7 @@ trios_wide_raw = [(a,b,c,s) for (a,b,c,s) in trios if (S_TRIO_MIN_WIDE <= s < S_
 trios_core = _trio_rows_with_star(trios_core_raw, anchor_no)
 trios_wide = _trio_rows_with_star(trios_wide_raw, anchor_no)
 
-# --- 三連複を 164 以上(core) / 158〜163.9(wide) に分割した直後に置く ---
-all_trios_for_odds = trios_core_raw + trios_wide_raw
-
+# ===== min_odds 計算関数（トリオ／ペア） =====
 def _min_required_from_trios(rows, p_func, roi: float) -> float|None:
     if not rows: 
         return None
@@ -1239,18 +1243,31 @@ def _min_required_from_trios(rows, p_func, roi: float) -> float|None:
     m = min(reqs)
     return math.floor(m*2 + 0.5) / 2.0
 
+def _min_required_from_pairs(rows, p_func, roi: float) -> float|None:
+    if not rows: 
+        return None
+    reqs = []
+    for a,b,*_ in rows:
+        p = p_func(a,b)
+        if p > EPS:
+            reqs.append(roi / p)
+    if not reqs:
+        return None
+    m = min(reqs)
+    return math.floor(m*2 + 0.5) / 2.0
 
+# 参考値：三連複の最低限オッズ
+all_trios_for_odds = trios_core_raw + trios_wide_raw
+min_odds_trio = _min_required_from_trios(all_trios_for_odds, prob_top3_triple_pl, TARGET_ROI["trio"])
 
-# ワイド/二車複は従来どおり
-pairs_w = sorted([(a,b,s) for (a,b,s) in pairs if s >= S_WIDE_MIN], key=lambda x:(-x[2], x[0], x[1]))
+# ワイド（従来）と最低限オッズ
+pairs_w = sorted([(a,b,s) for (a,b,s) in pairs if s >= S_WIDE_MIN],
+                 key=lambda x:(-x[2], x[0], x[1]))
+min_odds_wide = _min_required_from_pairs(pairs_w, prob_wide_pair_pl, TARGET_ROI["wide"])
+if min_odds_wide is not None:
+    min_odds_wide = max(min_odds_wide, ODDS_FLOOR_WIDE)
 
-
-min_odds_wide = _min_required_from_pairs(pairs_w,   prob_wide_pair_pl,   TARGET_ROI["wide"])
-
-if min_odds_wide is not None: min_odds_wide = max(min_odds_wide, ODDS_FLOOR_WIDE)
-
-anchor_no = result_marks.get("◎", None)
-
+# ===== 表示用 DataFrame ユーティリティ =====
 def _df_trio(rows):
     out = []
     for (a,b,c,s) in rows:
@@ -1264,7 +1281,7 @@ def _df_trio(rows):
 def _df_pair(rows):
     return pd.DataFrame([{"買い目":f"{a}-{b}", "偏差値S":round(s,1)} for (a,b,s) in rows])
 
-# ====== 二車系 専用偏差値（新設） ======
+# ===== 二車系 専用偏差値（連対／勝率） =====
 def _to_hensachi(arr):
     a = np.asarray(arr, float)
     m, s = float(np.mean(a)), float(np.std(a))
@@ -1272,7 +1289,6 @@ def _to_hensachi(arr):
         return [50.0 for _ in a]
     return list(50.0 + 10.0*(a - m)/s)
 
-# 連対率（2着内）と勝率
 pTop2_map = {i: float(p1_eff.get(i,0.0)+p2_eff.get(i,0.0)) for i in USED_IDS}
 p1_map    = {i: float(p1_eff.get(i,0.0))                   for i in USED_IDS}
 
@@ -1301,40 +1317,12 @@ for (a,b) in combinations(USED_IDS, 2):
 rows_nitan.sort(key=lambda x:(-x[1], x[0]))
 
 # ===== 三連単生成（新：二車単＋三連複対応） =====
-def _gen_trifecta_from_nitan(trios_rows, nitan_pairs):
-    """
-    trios_rows: [(a,b,c,s)]  # 三連複候補（Sは元の三複S）
-    nitan_pairs: [(h,t)]     # 二車単合格ペア（順序あり：h→t）
-    return: [{"買い目":"h-t-x","元三連複S":s}, ...]
-    """
-    out = []
-    for (a,b,c,s) in trios_rows:
-        comb = {a,b,c}
-        for (h,t) in nitan_pairs:
-            if h in comb and t in comb:
-                third = a if a not in (h,t) else (b if b not in (h,t) else c)
-                out.append((f"{h}-{t}-{third}", s))
-    # 重複はSが高い方を採用
-    dedup = {}
-    for k, s in out:
-        if s > dedup.get(k, -1e18):
-            dedup[k] = s
-    return [{"買い目": k, "元三連複S": round(v,1)} for k,v in
-            sorted(dedup.items(), key=lambda kv: (-kv[1], kv[0]))]
-
-# 二車単の合格ペア（順序あり）を抽出
-_nitan_pairs = []
-for k, _s in rows_nitan:
-    try:
-        h, t = map(int, k.split("-"))
-        _nitan_pairs.append((h, t))
-    except Exception:
-        pass
-
-# rows_nitan は既存（勝率偏差値S1>=124）を使用
-# 三連単候補：二車単(先着a-b)が含まれる三連複の3番目を全列挙（Sが高い順でソート）
 def build_trifecta_from_nitan_and_trio(nitan_rows, trio_rows, s_min=S_TRIFECTA_MIN):
-    # trio_rows は (buy_str, S, star) 形式 → 逆変換して参照テーブル化
+    """
+    nitan_rows: [(\"a-b\", S1合計), ...]
+    trio_rows : [(buy_str, S, star), ...]  # buy_str = 'a-b-c'
+    return    : [(\"a-b-c\", trio_S), ...] # trio_Sで降順
+    """
     trio_sets = []  # (frozenset{a,b,c}, S)
     for buy, s, _ in trio_rows:
         a,b,c = map(int, buy.split("-"))
@@ -1343,12 +1331,12 @@ def build_trifecta_from_nitan_and_trio(nitan_rows, trio_rows, s_min=S_TRIFECTA_M
     for k, _s1 in nitan_rows:
         a,b = map(int, k.split("-"))
         for st, s in trio_sets:
-            if s < s_min:  # 三連単もしきい値164以上で絞る
+            if s < s_min:
                 continue
             if a in st and b in st:
                 third = list(st - {a,b})[0]
                 out.append((f"{a}-{b}-{third}", round(s,1)))
-    # ダブり排除 & S↓ → 目安として買い目文字列↑
+    # 重複は高Sを採用
     uniq = {}
     for k,s in out:
         if k not in uniq or s > uniq[k]:
@@ -1359,9 +1347,8 @@ def build_trifecta_from_nitan_and_trio(nitan_rows, trio_rows, s_min=S_TRIFECTA_M
 
 rows_trifecta = build_trifecta_from_nitan_and_trio(rows_nitan, trios_core + trios_wide, s_min=S_TRIFECTA_MIN)
 
-
-
-# === 三連複（基準クリア） ===
+# ===== Streamlit 表示 =====
+# 三連複（基準クリア）
 if trios_core:
     hdr = "#### 三連複（基準クリア 164以上）"
     if min_odds_trio is not None:
@@ -1372,7 +1359,7 @@ if trios_core:
 else:
     st.markdown("#### 三連複（基準クリア 164以上：該当なし）")
 
-# === 三連複（手広く 158〜163.9） ===
+# 三連複（手広く）
 if trios_wide:
     st.markdown("#### 三連複（手広く 158〜163.9）")
     st.dataframe(pd.DataFrame([{"買い目":b + ("☆" if star else ""), "偏差値S":s} for (b,s,star) in trios_wide]),
@@ -1380,10 +1367,7 @@ if trios_wide:
 else:
     st.markdown("#### 三連複（手広く 158〜163.9：該当なし）")
 
-# 二車複・ワイド・二車単（従来の表示はそのまま）
-# ...
-
-# === 三連単（連動セクション） ===
+# 三連単（連動）
 if rows_trifecta:
     st.markdown("#### 三連単（**二車単＋三連複** 連動・S≥164）")
     st.dataframe(pd.DataFrame([{"買い目":k, "参考S(三連複S)":v} for (k,v) in rows_trifecta]),
@@ -1391,8 +1375,7 @@ if rows_trifecta:
 else:
     st.markdown("#### 三連単（連動：該当なし）")
 
-
-# 9) note用出力（ヘッダー順：{track}{race_no}R → 展開評価 → 推奨）
+# ===== note 出力 =====
 def _join_trio_note(rows):
     # rows: (buy, s, star)
     return "\n".join([f"{b}{('☆' if star else '')}（S={s:.1f}）" for (b,s,star) in rows]) if rows else "対象外"
@@ -1449,8 +1432,4 @@ note_text = (
 
 st.markdown("### 📋 note用（コピーエリア）")
 st.text_area("ここを選択してコピー", note_text, height=560)
-
-
-st.markdown("### 📋 note用（コピーエリア）")
-st.text_area("ここを選択してコピー", note_text, height=520)
 
