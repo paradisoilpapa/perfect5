@@ -1234,7 +1234,7 @@ def _min_required_from_trios(rows, p_func, roi: float) -> float|None:
     m = min(reqs)
     return math.floor(m*2 + 0.5) / 2.0
 
-min_odds_trio = _min_required_from_trios(trios_core_raw + trios_wide_raw, prob_top3_triple_pl, TARGET_ROI["trio"])
+
 
 # ワイド/二車複は従来どおり
 pairs_w = sorted([(a,b,s) for (a,b,s) in pairs if s >= S_WIDE_MIN], key=lambda x:(-x[2], x[0], x[1]))
