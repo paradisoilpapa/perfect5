@@ -1381,7 +1381,6 @@ if rows_trifecta:
 else:
     st.markdown("#### 三連単（連動：該当なし）")
 
-# ===== note 出力 =====
 note_text = (
     f"{track}{race_no}R\n"
     f"展開評価：{confidence}\n\n"
@@ -1391,13 +1390,13 @@ note_text = (
     f"{' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α','β'] if m in result_marks)}\n\n"
     "偏差値（風・ライン込み）\n"
     f"{_fmt_hen_lines(race_t, USED_IDS)}\n\n"
-   ("\n".join([f"{a}-{b}-{c}{('☆' if anchor_no in (a,b,c) else '')}（S={s:.1f}）"
-            for (a,b,c,s) in trios_filtered]) if trios_filtered else "対象外") +
-
-    "\n\n"
-    "三連単（現行方式）\n" +
-   ("\n".join([f"{k}（参考S={v:.1f}）" for (k,v) in rows_trifecta]) if rows_trifecta else "対象外")
-
+    f"三連複（新方式｜しきい値 {cutoff:.1f}点）\n"
+    + ("\n".join([f"{a}-{b}-{c}{('☆' if anchor_no in (a,b,c) else '')}（S={s:.1f}）"
+                  for (a,b,c,s) in trios_filtered]) if trios_filtered else "対象外")
+    + "\n\n"
+    "三連単（現行方式）\n"
+    + ("\n".join([f"{k}（参考S={v:.1f}）" for (k,v) in rows_trifecta]) if rows_trifecta else "対象外")
+)
 
 st.markdown("### 📋 note用（コピーエリア）")
 st.text_area("ここを選択してコピー", note_text, height=560)
