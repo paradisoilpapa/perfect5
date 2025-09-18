@@ -1323,10 +1323,13 @@ def _collect_l3_from_trifecta(rows):
 trifecta_ok = bool(('rows_trifecta' in globals()) and rows_trifecta)
 L3 = sorted(_collect_l3_from_trifecta(rows_trifecta)) if trifecta_ok else []
 
-# --- フォーメーション表示（三連単成立時のみ） ---
-def _fmt_form(col): return "".join(str(x) for x in col)
-formation_label = (f"{_fmt_form(L1)}-{_fmt_form(L2)}-{_fmt_form(L3)}") if (trifecta_ok and L3) else "—"
+# --- フォーメーション表示（L1/L2は常に、L3は三単連動のみ） ---
+def _fmt_form(col): 
+    return "".join(str(x) for x in col) if col else "—"
+
+formation_label = f"{_fmt_form(L1)}-{_fmt_form(L2)}-{(_fmt_form(L3) if (trifecta_ok and L3) else '—')}"
 st.markdown(f"**フォーメーション**：{formation_label}")
+
 
 # --- 三連複（連動）：三連単が成立したときだけ生成 ---
 trios_filtered_display, cutoff_trio = [], 0.0
