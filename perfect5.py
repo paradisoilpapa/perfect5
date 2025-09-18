@@ -1395,15 +1395,7 @@ if 'rows_nitan' in globals() and rows_nitan:
             rows_nitan_L12.append((k, float(round(s1,1))))
 rows_nitan_L12.sort(key=lambda x: (-x[1], x[0]))
 
-# フォールバック：rows_nitan_L12 が空でも「二車単は必ず出す」→ 二車複ペアから S1 を推定して生成
-if not rows_nitan_L12 and pairs_qn2_kept:
-    tmp = []
-    for (a,b,_s2) in pairs_qn2_kept:
-        # L1→L2 の向きのみ（b→a は作らない）
-        s1_est = float(hensachi_win.get(a,50.0)) + float(hensachi_top2.get(b,50.0))
-        tmp.append((f"{a}-{b}", round(s1_est,1)))
-    # 降順で並べる
-    rows_nitan_L12 = sorted(tmp, key=lambda x: (-x[1], x[0]))
+
 
 # ===== 表示 =====
 # 三連複（連動）
@@ -1430,14 +1422,15 @@ if pairs_qn2_kept:
 else:
     st.markdown("#### 二車複（L1×L2）\n対象外")
 
-# 二車単（L1×L2 準拠：rows_nitan が空でも二車複に追随して必ず出す）
+# 二車単（L1×L2 準拠）
 if rows_nitan_L12:
-    st.markdown("  二車単（L1×L2｜勝率偏差値 合計S1（推定含む））")
+    st.markdown("  二車単（L1×L2｜勝率偏差値 合計S1≥124）")
     st.dataframe(pd.DataFrame(
         [{"買い目": k, "S1(勝率偏差値合計)": v} for (k,v) in rows_nitan_L12]
     ), use_container_width=True)
 else:
     st.markdown("  二車単（L1×L2）\n  対象外")
+
 
 # ===== note 出力 =====
 def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
@@ -1451,7 +1444,7 @@ note_sections = []
 note_sections.append(f"{track}{race_no}R")
 note_sections.append(f"展開評価：{confidence}\n")
 
-# 推奨ヘッダ（自動）
+# 推奨ヘッダ
 if trifecta_ok and trios_filtered_display:
     note_sections.append("推奨　三連複＆三連単\n")
 elif trifecta_ok and not trios_filtered_display and rows_trifecta:
@@ -1464,6 +1457,20 @@ elif rows_nitan_L12:
     note_sections.append("推奨　二車単\n")
 else:
     note_sections.append("推奨　ケン\n")
+
+# 推奨・二車単（ある時だけ）
+if rows_nitan_L12:
+    nitanlist_top = "\n".join([f"・{k}（S1={v:.1f}）" for (k,v) in rows_nitan_L12])
+    note_sections.append("\n【推奨・二車単】")
+    note_sections.append(nitanlist_top)
+
+# 明細・二車単（ある時だけ／見出しを S1≥124 に）
+if rows_nitan_L12:
+    nitanlist = "\n".join([f"{k}（S1={v:.1f}）" for (k,v) in rows_nitan_L12])
+    note_sections.append(f"\n二車単（L1×L2｜S1≥124）\n{nitanlist}")
+else:
+    note_sections.append("\n二車単（L1×L2）\n対象外")
+
 
 note_sections.append(f"{race_time}　{race_class}")
 note_sections.append(f"ライン　{'　'.join([x for x in globals().get('line_inputs', []) if str(x).strip()])}")
