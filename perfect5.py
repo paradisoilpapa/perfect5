@@ -1354,22 +1354,24 @@ def _df_trio(rows, anchor_no):
     out.sort(key=lambda x: (-x["偏差値S"], x["買い目"]))
     return pd.DataFrame(out)
 
-# ===== 二車複（L1×L2 準拠｜μ+σ/3）・二車単（L1×L2 準拠） =====
-# hensachi_top2 が無ければ race_t で代替
+# ===== 二車複（L1×L2 準拠｜μ+σ/3）・二車単（L1×L2 準拠：必ず出す＝二車複に追随） =====
+# hensachi_top2 / hensachi_win が無ければ race_t で代替
 if 'hensachi_top2' not in globals():
     hensachi_top2 = {i: float(race_t.get(i, 50.0)) for i in USED_IDS}
+if 'hensachi_win' not in globals():
+    hensachi_win  = {i: float(race_t.get(i, 50.0)) for i in USED_IDS}
 
 # 二車複：L1×L2 の無向ペアだけ
 pairs_all_L12 = {}
 for a in L1:
     for b in L2:
-        if a == b: 
+        if a == b:
             continue
         key = tuple(sorted((int(a), int(b))))
-        if key in pairs_all_L12: 
+        if key in pairs_all_L12:
             continue
         s2 = float(hensachi_top2.get(a,50.0)) + float(hensachi_top2.get(b,50.0))
-        pairs_all_L12[key] = round(s2,1)
+        pairs_all_L12[key] = round(s2, 1)
 
 pairs_qn2_kept, qn2_cutoff = [], 0.0
 if pairs_all_L12:
@@ -1379,9 +1381,9 @@ if pairs_all_L12:
     for (a,b), s in pairs_all_L12.items():
         if s >= qn2_cutoff:
             pairs_qn2_kept.append((a,b,s))
-    pairs_qn2_kept.sort(key=lambda x:(-x[2], x[0], x[1]))
+    pairs_qn2_kept.sort(key=lambda x: (-x[2], x[0], x[1]))
 
-# 二車単：rows_nitan から L1→L2 の向きだけ採用（上限なし）
+# 二車単：まず rows_nitan から L1→L2 の向きだけ採用（通常）
 rows_nitan_L12 = []
 if 'rows_nitan' in globals() and rows_nitan:
     for k, s1 in rows_nitan:
@@ -1391,7 +1393,17 @@ if 'rows_nitan' in globals() and rows_nitan:
             continue
         if (a in L1) and (b in L2) and (a != b):
             rows_nitan_L12.append((k, float(round(s1,1))))
-    rows_nitan_L12.sort(key=lambda x:(-x[1], x[0]))
+rows_nitan_L12.sort(key=lambda x: (-x[1], x[0]))
+
+# フォールバック：rows_nitan_L12 が空でも「二車単は必ず出す」→ 二車複ペアから S1 を推定して生成
+if not rows_nitan_L12 and pairs_qn2_kept:
+    tmp = []
+    for (a,b,_s2) in pairs_qn2_kept:
+        # L1→L2 の向きのみ（b→a は作らない）
+        s1_est = float(hensachi_win.get(a,50.0)) + float(hensachi_top2.get(b,50.0))
+        tmp.append((f"{a}-{b}", round(s1_est,1)))
+    # 降順で並べる
+    rows_nitan_L12 = sorted(tmp, key=lambda x: (-x[1], x[0]))
 
 # ===== 表示 =====
 # 三連複（連動）
@@ -1399,7 +1411,7 @@ if trifecta_ok and trios_filtered_display:
     st.markdown(f"#### 三連複（新方式｜しきい値 {cutoff_trio:.1f}点）")
     st.dataframe(_df_trio(trios_filtered_display, result_marks.get('◎')), use_container_width=True)
 else:
-    st.markdown("#### 三連複（新方式）\n対象外（※三連単不成立 or 該当なし）")
+    st.markdown("  三連複（新方式）\n  対象外（※三連単不成立 or 該当なし）")
 
 # 三連単（従来）
 if trifecta_ok:
@@ -1418,14 +1430,14 @@ if pairs_qn2_kept:
 else:
     st.markdown("#### 二車複（L1×L2）\n対象外")
 
-# 二車単（L1×L2 準拠）
+# 二車単（L1×L2 準拠：rows_nitan が空でも二車複に追随して必ず出す）
 if rows_nitan_L12:
-    st.markdown("  二車単（L1×L2｜勝率偏差値 合計S1≥124）")
+    st.markdown("  二車単（L1×L2｜勝率偏差値 合計S1（推定含む））")
     st.dataframe(pd.DataFrame(
         [{"買い目": k, "S1(勝率偏差値合計)": v} for (k,v) in rows_nitan_L12]
     ), use_container_width=True)
 else:
-    st.markdown("  二車単（L1×L2）\n対象外")
+    st.markdown("  二車単（L1×L2）\n  対象外")
 
 # ===== note 出力 =====
 def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
@@ -1439,11 +1451,13 @@ note_sections = []
 note_sections.append(f"{track}{race_no}R")
 note_sections.append(f"展開評価：{confidence}\n")
 
-# 推奨ヘッダ（あなたの方針に合わせて自動）
+# 推奨ヘッダ（自動）
 if trifecta_ok and trios_filtered_display:
     note_sections.append("推奨　三連複＆三連単\n")
 elif trifecta_ok and not trios_filtered_display and rows_trifecta:
     note_sections.append("推奨　三連単\n")
+elif pairs_qn2_kept and rows_nitan_L12:
+    note_sections.append("推奨　２車複＆二車単\n")
 elif pairs_qn2_kept:
     note_sections.append("推奨　２車複\n")
 elif rows_nitan_L12:
@@ -1489,7 +1503,7 @@ if rows_nitan_L12:
     note_sections.append("\n【推奨・二車単】")
     note_sections.append(nitanlist_top)
 
-# 明細（必要に応じて下段に再掲）
+# 明細
 if trifecta_ok and trios_filtered_display:
     triolist = "\n".join([f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}（S={s:.1f}）"
                           for (a,b,c,s) in trios_filtered_display])
@@ -1512,7 +1526,7 @@ else:
 
 if rows_nitan_L12:
     nitanlist = "\n".join([f"{k}（S1={v:.1f}）" for (k,v) in rows_nitan_L12])
-    note_sections.append(f"\n二車単（L1×L2｜S1≥124）\n{nitanlist}")
+    note_sections.append(f"\n二車単（L1×L2｜S1（推定含む））\n{nitanlist}")
 else:
     note_sections.append("\n二車単（L1×L2）\n対象外")
 
