@@ -1072,6 +1072,71 @@ if missing.any():
 # 5) dict化・表示用
 race_t = {USED_IDS[idx]: float(round(xs_race_t[idx], HEN_DEC_PLACES)) for idx in range(M)}
 
+# === 5.5) クラス別ライン偏差値ボーナス（ライン間→ライン内：低T優先 3:2:1） ===
+# クラス別の総ポイント（Girlsは無効）
+CLASS_LINE_POOL = {
+    "Ｓ級":           21.0,
+    "Ａ級":           15.0,
+    "Ａ級チャレンジ":  9.0,
+    "ガールズ":        0.0,
+}
+pool_total = float(CLASS_LINE_POOL.get(race_class, 0.0))
+
+def _line_rank_weights(n_lines: int) -> list[float]:
+    # 2本: 3:2 / 3本: 5:4:3 / 4本以上: 6,5,4,3,2,1...
+    if n_lines <= 1: return [1.0]
+    if n_lines == 2: return [3.0, 2.0]
+    if n_lines == 3: return [5.0, 4.0, 3.0]
+    base = [6.0, 5.0, 4.0, 3.0, 2.0, 1.0]
+    if n_lines <= len(base): return base[:n_lines]
+    ext = base[:]
+    while len(ext) < n_lines:
+        ext.append(max(1.0, ext[-1]-1.0))
+    return ext[:n_lines]
+
+def _in_line_weights(members_sorted_lowT_first: list[int]) -> dict[int, float]:
+    # ライン内は「低T優先で 3:2:1、4人目以降0」→合計1に正規化
+    raw = [3.0, 2.0, 1.0]
+    w = {}
+    for i, car in enumerate(members_sorted_lowT_first):
+        w[int(car)] = (raw[i] if i < len(raw) else 0.0)
+    s = sum(w.values())
+    return {k: (v/s if s > 0 else 0.0) for k, v in w.items()}
+
+_lines = list((globals().get("line_def") or {}).values())
+if pool_total > 0.0 and _lines:
+    # ライン強度＝そのラインの race_t 平均
+    line_scores = []
+    for mem in _lines:
+        if not mem: 
+            continue
+        avg_t = float(np.mean([race_t.get(int(c), 50.0) for c in mem]))
+        line_scores.append((tuple(mem), avg_t))
+    # 強い順に並べてライン間ポイント配分
+    line_scores.sort(key=lambda x: (-x[1], x[0]))
+    rank_w = _line_rank_weights(len(line_scores))
+    sum_rank_w = float(sum(rank_w)) if rank_w else 1.0
+    line_share = {}
+    for (mem, _avg), wr in zip(line_scores, rank_w):
+        line_share[mem] = pool_total * (float(wr) / sum_rank_w)
+
+    # 各ラインの配分を「低T→高T」の順に 3:2:1 で割り振り
+    bonus_map = {int(i): 0.0 for i in USED_IDS}
+    for mem, share in line_share.items():
+        mem = list(mem)
+        mem_sorted_lowT = sorted(mem, key=lambda c: (race_t.get(int(c), 50.0), int(c)))
+        w_in = _in_line_weights(mem_sorted_lowT)  # 合計1
+        for car in mem_sorted_lowT:
+            bonus_map[int(car)] += share * w_in[int(car)]
+
+    # 偏差値に加算（xs_race_tが計算本体。race_tは表示用に丸め直す）
+    for idx, car in enumerate(USED_IDS):
+        add = float(bonus_map.get(int(car), 0.0))
+        xs_race_t[idx] = float(xs_race_t[idx]) + add
+        race_t[int(car)] = float(round(xs_race_t[idx], HEN_DEC_PLACES))
+# ← この後に既存の race_z 計算が続く
+
+
 race_z = (xs_race_t - 50.0) / 10.0
 
 hen_df = pd.DataFrame({
