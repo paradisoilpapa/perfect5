@@ -1276,11 +1276,15 @@ from itertools import combinations
 # ===== 基本データ =====
 S_TRIFECTA_MIN = globals().get("S_TRIFECTA_MIN", 164.0)  # 三連単基準
 
-# ===== 三連複：L1/L2 合流＋L3=三単3列目（最終仕様） =====
+# ====== 統合・最終版：フォーメーション常時表示／排他的出力（三連複＆三連単 ⇔ 二車系） ======
 from statistics import mean, pstdev
 from itertools import product, combinations
 
-# スコア計算（偏差値合算S）
+# 可変パラメータ
+TRIO_SIG_DIV   = float(globals().get("TRIO_SIG_DIV", 3.0))   # 三連複しきい値: μ + σ/TRIO_SIG_DIV（既定=3）
+S_TRIFECTA_MIN = float(globals().get("S_TRIFECTA_MIN", 164.0))  # 三連単 基準（従来）
+
+# スコア（偏差値T合計）
 S_BASE_MAP = {int(i): float(race_t.get(int(i), 50.0)) for i in USED_IDS}
 def _trio_score(a,b,c): return S_BASE_MAP.get(a,0.0)+S_BASE_MAP.get(b,0.0)+S_BASE_MAP.get(c,0.0)
 
@@ -1292,14 +1296,19 @@ def _top_k_unique(seq, k):
         if len(out) >= k: break
     return out
 
-# --- L1/L2 を合流（Nゲート rows_nitan ＋ Tゲート result_marksベース） ---
+# ---------- L1/L2（Nゲート＋Tゲート合流） ----------
+# Nゲート（rows_nitan 由来の1着・2着候補）
 n1_list, n2_list = [], []
-for k,_s in (rows_nitan if 'rows_nitan' in globals() else []):
-    a,b = map(int, k.split("-"))
-    n1_list.append(a); n2_list.append(b)
+for k,_s in (rows_nitan if 'rows_nitan' in globals() and rows_nitan else []):
+    try:
+        a,b = map(int, k.split("-"))
+        n1_list.append(a); n2_list.append(b)
+    except Exception:
+        pass
 L1N = _top_k_unique(n1_list, 3)
 L2N = _top_k_unique(n2_list, 4)
 
+# Tゲート（偏差値T上位＋印）
 T_sorted = sorted(USED_IDS, key=lambda i: (-S_BASE_MAP.get(i,50.0), i))
 L1T_seed = [result_marks.get("◎")] if result_marks.get("◎") is not None else []
 L2T_seed = [result_marks.get("〇")] if result_marks.get("〇") is not None else []
@@ -1309,7 +1318,7 @@ L2T = _top_k_unique(L2T_seed + [i for i in T_sorted if i not in L1T], 4)
 L1 = sorted(set(L1N) | set(L1T))
 L2 = sorted(set(L2N) | set(L2T))
 
-# --- L3 は「既存 三連単の3列目」だけ（fallback なし） ---
+# ---------- L3（従来の三連単3列目のみ・フォールバック無し） ----------
 def _collect_l3_from_trifecta(rows):
     s = set()
     for k,_sv in rows:
@@ -1323,15 +1332,16 @@ def _collect_l3_from_trifecta(rows):
 trifecta_ok = bool(('rows_trifecta' in globals()) and rows_trifecta)
 L3 = sorted(_collect_l3_from_trifecta(rows_trifecta)) if trifecta_ok else []
 
-# --- フォーメーション表示（L1/L2は常に、L3は三単連動のみ） ---
+# ---------- フォーメーション（常時表示） ----------
 def _fmt_form(col): 
     return "".join(str(x) for x in col) if col else "—"
-
-formation_label = f"{_fmt_form(L1)}-{_fmt_form(L2)}-{(_fmt_form(L3) if (trifecta_ok and L3) else '—')}"
+form_L1 = _fmt_form(L1)
+form_L2 = _fmt_form(L2)
+form_L3 = _fmt_form(L3) if (trifecta_ok and L3) else "—"
+formation_label = f"{form_L1}-{form_L2}-{form_L3}"
 st.markdown(f"**フォーメーション**：{formation_label}")
 
-
-# --- 三連複（連動）：三連単が成立したときだけ生成 ---
+# ---------- 三連複（新方式：L1×L2×L3 → μ+σ/TRIO_SIG_DIV） ----------
 trios_filtered_display, cutoff_trio = [], 0.0
 if trifecta_ok and L3:
     trio_keys = set()
@@ -1341,12 +1351,11 @@ if trifecta_ok and L3:
         trio_keys.add(tuple(sorted((a,b,c))))
     trios_from_cols = [(a,b,c,_trio_score(a,b,c)) for (a,b,c) in sorted(trio_keys)]
     if trios_from_cols:
-        scores = [s for (*_,s) in trios_from_cols]
-        mu, sig = mean(scores), pstdev(scores)
-        cutoff_trio = mu + sig/3
+        xs = [s for (*_,s) in trios_from_cols]
+        mu, sig = mean(xs), pstdev(xs)
+        cutoff_trio = mu + (sig/float(TRIO_SIG_DIV) if sig > 0 else 0.0)
         trios_filtered_display = [(a,b,c,s) for (a,b,c,s) in trios_from_cols if s >= cutoff_trio]
 
-# 表示用DF
 def _df_trio(rows, anchor_no):
     out = []
     for (a,b,c,s) in rows:
@@ -1357,22 +1366,16 @@ def _df_trio(rows, anchor_no):
     out.sort(key=lambda x: (-x["偏差値S"], x["買い目"]))
     return pd.DataFrame(out)
 
-# ===== 二車複（L1×L2 準拠｜μ+σ/3）・二車単（L1×L2 準拠：必ず出す＝二車複に追随） =====
-# hensachi_top2 / hensachi_win が無ければ race_t で代替
+# ---------- 二車複（L1×L2｜μ+σ/3）／二車単（L1→L2｜S1≥124） ----------
 if 'hensachi_top2' not in globals():
     hensachi_top2 = {i: float(race_t.get(i, 50.0)) for i in USED_IDS}
-if 'hensachi_win' not in globals():
-    hensachi_win  = {i: float(race_t.get(i, 50.0)) for i in USED_IDS}
 
-# 二車複：L1×L2 の無向ペアだけ
 pairs_all_L12 = {}
 for a in L1:
     for b in L2:
-        if a == b:
-            continue
+        if a == b: continue
         key = tuple(sorted((int(a), int(b))))
-        if key in pairs_all_L12:
-            continue
+        if key in pairs_all_L12: continue
         s2 = float(hensachi_top2.get(a,50.0)) + float(hensachi_top2.get(b,50.0))
         pairs_all_L12[key] = round(s2, 1)
 
@@ -1380,13 +1383,10 @@ pairs_qn2_kept, qn2_cutoff = [], 0.0
 if pairs_all_L12:
     sc = list(pairs_all_L12.values())
     mu2, sig2 = mean(sc), pstdev(sc)
-    qn2_cutoff = mu2 + sig2/3
-    for (a,b), s in pairs_all_L12.items():
-        if s >= qn2_cutoff:
-            pairs_qn2_kept.append((a,b,s))
-    pairs_qn2_kept.sort(key=lambda x: (-x[2], x[0], x[1]))
+    qn2_cutoff = mu2 + (sig2/3.0 if sig2 > 0 else 0.0)
+    pairs_qn2_kept = [(a,b,s) for (a,b), s in pairs_all_L12.items() if s >= qn2_cutoff]
+    pairs_qn2_kept.sort(key=lambda x:(-x[2], x[0], x[1]))
 
-# 二車単：まず rows_nitan から L1→L2 の向きだけ採用（通常）
 rows_nitan_L12 = []
 if 'rows_nitan' in globals() and rows_nitan:
     for k, s1 in rows_nitan:
@@ -1396,46 +1396,50 @@ if 'rows_nitan' in globals() and rows_nitan:
             continue
         if (a in L1) and (b in L2) and (a != b):
             rows_nitan_L12.append((k, float(round(s1,1))))
-rows_nitan_L12.sort(key=lambda x: (-x[1], x[0]))
+rows_nitan_L12.sort(key=lambda x:(-x[1], x[0]))
 
+# ---------- 排他的表示ルール ----------
+has_trio = bool(trios_filtered_display)
+has_tri  = bool(rows_trifecta) if trifecta_ok else False
+has_qn   = bool(pairs_qn2_kept)
+has_nit  = bool(rows_nitan_L12)
 
-
-# ===== 表示 =====
-# 三連複（連動）
-if trifecta_ok and trios_filtered_display:
-    st.markdown(f"#### 三連複（新方式｜しきい値 {cutoff_trio:.1f}点）")
+# 三連複（常に見出しを出し、内容は有無に応じて）
+st.markdown(f"#### 三連複（新方式｜しきい値 {cutoff_trio:.1f}点）")
+st.caption(f"フォーメーション：{formation_label}")
+if has_trio:
     st.dataframe(_df_trio(trios_filtered_display, result_marks.get('◎')), use_container_width=True)
 else:
-    st.markdown("  三連複（新方式）\n  対象外（※三連単不成立 or 該当なし）")
+    st.markdown("対象外")
 
-# 三連単（従来）
-if trifecta_ok:
+# 三連単（常に見出し）
+if has_tri:
     st.markdown(f"#### 三連単（**二車単＋三連複** 連動・S≥{S_TRIFECTA_MIN}）")
-    st.dataframe(pd.DataFrame([{"買い目":k, "参考S(三連複S)":v} for (k,v) in rows_trifecta]),
+    st.dataframe(pd.DataFrame([{"買い目": k, "参考S(三連複S)": v} for (k,v) in rows_trifecta]),
                  use_container_width=True)
 else:
-    st.markdown("#### 三連単（連動：対象外）")
+    st.markdown("#### 三連単（現行方式）\n対象外")
 
-# 二車複（L1×L2 準拠：推奨＝しきい値クリアと完全一致）
-if pairs_qn2_kept:
+# 二車系は「三連複 or 三連単」が1つでも出たら非表示（排他的）
+if not (has_trio or has_tri):
     st.markdown(f"#### 二車複（L1×L2｜しきい値 {qn2_cutoff:.1f}点）")
-    st.dataframe(pd.DataFrame(
-        [{"買い目": f"{a}-{b}", "S2(連対偏差値合計)": s} for (a,b,s) in pairs_qn2_kept]
-    ), use_container_width=True)
-else:
-    st.markdown("#### 二車複（L1×L2）\n対象外")
+    st.caption(f"基準フォーメーション（L1×L2）：{form_L1} × {form_L2}")
+    if has_qn:
+        st.dataframe(pd.DataFrame(
+            [{"買い目": f"{a}-{b}", "S2(連対偏差値合計)": s} for (a,b,s) in pairs_qn2_kept]
+        ), use_container_width=True)
+    else:
+        st.markdown("対象外")
 
-# 二車単（L1×L2 準拠）
-if rows_nitan_L12:
-    st.markdown("  二車単（L1×L2｜勝率偏差値 合計S1≥124）")
-    st.dataframe(pd.DataFrame(
-        [{"買い目": k, "S1(勝率偏差値合計)": v} for (k,v) in rows_nitan_L12]
-    ), use_container_width=True)
-else:
-    st.markdown("  二車単（L1×L2）\n  対象外")
+    st.markdown("  二車単（L1×L2｜S1≥124）")
+    if has_nit:
+        st.dataframe(pd.DataFrame(
+            [{"買い目": k, "S1(勝率偏差値合計)": v} for (k,v) in rows_nitan_L12]
+        ), use_container_width=True)
+    else:
+        st.markdown("  対象外")
 
-
-# ===== note 出力 =====
+# ---------- note 出力（画面と同じ排他ロジック） ----------
 def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
     lines = []
     for n in ids:
@@ -1447,33 +1451,14 @@ note_sections = []
 note_sections.append(f"{track}{race_no}R")
 note_sections.append(f"展開評価：{confidence}\n")
 
-# 推奨ヘッダ
-if trifecta_ok and trios_filtered_display:
-    note_sections.append("推奨　三連複＆三連単\n")
-elif trifecta_ok and not trios_filtered_display and rows_trifecta:
-    note_sections.append("推奨　三連単\n")
-elif pairs_qn2_kept and rows_nitan_L12:
-    note_sections.append("推奨　２車複＆二車単\n")
-elif pairs_qn2_kept:
-    note_sections.append("推奨　２車複\n")
-elif rows_nitan_L12:
-    note_sections.append("推奨　二車単\n")
-else:
-    note_sections.append("推奨　ケン\n")
-
-# 推奨・二車単（ある時だけ）
-if rows_nitan_L12:
-    nitanlist_top = "\n".join([f"・{k}（S1={v:.1f}）" for (k,v) in rows_nitan_L12])
-    note_sections.append("\n【推奨・二車単】")
-    note_sections.append(nitanlist_top)
-
-# 明細・二車単（ある時だけ／見出しを S1≥124 に）
-if rows_nitan_L12:
-    nitanlist = "\n".join([f"{k}（S1={v:.1f}）" for (k,v) in rows_nitan_L12])
-    note_sections.append(f"\n二車単（L1×L2｜S1≥124）\n{nitanlist}")
-else:
-    note_sections.append("\n二車単（L1×L2）\n対象外")
-
+# 推奨帯（排他）
+if   has_trio and has_tri: note_sections.append("推奨　三連複＆三連単\n")
+elif has_trio:             note_sections.append("推奨　三連複\n")
+elif has_tri:              note_sections.append("推奨　三連単\n")
+elif has_qn and has_nit:   note_sections.append("推奨　２車複＆二車単\n")
+elif has_qn:               note_sections.append("推奨　２車複\n")
+elif has_nit:              note_sections.append("推奨　二車単\n")
+else:                      note_sections.append("推奨　ケン\n")
 
 note_sections.append(f"{race_time}　{race_class}")
 note_sections.append(f"ライン　{'　'.join([x for x in globals().get('line_inputs', []) if str(x).strip()])}")
@@ -1483,64 +1468,36 @@ note_sections.append("\n偏差値（風・ライン込み）")
 note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
 note_sections.append(f"\nフォーメーション：{formation_label}")
 
-# --- 推奨（note）：しきい値と完全一致（上限なし） ---
-anchor_no_note = result_marks.get('◎')
-def _fmt_star_triplet(a,b,c, anchor):
-    xs = sorted([a,b,c]); lab = "-".join(map(str,xs))
-    if anchor in xs: lab += "☆"
-    return lab
-
-# 三連複／三連単 推奨
-if trifecta_ok:
-    if trios_filtered_display:
-        triolist_top = "\n".join([f"・{_fmt_star_triplet(a,b,c,anchor_no_note)}（S={s:.1f}）"
-                                  for (a,b,c,s) in sorted(trios_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))])
-        note_sections.append("\n【推奨・三連複】")
-        note_sections.append(triolist_top)
-    if rows_trifecta:
-        trifectalist_top = "\n".join([f"・{k}（参考S={v:.1f}）" for (k,v) in sorted(rows_trifecta, key=lambda x:(-x[1], x[0]))])
-        note_sections.append("\n【推奨・三連単】")
-        note_sections.append(trifectalist_top)
-
-# 二車複／二車単 推奨（L1×L2）
-if pairs_qn2_kept:
-    qnlist_top = "\n".join([f"・{a}-{b}（S2={s:.1f}）" for (a,b,s) in pairs_qn2_kept])
-    note_sections.append("\n【推奨・二車複】")
-    note_sections.append(qnlist_top)
-
-if rows_nitan_L12:
-    nitanlist_top = "\n".join([f"・{k}（S1={v:.1f}）" for (k,v) in rows_nitan_L12])
-    note_sections.append("\n【推奨・二車単】")
-    note_sections.append(nitanlist_top)
-
-# 明細
-if trifecta_ok and trios_filtered_display:
-    triolist = "\n".join([f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}（S={s:.1f}）"
-                          for (a,b,c,s) in trios_filtered_display])
+# 三連複 明細（常に章を出す）
+if has_trio:
+    triolist = "\n".join([
+        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}（S={s:.1f}）"
+        for (a,b,c,s) in sorted(trios_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
+    ])
     note_sections.append(f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点）\n{triolist}")
 else:
     note_sections.append("\n三連複（新方式）\n対象外")
 
-if trifecta_ok:
-    trifectalist = "\n".join([f"{k}（参考S={v:.1f}）" for (k,v) in rows_trifecta]) if rows_trifecta else ""
-    note_sections.append(f"\n三連単（現行方式）\n{trifectalist if trifectalist else '対象外'}")
+# 三連単 明細（常に章を出す）
+if has_tri:
+    trifectalist = "\n".join([f"{k}（参考S={v:.1f}）" for (k,v) in rows_trifecta])
+    note_sections.append(f"\n三連単（現行方式）\n{trifectalist}")
 else:
     note_sections.append("\n三連単（現行方式）\n対象外")
 
-# 二車複・二車単（L1×L2 明細）
-if pairs_qn2_kept:
-    qnlist = "\n".join([f"{a}-{b}（S2={s:.1f}）" for (a,b,s) in pairs_qn2_kept])
-    note_sections.append(f"\n二車複（L1×L2｜しきい値 {qn2_cutoff:.1f}点）\n{qnlist}")
-else:
-    note_sections.append("\n二車複（L1×L2）\n対象外")
-
-if rows_nitan_L12:
-    nitanlist = "\n".join([f"{k}（S1={v:.1f}）" for (k,v) in rows_nitan_L12])
-    note_sections.append(f"\n二車単（L1×L2｜S1（推定含む））\n{nitanlist}")
-else:
-    note_sections.append("\n二車単（L1×L2）\n対象外")
+# 二車系は排他（三連複 or 三連単がある場合は非掲載）
+if not (has_trio or has_tri):
+    if has_qn:
+        qnlist = "\n".join([f"{a}-{b}（S2={s:.1f}）" for (a,b,s) in pairs_qn2_kept])
+        note_sections.append(f"\n二車複（L1×L2｜しきい値 {qn2_cutoff:.1f}点）\n{qnlist}")
+    else:
+        note_sections.append("\n二車複（L1×L2）\n対象外")
+    if has_nit:
+        nitanlist = "\n".join([f"{k}（S1={v:.1f}）" for (k,v) in rows_nitan_L12])
+        note_sections.append(f"\n二車単（L1×L2｜S1≥124）\n{nitanlist}")
+    else:
+        note_sections.append("\n二車単（L1×L2）\n対象外")
 
 note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
 st.text_area("ここを選択してコピー", note_text, height=560)
-
