@@ -1262,32 +1262,37 @@ if "α" not in result_marks:
         result_marks["α"] = alpha_pick
         reasons[alpha_pick] = reasons.get(alpha_pick, "α（フォールバック：禁止条件全滅→最弱を採用）")
 
-# ===== 偏差値ベースの合算（S＝レース内T） ===== 
-S_TRIFECTA_MIN = globals().get("S_TRIFECTA_MIN", 164.0)  # 三連単の最低基準
+# -*- coding: utf-8 -*-
+import streamlit as st
+import pandas as np
+import pandas as pd
+import math
+from statistics import mean, pstdev
+from itertools import combinations
+
+# ===== 基本データ =====
+S_TRIFECTA_MIN = globals().get("S_TRIFECTA_MIN", 164.0)  # 三連単基準
 
 S_BASE_MAP = {i: float(race_t[i]) for i in USED_IDS}
 
 def _pair_score(a,b):   return S_BASE_MAP.get(a,0.0) + S_BASE_MAP.get(b,0.0)
 def _trio_score(a,b,c): return S_BASE_MAP.get(a,0.0) + S_BASE_MAP.get(b,0.0) + S_BASE_MAP.get(c,0.0)
 
-pairs = [(a,b,_pair_score(a,b)) for (a,b) in combinations(USED_IDS, 2)]
-trios = [(a,b,c,_trio_score(a,b,c)) for (a,b,c) in combinations(USED_IDS, 3)]
+pairs_all = [(a,b,_pair_score(a,b)) for (a,b) in combinations(USED_IDS, 2)]
+trios_all = [(a,b,c,_trio_score(a,b,c)) for (a,b,c) in combinations(USED_IDS, 3)]
 
-# ◎（anchor）を先に取得しておく
+# ◎
 anchor_no = result_marks.get("◎", None)
 
-# ===== 三連複：新方式（平均＋σ/3） =====
-from statistics import mean, pstdev
-
-if trios:
-    scores = [s for (_,_,_,s) in trios]
-    mu = mean(scores)
-    sigma = pstdev(scores)
+# ===== 三連複 新方式（平均＋σ/3フィルタ） =====
+if trios_all:
+    scores = [s for (*_,s) in trios_all]
+    mu, sigma = mean(scores), pstdev(scores)
     cutoff = mu + sigma/3
-    trios_filtered = [(a,b,c,s) for (a,b,c,s) in trios if s >= cutoff]
+    trios_filtered_display = [(a,b,c,s) for (a,b,c,s) in trios_all if s >= cutoff]
 else:
     mu, sigma, cutoff = 0.0, 0.0, 0.0
-    trios_filtered = []
+    trios_filtered_display = []
 
 def _df_trio(rows, anchor):
     out = []
@@ -1297,12 +1302,8 @@ def _df_trio(rows, anchor):
         if anchor in combo:
             label += "☆"
         out.append({"買い目": label, "偏差値S": round(s,1)})
-    # スコア順に並べ替え
     out.sort(key=lambda x: (-x["偏差値S"], x["買い目"]))
     return pd.DataFrame(out)
-
-# ===== 二車複・ワイド系は削除 =====
-# （このブロックは不要になったので完全にカット）
 
 # ===== 二車単（勝率偏差値） =====
 def _to_hensachi(arr):
@@ -1327,22 +1328,16 @@ for (a,b) in combinations(USED_IDS, 2):
     if s_ba >= S_NITAN_MIN: rows_nitan.append((f"{b}-{a}", s_ba))
 rows_nitan.sort(key=lambda x:(-x[1], x[0]))
 
-# ===== 三連単生成（現行：二車単＋三連複対応） =====
+# ===== 三連単生成（従来：二車単＋三連複素材 S≥164） =====
 def build_trifecta_from_nitan_and_trio(nitan_rows, trio_rows, s_min=S_TRIFECTA_MIN):
-    """
-    nitan_rows: [(\"a-b\", S1合計), ...]
-    trio_rows : [(a,b,c,S), ...]
-    return    : [(\"a-b-c\", trio_S), ...]
-    """
-    trio_sets = []  # (frozenset{a,b,c}, S)
+    trio_sets = []
     for a,b,c,s in trio_rows:
-        trio_sets.append((frozenset([a,b,c]), s))
+        if s >= s_min:
+            trio_sets.append((frozenset([a,b,c]), s))
     out = []
     for k, _s1 in nitan_rows:
         a,b = map(int, k.split("-"))
         for st, s in trio_sets:
-            if s < s_min:
-                continue
             if a in st and b in st:
                 third = list(st - {a,b})[0]
                 out.append((f"{a}-{b}-{third}", round(s,1)))
@@ -1354,17 +1349,15 @@ def build_trifecta_from_nitan_and_trio(nitan_rows, trio_rows, s_min=S_TRIFECTA_M
     rows.sort(key=lambda x:(-x[1], x[0]))
     return rows
 
-rows_trifecta = build_trifecta_from_nitan_and_trio(rows_nitan, trios, s_min=S_TRIFECTA_MIN)
+rows_trifecta = build_trifecta_from_nitan_and_trio(rows_nitan, trios_all, s_min=S_TRIFECTA_MIN)
 
-# ===== Streamlit 表示 =====
-# 三連複（新方式）
-if trios_filtered:
+# ===== 表示 =====
+if trios_filtered_display:
     st.markdown(f"#### 三連複（新方式｜しきい値 {cutoff:.1f}点）")
-    st.dataframe(_df_trio(trios_filtered, anchor_no), use_container_width=True)
+    st.dataframe(_df_trio(trios_filtered_display, anchor_no), use_container_width=True)
 else:
     st.markdown("#### 三連複（新方式｜該当なし）")
 
-# 二車単
 if rows_nitan:
     st.markdown("#### 二車単（勝率偏差値｜合計S1≥124）")
     st.dataframe(pd.DataFrame(
@@ -1373,7 +1366,6 @@ if rows_nitan:
 else:
     st.markdown("#### 二車単（該当なし）")
 
-# 三連単（連動）
 if rows_trifecta:
     st.markdown(f"#### 三連単（**二車単＋三連複** 連動・S≥{S_TRIFECTA_MIN}）")
     st.dataframe(pd.DataFrame([{"買い目":k, "参考S(三連複S)":v} for (k,v) in rows_trifecta]),
@@ -1381,6 +1373,18 @@ if rows_trifecta:
 else:
     st.markdown("#### 三連単（連動：該当なし）")
 
+# ===== note用ユーティリティ =====
+def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
+    out = []
+    for n in ids:
+        v = ts_map.get(n, "—")
+        if isinstance(v, (int, float)):
+            out.append(f"{n}: {float(v):.1f}")
+        else:
+            out.append(f"{n}: —")
+    return "\n".join(out)
+
+# ===== note 出力 =====
 note_text = (
     f"{track}{race_no}R\n"
     f"展開評価：{confidence}\n\n"
@@ -1392,7 +1396,7 @@ note_text = (
     f"{_fmt_hen_lines(race_t, USED_IDS)}\n\n"
     f"三連複（新方式｜しきい値 {cutoff:.1f}点）\n"
     + ("\n".join([f"{a}-{b}-{c}{('☆' if anchor_no in (a,b,c) else '')}（S={s:.1f}）"
-                  for (a,b,c,s) in trios_filtered]) if trios_filtered else "対象外")
+                  for (a,b,c,s) in trios_filtered_display]) if trios_filtered_display else "対象外")
     + "\n\n"
     "三連単（現行方式）\n"
     + ("\n".join([f"{k}（参考S={v:.1f}）" for (k,v) in rows_trifecta]) if rows_trifecta else "対象外")
