@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
-import numpy as np
+import numpy as np   # ← ここ！NumPy を np にする
 import unicodedata, re
 import math, json, requests
+from statistics import mean, pstdev
+from itertools import combinations
 from datetime import datetime, date, time, timedelta, timezone
 
 # ===========================F===
