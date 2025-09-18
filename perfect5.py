@@ -1266,11 +1266,12 @@ if "α" not in result_marks:
 
 # -*- coding: utf-8 -*-
 import streamlit as st
-import pandas as np
+import numpy as np
 import pandas as pd
 import math
 from statistics import mean, pstdev
 from itertools import combinations
+
 
 # ===== 基本データ =====
 S_TRIFECTA_MIN = globals().get("S_TRIFECTA_MIN", 164.0)  # 三連単基準
