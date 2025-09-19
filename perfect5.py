@@ -1493,6 +1493,14 @@ for a in L1:
 # 最終L3は「三単由来 ∪ 160しきい値」の和集合
 L3 = sorted(L3_from_tri | L3_from_160)
 
+# --- ここから差し込み（L3が全車化するのを防ぐ） ---
+L3_TMIN = float(globals().get("L3_TMIN", 52.0))  # 例: 52.0で低Tを切る（要調整）
+L3_TOPK = int(globals().get("L3_TOPK", 5))       # 例: 上位5名まで
+L3 = [c for c in L3 if race_t.get(int(c), 50.0) >= L3_TMIN]
+L3 = sorted(L3, key=lambda c: (-race_t.get(int(c), 50.0), int(c)))[:L3_TOPK]
+# --- 差し込みここまで ---
+
+
 # ---------- フォーメーション（常時表示） ----------
 def _fmt_form(col): 
     return "".join(str(x) for x in col) if col else "—"
