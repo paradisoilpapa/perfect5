@@ -894,6 +894,24 @@ form_list = [Form[n] for n in active_cars]
 form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
 form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
 
+# === [PATCH-1] ENV/FORM をレース内で z 化し、目標SDを掛ける（anchor_score の前に置く） ===
+SD_FORM = 0.28   # Balanced 既定
+SD_ENV  = 0.20
+
+# ENV = v_final（風・会場・周回疲労・個人補正・安定度 等を含む“Form以外”）
+_env_arr = np.array([float(v_final.get(n, np.nan)) for n in active_cars], dtype=float)
+_mask = np.isfinite(_env_arr)
+if int(_mask.sum()) >= 2:
+    mu_env = float(np.mean(_env_arr[_mask])); sd_env = float(np.std(_env_arr[_mask]))
+else:
+    mu_env, sd_env = 0.0, 1.0
+_den = (sd_env if sd_env > 1e-12 else 1.0)
+ENV_Z = {int(n): (float(v_final.get(n, mu_env)) - mu_env) / _den for n in active_cars}
+
+# FORM = form_T_map（T=50, SD=10）→ z 化
+FORM_Z = {int(n): (float(form_T_map.get(n, 50.0)) - 50.0) / 10.0 for n in active_cars}
+
+
 def _pos_idx(no:int) -> int:
     g = car_to_group.get(no, None)
     if g is None or g not in line_def:
@@ -920,16 +938,24 @@ def anchor_score(no: int) -> float:
     )
     pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
 
-    # ★ここを差し替え
-    raw_finish = (form_T_map.get(no, 50.0) - 50.0) / 10.0
-    if _is_girls:
-        finish_term = FINISH_WEIGHT_G * raw_finish
-    else:
-        finish_term = FINISH_WEIGHT * raw_finish
+def anchor_score(no: int) -> float:
+    role = role_in_line(no, line_def)
 
-    finish_term = max(-FINISH_CLIP, min(FINISH_CLIP, finish_term))
+    # 同ラインSBボーナス・位置ペナは既存のまま
+    sb = float(
+        bonus_init.get(car_to_group.get(no, None), 0.0)
+        * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
+    )
+    pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
 
-    return base + sb + pos_term + finish_term + SMALL_Z_RATING * zt_map.get(no, 0.0)
+    # === ここから新合算（ENVとFORMを“SD固定”で統一スケール化） ===
+    env_term  = SD_ENV  * float(ENV_Z.get(int(no), 0.0))
+    form_term = SD_FORM * float(FORM_Z.get(int(no), 0.0))
+
+    # 得点zの微小項は現状維持
+    tiny = SMALL_Z_RATING * float(zt_map.get(int(no), 0.0))
+
+    return env_term + form_term + sb + pos_term + tiny
 
 
 
