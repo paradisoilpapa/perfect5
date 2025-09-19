@@ -885,11 +885,11 @@ bonus_init,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff,
 def anchor_score(no:int) -> float:
     base = float(v_final.get(no, -1e9))
     role = role_in_line(no, line_def)
-    sb = float(bonus_init.get(car_to_group.get(no, None), 0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
+    sb = float(bonus_init.get(car_to_group.get(no, None), 0.0) *
+               (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
     pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
-    if _is_girls:
 
-    # ★修正：p2z_map ではなく form_T_map を利用
+    # ★修正：p2z_mapではなく form_T_map を利用
     raw_finish = (form_T_map.get(no, 50.0) - 50.0) / 10.0
     if _is_girls:
         finish_term = FINISH_WEIGHT_G * raw_finish
