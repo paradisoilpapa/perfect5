@@ -201,6 +201,22 @@ def zscore_list(arr):
 def zscore_val(x, xs):
     xs = np.array(xs, dtype=float); m, s = float(np.mean(xs)), float(np.std(xs))
     return 0.0 if s==0 else (float(x)-m)/s
+
+def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
+    """NaNを除いた母集団でT=50+10*(x-μ)/σを作り、NaNは50に置換して返す"""
+    v = values.astype(float, copy=True)
+    finite = np.isfinite(v)
+    k = int(finite.sum())
+    if k < 2:
+        return np.full_like(v, 50.0), (float("nan") if k==0 else float(v[finite][0])), 0.0, k
+    mu = float(np.mean(v[finite]))
+    sd = float(np.std(v[finite], ddof=0))
+    if (not np.isfinite(sd)) or sd < eps:
+        return np.full_like(v, 50.0), mu, 0.0, k
+    T = 50.0 + 10.0 * ((v - mu) / sd)
+    T[~finite] = 50.0
+    return T, mu, sd, k
+
 def extract_car_list(s, nmax):
     s = str(s or "").strip()
     return [int(c) for c in s if c.isdigit() and 1 <= int(c) <= nmax]
@@ -663,6 +679,12 @@ for no in active_cars:
 # ←ここはFormだけ作る（偏差値化はまだしない）
 Form = {no: 0.7*p1_eff[no] + 0.3*p2_eff[no] for no in active_cars}
 
+# === Form 偏差値化（平均50, SD10）
+form_list = [Form[n] for n in active_cars]
+form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
+form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
+
+
 
 # --- 脚質プロフィール（会場適性：得意会場平均基準のstyleを掛ける）
 prof_base, prof_escape, prof_sashi, prof_oikomi = {}, {}, {}, {}
@@ -889,20 +911,27 @@ bonus_init,_ = compute_lineSB_bonus(
     enable=line_sb_enable
 )
 
-def anchor_score(no:int) -> float:
+def anchor_score(no: int) -> float:
     base = float(v_final.get(no, -1e9))
     role = role_in_line(no, line_def)
-    sb = float(bonus_init.get(car_to_group.get(no, None), 0.0) *
-               (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
+    sb = float(
+        bonus_init.get(car_to_group.get(no, None), 0.0)
+        * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
+    )
     pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
 
-    # ★着順項：Formの“レース内T偏差値”を使う（平均50→Z化）
+    # ★ここを差し替え
     raw_finish = (form_T_map.get(no, 50.0) - 50.0) / 10.0
-    if race_class == "ガールズ":
+    if _is_girls:
         finish_term = FINISH_WEIGHT_G * raw_finish
     else:
         finish_term = FINISH_WEIGHT * raw_finish
+
     finish_term = max(-FINISH_CLIP, min(FINISH_CLIP, finish_term))
+
+    return base + sb + pos_term + finish_term + SMALL_Z_RATING * zt_map.get(no, 0.0)
+
+
 
     # わずかな得点Zを添える（従来通り）
     return base + sb + pos_term + finish_term + SMALL_Z_RATING * zt_map.get(no, 0.0)
