@@ -1422,7 +1422,7 @@ from itertools import combinations
 S_TRIFECTA_MIN = globals().get("S_TRIFECTA_MIN", 164.0)  # 三連単基準
 
 # ===== 可変パラメータ =====
-TRIO_SIG_DIV   = float(globals().get("TRIO_SIG_DIV", 4.0))     # 三連複しきい値: μ + σ/TRIO_SIG_DIV
+TRIO_SIG_DIV = float(globals().get("TRIO_SIG_DIV", 1.5))     # 三連複しきい値: μ + σ/TRIO_SIG_DIV
 TRIO_L3_MIN    = float(globals().get("TRIO_L3_MIN", 160.0))    # ★L3候補の固定しきい値（偏差値S合計）
 S_TRIFECTA_MIN = float(globals().get("S_TRIFECTA_MIN", 164.0)) # 三連単の基準（従来どおり）
 
