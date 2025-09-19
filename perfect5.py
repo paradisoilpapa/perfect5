@@ -659,7 +659,10 @@ for no in active_cars:
         p1_eff[no] = clamp((x1[no] + n0*p1_prior)/(n+n0), 0.0, 0.40)
         p2_eff[no] = clamp((x2[no] + n0*p2_prior)/(n+n0), 0.0, 0.50)
 
+# ←★ここに追加（偏差値化はまだしない）
 Form = {no: 0.7*p1_eff[no] + 0.3*p2_eff[no] for no in active_cars}
+
+
 
 # === Form（勝率×0.7 + 連対率×0.3）
 Form = {no: 0.7*p1_eff[no] + 0.3*p2_eff[no] for no in active_cars}
@@ -889,15 +892,15 @@ def anchor_score(no:int) -> float:
                (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
     pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
 
-    # ★修正：p2z_mapではなく form_T_map を利用
-    raw_finish = (form_T_map.get(no, 50.0) - 50.0) / 10.0
-    if _is_girls:
-        finish_term = FINISH_WEIGHT_G * raw_finish
-    else:
-        finish_term = FINISH_WEIGHT * raw_finish
+# ★ここを差し替え（anchor_score 内）
+raw_finish = (form_T_map.get(no, 50.0) - 50.0) / 10.0
+if _is_girls:
+    finish_term = FINISH_WEIGHT_G * raw_finish
+else:
+    finish_term = FINISH_WEIGHT * raw_finish
 
-    finish_term = max(-FINISH_CLIP, min(FINISH_CLIP, finish_term))
-    return base + sb + pos_term + finish_term + SMALL_Z_RATING * zt_map.get(no, 0.0)
+finish_term = max(-FINISH_CLIP, min(FINISH_CLIP, finish_term))
+return base + sb + pos_term + finish_term + SMALL_Z_RATING * zt_map.get(no, 0.0)
 
 # ===== ◎候補抽出（既存ロジック維持）
 cand_sorted = sorted(active_cars, key=lambda n: anchor_score(n), reverse=True)
@@ -1075,6 +1078,12 @@ xs_base_raw = np.array([SB_BASE_MAP.get(i, np.nan) for i in USED_IDS], dtype=flo
 
 # 4) 偏差値T（レース内：平均50・SD10、NaN→50）
 xs_race_t, mu_sb, sd_sb, k_finite = t_score_from_finite(xs_base_raw)
+
+# ← t_score_from_finite(...) の関数定義が終わった直後に追加
+form_list = [Form[n] for n in active_cars]
+form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
+form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
+
 
 missing = ~np.isfinite(xs_base_raw)
 if missing.any():
