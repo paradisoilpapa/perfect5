@@ -1507,7 +1507,7 @@ trios_filtered_display, cutoff_trio = [], 0.0
 if L1 and L2 and L3:
     trio_keys = set()
     for a,b,c in product(L1, L2, L3):
-        if len({a,b,c}) != 3: 
+        if len({a,b,c}) != 3:
             continue
         trio_keys.add(tuple(sorted((a,b,c))))
     trios_from_cols = [(a,b,c,_trio_score(a,b,c)) for (a,b,c) in sorted(trio_keys)]
@@ -1516,6 +1516,28 @@ if L1 and L2 and L3:
         mu, sig = mean(xs), pstdev(xs)
         cutoff_trio = mu + (sig/float(TRIO_SIG_DIV) if sig > 0 else 0.0)
         trios_filtered_display = [(a,b,c,s) for (a,b,c,s) in trios_from_cols if s >= cutoff_trio]
+
+    # === [LC] ライン完結・救済枠（1枠） ===
+    try:
+        gid = car_to_group.get(anchor_no, None)
+        mem = list(line_def.get(gid, [])) if gid in line_def else []
+        if len(mem) >= 3 and anchor_no in mem:
+            others = [x for x in mem if x != anchor_no]
+            others_sorted = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)
+            if len(others_sorted) >= 2:
+                a, b = int(others_sorted[0]), int(others_sorted[1])
+                kk = tuple(sorted((int(anchor_no), a, b)))
+                s  = _trio_score(int(anchor_no), a, b)
+
+                # 既存出力のキー集合で重複チェック（←ここがポイント）
+                existing_keys = {tuple(sorted((x,y,z))) for (x,y,z,_) in trios_filtered_display}
+
+                lc_cut = max(float(TRIO_L3_MIN), float(cutoff_trio) - 1.5)
+                if (kk not in existing_keys) and all(x in USED_IDS for x in kk) and (s >= lc_cut):
+                    trios_filtered_display.append((kk[0], kk[1], kk[2], s))
+    except Exception:
+        pass
+
 
 def _df_trio(rows, anchor_no):
     out = []
