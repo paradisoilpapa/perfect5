@@ -661,6 +661,15 @@ for no in active_cars:
 
 Form = {no: 0.7*p1_eff[no] + 0.3*p2_eff[no] for no in active_cars}
 
+# === Form（勝率×0.7 + 連対率×0.3）
+Form = {no: 0.7*p1_eff[no] + 0.3*p2_eff[no] for no in active_cars}
+
+# === Form 偏差値化（平均50, SD10）
+form_list = [Form[n] for n in active_cars]
+form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
+form_T_map = {n: float(form_T[i]) for i,n in enumerate(active_cars)}
+
+
 # --- 脚質プロフィール（会場適性：得意会場平均基準のstyleを掛ける）
 prof_base, prof_escape, prof_sashi, prof_oikomi = {}, {}, {}, {}
 for no in active_cars:
@@ -879,10 +888,15 @@ def anchor_score(no:int) -> float:
     sb = float(bonus_init.get(car_to_group.get(no, None), 0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
     pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
     if _is_girls:
-        raw_finish = FINISH_WEIGHT_G * float(p2z_map.get(no, 0.0))
+
+    # ★修正：p2z_map ではなく form_T_map を利用
+    raw_finish = (form_T_map.get(no, 50.0) - 50.0) / 10.0
+    if _is_girls:
+        finish_term = FINISH_WEIGHT_G * raw_finish
     else:
-        raw_finish = FINISH_WEIGHT * float(p2z_map.get(no, 0.0))
-    finish_term = max(-FINISH_CLIP, min(FINISH_CLIP, raw_finish))
+        finish_term = FINISH_WEIGHT * raw_finish
+
+    finish_term = max(-FINISH_CLIP, min(FINISH_CLIP, finish_term))
     return base + sb + pos_term + finish_term + SMALL_Z_RATING * zt_map.get(no, 0.0)
 
 # ===== ◎候補抽出（既存ロジック維持）
