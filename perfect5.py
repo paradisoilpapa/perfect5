@@ -1194,6 +1194,10 @@ score_map_from_df = coerce_score_map(globals().get("df_sorted_wo", None), n_cars
 score_map_vwo     = coerce_score_map(globals().get("velobi_wo", None),   n_cars)
 SB_BASE_MAP = score_map_from_df if any(np.isfinite(list(score_map_from_df.values()))) else score_map_vwo
 
+# ★強制：偏差値の母集団を anchor_score に統一（ここが命）
+SB_BASE_MAP = {int(i): float(anchor_score(int(i))) for i in USED_IDS}
+
+
 # 3) スコア配列（スコア順表示と偏差値母集団を共用）
 xs_base_raw = np.array([SB_BASE_MAP.get(i, np.nan) for i in USED_IDS], dtype=float)
 
