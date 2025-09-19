@@ -892,15 +892,16 @@ def anchor_score(no:int) -> float:
                (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
     pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
 
-# ★ここを差し替え（anchor_score 内）
-raw_finish = (form_T_map.get(no, 50.0) - 50.0) / 10.0
-if _is_girls:
-    finish_term = FINISH_WEIGHT_G * raw_finish
-else:
-    finish_term = FINISH_WEIGHT * raw_finish
+    # ★ここを差し替え
+    raw_finish = (form_T_map.get(no, 50.0) - 50.0) / 10.0
+    if _is_girls:
+        finish_term = FINISH_WEIGHT_G * raw_finish
+    else:
+        finish_term = FINISH_WEIGHT * raw_finish
 
-finish_term = max(-FINISH_CLIP, min(FINISH_CLIP, finish_term))
-return base + sb + pos_term + finish_term + SMALL_Z_RATING * zt_map.get(no, 0.0)
+    finish_term = max(-FINISH_CLIP, min(FINISH_CLIP, finish_term))
+    return base + sb + pos_term + finish_term + SMALL_Z_RATING * zt_map.get(no, 0.0)
+
 
 # ===== ◎候補抽出（既存ロジック維持）
 cand_sorted = sorted(active_cars, key=lambda n: anchor_score(n), reverse=True)
