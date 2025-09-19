@@ -843,7 +843,7 @@ df_sorted_pure = pd.DataFrame({
     "合計_SBなし": [round(float(v_final[c]), 6) for c in v_final.keys()]
 }).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
 
-# ===== 印用（既存の安全弁を維持）
+# ===== 印用（既存の安全弁を維持） =====
 FINISH_WEIGHT   = globals().get("FINISH_WEIGHT", 6.0)
 FINISH_WEIGHT_G = globals().get("FINISH_WEIGHT_G", 3.0)
 POS_BONUS  = globals().get("POS_BONUS", {0: 0.0, 1: -0.6, 2: -0.9, 3: -1.2, 4: -1.4})
@@ -852,6 +852,7 @@ SMALL_Z_RATING = globals().get("SMALL_Z_RATING", 0.01)
 FINISH_CLIP = globals().get("FINISH_CLIP", 4.0)
 TIE_EPSILON  = globals().get("TIE_EPSILON", 0.8)
 
+# --- p2のZ化など（従来どおり） ---
 p2_list = [float(p2_eff.get(n, 0.0)) for n in active_cars]
 if len(p2_list) >= 1:
     mu_p2  = float(np.mean(p2_list))
@@ -864,6 +865,13 @@ p2only_map = {n: max(0.0, float(p2_eff.get(n, 0.0)) - float(p1_eff_safe.get(n, 0
 zt = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
 zt_map = {n: float(zt[i]) for i, n in enumerate(active_cars)} if active_cars else {}
 
+# === ★Form 偏差値化（anchor_scoreより前に必ず置く！） ===
+# すでに上で Form = 0.7*p1_eff + 0.3*p2_eff を作ってある前提
+# t_score_from_finite はこのファイル内に定義済みである前提
+form_list = [Form[n] for n in active_cars]
+form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
+form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
+
 def _pos_idx(no:int) -> int:
     g = car_to_group.get(no, None)
     if g is None or g not in line_def:
@@ -874,7 +882,12 @@ def _pos_idx(no:int) -> int:
     except Exception:
         return 0
 
-bonus_init,_ = compute_lineSB_bonus(line_def, S, B, line_factor=line_factor_eff, exclude=None, cap=cap_SB_eff, enable=line_sb_enable)
+bonus_init,_ = compute_lineSB_bonus(
+    line_def, S, B,
+    line_factor=line_factor_eff,
+    exclude=None, cap=cap_SB_eff,
+    enable=line_sb_enable
+)
 
 def anchor_score(no:int) -> float:
     base = float(v_final.get(no, -1e9))
@@ -883,15 +896,18 @@ def anchor_score(no:int) -> float:
                (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
     pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
 
-    # ★ここを差し替え
+    # ★着順項：Formの“レース内T偏差値”を使う（平均50→Z化）
     raw_finish = (form_T_map.get(no, 50.0) - 50.0) / 10.0
-    if _is_girls:
+    if race_class == "ガールズ":
         finish_term = FINISH_WEIGHT_G * raw_finish
     else:
         finish_term = FINISH_WEIGHT * raw_finish
-
     finish_term = max(-FINISH_CLIP, min(FINISH_CLIP, finish_term))
+
+    # わずかな得点Zを添える（従来通り）
     return base + sb + pos_term + finish_term + SMALL_Z_RATING * zt_map.get(no, 0.0)
+# ===== 貼り替えここまで =====
+
 
 
 # ===== ◎候補抽出（既存ロジック維持）
