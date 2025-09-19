@@ -648,6 +648,7 @@ def n0_by_n(n):
     if n<=29: return 5
     return 3
 
+# ここは従来通りでOK
 p1_eff, p2_eff = {}, {}
 for no in active_cars:
     n = x1[no]+x2[no]+x3[no]+x_out[no]
@@ -659,8 +660,9 @@ for no in active_cars:
         p1_eff[no] = clamp((x1[no] + n0*p1_prior)/(n+n0), 0.0, 0.40)
         p2_eff[no] = clamp((x2[no] + n0*p2_prior)/(n+n0), 0.0, 0.50)
 
-# ←★ここに追加（偏差値化はまだしない）
+# ★追加：Form = 勝率×0.7 + 連対率×0.3
 Form = {no: 0.7*p1_eff[no] + 0.3*p2_eff[no] for no in active_cars}
+
 
 
 
@@ -1047,7 +1049,7 @@ def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
     finite = np.isfinite(v)
     k = int(finite.sum())
     if k < 2:
-        return np.full_like(v, 50.0), (float("nan") if k == 0 else float(v[finite][0])), 0.0, k
+        return np.full_like(v, 50.0), (float("nan") if k==0 else float(v[finite][0])), 0.0, k
     mu = float(np.mean(v[finite]))
     sd = float(np.std(v[finite], ddof=0))
     if (not np.isfinite(sd)) or sd < eps:
@@ -1057,10 +1059,11 @@ def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
     return T, mu, sd, k
 
 
-# ← t_score_from_finite(...) の関数定義が終わった直後に追加
+# ★ここに追加（Form の偏差値化）
 form_list = [Form[n] for n in active_cars]
 form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
 form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
+
 
 
 
