@@ -826,6 +826,42 @@ df = pd.DataFrame(rows, columns=[
 mu = float(df["合計_SBなし_raw"].mean()) if not df.empty else 0.0
 df["合計_SBなし"] = mu + 1.0 * (df["合計_SBなし_raw"] - mu)
 
+# === [PATCH-A] 安定度をENVから分離し、各柱をレース内z化（SD固定） ===
+SD_FORM = 0.28   # Balanced
+SD_ENV  = 0.20
+SD_STAB = 0.12
+
+# 安定度（raw）と、ENVのベース（= 合計_SBなし_raw から安定度だけ除いたもの）
+STAB_RAW = {int(df.loc[i, "車番"]): float(df.loc[i, "安定度"]) for i in df.index}
+ENV_BASE = {
+    int(df.loc[i, "車番"]): float(df.loc[i, "合計_SBなし_raw"]) - float(df.loc[i, "安定度"])
+    for i in df.index
+}
+
+# ENV → z
+_env_arr = np.array([float(ENV_BASE.get(n, np.nan)) for n in active_cars], dtype=float)
+_mask = np.isfinite(_env_arr)
+if int(_mask.sum()) >= 2:
+    mu_env = float(np.mean(_env_arr[_mask])); sd_env = float(np.std(_env_arr[_mask]))
+else:
+    mu_env, sd_env = 0.0, 1.0
+_den_env = (sd_env if sd_env > 1e-12 else 1.0)
+ENV_Z = {int(n): (float(ENV_BASE.get(n, mu_env)) - mu_env) / _den_env for n in active_cars}
+
+# FORM（すでに form_T_map は作ってある前提） → z
+FORM_Z = {int(n): (float(form_T_map.get(n, 50.0)) - 50.0) / 10.0 for n in active_cars}
+
+# STAB（安定度 raw） → z
+_stab_arr = np.array([float(STAB_RAW.get(n, np.nan)) for n in active_cars], dtype=float)
+_m2 = np.isfinite(_stab_arr)
+if int(_m2.sum()) >= 2:
+    mu_st = float(np.mean(_stab_arr[_m2])); sd_st = float(np.std(_stab_arr[_m2]))
+else:
+    mu_st, sd_st = 0.0, 1.0
+_den_st = (sd_st if sd_st > 1e-12 else 1.0)
+STAB_Z = {int(n): (float(STAB_RAW.get(n, mu_st)) - mu_st) / _den_st for n in active_cars}
+
+
 # ===== KO方式（印に混ぜず：展開・ケンで利用） =====
 v_wo = {int(k): float(v) for k, v in zip(df["車番"].astype(int), df["合計_SBなし"].astype(float))}
 _is_girls = (race_class == "ガールズ")
@@ -929,14 +965,7 @@ bonus_init,_ = compute_lineSB_bonus(
     enable=line_sb_enable
 )
 
-def anchor_score(no: int) -> float:
-    base = float(v_final.get(no, -1e9))
-    role = role_in_line(no, line_def)
-    sb = float(
-        bonus_init.get(car_to_group.get(no, None), 0.0)
-        * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
-    )
-    pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
+
 
 def anchor_score(no: int) -> float:
     role = role_in_line(no, line_def)
@@ -948,20 +977,37 @@ def anchor_score(no: int) -> float:
     )
     pos_term = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
 
-    # === ここから新合算（ENVとFORMを“SD固定”で統一スケール化） ===
+    # SD固定スケールの柱
     env_term  = SD_ENV  * float(ENV_Z.get(int(no), 0.0))
     form_term = SD_FORM * float(FORM_Z.get(int(no), 0.0))
+    stab_term = (SD_STAB * float(STAB_Z.get(int(no), 0.0))) if 'STAB_Z' in globals() else 0.0
 
-    # 得点zの微小項は現状維持
-    tiny = SMALL_Z_RATING * float(zt_map.get(int(no), 0.0))
+    tiny = SMALL_Z_RATING * float(zt_map.get(int(no), 0.0))  # 微小の得点Z
 
-    return env_term + form_term + sb + pos_term + tiny
-
+    return env_term + form_term + stab_term + sb + pos_term + tiny
 
 
-    # わずかな得点Zを添える（従来通り）
-    return base + sb + pos_term + finish_term + SMALL_Z_RATING * zt_map.get(no, 0.0)
-# ===== 貼り替えここまで =====
+# === デバッグ表示（必要なときだけ / anchor_score定義の後, 印出力の前） ===
+for no in active_cars:
+    role = role_in_line(no, line_def)
+    sb_dbg  = bonus_init.get(car_to_group.get(no, None), 0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
+    pos_dbg = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
+    form_dbg = SD_FORM * FORM_Z.get(no, 0.0)
+    env_dbg  = SD_ENV  * ENV_Z.get(no, 0.0)
+    stab_dbg = (SD_STAB * STAB_Z.get(no, 0.0)) if 'STAB_Z' in globals() else 0.0
+    tiny_dbg = SMALL_Z_RATING * zt_map.get(no, 0.0)
+
+    total = form_dbg + env_dbg + stab_dbg + sb_dbg + pos_dbg + tiny_dbg
+    st.write(no, {
+        "form": round(form_dbg, 4),
+        "env":  round(env_dbg, 4),
+        "stab": round(stab_dbg, 4),
+        "sb":   round(sb_dbg, 4),
+        "pos":  round(pos_dbg, 4),
+        "tiny": round(tiny_dbg, 4),
+        "TOTAL(anchor_score期待値)": round(total, 4),
+    })
+
 
 
 
