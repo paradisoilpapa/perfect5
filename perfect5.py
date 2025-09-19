@@ -1047,13 +1047,23 @@ def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
     finite = np.isfinite(v)
     k = int(finite.sum())
     if k < 2:
-        return np.full_like(v, 50.0), (float("nan") if k==0 else float(v[finite][0])), 0.0, k
-    mu = float(np.mean(v[finite])); sd = float(np.std(v[finite], ddof=0))
+        return np.full_like(v, 50.0), (float("nan") if k == 0 else float(v[finite][0])), 0.0, k
+    mu = float(np.mean(v[finite]))
+    sd = float(np.std(v[finite], ddof=0))
     if (not np.isfinite(sd)) or sd < eps:
         return np.full_like(v, 50.0), mu, 0.0, k
     T = 50.0 + 10.0 * ((v - mu) / sd)
     T[~finite] = 50.0
     return T, mu, sd, k
+
+
+# ← t_score_from_finite(...) の関数定義が終わった直後に追加
+form_list = [Form[n] for n in active_cars]
+form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
+form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
+
+
+
 
 def _format_rank_from_array(ids, arr):
     pairs = [(i, float(arr[idx])) for idx, i in enumerate(ids)]
@@ -1080,10 +1090,7 @@ xs_base_raw = np.array([SB_BASE_MAP.get(i, np.nan) for i in USED_IDS], dtype=flo
 # 4) 偏差値T（レース内：平均50・SD10、NaN→50）
 xs_race_t, mu_sb, sd_sb, k_finite = t_score_from_finite(xs_base_raw)
 
-# ← t_score_from_finite(...) の関数定義が終わった直後に追加
-form_list = [Form[n] for n in active_cars]
-form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
-form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
+
 
 
 missing = ~np.isfinite(xs_base_raw)
