@@ -660,8 +660,9 @@ for no in active_cars:
         p1_eff[no] = clamp((x1[no] + n0*p1_prior)/(n+n0), 0.0, 0.40)
         p2_eff[no] = clamp((x2[no] + n0*p2_prior)/(n+n0), 0.0, 0.50)
 
-# ★追加：Form = 勝率×0.7 + 連対率×0.3
+# ←ここはFormだけ作る（偏差値化はまだしない）
 Form = {no: 0.7*p1_eff[no] + 0.3*p2_eff[no] for no in active_cars}
+
 
 
 
@@ -1059,10 +1060,11 @@ def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
     return T, mu, sd, k
 
 
-# ★ここに追加（Form の偏差値化）
+# ★Form の偏差値化（t_score_from_finite 定義の直後）
 form_list = [Form[n] for n in active_cars]
 form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
 form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
+
 
 
 
