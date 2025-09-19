@@ -1545,7 +1545,7 @@ pairs_qn2_kept, qn2_cutoff = [], 0.0
 if pairs_all_L12:
     sc = list(pairs_all_L12.values())
     mu2, sig2 = mean(sc), pstdev(sc)
-    qn2_cutoff = mu2 + (sig2/3.0 if sig2 > 0 else 0.0)
+    qn2_cutoff = mu2 + (sig2/1.5 if sig2 > 0 else 0.0)
     pairs_qn2_kept = [(a,b,s) for (a,b), s in pairs_all_L12.items() if s >= qn2_cutoff]
     pairs_qn2_kept.sort(key=lambda x:(-x[2], x[0], x[1]))
 
