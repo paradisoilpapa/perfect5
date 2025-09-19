@@ -664,18 +664,6 @@ for no in active_cars:
 Form = {no: 0.7*p1_eff[no] + 0.3*p2_eff[no] for no in active_cars}
 
 
-
-
-
-# === Form（勝率×0.7 + 連対率×0.3）
-Form = {no: 0.7*p1_eff[no] + 0.3*p2_eff[no] for no in active_cars}
-
-# === Form 偏差値化（平均50, SD10）
-form_list = [Form[n] for n in active_cars]
-form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
-form_T_map = {n: float(form_T[i]) for i,n in enumerate(active_cars)}
-
-
 # --- 脚質プロフィール（会場適性：得意会場平均基準のstyleを掛ける）
 prof_base, prof_escape, prof_sashi, prof_oikomi = {}, {}, {}, {}
 for no in active_cars:
