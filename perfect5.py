@@ -1526,7 +1526,6 @@ form_L3 = _fmt_form(L3)
 formation_label = f"{form_L1}-{form_L2}-{form_L3}"
 st.markdown(f"**フォーメーション**：{formation_label}")
 
-# ---------- 三連複（新方式：L1×L2×L3 → μ+σ/TRIO_SIG_DIV） ----------
 # ---------- 三連複 ----------
 trios_filtered_display, cutoff_trio = [], 0.0
 if L1 and L2 and L3:
@@ -1544,7 +1543,7 @@ if L1 and L2 and L3:
             (a,b,c,s,"通常") for (a,b,c,s) in trios_from_cols if s >= cutoff_trio
         ]
 
-# ラインパワー枠追加（最大2点）
+# ラインパワー枠（三連複・最大2点）
 line_power_added = []
 gid = car_to_group.get(anchor_no, None)
 if gid in line_def:
@@ -1555,10 +1554,11 @@ if gid in line_def:
         for extra in others:
             k1 = tuple(sorted((anchor_no, mark_circle, extra)))
             if not any(set(k1) == {a,b,c} for (a,b,c,_,_) in trios_filtered_display):
-                line_power_added.append((k1[0], k1[1], k1[2], _trio_score(*k1),"ライン枠"))
+                line_power_added.append((k1[0],k1[1],k1[2],_trio_score(*k1),"ライン枠"))
             if len(line_power_added) >= 2:
                 break
 trios_filtered_display.extend(line_power_added[:2])
+
 
 # ---------- 三連単 ----------
 santan_filtered_display, cutoff_san = [], 0.0
@@ -1577,7 +1577,7 @@ if L1 and L2 and L3:
             (a,b,c,s,"通常") for (a,b,c,s) in san_from_cols if s >= cutoff_san
         ]
 
-# ラインパワー枠追加（最大2点）
+# ラインパワー枠（三連単・最大2点）
 santan_line_added = []
 if gid in line_def:
     mem = list(line_def.get(gid, []))
@@ -1592,71 +1592,15 @@ if gid in line_def:
                 break
 santan_filtered_display.extend(santan_line_added[:2])
 
-# ---------- 出力関数 ----------
-def _df_trio(rows, anchor_no):
-    out = []
-    for (a,b,c,s,tag) in rows:
-        k = [a,b,c]; k.sort()
-        label = "-".join(map(str,k))
-        if anchor_no in k: label += "☆"
-        note = f"｜{tag}" if tag == "ライン枠" else ""
-        out.append({"買い目": label, "偏差値S": f"{round(s,1)}{note}"})
-    out.sort(key=lambda x: (-float(x["偏差値S"].split("｜")[0]), x["買い目"]))
-    return pd.DataFrame(out)
 
-
-    # === [LC] ライン完結・救済枠（1枠） ===
-    try:
-        gid = car_to_group.get(anchor_no, None)
-        mem = list(line_def.get(gid, [])) if gid in line_def else []
-        if len(mem) >= 3 and anchor_no in mem:
-            others = [x for x in mem if x != anchor_no]
-            others_sorted = sorted(
-                others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True
-            )
-            if len(others_sorted) >= 2:
-                a, b = int(others_sorted[0]), int(others_sorted[1])
-                kk = tuple(sorted((int(anchor_no), a, b)))
-                s  = _trio_score(int(anchor_no), a, b)
-
-                # 既存出力のキー集合で重複チェック
-                existing_keys = {
-                    tuple(sorted((x,y,z))) for (x,y,z,_) in trios_filtered_display
-                }
-
-                lc_cut = max(float(TRIO_L3_MIN), float(cutoff_trio) - 1.5)
-                if (
-                    (kk not in existing_keys)
-                    and all(x in USED_IDS for x in kk)
-                    and (s >= lc_cut)
-                ):
-                    trios_filtered_display.append((kk[0], kk[1], kk[2], s))
-    except Exception:
-        pass
-
-
-def _df_trio(rows, anchor_no):
-    out = []
-    for (a,b,c,s) in rows:
-        k = [a,b,c]; k.sort()
-        label = "-".join(map(str,k))
-        if anchor_no in k: label += "☆"
-        out.append({"買い目": label, "偏差値S": round(s,1)})
-    out.sort(key=lambda x: (-x["偏差値S"], x["買い目"]))
-    return pd.DataFrame(out)
-
-# ---------- 二車複（L1×L2｜μ+σ/3）／二車単（L1→L2｜S1≥124） ----------
-if 'hensachi_top2' not in globals():
-    # 連対偏差値が未計算なら race_t を代用
-    hensachi_top2 = {i: float(race_t.get(i, 50.0)) for i in USED_IDS}
-
+# ---------- 二車複 ----------
 pairs_all_L12 = {}
 for a in L1:
     for b in L2:
         if a == b: continue
         key = tuple(sorted((int(a), int(b))))
         if key in pairs_all_L12: continue
-        s2 = float(hensachi_top2.get(a,50.0)) + float(hensachi_top2.get(b,50.0))
+        s2 = float(race_t.get(a,50.0)) + float(race_t.get(b,50.0))
         pairs_all_L12[key] = round(s2, 1)
 
 pairs_qn2_kept, qn2_cutoff = [], 0.0
@@ -1667,6 +1611,8 @@ if pairs_all_L12:
     pairs_qn2_kept = [(a,b,s) for (a,b), s in pairs_all_L12.items() if s >= qn2_cutoff]
     pairs_qn2_kept.sort(key=lambda x:(-x[2], x[0], x[1]))
 
+
+# ---------- 二車単 ----------
 rows_nitan_L12 = []
 if 'rows_nitan' in globals() and rows_nitan:
     for k, s1 in rows_nitan:
@@ -1678,114 +1624,37 @@ if 'rows_nitan' in globals() and rows_nitan:
             rows_nitan_L12.append((k, float(round(s1,1))))
 rows_nitan_L12.sort(key=lambda x:(-x[1], x[0]))
 
-# ---------- セクション出力（3連系優先。出れば二車系は非表示） ----------
-has_trio = bool(trios_filtered_display)
-has_tri  = bool(rows_trifecta) if trifecta_ok else False
-has_qn   = bool(pairs_qn2_kept)
-has_nit  = bool(rows_nitan_L12)
 
-# 三連複
-st.markdown(f"#### 三連複（新方式｜しきい値 {cutoff_trio:.1f}点）")
-st.caption(f"フォーメーション：{formation_label}（L3基準={TRIO_L3_MIN:.1f}）")
-if has_trio:
-    st.dataframe(_df_trio(trios_filtered_display, result_marks.get('◎')), use_container_width=True)
-else:
-    st.markdown("対象外")
+# ---------- 出力関数 ----------
+def _df_trio(rows, anchor_no):
+    out = []
+    for (a,b,c,s,tag) in rows:
+        k = [a,b,c]; k.sort()
+        label = "-".join(map(str,k))
+        if anchor_no in k: label += "☆"
+        note = f"｜{tag}" if tag != "通常" else ""
+        out.append({"買い目": label, "偏差値S": f"{round(s,1)}{note}"})
+    out.sort(key=lambda x: (-float(x["偏差値S"].split("｜")[0]), x["買い目"]))
+    return pd.DataFrame(out)
 
-# 三連単
-if has_tri:
-    st.markdown(f"#### 三連単（**二車単＋三連複** 連動・S≥{S_TRIFECTA_MIN}）")
-    st.dataframe(pd.DataFrame([{"買い目": k, "参考S(三連複S)": v} for (k,v) in rows_trifecta]),
-                 use_container_width=True)
-else:
-    st.markdown("#### 三連単（現行方式）\n対象外")
 
-# 二車系は「三連複 or 三連単」が出たら非表示（ノイズ防止）
-if not (has_trio or has_tri):
-    st.markdown(f"#### 二車複（L1×L2｜しきい値 {qn2_cutoff:.1f}点）")
-    st.caption(f"基準フォーメーション：{form_L1} × {form_L2}")
-    if has_qn:
-        st.dataframe(pd.DataFrame(
-            [{"買い目": f"{a}-{b}", "S2(連対偏差値合計)": s} for (a,b,s) in pairs_qn2_kept]
-        ), use_container_width=True)
-    else:
-        st.markdown("対象外")
-
-    st.markdown("  二車単（L1×L2｜S1≥124）")
-    if has_nit:
-        st.dataframe(pd.DataFrame(
-            [{"買い目": k, "S1(勝率偏差値合計)": v} for (k,v) in rows_nitan_L12]
-        ), use_container_width=True)
-    else:
-        st.markdown("  対象外")
-
-# ---------- note 出力（画面と同じ排他ロジック） ----------
-def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
-    lines = []
-    for n in ids:
-        v = ts_map.get(n, "—")
-        lines.append(f"{n}: {float(v):.1f}" if isinstance(v,(int,float)) else f"{n}: —")
-    return "\n".join(lines)
-
-note_sections = []
-note_sections.append(f"{track}{race_no}R")
-note_sections.append(f"展開評価：{confidence}\n")
-
-# 推奨帯
-if   has_trio and has_tri: note_sections.append("推奨　三連複＆三連単\n")
-elif has_trio:             note_sections.append("推奨　三連複\n")
-elif has_tri:              note_sections.append("推奨　三連単\n")
-elif has_qn and has_nit:   note_sections.append("推奨　２車複＆二車単\n")
-elif has_qn:               note_sections.append("推奨　２車複\n")
-elif has_nit:              note_sections.append("推奨　二車単\n")
-else:                      note_sections.append("推奨　ケン\n")
-
-note_sections.append(f"{race_time}　{race_class}")
-note_sections.append(f"ライン　{'　'.join([x for x in globals().get('line_inputs', []) if str(x).strip()])}")
-note_sections.append(f"スコア順（SBなし）　{_format_rank_from_array(USED_IDS, xs_base_raw)}")
-note_sections.append(' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α','β'] if m in result_marks))
-note_sections.append("\n偏差値（風・ライン込み）")
-note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
-note_sections.append(f"\nフォーメーション：{formation_label}")
-
-# 三連複 明細
+# ---------- note 出力 ----------
 if has_trio:
     triolist = "\n".join([
-        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}（S={s:.1f}）"
-        for (a,b,c,s) in sorted(trios_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
+        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}"
+        f"（S={s:.1f}{'｜'+tag if tag!='通常' else ''}）"
+        for (a,b,c,s,tag) in sorted(trios_filtered_display, key=lambda x:(-x[3],x[0],x[1],x[2]))
     ])
-    note_sections.append(f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点／L3基準 {TRIO_L3_MIN:.1f}）\n{triolist}")
+    note_sections.append(f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点）\n{triolist}")
 else:
     note_sections.append("\n三連複（新方式）\n対象外")
 
-# 三連単 明細
 if has_tri:
-    trifectalist = "\n".join([f"{k}（参考S={v:.1f}）" for (k,v) in rows_trifecta])
-    note_sections.append(f"\n三連単（現行方式）\n{trifectalist}")
+    trifectalist = "\n".join([
+        f"{a}-{b}-{c}{('☆' if result_marks.get('◎')==a else '')}"
+        f"（S={s:.1f}{'｜'+tag if tag!='通常' else ''}）"
+        for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-x[3],x[0],x[1],x[2]))
+    ])
+    note_sections.append(f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点）\n{trifectalist}")
 else:
-    note_sections.append("\n三連単（現行方式）\n対象外")
-
-# 二車系（排他）
-if not (has_trio or has_tri):
-    if has_qn:
-        qnlist = "\n".join([f"{a}-{b}（S2={s:.1f}）" for (a,b,s) in pairs_qn2_kept])
-        note_sections.append(f"\n二車複（L1×L2｜しきい値 {qn2_cutoff:.1f}点）\n{qnlist}")
-    else:
-        note_sections.append("\n二車複（L1×L2）\n対象外")
-    if has_nit:
-        nitanlist = "\n".join([f"{k}（S1={v:.1f}）" for (k,v) in rows_nitan_L12])
-        note_sections.append(f"\n二車単（L1×L2｜S1≥124）\n{nitanlist}")
-    else:
-        note_sections.append("\n二車単（L1×L2）\n対象外")
-
-note_text = "\n".join(note_sections)
-st.markdown("### 📋 note用（コピーエリア）")
-st.text_area("ここを選択してコピー", note_text, height=560)
-
-# ===== デバッグ表示（必要なら） =====
-st.caption(
-    f"[DBG] L1={L1} / L2={L2} / L3={L3} | "
-    f"triout={len(trios_filtered_display)} (cut={cutoff_trio:.1f}) / "
-    f"trifecta={'Yes' if has_tri else 'No'} / "
-    f"QN_pairs={len(pairs_qn2_kept)} (cut={qn2_cutoff:.1f})"
-)
+    note_sections.append("\n三連単（新方式）\n対象外")
