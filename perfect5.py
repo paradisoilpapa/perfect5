@@ -1700,22 +1700,33 @@ note_sections.append(f"\nフォーメーション：{formation_label}")
 # 三連複 明細
 if has_trio:
     triolist = "\n".join([
-        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
-        for (a,b,c,s,tag) in sorted(trios_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
+        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}"
+        f"（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
+        for (a,b,c,s,tag) in sorted(
+            trios_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2])
+        )
     ])
-    note_sections.append(f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点／L3基準 {TRIO_L3_MIN:.1f}）\n{triolist}")
+    note_sections.append(
+        f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点／L3基準 {TRIO_L3_MIN:.1f}）\n{triolist}"
+    )
 else:
     note_sections.append("\n三連複（新方式）\n対象外")
 
 # 三連単 明細
 if has_tri:
     trifectalist = "\n".join([
-        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
-        for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
+        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}"
+        f"（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
+        for (a,b,c,s,tag) in sorted(
+            santan_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2])
+        )
     ])
-    note_sections.append(f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点）\n{trifectalist}")
+    note_sections.append(
+        f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点）\n{trifectalist}"
+    )
 else:
     note_sections.append("\n三連単（現行方式）\n対象外")
+
 
 
 
