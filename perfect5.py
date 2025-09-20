@@ -1598,6 +1598,11 @@ if L1 and L2 and L3:
 # === ラインパワー枠（三連単用・最大2点まで） ===
 santan_line_added = []
 gid = car_to_group.get(anchor_no, None)
+
+# ★追加：印の番号を取得
+mark_star   = result_marks.get("◎")
+mark_circle = result_marks.get("〇")
+
 if gid in line_def:
     mem = list(line_def.get(gid, []))
     if len(mem) >= 3 and anchor_no in mem and result_marks.get("〇") in mem:
