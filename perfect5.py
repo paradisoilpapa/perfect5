@@ -1543,21 +1543,36 @@ if L1 and L2 and L3:
             (a,b,c,s,"通常") for (a,b,c,s) in trios_from_cols if s >= cutoff_trio
         ]
 
-# ラインパワー枠（三連複・最大2点）
+# === ラインパワー枠（三連複用・最大2点、かぶり許容） ===
 line_power_added = []
-gid = car_to_group.get(anchor_no, None)
-if gid in line_def:
-    mem = list(line_def.get(gid, []))
-    if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
-        base_pair = (anchor_no, mark_circle)
-        others = [x for x in mem if x not in base_pair]
+try:
+    gid = car_to_group.get(anchor_no, None)
+    mark_circle = result_marks.get("〇", None)
+
+    if (gid in line_def) and (mark_circle is not None):
+        mem = list(line_def.get(gid, []))
+        others = [x for x in mem if x not in (anchor_no, mark_circle)]
+
         for extra in others:
+            # ◎-〇-ライン末尾
             k1 = tuple(sorted((anchor_no, mark_circle, extra)))
-            if not any(set(k1) == {a,b,c} for (a,b,c,_,_) in trios_filtered_display):
-                line_power_added.append((k1[0],k1[1],k1[2],_trio_score(*k1),"ライン枠"))
+            line_power_added.append((k1[0], k1[1], k1[2], _trio_score(*k1), "ライン枠"))
+
+            # ◎-他L2-ライン末尾
+            for second in L2:
+                if second in (anchor_no, mark_circle, extra):
+                    continue
+                k2 = tuple(sorted((anchor_no, second, extra)))
+                line_power_added.append((k2[0], k2[1], k2[2], _trio_score(*k2), "ライン枠"))
+
             if len(line_power_added) >= 2:
                 break
+except Exception:
+    pass
+
+# 上限2点だけ追加
 trios_filtered_display.extend(line_power_added[:2])
+
 
 
 # ---------- 三連単 ----------
@@ -1576,20 +1591,34 @@ if L1 and L2 and L3:
         santan_filtered_display = [
             (a,b,c,s,"通常") for (a,b,c,s) in san_from_cols if s >= cutoff_san
         ]
-
-# ラインパワー枠（三連単・最大2点）
+# === ラインパワー枠（三連単用・最大2点、かぶり許容） ===
 santan_line_added = []
-if gid in line_def:
-    mem = list(line_def.get(gid, []))
-    if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
-        base_pair = (anchor_no, mark_circle)
-        others = [x for x in mem if x not in base_pair]
+try:
+    gid = car_to_group.get(anchor_no, None)
+    mark_circle = result_marks.get("〇", None)
+
+    if (gid in line_def) and (mark_circle is not None):
+        mem = list(line_def.get(gid, []))
+        others = [x for x in mem if x not in (anchor_no, mark_circle)]
+
         for extra in others:
+            # ◎-〇-ライン末尾
             k1 = (anchor_no, mark_circle, extra)
-            if not any((a,b,c)==k1 for (a,b,c,_,_) in santan_filtered_display):
-                santan_line_added.append((k1[0],k1[1],k1[2],_santan_score(*k1),"ライン枠"))
+            santan_line_added.append((k1[0], k1[1], k1[2], _santan_score(*k1), "ライン枠"))
+
+            # ◎-他L2-ライン末尾
+            for second in L2:
+                if second in (anchor_no, mark_circle, extra):
+                    continue
+                k2 = (anchor_no, second, extra)
+                santan_line_added.append((k2[0], k2[1], k2[2], _santan_score(*k2), "ライン枠"))
+
             if len(santan_line_added) >= 2:
                 break
+except Exception:
+    pass
+
+# 上限2点だけ追加
 santan_filtered_display.extend(santan_line_added[:2])
 
 
