@@ -1527,98 +1527,82 @@ formation_label = f"{form_L1}-{form_L2}-{form_L3}"
 st.markdown(f"**フォーメーション**：{formation_label}")
 
 # ---------- 三連複（新方式：L1×L2×L3 → μ+σ/TRIO_SIG_DIV） ----------
+# ---------- 三連複 ----------
 trios_filtered_display, cutoff_trio = [], 0.0
 if L1 and L2 and L3:
     trio_keys = set()
-    for a, b, c in product(L1, L2, L3):
-        if len({a, b, c}) != 3:
+    for a,b,c in product(L1, L2, L3):
+        if len({a,b,c}) != 3:
             continue
-        trio_keys.add(tuple(sorted((a, b, c))))
-    trios_from_cols = [(a, b, c, _trio_score(a, b, c)) for (a, b, c) in sorted(trio_keys)]
+        trio_keys.add(tuple(sorted((a,b,c))))
+    trios_from_cols = [(a,b,c,_trio_score(a,b,c)) for (a,b,c) in sorted(trio_keys)]
     if trios_from_cols:
-        xs = [s for (*_, s) in trios_from_cols]
+        xs = [s for (*_,s) in trios_from_cols]
         mu, sig = mean(xs), pstdev(xs)
-        cutoff_trio = mu + (sig / float(TRIO_SIG_DIV) if sig > 0 else 0.0)
+        cutoff_trio = mu + (sig/float(TRIO_SIG_DIV) if sig > 0 else 0.0)
         trios_filtered_display = [
-            (a, b, c, s) for (a, b, c, s) in trios_from_cols if s >= cutoff_trio
+            (a,b,c,s,"通常") for (a,b,c,s) in trios_from_cols if s >= cutoff_trio
         ]
 
-    # === ラインパワー枠（三連複用・最大2点まで） ===
-    line_power_added = []
-    gid = car_to_group.get(anchor_no, None)
+# ラインパワー枠追加（最大2点）
+line_power_added = []
+gid = car_to_group.get(anchor_no, None)
+if gid in line_def:
+    mem = list(line_def.get(gid, []))
+    if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
+        base_pair = (anchor_no, mark_circle)
+        others = [x for x in mem if x not in base_pair]
+        for extra in others:
+            k1 = tuple(sorted((anchor_no, mark_circle, extra)))
+            if not any(set(k1) == {a,b,c} for (a,b,c,_,_) in trios_filtered_display):
+                line_power_added.append((k1[0], k1[1], k1[2], _trio_score(*k1),"ライン枠"))
+            if len(line_power_added) >= 2:
+                break
+trios_filtered_display.extend(line_power_added[:2])
 
-    if gid in line_def:
-        mem = list(line_def.get(gid, []))
-        if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
-            base_pair = (anchor_no, mark_circle)
-            others = [x for x in mem if x not in base_pair]
-
-            for extra in others:
-                # ◎-〇-ライン末尾
-                k1 = tuple(sorted((anchor_no, mark_circle, extra)))
-                if not any(set(k1) == {a, b, c} for (a, b, c, _) in trios_filtered_display):
-                    line_power_added.append((k1[0], k1[1], k1[2], _trio_score(*k1)))
-
-                # ◎-他2列目-ライン末尾
-                for second in L2:
-                    if second in base_pair or second == extra:
-                        continue
-                    k2 = tuple(sorted((anchor_no, second, extra)))
-                    if not any(set(k2) == {a, b, c} for (a, b, c, _) in trios_filtered_display):
-                        line_power_added.append((k2[0], k2[1], k2[2], _trio_score(*k2)))
-
-                if len(line_power_added) >= 2:
-                    break
-
-    # マージ（最大2点まで）
-    trios_filtered_display.extend(line_power_added[:2])
-
-
-# ---------- 三連単（新方式：L1×L2×L3 → μ+σ/TRIFECTA_SIG_DIV） ----------
+# ---------- 三連単 ----------
 santan_filtered_display, cutoff_san = [], 0.0
 if L1 and L2 and L3:
     san_keys = set()
-    for a, b, c in product(L1, L2, L3):
-        if len({a, b, c}) != 3:
+    for a,b,c in product(L1, L2, L3):
+        if len({a,b,c}) != 3:
             continue
-        san_keys.add((int(a), int(b), int(c)))  # 順列は区別
-
-    san_from_cols = [(a, b, c, _santan_score(a, b, c)) for (a, b, c) in san_keys]
+        san_keys.add((a,b,c))
+    san_from_cols = [(a,b,c,_santan_score(a,b,c)) for (a,b,c) in san_keys]
     if san_from_cols:
-        xs = [s for (*_, s) in san_from_cols]
+        xs = [s for (*_,s) in san_from_cols]
         mu, sig = mean(xs), pstdev(xs)
-        cutoff_san = mu + (sig / float(TRIFECTA_SIG_DIV) if sig > 0 else 0.0)
+        cutoff_san = mu + (sig/float(TRIFECTA_SIG_DIV) if sig > 0 else 0.0)
         santan_filtered_display = [
-            (a, b, c, s) for (a, b, c, s) in san_from_cols if s >= cutoff_san
+            (a,b,c,s,"通常") for (a,b,c,s) in san_from_cols if s >= cutoff_san
         ]
 
-    # === ラインパワー枠（三連単用・最大2点まで） ===
-    santan_line_added = []
-    if gid in line_def:
-        mem = list(line_def.get(gid, []))
-        if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
-            base_pair = (anchor_no, mark_circle)
-            others = [x for x in mem if x not in base_pair]
+# ラインパワー枠追加（最大2点）
+santan_line_added = []
+if gid in line_def:
+    mem = list(line_def.get(gid, []))
+    if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
+        base_pair = (anchor_no, mark_circle)
+        others = [x for x in mem if x not in base_pair]
+        for extra in others:
+            k1 = (anchor_no, mark_circle, extra)
+            if not any((a,b,c)==k1 for (a,b,c,_,_) in santan_filtered_display):
+                santan_line_added.append((k1[0],k1[1],k1[2],_santan_score(*k1),"ライン枠"))
+            if len(santan_line_added) >= 2:
+                break
+santan_filtered_display.extend(santan_line_added[:2])
 
-            for extra in others:
-                # ◎-〇-ライン末尾
-                k1 = (anchor_no, mark_circle, extra)
-                if not any((a, b, c) == k1 for (a, b, c, _) in santan_filtered_display):
-                    santan_line_added.append((k1[0], k1[1], k1[2], _santan_score(*k1)))
-
-                # ◎-他2列目-ライン末尾
-                for second in L2:
-                    if second in base_pair or second == extra:
-                        continue
-                    k2 = (anchor_no, second, extra)
-                    if not any((a, b, c) == k2 for (a, b, c, _) in santan_filtered_display):
-                        santan_line_added.append((k2[0], k2[1], k2[2], _santan_score(*k2)))
-
-                if len(santan_line_added) >= 2:
-                    break
-
-    # マージ（最大2点まで）
-    santan_filtered_display.extend(santan_line_added[:2])
+# ---------- 出力関数 ----------
+def _df_trio(rows, anchor_no):
+    out = []
+    for (a,b,c,s,tag) in rows:
+        k = [a,b,c]; k.sort()
+        label = "-".join(map(str,k))
+        if anchor_no in k: label += "☆"
+        note = f"｜{tag}" if tag == "ライン枠" else ""
+        out.append({"買い目": label, "偏差値S": f"{round(s,1)}{note}"})
+    out.sort(key=lambda x: (-float(x["偏差値S"].split("｜")[0]), x["買い目"]))
+    return pd.DataFrame(out)
 
 
     # === [LC] ライン完結・救済枠（1枠） ===
