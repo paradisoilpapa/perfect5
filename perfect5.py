@@ -1564,49 +1564,53 @@ if gid in line_def:
 trios_filtered_display.extend(line_power_added[:2])
 
 
-# ---------- 三連単 ----------
+# ---------- 三連単（新方式：◎〇固定＋順序付き） ----------
 santan_filtered_display, cutoff_san = [], 0.0
 if L1 and L2 and L3:
+    # 1列目＝◎〇
+    first_col  = [result_marks.get("◎"), result_marks.get("〇")]
+    first_col  = [x for x in first_col if x is not None]
+
+    # 2列目＝◎〇▲
+    second_col = [result_marks.get("◎"), result_marks.get("〇"), result_marks.get("▲")]
+    second_col = [x for x in second_col if x is not None]
+
+    # 3列目＝既存のL3
+    third_col  = list(L3)
+
     san_keys = set()
-    for a, b, c in product(L1, L2, L3):
+    for a,b,c in product(first_col, second_col, third_col):
         if len({a,b,c}) != 3:
             continue
-        # フォーメーション制限：1列目は◎〇、2列目は◎〇▲
-        if a not in [mark_star, mark_circle]:
-            continue
-        if b not in [mark_star, mark_circle, mark_triangle]:
-            continue
-        san_keys.add((int(a), int(b), int(c)))
+        san_keys.add((int(a), int(b), int(c)))  # 順序区別あり
 
     san_from_cols = [(a,b,c,_santan_score(a,b,c)) for (a,b,c) in san_keys]
+
     if san_from_cols:
         xs = [s for (*_,s) in san_from_cols]
         mu, sig = mean(xs), pstdev(xs)
-        cutoff_san = mu + (sig/float(TRIFECTA_SIG_DIV) if sig > 0 else 0.0)
-
-        # 上位1/8だけ残す
-        q = max(1, int(len(xs) * 0.125))
-        cutoff_san = max(cutoff_san, np.partition(xs, -q)[-q])
-
+        # ★三連単は上位 1/8 を残す
+        cutoff_san = np.percentile(xs, 100 * (1 - 1/8)) if xs else 0.0
         santan_filtered_display = [
             (a,b,c,s,"通常") for (a,b,c,s) in san_from_cols if s >= cutoff_san
         ]
 
-# ラインパワー枠追加（三連単：最大2点）
+# === ラインパワー枠（三連単用・最大2点まで） ===
 santan_line_added = []
+gid = car_to_group.get(anchor_no, None)
 if gid in line_def:
     mem = list(line_def.get(gid, []))
-    if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
-        base_pair = (anchor_no, mark_circle)
+    if len(mem) >= 3 and anchor_no in mem and result_marks.get("〇") in mem:
+        base_pair = (anchor_no, result_marks.get("〇"))
         others = [x for x in mem if x not in base_pair]
         for extra in others:
-            k1 = (anchor_no, mark_circle, extra)
-            santan_line_added.append((k1[0],k1[1],k1[2],_santan_score(*k1),"ライン枠"))
+            k1 = (anchor_no, result_marks.get("〇"), extra)
+            if not any((a,b,c)==k1 for (a,b,c,_,_) in santan_filtered_display):
+                santan_line_added.append((k1[0],k1[1],k1[2],_santan_score(*k1),"ライン枠"))
             if len(santan_line_added) >= 2:
                 break
+
 santan_filtered_display.extend(santan_line_added[:2])
-
-
 
 # ---------- 二車複 ----------
 pairs_all_L12 = {}
