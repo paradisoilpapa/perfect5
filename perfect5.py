@@ -1543,6 +1543,37 @@ if L1 and L2 and L3:
             (a,b,c,s) for (a,b,c,s) in trios_from_cols if s >= cutoff_trio
         ]
 
+# === ラインパワー枠（三連複用・最大2点まで） ===
+line_power_added = []
+gid = car_to_group.get(anchor_no, None)
+
+if gid in line_def:
+    mem = list(line_def.get(gid, []))
+    if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
+        base_pair = (anchor_no, mark_circle)
+        others = [x for x in mem if x not in base_pair]
+
+        for extra in others:
+            # ◎-〇-ライン末尾
+            k1 = tuple(sorted((anchor_no, mark_circle, extra)))
+            if not any(set(k1) == {a,b,c} for (a,b,c,_) in trios_filtered_display):
+                line_power_added.append((k1[0], k1[1], k1[2], _trio_score(*k1)))
+
+            # ◎-他2列目-ライン末尾
+            for second in L2:
+                if second in base_pair or second == extra:
+                    continue
+                k2 = tuple(sorted((anchor_no, second, extra)))
+                if not any(set(k2) == {a,b,c} for (a,b,c,_) in trios_filtered_display):
+                    line_power_added.append((k2[0], k2[1], k2[2], _trio_score(*k2)))
+
+            if len(line_power_added) >= 2:
+                break
+
+# マージ（最大2点まで）
+trios_filtered_display.extend(line_power_added[:2])
+
+
 # ---------- 三連単（新方式：L1×L2×L3 → μ+σ/TRIFECTA_SIG_DIV） ----------
 santan_filtered_display, cutoff_san = [], 0.0
 if L1 and L2 and L3:
@@ -1560,6 +1591,35 @@ if L1 and L2 and L3:
         santan_filtered_display = [
             (a,b,c,s) for (a,b,c,s) in san_from_cols if s >= cutoff_san
         ]
+
+# === ラインパワー枠（三連単用・最大2点まで） ===
+santan_line_added = []
+if gid in line_def:
+    mem = list(line_def.get(gid, []))
+    if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
+        base_pair = (anchor_no, mark_circle)
+        others = [x for x in mem if x not in base_pair]
+
+        for extra in others:
+            # ◎-〇-ライン末尾
+            k1 = (anchor_no, mark_circle, extra)
+            if not any((a,b,c) == k1 for (a,b,c,_) in santan_filtered_display):
+                santan_line_added.append((k1[0], k1[1], k1[2], _santan_score(*k1)))
+
+            # ◎-他2列目-ライン末尾
+            for second in L2:
+                if second in base_pair or second == extra:
+                    continue
+                k2 = (anchor_no, second, extra)
+                if not any((a,b,c) == k2 for (a,b,c,_) in santan_filtered_display):
+                    santan_line_added.append((k2[0], k2[1], k2[2], _santan_score(*k2)))
+
+            if len(santan_line_added) >= 2:
+                break
+
+# マージ（最大2点まで）
+santan_filtered_display.extend(santan_line_added[:2])
+
 
     # === [LC] ライン完結・救済枠（1枠） ===
     try:
