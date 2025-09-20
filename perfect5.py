@@ -1637,6 +1637,12 @@ def _df_trio(rows, anchor_no):
     out.sort(key=lambda x: (-float(x["偏差値S"].split("｜")[0]), x["買い目"]))
     return pd.DataFrame(out)
 
+# ---------- セクション出力フラグ ----------
+has_trio = bool(trios_filtered_display)
+has_tri  = bool(santan_filtered_display)
+has_qn   = bool(pairs_qn2_kept)
+has_nit  = bool(rows_nitan_L12)
+
 
 # ---------- note 出力 ----------
 if has_trio:
