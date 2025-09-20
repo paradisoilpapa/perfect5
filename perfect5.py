@@ -1525,6 +1525,22 @@ if L1 and L2 and L3:
         cutoff_trio = mu + (sig/float(TRIO_SIG_DIV) if sig > 0 else 0.0)
         trios_filtered_display = [(a,b,c,s) for (a,b,c,s) in trios_from_cols if s >= cutoff_trio]
 
+# ---------- 三連単（新方式：L1×L2×L3 → μ+σ/TRIFECTA_SIG_DIV） ----------
+santan_filtered_display, cutoff_san = [], 0.0
+if L1 and L2 and L3:
+    san_keys = set()
+    for a,b,c in product(L1, L2, L3):
+        if len({a,b,c}) != 3:
+            continue
+        san_keys.add((a,b,c))  # 三連単は順列を区別するのでソートしない
+
+    san_from_cols = [(a,b,c,_santan_score(a,b,c)) for (a,b,c) in san_keys]
+    if san_from_cols:
+        xs = [s for (*_,s) in san_from_cols]
+        mu, sig = mean(xs), pstdev(xs)
+        cutoff_san = mu + (sig/float(TRIFECTA_SIG_DIV) if sig > 0 else 0.0)
+        santan_filtered_display = [(a,b,c,s) for (a,b,c,s) in san_from_cols if s >= cutoff_san]
+
     # === [LC] ライン完結・救済枠（1枠） ===
     try:
         gid = car_to_group.get(anchor_no, None)
