@@ -1643,6 +1643,19 @@ has_tri  = bool(santan_filtered_display)
 has_qn   = bool(pairs_qn2_kept)
 has_nit  = bool(rows_nitan_L12)
 
+# ---------- 偏差値出力用の補助関数 ----------
+def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
+    lines = []
+    for n in ids:
+        v = ts_map.get(n, "—")
+        if isinstance(v, (int,float)):
+            lines.append(f"{n}: {float(v):.1f}")
+        else:
+            lines.append(f"{n}: —")
+    return "\n".join(lines)
+
+
+
 # ---------- note 出力 ----------
 note_sections = []
 note_sections.append(f"{track}{race_no}R")
