@@ -1727,14 +1727,14 @@ if L1 and L2 and L3:
 # ラインパワー枠（三連複・最大2点）
 line_power_added = []
 gid = car_to_group.get(anchor_no, None)
-if gid in line_def:
+if gid in line_def and mark_circle:
     mem = list(line_def.get(gid, []))
-    if len(mem) >= 3 and anchor_no in mem:
-        others = [x for x in mem if x != anchor_no]
+    if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
+        others = [x for x in mem if x not in (anchor_no, mark_circle)]
         for extra in others:
-            k1 = tuple(sorted((anchor_no, extra, mark_circle))) if 'mark_circle' in globals() else tuple(sorted((anchor_no, extra, mem[0])))
-            if not any(set(k1) == {a, b, c} for (a, b, c, _, _) in trios_filtered_display):
-                line_power_added.append((k1[0], k1[1], k1[2], _trio_score(*k1), "ライン枠"))
+            # ◎-〇-ライン末尾
+            k1 = tuple(sorted((anchor_no, mark_circle, extra)))
+            line_power_added.append((k1[0], k1[1], k1[2], _trio_score(*k1), "ライン枠"))
             if len(line_power_added) >= 2:
                 break
 trios_filtered_display.extend(line_power_added[:2])
@@ -1760,17 +1760,18 @@ if L1 and L2 and L3:
 
 # ラインパワー枠（三連単・最大2点）
 santan_line_added = []
-if gid in line_def:
+if gid in line_def and mark_circle:
     mem = list(line_def.get(gid, []))
-    if len(mem) >= 3 and anchor_no in mem:
-        others = [x for x in mem if x != anchor_no]
+    if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
+        others = [x for x in mem if x not in (anchor_no, mark_circle)]
         for extra in others:
-            k1 = (anchor_no, mark_circle, extra) if 'mark_circle' in globals() else (anchor_no, others[0], extra)
-            if not any((a, b, c) == k1 for (a, b, c, _, _) in santan_filtered_display):
-                santan_line_added.append((k1[0], k1[1], k1[2], _santan_score(*k1), "ライン枠"))
+            # ◎-〇-ライン末尾（順序を保持）
+            k1 = (anchor_no, mark_circle, extra)
+            santan_line_added.append((k1[0], k1[1], k1[2], _santan_score(*k1), "ライン枠"))
             if len(santan_line_added) >= 2:
                 break
 santan_filtered_display.extend(santan_line_added[:2])
+
 
 
 # ---------- note 出力部（ライン枠も明記） ----------
