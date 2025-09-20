@@ -1422,7 +1422,9 @@ from itertools import combinations
 S_TRIFECTA_MIN = globals().get("S_TRIFECTA_MIN", 164.0)  # 三連単基準
 
 # ===== 可変パラメータ =====
-TRIO_SIG_DIV = float(globals().get("TRIO_SIG_DIV", 3))     # 三連複しきい値: μ + σ/TRIO_SIG_DIV
+TRIO_SIG_DIV = float(globals().get("TRIO_SIG_DIV", 1.5))   # 三連複：上位1/3目安
+TRIFECTA_SIG_DIV = float(globals().get("TRIFECTA_SIG_DIV", 2.5))  # 三連単：上位1/5目安
+
 TRIO_L3_MIN    = float(globals().get("TRIO_L3_MIN", 160.0))    # ★L3候補の固定しきい値（偏差値S合計）
 S_TRIFECTA_MIN = float(globals().get("S_TRIFECTA_MIN", 164.0)) # 三連単の基準（従来どおり）
 
@@ -1433,6 +1435,20 @@ from itertools import product, combinations
 S_BASE_MAP = {int(i): float(race_t.get(int(i), 50.0)) for i in USED_IDS}
 def _pair_score(a, b):   return S_BASE_MAP.get(a, 0.0) + S_BASE_MAP.get(b, 0.0)
 def _trio_score(a, b, c): return S_BASE_MAP.get(a, 0.0) + S_BASE_MAP.get(b, 0.0) + S_BASE_MAP.get(c, 0.0)
+
+# β/× を安全に拾う（無ければ None）
+mark_beta = (result_marks["β"] if ("result_marks" in globals() and "β" in result_marks) else None)
+mark_x    = (result_marks["×"] if ("result_marks" in globals() and "×" in result_marks) else None)
+
+def _santan_score(a:int, b:int, c:int) -> float:
+    base = _trio_score(a,b,c)
+    bonus = 0.0
+    if 'anchor_no' in globals() and a == anchor_no:  # 1着に◎なら加点
+        bonus += 2.0
+    if c is not None and (c == mark_beta or c == mark_x):  # 3着にβ/×なら減点
+        bonus -= 1.0
+    return base + bonus
+
 
 def _top_k_unique(seq, k):
     out, seen = [], set()
@@ -1532,7 +1548,7 @@ if L1 and L2 and L3:
     for a,b,c in product(L1, L2, L3):
         if len({a,b,c}) != 3:
             continue
-        san_keys.add((a,b,c))  # 三連単は順列を区別するのでソートしない
+        san_keys.add((int(a), int(b), int(c)))  # 順列は区別
 
     san_from_cols = [(a,b,c,_santan_score(a,b,c)) for (a,b,c) in san_keys]
     if san_from_cols:
@@ -1558,7 +1574,23 @@ if L1 and L2 and L3:
 
                 lc_cut = max(float(TRIO_L3_MIN), float(cutoff_trio) - 1.5)
                 if (kk not in existing_keys) and all(x in USED_IDS for x in kk) and (s >= lc_cut):
-                    trios_filtered_display.append((kk[0], kk[1], kk[2], s))
+      # ---------- 三連単（新方式） ----------
+santan_filtered_display, cutoff_san = [], 0.0
+if L1 and L2 and L3:
+    san_keys = set()
+    for a,b,c in product(L1, L2, L3):
+        if len({a,b,c}) != 3:
+            continue
+        san_keys.add((a,b,c))
+    san_from_cols = [(a,b,c,_santan_score(a,b,c)) for (a,b,c) in san_keys]
+    if san_from_cols:
+        xs = [s for (*_,s) in san_from_cols]
+        mu, sig = mean(xs), pstdev(xs)
+        cutoff_san = mu + (sig/float(3.0) if sig > 0 else 0.0)  # ここは1/3か1/4など調整
+        santan_filtered_display = [(a,b,c,s) for (a,b,c,s) in san_from_cols if s >= cutoff_san]
+              
+
+trios_filtered_display.append((kk[0], kk[1], kk[2], s))
     except Exception:
         pass
 
