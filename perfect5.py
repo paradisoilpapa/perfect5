@@ -1702,14 +1702,78 @@ note_sections.append("\n偏差値（風・ライン込み）")
 note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
 note_sections.append(f"\nフォーメーション：{formation_label}")
 
-# 三連複 明細
-if has_trio:
+# ========= 印の定義 =========
+mark_star   = result_marks.get("◎")
+mark_circle = result_marks.get("〇")
+
+# ---------- 三連複 ----------
+trios_filtered_display, cutoff_trio = [], 0.0
+if L1 and L2 and L3:
+    trio_keys = set()
+    for a,b,c in product(L1, L2, L3):
+        if len({a,b,c}) != 3: 
+            continue
+        trio_keys.add(tuple(sorted((a,b,c))))
+    trios_from_cols = [(a,b,c,_trio_score(a,b,c)) for (a,b,c) in sorted(trio_keys)]
+    if trios_from_cols:
+        xs = [s for (*_,s) in trios_from_cols]
+        mu, sig = mean(xs), pstdev(xs)
+        cutoff_trio = mu + (sig/float(TRIO_SIG_DIV) if sig > 0 else 0.0)
+        trios_filtered_display = [
+            (a,b,c,s,"通常") for (a,b,c,s) in trios_from_cols if s >= cutoff_trio
+        ]
+
+# ラインパワー枠（三連複：最大2点）
+line_power_added = []
+gid = car_to_group.get(anchor_no, None)
+if gid in line_def:
+    mem = list(line_def.get(gid, []))
+    if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
+        base_pair = (anchor_no, mark_circle)
+        others = [x for x in mem if x not in base_pair]
+        for extra in others:
+            k1 = tuple(sorted((anchor_no, mark_circle, extra)))
+            line_power_added.append((k1[0], k1[1], k1[2], _trio_score(*k1),"ライン枠"))
+            if len(line_power_added) >= 2: break
+trios_filtered_display.extend(line_power_added[:2])
+
+# ---------- 三連単 ----------
+santan_filtered_display, cutoff_san = [], 0.0
+if L1 and L2 and L3:
+    san_keys = set()
+    for a,b,c in product(L1, L2, L3):
+        if len({a,b,c}) != 3: 
+            continue
+        san_keys.add((a,b,c))  # 順序区別あり
+    san_from_cols = [(a,b,c,_santan_score(a,b,c)) for (a,b,c) in san_keys]
+    if san_from_cols:
+        xs = [s for (*_,s) in san_from_cols]
+        mu, sig = mean(xs), pstdev(xs)
+        cutoff_san = mu + (sig/float(TRIFECTA_SIG_DIV) if sig > 0 else 0.0)
+        santan_filtered_display = [
+            (a,b,c,s,"通常") for (a,b,c,s) in san_from_cols if s >= cutoff_san
+        ]
+
+# ラインパワー枠（三連単：最大2点）
+santan_line_added = []
+if gid in line_def:
+    mem = list(line_def.get(gid, []))
+    if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
+        base_pair = (anchor_no, mark_circle)
+        others = [x for x in mem if x not in base_pair]
+        for extra in others:
+            k1 = (anchor_no, mark_circle, extra)
+            santan_line_added.append((k1[0],k1[1],k1[2],_santan_score(*k1),"ライン枠"))
+            if len(santan_line_added) >= 2: break
+santan_filtered_display.extend(santan_line_added[:2])
+
+# ---------- note 出力 ----------
+# 三連複
+if trios_filtered_display:
     triolist = "\n".join([
-        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}"
+        f"{a}-{b}-{c}{('☆' if mark_star in (a,b,c) else '')}"
         f"（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
-        for (a,b,c,s,tag) in sorted(
-            trios_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2])
-        )
+        for (a,b,c,s,tag) in sorted(trios_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
     ])
     note_sections.append(
         f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点／L3基準 {TRIO_L3_MIN:.1f}）\n{triolist}"
@@ -1717,20 +1781,19 @@ if has_trio:
 else:
     note_sections.append("\n三連複（新方式）\n対象外")
 
-# 三連単 明細
-if has_tri:
+# 三連単
+if santan_filtered_display:
     trifectalist = "\n".join([
-        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}"
+        f"{a}-{b}-{c}{('☆' if mark_star in (a,b,c) else '')}"
         f"（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
-        for (a,b,c,s,tag) in sorted(
-            santan_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2])
-        )
+        for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
     ])
     note_sections.append(
         f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点）\n{trifectalist}"
     )
 else:
     note_sections.append("\n三連単（現行方式）\n対象外")
+
 
 
 
