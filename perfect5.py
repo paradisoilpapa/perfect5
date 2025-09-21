@@ -1622,52 +1622,66 @@ def cutoff_mu_sig_vs_top(xs, sig_div, top_frac):
     cutoff_topq = float(np.partition(xs, -q)[-q]) if xs else cutoff_mu_sig
     return max(cutoff_mu_sig, cutoff_topq)
 
-# ========== 三連複（L1×L2×L3） ==========
-trios_filtered_display = []
-cutoff_trio = 0.0
-if L1 and L2 and L3:
-    trio_keys = set()
-    for a,b,c in product(L1, L2, L3):
-        if len({a,b,c}) != 3:
-            continue
-        trio_keys.add(tuple(sorted((int(a), int(b), int(c)))))
-    trios_from_cols = [(a,b,c,_trio_score(a,b,c)) for (a,b,c) in sorted(trio_keys)]
-    if trios_from_cols:
-        xs = [s for (*_,s) in trios_from_cols]
-        cutoff_trio = cutoff_mu_sig_vs_top(xs, TRIO_SIG_DIV, TRIO_TOP_FRAC)
-        trios_filtered_display = [(a,b,c,s,"通常") for (a,b,c,s) in trios_from_cols if s >= cutoff_trio]
+# ===== 三連複（上位1/5 + ライン枠）＜LOCK付き＞ =====
+# 先頭にこれを置く：二重定義ガード
+if globals().get("__TRIO_LOCK__", False):
+    # すでに三連複を計算済みなら、再計算しない
+    pass
+else:
+    __TRIO_LOCK__ = True  # ← ロック
 
-# ラインパワー枠（三連複：最大2点・◎のライン優先）
-line_power_added = []
-if gid in line_def and anchor_no is not None:
-    mem = [int(x) for x in line_def.get(gid, [])]
-    if anchor_no in mem:
-        others = [x for x in mem if x != anchor_no]
+    trios_filtered_display, cutoff_trio = [], 0.0
+    if L1 and L2 and L3:
+        trio_keys = set()
+        for a, b, c in product(L1, L2, L3):
+            if len({a,b,c}) != 3:
+                continue
+            trio_keys.add(tuple(sorted((int(a), int(b), int(c)))))
+        trios_from_cols = [(a,b,c,_trio_score(a,b,c)) for (a,b,c) in sorted(trio_keys)]
+        if trios_from_cols:
+            xs = [s for (*_,s) in trios_from_cols]
+            mu, sig = mean(xs), pstdev(xs)
+            TRIO_SIG_DIV = float(globals().get("TRIO_SIG_DIV", 3.0))
+            cutoff_mu_sig = mu + (sig/TRIO_SIG_DIV if sig > 0 else 0.0)
+            q = max(1, int(len(xs)*0.20))  # 上位1/5
+            cutoff_topQ = np.partition(xs, -q)[-q]
+            cutoff_trio = max(cutoff_mu_sig, float(cutoff_topQ))
+            trios_filtered_display = [
+                (a,b,c,s,"通常") for (a,b,c,s) in trios_from_cols if s >= cutoff_trio
+            ]
 
-        # 優先1：◎-〇-誰か（〇 が存在する場合）
-        if mark_circle and (mark_circle in mem):
-            for extra in others:
-                # ★3つがユニークであることを保証
-                if len({anchor_no, mark_circle, extra}) != 3:
-                    continue
-                k = tuple(sorted((int(anchor_no), int(mark_circle), int(extra))))
-                # 既存（通常＋ライン枠）と重複しないことを確認
-                if not any(tuple(sorted((a,b,c))) == k for (a,b,c,_,_) in trios_filtered_display + line_power_added):
-                    line_power_added.append((k[0], k[1], k[2], _trio_score(*k), "ライン枠"))
-                if len(line_power_added) >= 2:
-                    break
+    # === ラインパワー枠（三連複：最大2点） ===
+    line_power_added = []
+    gid = car_to_group.get(anchor_no, None) if 'anchor_no' in globals() else None
+    if gid in line_def:
+        mem = [int(x) for x in line_def.get(gid, [])]
+        if anchor_no in mem:
+            others = [x for x in mem if x != anchor_no]
 
-        # 優先2：純ライン完結（◎ライン内の上位2人）
-        if len(line_power_added) < 2 and len(others) >= 2:
-            others_sorted = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)
-            a2, b2 = int(others_sorted[0]), int(others_sorted[1])
-            if len({anchor_no, a2, b2}) == 3:
-                k = tuple(sorted((int(anchor_no), a2, b2)))
-                if not any(tuple(sorted((a,b,c))) == k for (a,b,c,_,_) in trios_filtered_display + line_power_added):
-                    line_power_added.append((k[0], k[1], k[2], _trio_score(*k), "ライン枠"))
+            # A) ◎-〇-（◎ラインの誰か）を優先
+            mark_star   = result_marks.get("◎")
+            mark_circle = result_marks.get("〇")
+            if mark_circle:
+                for extra in others:
+                    k = tuple(sorted((int(anchor_no), int(mark_circle), int(extra))))
+                    # 同一組の重複だけ避ける（既存候補との集合一致でチェック）
+                    if not any(set(k) == {a,b,c} for (a,b,c,_,_) in trios_filtered_display + line_power_added):
+                        line_power_added.append((k[0],k[1],k[2],_trio_score(*k),"ライン枠"))
+                    if len(line_power_added) >= 2:
+                        break
 
-# マージ（最大2点）
-trios_filtered_display.extend(line_power_added[:2])
+            # B) まだ枠が余り、◎ラインに2人以上いれば「純ライン完結」も追加
+            if len(line_power_added) < 2 and len(others) >= 2:
+                others_sorted = sorted(others, key=lambda x: float(race_t.get(int(x),50.0)), reverse=True)
+                k = tuple(sorted((int(anchor_no), int(others_sorted[0]), int(others_sorted[1]))))
+                if not any(set(k) == {a,b,c} for (a,b,c,_,_) in trios_filtered_display + line_power_added):
+                    line_power_added.append((k[0],k[1],k[2],_trio_score(*k),"ライン枠"))
+
+    trios_filtered_display.extend(line_power_added[:2])
+
+    # ↓ デバッグ短文（任意）：ライン枠が何件入ったかだけ確認
+    # st.caption(f"[DBG] Trio line-power added = {len(line_power_added[:2])}")
+
 
 
 # ===== 三連単（◎〇固定・2列目◎〇▲・3列目=L3） =====
