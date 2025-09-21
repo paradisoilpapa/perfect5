@@ -1806,9 +1806,13 @@ else:                      note_sections.append("推奨　ケン\n")
 note_sections.append(f"{race_time}　{race_class}")
 note_sections.append(f"ライン　{'　'.join([x for x in globals().get('line_inputs', []) if str(x).strip()])}")
 note_sections.append(f"スコア順（SBなし）　{_format_rank_from_array(USED_IDS, xs_base_raw)}")
+note_sections.append(' '.join(
+    f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if m in result_marks
+))
 note_sections.append(
     '無　' + (' '.join(map(str, no_mark_ids)) if no_mark_ids else '—')
 )
+
 
 note_sections.append("\n偏差値（風・ライン込み）")
 note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
