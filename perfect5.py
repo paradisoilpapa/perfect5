@@ -1421,10 +1421,10 @@ no_mark_ids = sorted(
 
 # ===== 以降のUI出力での使い方 ==============================================
 # ・印の一行（note用）: 既存の join を差し替え
-#   例）note_sections.append(' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if m in result_marks))
+#   例）(' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if m in result_marks))
 #   の直後などに「無」を追加
 #   例）
-#   note_sections.append('無　' + (' '.join(map(str, no_mark_ids)) if no_mark_ids else '—'))
+#   ('無　' + (' '.join(map(str, no_mark_ids)) if no_mark_ids else '—'))
 #
 # ・以降のロジックでは「β」への参照を残さないこと（Noneチェック含め全削除OK）
 #   もし `if i != result_marks.get("β")` のような行が残っていたら、単に削除してください。
@@ -1803,6 +1803,14 @@ def _df_nitan(rows):
     out.sort(key=lambda x: (-float(x["S1(勝率偏差値合計)"].split("｜")[0]), x["買い目"]))
     return pd.DataFrame(out)
 
+def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
+    """偏差値を行ごとに整形"""
+    lines = []
+    for n in ids:
+        v = ts_map.get(n, "—")
+        lines.append(f"{n}: {float(v):.1f}" if isinstance(v,(int,float)) else f"{n}: —")
+    return "\n".join(lines)
+
 # ========== セクション有無と件数 ==========
 has_trio = bool(trios_filtered_display)
 has_tri  = bool(santan_filtered_display)
@@ -1870,9 +1878,9 @@ if has_trio:
         f"{a}-{b}-{c}{('☆' if anchor_no in (a,b,c) else '')}（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (a,b,c,s,tag) in sorted(trios_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
     ])
-    note_sections.append(f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点／L3基準 {TRIO_L3_MIN:.1f}）\n{triolist}")
+    (f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点／L3基準 {TRIO_L3_MIN:.1f}）\n{triolist}")
 else:
-    note_sections.append("\n三連複（新方式）\n対象外")
+    ("\n三連複（新方式）\n対象外")
 
 # 三連単 明細
 if has_tri:
@@ -1880,25 +1888,25 @@ if has_tri:
         f"{a}-{b}-{c}{('☆' if anchor_no in (a,b,c) else '')}（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
     ])
-    note_sections.append(f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点）\n{trifectalist}")
+    (f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点）\n{trifectalist}")
 else:
-    note_sections.append("\n三連単（現行方式）\n対象外")
+    ("\n三連単（現行方式）\n対象外")
 
 # 二車複 明細
 if has_qn:
     qnlist = "\n".join([f"{int(a)}-{int(b)}（S2={s:.1f}{'｜ライン枠' if (len(row)==4 and row[3]=='ライン枠') else ''}）"
                         for row in pairs_qn2_kept for (a,b,s) in [row[:3]]])
-    note_sections.append(f"\n二車複（L1×L2｜上位{int(QN_TOP_FRAC*100)}%）\n{qnlist}")
+    (f"\n二車複（L1×L2｜上位{int(QN_TOP_FRAC*100)}%）\n{qnlist}")
 else:
-    note_sections.append("\n二車複（L1×L2）\n対象外")
+    ("\n二車複（L1×L2）\n対象外")
 
 # 二車単 明細
 if has_nit:
     nitanlist = "\n".join([f"{k}（S1={v:.1f}{'｜ライン枠' if (len(row)>=3 and row[2]=='ライン枠') else ''}）"
                            for row in rows_nitan_L12 for (k,v) in [row[:2]]])
-    note_sections.append(f"\n二車単（L1×L2｜上位{int(NIT_TOP_FRAC*100)}%）\n{nitanlist}")
+    (f"\n二車単（L1×L2｜上位{int(NIT_TOP_FRAC*100)}%）\n{nitanlist}")
 else:
-    note_sections.append("\n二車単（L1×L2）\n対象外")
+    ("\n二車単（L1×L2）\n対象外")
 
 note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
