@@ -1670,51 +1670,69 @@ if gid in line_def and anchor_no is not None:
 trios_filtered_display.extend(line_power_added[:2])
 
 
-# ========== 三連単（◎/〇 固定／2列目◎〇▲／上位 TRIFECTA_TOP_FRAC） ==========
-santan_filtered_display = []
-cutoff_san = 0.0
+# ===== 三連単（◎〇固定・2列目◎〇▲・3列目=L3） =====
+mark_star   = result_marks.get("◎")
+mark_circle = result_marks.get("〇")
+
+santan_filtered_display, cutoff_san = [], 0.0
 if L1 and L2 and L3:
-    first_col  = [x for x in [anchor_no, mark_circle] if x is not None]
-    second_col = [x for x in [anchor_no, mark_circle, result_marks.get("▲")] if x is not None]
+    first_col  = [x for x in [mark_star, mark_circle] if x is not None]
+    second_col = [x for x in [mark_star, mark_circle, result_marks.get("▲")] if x is not None]
     third_col  = list(L3)
 
-    san_keys = set()
-    for a,b,c in product(first_col, second_col, third_col):
-        if len({a,b,c}) != 3: continue
-        san_keys.add((int(a),int(b),int(c)))
-    san_from_cols = [(a,b,c,_santan_score(a,b,c)) for (a,b,c) in san_keys]
-    if san_from_cols:
-        xs = [s for (*_,s) in san_from_cols]
-        cutoff_san = cutoff_mu_sig_vs_top(xs, TRIFECTA_SIG_DIV, TRIFECTA_TOP_FRAC)
-        santan_filtered_display = [(a,b,c,s,"通常") for (a,b,c,s) in san_from_cols if s >= cutoff_san]
+    # 並びの優先度（安定ソート用）
+    orderA = {n:i for i,n in enumerate(first_col)}
+    orderB = {n:i for i,n in enumerate(second_col)}
 
-# ライン枠（三連単：最大2点・順序あり）
+    # 重複なし・順序保持で候補生成
+    san_rows, seen = [], set()
+    for a in first_col:
+        for b in second_col:
+            for c in third_col:
+                if len({a,b,c}) != 3:  # 2-5-5 のような重複排除
+                    continue
+                key = (int(a), int(b), int(c))
+                if key in seen: 
+                    continue
+                seen.add(key)
+                s = _santan_score(*key)
+                san_rows.append((key[0], key[1], key[2], s, "通常"))
+
+    if san_rows:
+        xs = [row[3] for row in san_rows]
+        mu = mean(xs); sig = pstdev(xs) if len(xs) > 1 else 0.0
+        cut_mu_sig = mu + (sig/8.0 if sig > 0 else 0.0)
+        cut_pct    = float(np.percentile(xs, 100*(1 - 1/8))) if xs else 0.0
+        cutoff_san = max(cut_mu_sig, cut_pct)
+
+        santan_filtered_display = [r for r in san_rows if r[3] >= cutoff_san]
+        santan_filtered_display.sort(
+            key=lambda t: (-t[3], orderA.get(t[0], 99), orderB.get(t[1], 99), int(t[2]))
+        )
+
+# === ラインパワー枠（三連単：最大2点、順序は ◎→〇→ライン仲間 を優先） ===
 santan_line_added = []
-if gid in line_def and anchor_no is not None:
+gid = car_to_group.get(anchor_no, None) if 'anchor_no' in globals() else None
+if gid in line_def:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
         others = [x for x in mem if x != anchor_no]
 
-        # 優先1：◎→〇→ライン仲間
-        if mark_circle and (mark_circle in mem):
+        # ◎→〇→(◎ライン) を優先
+        if mark_circle:
             for extra in others:
-                # ★3つがユニークであることを保証
-                if len({anchor_no, mark_circle, extra}) != 3:
-                    continue
                 k = (int(anchor_no), int(mark_circle), int(extra))
-                # 既存（通常＋ライン枠）と完全一致で重複しないことを確認（順序区別）
-                if not any((a,b,c) == k for (a,b,c,_,_) in santan_filtered_display + santan_line_added):
-                    santan_line_added.append((k[0], k[1], k[2], _santan_score(*k), "ライン枠"))
+                if not any((a,b,c)==k for (a,b,c,_,_) in santan_filtered_display + santan_line_added):
+                    santan_line_added.append((k[0],k[1],k[2], _santan_score(*k), "ライン枠"))
                 if len(santan_line_added) >= 2:
                     break
 
-        # 優先2：純ライン完結（◎→ライン内強い順→次点）
+        # まだ枠が余れば ◎→(ライン強い順→次点)
         if len(santan_line_added) < 2 and len(others) >= 2:
-            a2, b2 = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)[:2]
-            if len({anchor_no, a2, b2}) == 3:
-                k = (int(anchor_no), int(a2), int(b2))
-                if not any((a,b,c) == k for (a,b,c,_,_) in santan_filtered_display + santan_line_added):
-                    santan_line_added.append((k[0], k[1], k[2], _santan_score(*k), "ライン枠"))
+            a,b = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)[:2]
+            k = (int(anchor_no), int(a), int(b))
+            if not any((x,y,z)==k for (x,y,z,_,_) in santan_filtered_display + santan_line_added):
+                santan_line_added.append((k[0],k[1],k[2], _santan_score(*k), "ライン枠"))
 
 santan_filtered_display.extend(santan_line_added[:2])
 
@@ -1851,11 +1869,12 @@ st.markdown(f"**フォーメーション**：{formation_label}")
 
 # 三連複
 st.markdown(f"#### 三連複（新方式｜しきい値 {cutoff_trio:.1f}点｜{n_trio}点）")
-st.caption(f"フォーメーション：{formation_label}（L3基準={float(globals().get('TRIO_L3_MIN',160.0)):.1f}）")
+# st.caption(f"フォーメーション：{formation_label}（…）")  # ←削除
 if has_trio:
     st.dataframe(_df_trio(trios_filtered_display, result_marks.get('◎')), use_container_width=True)
 else:
     st.markdown("対象外")
+
 
 # 三連単
 st.markdown(f"#### 三連単（新方式｜しきい値 {cutoff_san:.1f}点｜{n_triS}点）")
@@ -1893,7 +1912,7 @@ note_sections = []
 note_sections.append(f"{track}{race_no}R")
 note_sections.append(f"展開評価：{confidence}\n")
 
-# 点数ブロック（表記固定）
+# 点数行
 note_sections.append("点数")
 note_sections.append(f"三連複　{n_trio}点　三連単　{n_triS}点")
 note_sections.append(f"二車複　{n_qn}点　二車単　{n_nit}点\n")
@@ -1907,10 +1926,11 @@ no_mark_ids = [int(i) for i in USED_IDS if int(i) not in set(result_marks.values
 note_sections.append(' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if m in result_marks))
 note_sections.append('無　' + (' '.join(map(str, no_mark_ids)) if no_mark_ids else '—'))
 
-# 偏差値・フォーメーション
+# 偏差値 → フォーメーション（この順で固定）
 note_sections.append("\n偏差値（風・ライン込み）")
 note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
 note_sections.append(f"\nフォーメーション：{formation_label}")
+
 
 # 三連複 明細（ライン枠も付記）
 if has_trio:
