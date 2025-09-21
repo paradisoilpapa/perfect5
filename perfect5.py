@@ -1615,25 +1615,43 @@ if L1 and L2 and L3:
         cutoff_trio = max(cutoff_mu_sig, float(cutoff_topQ))
         trios_filtered_display = [(a,b,c,s,"通常") for (a,b,c,s) in trios_from_cols if s >= cutoff_trio]
 
-# === ライン枠（三連複：最大2点） ===
-line_power_added = []
+# === ラインパワー枠（三連複：閾値に関係なく常に最大2点追加） ===
+def _upsert_trio_as_line(a:int,b:int,c:int):
+    s = _trio_score(a,b,c)
+    # 既存があればタグを「ライン枠」に上書き、なければ追加
+    for i,(x,y,z,sv,tag) in enumerate(trios_filtered_display):
+        if {x,y,z} == {a,b,c}:
+            trios_filtered_display[i] = (x,y,z,sv,"ライン枠")
+            return
+    trios_filtered_display.append((a,b,c,s,"ライン枠"))
+
 gid = car_to_group.get(anchor_no, None)
 if gid in line_def:
-    mem = [int(x) for x in line_def.get(gid, []) if x != anchor_no]
-    if mark_circle and mark_circle in mem:
-        # A: ◎-〇-仲間
-        for extra in [x for x in mem if x != mark_circle]:
-            k = tuple(sorted((anchor_no, mark_circle, extra)))
-            line_power_added.append((k[0],k[1],k[2],_trio_score(*k),"ライン枠"))
-            if len(line_power_added) >= 1:
-                break
-    if len(mem) >= 2:
-        # B: 純ライン完結（◎＋仲間2人）
-        mem_sorted = sorted(mem, key=lambda x: float(race_t.get(int(x),50.0)), reverse=True)
-        k = tuple(sorted((anchor_no, mem_sorted[0], mem_sorted[1])))
-        line_power_added.append((k[0],k[1],k[2],_trio_score(*k),"ライン枠"))
+    mem = [int(x) for x in line_def.get(gid, [])]
+    if anchor_no in mem:
+        others_sorted = sorted(
+            [x for x in mem if x != anchor_no],
+            key=lambda x: float(race_t.get(int(x),50.0)),
+            reverse=True
+        )
+        line_cands = []
 
-trios_filtered_display.extend(line_power_added[:2])
+        # 1) ◎-〇-（◎ラインの誰か）を優先
+        if mark_circle and (mark_circle in mem) and (mark_circle != anchor_no):
+            for extra in others_sorted:
+                if extra == mark_circle: 
+                    continue
+                line_cands.append(tuple(sorted((int(anchor_no), int(mark_circle), int(extra)))))
+                break
+
+        # 2) 純ライン完結（◎＋ライン上位2名）
+        if len(others_sorted) >= 2:
+            line_cands.append(tuple(sorted((int(anchor_no), int(others_sorted[0]), int(others_sorted[1])))))
+
+        # 最大2点、必ず投入（閾値無視）
+        for kk in line_cands[:2]:
+            _upsert_trio_as_line(*kk)
+
 
 
 # =========================
@@ -1657,25 +1675,43 @@ if L1 and L2 and L3:
         cutoff_san = np.percentile(xs, 100 * (1 - 1/8)) if xs else 0.0
         santan_filtered_display = [(a,b,c,s,"通常") for (a,b,c,s) in san_from_cols if s >= cutoff_san]
 
-# === ライン枠（三連単：最大2点） ===
-santan_line_added = []
+# === ラインパワー枠（三連単：閾値に関係なく常に最大2点追加） ===
+def _upsert_san_as_line(a:int,b:int,c:int):
+    s = _santan_score(a,b,c)
+    # 既存があればタグを「ライン枠」に上書き、なければ追加
+    for i,(x,y,z,sv,tag) in enumerate(santan_filtered_display):
+        if (x,y,z) == (a,b,c):
+            santan_filtered_display[i] = (x,y,z,sv,"ライン枠")
+            return
+    santan_filtered_display.append((a,b,c,s,"ライン枠"))
+
 gid = car_to_group.get(anchor_no, None)
 if gid in line_def:
-    mem = [int(x) for x in line_def.get(gid, []) if x != anchor_no]
-    if mark_circle and mark_circle in mem:
-        # A: ◎→〇→仲間
-        for extra in [x for x in mem if x != mark_circle]:
-            k = (int(anchor_no), int(mark_circle), int(extra))
-            santan_line_added.append((k[0],k[1],k[2],_santan_score(*k),"ライン枠"))
-            if len(santan_line_added) >= 1:
-                break
-    if len(mem) >= 2:
-        # B: 純ライン完結（◎→仲間強順→次点）
-        mem_sorted = sorted(mem, key=lambda x: float(race_t.get(int(x),50.0)), reverse=True)
-        k = (int(anchor_no), int(mem_sorted[0]), int(mem_sorted[1]))
-        santan_line_added.append((k[0],k[1],k[2],_santan_score(*k),"ライン枠"))
+    mem = [int(x) for x in line_def.get(gid, [])]
+    if anchor_no in mem:
+        others_sorted = sorted(
+            [x for x in mem if x != anchor_no],
+            key=lambda x: float(race_t.get(int(x),50.0)),
+            reverse=True
+        )
+        san_cands = []
 
-santan_filtered_display.extend(santan_line_added[:2])
+        # 1) ◎→〇→（◎ラインの誰か）
+        if mark_circle and (mark_circle in mem) and (mark_circle != anchor_no):
+            for extra in others_sorted:
+                if extra == mark_circle:
+                    continue
+                san_cands.append((int(anchor_no), int(mark_circle), int(extra)))
+                break
+
+        # 2) 純ライン完結（順序：◎→強い順→次点）
+        if len(others_sorted) >= 2:
+            san_cands.append((int(anchor_no), int(others_sorted[0]), int(others_sorted[1])))
+
+        # 最大2点、必ず投入（閾値無視）
+        for kk in san_cands[:2]:
+            _upsert_san_as_line(*kk)
+
 
 
 # =========================
