@@ -1573,7 +1573,7 @@ if '_santan_score' not in globals():
             bonus += 2.0
         return base + bonus
 
-# 印の取得
+# ========= 印の取得 =========
 mark_star   = result_marks.get("◎")
 mark_circle = result_marks.get("〇")
 
@@ -1595,7 +1595,7 @@ if L1 and L2 and L3:
     if trios_from_cols:
         xs = [s for (*_,s) in trios_from_cols]
         mu, sig = mean(xs), pstdev(xs)
-        # μ + σ/TRIO_SIG_DIV と 上位20%(=1/5) の高い方を採用
+        # μ+σ/TRIO_SIG_DIV と 上位20%(=1/5) の高い方
         TRIO_SIG_DIV = float(globals().get("TRIO_SIG_DIV", 3.0))
         cutoff_mu_sig = mu + (sig/TRIO_SIG_DIV if sig > 0 else 0.0)
         q = max(1, int(len(xs)*0.20))
@@ -1603,145 +1603,124 @@ if L1 and L2 and L3:
         cutoff_trio = max(cutoff_mu_sig, float(cutoff_topQ))
         trios_filtered_display = [(a,b,c,s,"通常") for (a,b,c,s) in trios_from_cols if s >= cutoff_trio]
 
-# === ラインパワー枠（三連複：最大2点） ===
+# ライン枠（三連複）
 line_power_added = []
-gid = car_to_group.get(anchor_no, None) if 'anchor_no' in globals() else None
-if gid in line_def:
+gid = car_to_group.get(anchor_no, None)
+if gid in line_def and anchor_no:
     mem = [int(x) for x in line_def.get(gid, [])]
-    if anchor_no in mem:
-        # ◎ラインの相棒候補（◎以外）
+    if len(mem) >= 3 and anchor_no in mem:
         others = [x for x in mem if x != anchor_no]
-
-        # A) 〇が居るなら、◎-〇-（◎ラインの誰か）を優先的に復活
         if mark_circle:
             for extra in others:
-                k = tuple(sorted((int(anchor_no), int(mark_circle), int(extra))))
-                line_power_added.append((k[0], k[1], k[2], _trio_score(*k), "ライン枠"))
+                k = tuple(sorted((anchor_no, mark_circle, extra)))
+                line_power_added.append((k[0],k[1],k[2],_trio_score(*k),"ライン枠"))
                 if len(line_power_added) >= 2:
                     break
-
-        # B) まだ枠が余っていて、◎ラインに2人以上いれば「純ライン完結」も1点だけ救済
-        if (len(line_power_added) < 2) and (len(others) >= 2):
-            others_sorted = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)
-            k = tuple(sorted((int(anchor_no), int(others_sorted[0]), int(others_sorted[1]))))
-            line_power_added.append((k[0], k[1], k[2], _trio_score(*k), "ライン枠"))
-
-# マージ（最大2点）
 trios_filtered_display.extend(line_power_added[:2])
 
 # =========================
-#  三連単（◎〇固定・2列目◎〇▲・上位1/8）＋ライン枠
+#  三連単（◎〇固定＋2列目▲含む・上位1/8）＋ライン枠
 # =========================
 santan_filtered_display, cutoff_san = [], 0.0
 if L1 and L2 and L3:
     first_col  = [x for x in [mark_star, mark_circle] if x is not None]
     second_col = [x for x in [mark_star, mark_circle, result_marks.get("▲")] if x is not None]
     third_col  = list(L3)
-
     san_keys = set()
     for a, b, c in product(first_col, second_col, third_col):
         if len({a,b,c}) != 3:
             continue
         san_keys.add((int(a), int(b), int(c)))
     san_from_cols = [(a,b,c,_santan_score(a,b,c)) for (a,b,c) in san_keys]
-
     if san_from_cols:
         xs = [s for (*_,s) in san_from_cols]
-        # 上位12.5%(=1/8) の閾値
-        if xs:
-            cutoff_san = float(np.percentile(xs, 100 * (1 - 1/8)))
-        else:
-            cutoff_san = 0.0
+        cutoff_san = np.percentile(xs, 100*(1-1/8)) if xs else 0.0
         santan_filtered_display = [(a,b,c,s,"通常") for (a,b,c,s) in san_from_cols if s >= cutoff_san]
 
-# === ラインパワー枠（三連単：最大2点） ===
+# ライン枠（三連単）
 santan_line_added = []
-gid = car_to_group.get(anchor_no, None) if 'anchor_no' in globals() else None
-if gid in line_def:
+if gid in line_def and anchor_no:
     mem = [int(x) for x in line_def.get(gid, [])]
-    if anchor_no in mem:
-        others = [x for x in mem if x != anchor_no]
-
-        # A) 〇が居るなら、順序は ◎→〇→（◎ラインの誰か）
-        if mark_circle:
-            for extra in others:
-                k = (int(anchor_no), int(mark_circle), int(extra))
-                santan_line_added.append((k[0], k[1], k[2], _santan_score(*k), "ライン枠"))
-                if len(santan_line_added) >= 2:
-                    break
-
-        # B) まだ枠が余っていて、◎ラインに2人以上いれば「純ライン完結」も1点だけ救済（順序は ◎→強い順→次点）
-        if (len(santan_line_added) < 2) and (len(others) >= 2):
-            a, b = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)[:2]
-            k = (int(anchor_no), int(a), int(b))
-            santan_line_added.append((k[0], k[1], k[2], _santan_score(*k), "ライン枠"))
-
-# マージ（最大2点）
+    if len(mem) >= 3 and anchor_no in mem and mark_circle in mem:
+        others = [x for x in mem if x not in (anchor_no, mark_circle)]
+        for extra in others:
+            k = (anchor_no, mark_circle, extra)
+            santan_line_added.append((k[0],k[1],k[2],_santan_score(*k),"ライン枠"))
+            if len(santan_line_added) >= 2:
+                break
 santan_filtered_display.extend(santan_line_added[:2])
 
-
 # =========================
-#  二車複（バックアップ表示）
+#  二車複（上位1/5）＋ライン枠
 # =========================
 pairs_all_L12 = {}
 for a in L1:
     for b in L2:
-        if a == b: 
-            continue
+        if a == b: continue
         key = tuple(sorted((int(a), int(b))))
-        if key in pairs_all_L12:
-            continue
+        if key in pairs_all_L12: continue
         s2 = float(race_t.get(int(a),50.0)) + float(race_t.get(int(b),50.0))
-        pairs_all_L12[key] = round(s2, 1)
+        pairs_all_L12[key] = round(s2,1)
 
 pairs_qn2_kept, qn2_cutoff = [], 0.0
 if pairs_all_L12:
-    sc = list(pairs_all_L12.values())
-    mu2, sig2 = mean(sc), pstdev(sc)
-    qn2_cutoff = mu2 + (sig2/1.5 if sig2 > 0 else 0.0)
-    pairs_qn2_kept = [(a,b,s) for (a,b), s in pairs_all_L12.items() if s >= qn2_cutoff]
-    pairs_qn2_kept.sort(key=lambda x:(-x[2], x[0], x[1]))
+    xs = list(pairs_all_L12.values())
+    mu, sig = mean(xs), pstdev(xs)
+    cutoff_mu_sig = mu + (sig/1.5 if sig > 0 else 0.0)
+    q = max(1,int(len(xs)*0.20))
+    cutoff_topQ = np.partition(xs,-q)[-q]
+    qn2_cutoff = max(cutoff_mu_sig, float(cutoff_topQ))
+    pairs_qn2_kept = [(a,b,s) for (a,b),s in pairs_all_L12.items() if s >= qn2_cutoff]
+
+# ライン枠（二車複）
+qn_line_added = []
+if gid in line_def and anchor_no and mark_circle in line_def.get(gid,[]):
+    mem = [int(x) for x in line_def.get(gid,[])]
+    others = [x for x in mem if x not in (anchor_no,mark_circle)]
+    for extra in others[:2]:
+        k = tuple(sorted((anchor_no, mark_circle)))
+        qn_line_added.append((k[0],k[1], float(race_t.get(anchor_no,50.0))+float(race_t.get(mark_circle,50.0)), "ライン枠"))
+pairs_qn2_kept.extend(qn_line_added[:2])
 
 # =========================
-#  二車単（バックアップ表示）
+#  二車単（上位1/8）＋ライン枠
 # =========================
-rows_nitan_L12 = []
+rows_nitan_L12, cutoff_nitan = [], 0.0
 if 'rows_nitan' in globals() and rows_nitan:
-    for k, s1 in rows_nitan:
-        try:
-            a,b = map(int, k.split("-"))
-        except Exception:
-            continue
-        if (a in L1) and (b in L2) and (a != b):
-            rows_nitan_L12.append((f"{a}-{b}", float(round(s1,1))))
-rows_nitan_L12.sort(key=lambda x:(-x[1], x[0]))
+    xs_all = []
+    for k,s1 in rows_nitan:
+        try: a,b = map(int,k.split("-"))
+        except: continue
+        if (a in L1) and (b in L2) and (a!=b):
+            rows_nitan_L12.append((f"{a}-{b}", float(round(s1,1)),"通常"))
+            xs_all.append(s1)
+    if xs_all:
+        cutoff_nitan = np.percentile(xs_all, 100*(1-1/8))
+        rows_nitan_L12 = [(k,v,tag) for (k,v,tag) in rows_nitan_L12 if v >= cutoff_nitan]
+
+# ライン枠（二車単）
+nit_line_added = []
+if gid in line_def and anchor_no and mark_circle in line_def.get(gid,[]):
+    mem = [int(x) for x in line_def.get(gid,[])]
+    others = [x for x in mem if x not in (anchor_no,mark_circle)]
+    for extra in others[:2]:
+        k = f"{anchor_no}-{mark_circle}"
+        nit_line_added.append((k, float(race_t.get(anchor_no,50.0))+float(race_t.get(mark_circle,50.0)), "ライン枠"))
+rows_nitan_L12.extend(nit_line_added[:2])
 
 # =========================
-#  出力用ヘルパー
+# フラグ・件数
 # =========================
-def _df_trio(rows, anchor_no):
-    out = []
-    for (a,b,c,s,tag) in rows:
-        k = [int(a),int(b),int(c)]; k.sort()
-        label = "-".join(map(str,k))
-        if anchor_no in k:
-            label += "☆"
-        note = f"｜{tag}" if tag == "ライン枠" else ""
-        out.append({"買い目": label, "偏差値S": f"{round(s,1)}{note}"})
-    out.sort(key=lambda x: (-float(x["偏差値S"].split("｜")[0]), x["買い目"]))
-    return pd.DataFrame(out)
-
-# セクション有無
 has_trio = bool(trios_filtered_display)
 has_tri  = bool(santan_filtered_display)
 has_qn   = bool(pairs_qn2_kept)
 has_nit  = bool(rows_nitan_L12)
 
-# 件数
 n_trio = len(trios_filtered_display)
 n_triS = len(santan_filtered_display)
 n_qn   = len(pairs_qn2_kept)
 n_nit  = len(rows_nitan_L12)
+
 
 # =========================
 #  画面出力
