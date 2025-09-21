@@ -1643,22 +1643,32 @@ if gid in line_def and anchor_no is not None:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
         others = [x for x in mem if x != anchor_no]
+
         # 優先1：◎-〇-誰か（〇 が存在する場合）
-        if mark_circle:
+        if mark_circle and (mark_circle in mem):
             for extra in others:
+                # ★3つがユニークであることを保証
+                if len({anchor_no, mark_circle, extra}) != 3:
+                    continue
                 k = tuple(sorted((int(anchor_no), int(mark_circle), int(extra))))
-                # 追加は重複してもよい（仕様による） — ただし同一組の重複は避ける
-                if not any(set(k) == {a,b,c} for (a,b,c,_,_) in trios_filtered_display + line_power_added):
-                    line_power_added.append((k[0],k[1],k[2],_trio_score(*k),"ライン枠"))
-                if len(line_power_added) >= 2: break
+                # 既存（通常＋ライン枠）と重複しないことを確認
+                if not any(tuple(sorted((a,b,c))) == k for (a,b,c,_,_) in trios_filtered_display + line_power_added):
+                    line_power_added.append((k[0], k[1], k[2], _trio_score(*k), "ライン枠"))
+                if len(line_power_added) >= 2:
+                    break
+
         # 優先2：純ライン完結（◎ライン内の上位2人）
         if len(line_power_added) < 2 and len(others) >= 2:
-            others_sorted = sorted(others, key=lambda x: float(race_t.get(int(x),50.0)), reverse=True)
-            k = tuple(sorted((int(anchor_no), int(others_sorted[0]), int(others_sorted[1]))))
-            if not any(set(k) == {a,b,c} for (a,b,c,_,_) in trios_filtered_display + line_power_added):
-                line_power_added.append((k[0],k[1],k[2],_trio_score(*k),"ライン枠"))
+            others_sorted = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)
+            a2, b2 = int(others_sorted[0]), int(others_sorted[1])
+            if len({anchor_no, a2, b2}) == 3:
+                k = tuple(sorted((int(anchor_no), a2, b2)))
+                if not any(tuple(sorted((a,b,c))) == k for (a,b,c,_,_) in trios_filtered_display + line_power_added):
+                    line_power_added.append((k[0], k[1], k[2], _trio_score(*k), "ライン枠"))
+
 # マージ（最大2点）
 trios_filtered_display.extend(line_power_added[:2])
+
 
 # ========== 三連単（◎/〇 固定／2列目◎〇▲／上位 TRIFECTA_TOP_FRAC） ==========
 santan_filtered_display = []
@@ -1678,23 +1688,34 @@ if L1 and L2 and L3:
         cutoff_san = cutoff_mu_sig_vs_top(xs, TRIFECTA_SIG_DIV, TRIFECTA_TOP_FRAC)
         santan_filtered_display = [(a,b,c,s,"通常") for (a,b,c,s) in san_from_cols if s >= cutoff_san]
 
-# ラインパワー枠（三連単：最大2点）
+# ライン枠（三連単：最大2点・順序あり）
 santan_line_added = []
 if gid in line_def and anchor_no is not None:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
         others = [x for x in mem if x != anchor_no]
-        if mark_circle:
+
+        # 優先1：◎→〇→ライン仲間
+        if mark_circle and (mark_circle in mem):
             for extra in others:
+                # ★3つがユニークであることを保証
+                if len({anchor_no, mark_circle, extra}) != 3:
+                    continue
                 k = (int(anchor_no), int(mark_circle), int(extra))
+                # 既存（通常＋ライン枠）と完全一致で重複しないことを確認（順序区別）
                 if not any((a,b,c) == k for (a,b,c,_,_) in santan_filtered_display + santan_line_added):
-                    santan_line_added.append((k[0],k[1],k[2],_santan_score(*k),"ライン枠"))
-                if len(santan_line_added) >= 2: break
+                    santan_line_added.append((k[0], k[1], k[2], _santan_score(*k), "ライン枠"))
+                if len(santan_line_added) >= 2:
+                    break
+
+        # 優先2：純ライン完結（◎→ライン内強い順→次点）
         if len(santan_line_added) < 2 and len(others) >= 2:
-            a,b = sorted(others, key=lambda x: float(race_t.get(int(x),50.0)), reverse=True)[:2]
-            k = (int(anchor_no), int(a), int(b))
-            if not any((a,b,c) == k for (a,b,c,_,_) in santan_filtered_display + santan_line_added):
-                santan_line_added.append((k[0],k[1],k[2],_santan_score(*k),"ライン枠"))
+            a2, b2 = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)[:2]
+            if len({anchor_no, a2, b2}) == 3:
+                k = (int(anchor_no), int(a2), int(b2))
+                if not any((a,b,c) == k for (a,b,c,_,_) in santan_filtered_display + santan_line_added):
+                    santan_line_added.append((k[0], k[1], k[2], _santan_score(*k), "ライン枠"))
+
 santan_filtered_display.extend(santan_line_added[:2])
 
 # ========== 二車複（L1×L2｜上位 QN_TOP_FRAC） + ライン枠 ==========
