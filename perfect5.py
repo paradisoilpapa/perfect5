@@ -1347,58 +1347,87 @@ def assign_beta_label(result_marks: dict[str,int], used_ids: list[int], df_sorte
     return marks
 
 
-try:
-    beta_id = beta_id if ('beta_id' in globals() and beta_id is not None) else select_beta(list(USED_IDS))
-except Exception:
-    beta_id = None
+# ===== 印の採番（β廃止→無印で保持）========================================
+# 依存: USED_IDS, race_t, xs_base_raw, line_def, car_to_group が上で定義済み
 
-result_marks = {}
-reasons = {}
-
-if beta_id is not None:
-    result_marks["β"] = int(beta_id)
-    reasons[beta_id] = reasons.get(beta_id, "β（来ない枠：選別ロジック）")
-
-sb_base = {USED_IDS[idx]: float(xs_base_raw[idx]) if np.isfinite(xs_base_raw[idx]) else float("-inf") for idx in range(M)}
+# スコアの補助（安定のため race_t 優先→同点は sb_base でタイブレーク）
+sb_base = {
+    int(USED_IDS[idx]): float(xs_base_raw[idx]) if np.isfinite(xs_base_raw[idx]) else float("-inf")
+    for idx in range(len(USED_IDS))
+}
 
 def _race_t_val(i: int) -> float:
-    try: return float(race_t.get(int(i), 50.0))
-    except Exception: return 50.0
+    try:
+        return float(race_t.get(int(i), 50.0))
+    except Exception:
+        return 50.0
 
-seed_pool = [i for i in USED_IDS if i != result_marks.get("β")]
-order_by_T = sorted(seed_pool, key=lambda i: (-_race_t_val(i), -sb_base.get(i, float("-inf")), i))
+# === βは作らない。全員を候補にして上位から印を振る
+seed_pool = list(map(int, USED_IDS))
+order_by_T = sorted(
+    seed_pool,
+    key=lambda i: (-_race_t_val(i), -sb_base.get(i, float("-inf")), i)
+)
+
+result_marks: dict[str,int] = {}
+reasons: dict[int,str] = {}
+
+# ◎〇▲ を上位から
 for mk, car in zip(["◎","〇","▲"], order_by_T):
-    result_marks[mk] = car
+    result_marks[mk] = int(car)
 
+# ◎の同ラインを優先して残り印（△, ×, α）を埋める
 line_def     = globals().get("line_def", {}) or {}
 car_to_group = globals().get("car_to_group", {}) or {}
+anchor_no    = result_marks.get("◎", None)
 
-anchor_no = result_marks.get("◎", None)
-mates_sorted = []
+mates_sorted: list[int] = []
 if anchor_no is not None:
     a_gid = car_to_group.get(anchor_no, None)
     if a_gid is not None and a_gid in line_def:
         used_now = set(result_marks.values())
         mates_sorted = sorted(
-            [c for c in line_def[a_gid] if c not in used_now and c != result_marks.get("β")],
-            key=lambda x: (-sb_base.get(x, float("-inf")), x)
+            [int(c) for c in line_def[a_gid] if int(c) not in used_now],
+            key=lambda x: (-sb_base.get(int(x), float("-inf")), int(x))
         )
 
 used = set(result_marks.values())
-overall_rest = [c for c in USED_IDS if c not in used]
-overall_rest = sorted(overall_rest, key=lambda x: (-sb_base.get(x, float("-inf")), x))
+overall_rest = [int(c) for c in USED_IDS if int(c) not in used]
+overall_rest = sorted(
+    overall_rest,
+    key=lambda x: (-sb_base.get(int(x), float("-inf")), int(x))
+)
+
+# 同ライン優先 → 残りスコア順
 tail_priority = mates_sorted + [c for c in overall_rest if c not in mates_sorted]
 
 for mk in ["△","×","α"]:
-    if mk in result_marks: continue
-    if not tail_priority: break
-    no = tail_priority.pop(0)
+    if mk in result_marks:
+        continue
+    if not tail_priority:
+        break
+    no = int(tail_priority.pop(0))
     result_marks[mk] = no
     reasons[no] = f"{mk}（◎ライン優先→残りスコア順）"
 
-result_marks = enforce_alpha_eligibility(result_marks)
+# === 無印の集合（＝上の印が付かなかった残り全員）
+marked_ids = set(result_marks.values())
+no_mark_ids = [int(c) for c in USED_IDS if int(c) not in marked_ids]
+# 表示はT優先・同点はsb_base
+no_mark_ids = sorted(
+    no_mark_ids,
+    key=lambda x: (-_race_t_val(int(x)), -sb_base.get(int(x), float("-inf")), int(x))
+)
 
-result_marks = assign_beta_label(result_marks, USED_IDS, df_sorted_wo)
+# ===== 以降のUI出力での使い方 ==============================================
+# ・印の一行（note用）: 既存の join を差し替え
+#   例）note_sections.append(' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if m in result_marks))
+#   の直後などに「無」を追加
+#   例）
+#   note_sections.append('無　' + (' '.join(map(str, no_mark_ids)) if no_mark_ids else '—'))
+#
+# ・以降のロジックでは「β」への参照を残さないこと（Noneチェック含め全削除OK）
+#   もし `if i != result_marks.get("β")` のような行が残っていたら、単に削除してください。
 
 
 if "α" not in result_marks:
@@ -1777,7 +1806,10 @@ else:                      note_sections.append("推奨　ケン\n")
 note_sections.append(f"{race_time}　{race_class}")
 note_sections.append(f"ライン　{'　'.join([x for x in globals().get('line_inputs', []) if str(x).strip()])}")
 note_sections.append(f"スコア順（SBなし）　{_format_rank_from_array(USED_IDS, xs_base_raw)}")
-note_sections.append(' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α','β'] if m in result_marks))
+note_sections.append(
+    '無　' + (' '.join(map(str, no_mark_ids)) if no_mark_ids else '—')
+)
+
 note_sections.append("\n偏差値（風・ライン込み）")
 note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
 note_sections.append(f"\nフォーメーション：{formation_label}")
