@@ -1921,10 +1921,14 @@ note_sections.append(f"{race_time}　{race_class}")
 note_sections.append(f"ライン　{'　'.join([x for x in globals().get('line_inputs', []) if str(x).strip()])}")
 note_sections.append(f"スコア順（SBなし）　{_format_rank_from_array(USED_IDS, xs_base_raw)}")
 
-# 印＋無印
+# 印＋無印（同じ行にまとめる）
 no_mark_ids = [int(i) for i in USED_IDS if int(i) not in set(result_marks.values())]
-note_sections.append(' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if m in result_marks))
-note_sections.append('無　' + (' '.join(map(str, no_mark_ids)) if no_mark_ids else '—'))
+marks_str = ' '.join(
+    f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if m in result_marks
+)
+no_str = ' '.join(map(str, no_mark_ids)) if no_mark_ids else '—'
+note_sections.append(f"{marks_str} 無{no_str}")
+
 
 # 偏差値 → フォーメーション（この順で固定）
 note_sections.append("\n偏差値（風・ライン込み）")
