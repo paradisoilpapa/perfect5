@@ -1738,23 +1738,23 @@ if has_tri:
 else:
     st.markdown("対象外")
 
-# 二車系は「三連複 or 三連単」が出たら非表示
-if not (has_trio or has_tri):
-    st.markdown(f"#### 二車複（L1×L2｜しきい値 {qn2_cutoff:.1f}点｜{n_qn}点）")
-    if has_qn:
-        st.dataframe(pd.DataFrame(
-            [{"買い目": f"{a}-{b}", "S2(連対偏差値合計)": s} for (a,b,s) in pairs_qn2_kept]
-        ), use_container_width=True)
-    else:
-        st.markdown("対象外")
+# =========================
+#  二車複（常時表示）
+# =========================
+st.markdown(f"#### 二車複（L1×L2｜しきい値 {qn2_cutoff:.1f}点｜{n_qn}点）")
+if has_qn:
+    st.dataframe(_df_pairs(pairs_qn2_kept, "S2(連対偏差値合計)"), use_container_width=True)
+else:
+    st.markdown("対象外")
 
-    st.markdown(f"#### 二車単（L1×L2｜S1≥124｜{n_nit}点）")
-    if has_nit:
-        st.dataframe(pd.DataFrame(
-            [{"買い目": k, "S1(勝率偏差値合計)": v} for (k,v) in rows_nitan_L12]
-        ), use_container_width=True)
-    else:
-        st.markdown("対象外")
+# =========================
+#  二車単（常時表示）
+# =========================
+st.markdown(f"#### 二車単（L1×L2｜S1≥124｜{n_nit}点）")
+if has_nit:
+    st.dataframe(_df_nitan(rows_nitan_L12), use_container_width=True)
+else:
+    st.markdown("対象外")
 
 # =========================
 #  note 出力（点数併記）
