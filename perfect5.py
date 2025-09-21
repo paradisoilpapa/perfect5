@@ -1574,18 +1574,30 @@ if L1 and L2 and L3:
         cutoff_trio = max(cutoff_mu_sig, float(cutoff_topQ))
         trios_filtered_display = [(a,b,c,s,"通常") for (a,b,c,s) in trios_from_cols if s >= cutoff_trio]
 
-# ラインパワー枠（三連複：最大2点）
+# === ラインパワー枠（三連複：最大2点） ===
 line_power_added = []
 gid = car_to_group.get(anchor_no, None) if 'anchor_no' in globals() else None
-if gid in line_def and mark_circle:
-    mem = list(line_def.get(gid, []))
-    if len(mem) >= 3 and (anchor_no in mem) and (mark_circle in mem):
-        others = [x for x in mem if x not in (anchor_no, mark_circle)]
-        for extra in others:
-            k1 = tuple(sorted((int(anchor_no), int(mark_circle), int(extra))))
-            line_power_added.append((k1[0], k1[1], k1[2], _trio_score(*k1), "ライン枠"))
-            if len(line_power_added) >= 2:
-                break
+if gid in line_def:
+    mem = [int(x) for x in line_def.get(gid, [])]
+    if anchor_no in mem:
+        # ◎ラインの相棒候補（◎以外）
+        others = [x for x in mem if x != anchor_no]
+
+        # A) 〇が居るなら、◎-〇-（◎ラインの誰か）を優先的に復活
+        if mark_circle:
+            for extra in others:
+                k = tuple(sorted((int(anchor_no), int(mark_circle), int(extra))))
+                line_power_added.append((k[0], k[1], k[2], _trio_score(*k), "ライン枠"))
+                if len(line_power_added) >= 2:
+                    break
+
+        # B) まだ枠が余っていて、◎ラインに2人以上いれば「純ライン完結」も1点だけ救済
+        if (len(line_power_added) < 2) and (len(others) >= 2):
+            others_sorted = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)
+            k = tuple(sorted((int(anchor_no), int(others_sorted[0]), int(others_sorted[1]))))
+            line_power_added.append((k[0], k[1], k[2], _trio_score(*k), "ライン枠"))
+
+# マージ（最大2点）
 trios_filtered_display.extend(line_power_added[:2])
 
 # =========================
@@ -1613,18 +1625,31 @@ if L1 and L2 and L3:
             cutoff_san = 0.0
         santan_filtered_display = [(a,b,c,s,"通常") for (a,b,c,s) in san_from_cols if s >= cutoff_san]
 
-# ラインパワー枠（三連単：最大2点）
+# === ラインパワー枠（三連単：最大2点） ===
 santan_line_added = []
-if gid in line_def and mark_circle:
-    mem = list(line_def.get(gid, []))
-    if len(mem) >= 3 and (anchor_no in mem) and (mark_circle in mem):
-        others = [x for x in mem if x not in (anchor_no, mark_circle)]
-        for extra in others:
-            k1 = (int(anchor_no), int(mark_circle), int(extra))  # 順序固定
-            santan_line_added.append((k1[0], k1[1], k1[2], _santan_score(*k1), "ライン枠"))
-            if len(santan_line_added) >= 2:
-                break
+gid = car_to_group.get(anchor_no, None) if 'anchor_no' in globals() else None
+if gid in line_def:
+    mem = [int(x) for x in line_def.get(gid, [])]
+    if anchor_no in mem:
+        others = [x for x in mem if x != anchor_no]
+
+        # A) 〇が居るなら、順序は ◎→〇→（◎ラインの誰か）
+        if mark_circle:
+            for extra in others:
+                k = (int(anchor_no), int(mark_circle), int(extra))
+                santan_line_added.append((k[0], k[1], k[2], _santan_score(*k), "ライン枠"))
+                if len(santan_line_added) >= 2:
+                    break
+
+        # B) まだ枠が余っていて、◎ラインに2人以上いれば「純ライン完結」も1点だけ救済（順序は ◎→強い順→次点）
+        if (len(santan_line_added) < 2) and (len(others) >= 2):
+            a, b = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)[:2]
+            k = (int(anchor_no), int(a), int(b))
+            santan_line_added.append((k[0], k[1], k[2], _santan_score(*k), "ライン枠"))
+
+# マージ（最大2点）
 santan_filtered_display.extend(santan_line_added[:2])
+
 
 # =========================
 #  二車複（バックアップ表示）
