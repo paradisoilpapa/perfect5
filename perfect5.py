@@ -1886,8 +1886,9 @@ else:
 # 二車複 明細（常時）
 if has_qn:
     qnlist = "\n".join([
-        f"{a}-{b}（S2={s:.1f}{'｜'+tag if len(t)==4 and t[3]=='ライン枠' else ''}）"
-        for t in pairs_qn2_kept for (a,b,s) in [t[:3]]
+        f"{a}-{b}（S2={s:.1f}{'｜ライン枠' if (len(row) == 4 and row[3] == 'ライン枠') else ''}）"
+        for row in pairs_qn2_kept
+        for (a, b, s) in [row[:3]]
     ])
     note_sections.append(f"\n二車複（L1×L2｜上位1/5）\n{qnlist}")
 else:
@@ -1896,8 +1897,9 @@ else:
 # 二車単 明細（常時）
 if has_nit:
     nitanlist = "\n".join([
-        f"{k}（S1={v:.1f}{'｜'+tag if len(t)==3 and t[2]=='ライン枠' else ''}）"
-        for t in rows_nitan_L12 for (k,v) in [t[:2]]
+        f"{k}（S1={v:.1f}{'｜ライン枠' if (len(row) == 3 and row[2] == 'ライン枠') else ''}）"
+        for row in rows_nitan_L12
+        for (k, v) in [row[:2]]
     ])
     note_sections.append(f"\n二車単（L1×L2｜上位1/8）\n{nitanlist}")
 else:
