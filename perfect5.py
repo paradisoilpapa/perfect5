@@ -1794,14 +1794,19 @@ note_sections = []
 note_sections.append(f"{track}{race_no}R")
 note_sections.append(f"展開評価：{confidence}\n")
 
-# 推奨帯＋点数
-if   has_trio and has_tri: note_sections.append(f"推奨　三連複（{n_trio}点）＆三連単（{n_triS}点）\n")
-elif has_trio:             note_sections.append(f"推奨　三連複（{n_trio}点）\n")
-elif has_tri:              note_sections.append(f"推奨　三連単（{n_triS}点）\n")
-elif has_qn and has_nit:   note_sections.append(f"推奨　二車複（{n_qn}点）＆二車単（{n_nit}点）\n")
-elif has_qn:               note_sections.append(f"推奨　二車複（{n_qn}点）\n")
-elif has_nit:              note_sections.append(f"推奨　二車単（{n_nit}点）\n")
-else:                      note_sections.append("推奨　ケン\n")
+# ---------- 点数まとめ ----------
+n_trio  = len(trios_filtered_display)
+n_triS  = len(santan_filtered_display)
+n_qn    = len(pairs_qn2_kept)
+n_nit   = len(rows_nitan_L12)
+
+note_sections.append("点数")
+note_sections.append(
+    f"三連複　{n_trio}点　"
+    f"三連単　{n_triS}点　"
+    f"二車複　{n_qn}点　"
+    f"二車単　{n_nit}点\n"
+)
 
 note_sections.append(f"{race_time}　{race_class}")
 note_sections.append(f"ライン　{'　'.join([x for x in globals().get('line_inputs', []) if str(x).strip()])}")
