@@ -1721,6 +1721,27 @@ n_triS = len(santan_filtered_display)
 n_qn   = len(pairs_qn2_kept)
 n_nit  = len(rows_nitan_L12)
 
+# =========================
+#  汎用ヘルパー：三連複・三連単の出力整形
+# =========================
+def _df_trio(rows, anchor_no):
+    import pandas as pd
+    out = []
+    for (a,b,c,s,tag) in rows:
+        k = [int(a), int(b), int(c)]
+        k.sort()
+        label = "-".join(map(str,k))
+        if anchor_no in k:
+            label += "☆"
+        note = f"｜{tag}" if tag == "ライン枠" else ""
+        out.append({
+            "買い目": label,
+            "偏差値S": f"{round(s,1)}{note}"
+        })
+    out.sort(key=lambda x: (-float(x["偏差値S"].split("｜")[0]), x["買い目"]))
+    return pd.DataFrame(out)
+
+
 
 # =========================
 #  画面出力（四系統すべて常時）
