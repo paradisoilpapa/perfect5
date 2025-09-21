@@ -988,26 +988,25 @@ def anchor_score(no: int) -> float:
 
 
 # === デバッグ表示（必要なときだけ / anchor_score定義の後, 印出力の前） ===
-for no in active_cars:
-    role = role_in_line(no, line_def)
-    sb_dbg  = bonus_init.get(car_to_group.get(no, None), 0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
-    pos_dbg = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
-    form_dbg = SD_FORM * FORM_Z.get(no, 0.0)
-    env_dbg  = SD_ENV  * ENV_Z.get(no, 0.0)
-    stab_dbg = (SD_STAB * STAB_Z.get(no, 0.0)) if 'STAB_Z' in globals() else 0.0
-    tiny_dbg = SMALL_Z_RATING * zt_map.get(no, 0.0)
+# for no in active_cars:
+#     role = role_in_line(no, line_def)
+#     sb_dbg  = bonus_init.get(car_to_group.get(no, None), 0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
+#     pos_dbg = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
+#     form_dbg = SD_FORM * FORM_Z.get(no, 0.0)
+#     env_dbg  = SD_ENV  * ENV_Z.get(no, 0.0)
+#     stab_dbg = (SD_STAB * STAB_Z.get(no, 0.0)) if 'STAB_Z' in globals() else 0.0
+#     tiny_dbg = SMALL_Z_RATING * zt_map.get(no, 0.0)
 
-    total = form_dbg + env_dbg + stab_dbg + sb_dbg + pos_dbg + tiny_dbg
-    st.write(no, {
-        "form": round(form_dbg, 4),
-        "env":  round(env_dbg, 4),
-        "stab": round(stab_dbg, 4),
-        "sb":   round(sb_dbg, 4),
-        "pos":  round(pos_dbg, 4),
-        "tiny": round(tiny_dbg, 4),
-        "TOTAL(anchor_score期待値)": round(total, 4),
-    })
-
+#     total = form_dbg + env_dbg + stab_dbg + sb_dbg + pos_dbg + tiny_dbg
+#     st.write(no, {
+#         "form": round(form_dbg, 4),
+#         "env":  round(env_dbg, 4),
+#         "stab": round(stab_dbg, 4),
+#         "sb":   round(sb_dbg, 4),
+#         "pos":  round(pos_dbg, 4),
+#         "tiny": round(tiny_dbg, 4),
+#         "TOTAL(anchor_score期待値)": round(total, 4),
+#     })
 
 
 
