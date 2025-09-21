@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+    # -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 import numpy as np   # ← ここ！NumPy を np にする
@@ -1579,9 +1579,20 @@ if '_santan_score' not in globals():
 mark_star   = result_marks.get("◎")
 mark_circle = result_marks.get("〇")
 
+# ===== ここから丸ごと貼り替え =====
 from statistics import mean, pstdev
 from itertools import product
 import numpy as np
+
+# === 前提（上流にある想定）
+# L1, L2, L3 / result_marks / race_t / USED_IDS / line_def / car_to_group / formation_label など
+
+anchor_no   = result_marks.get("◎")
+mark_star   = result_marks.get("◎")
+mark_circle = result_marks.get("〇")
+
+# ---------- フォーメーション（常時表示） ----------
+st.markdown(f"**フォーメーション**：{formation_label}")
 
 # =========================
 #  三連複（上位1/5）＋ライン枠
@@ -1599,37 +1610,36 @@ if L1 and L2 and L3:
         mu, sig = mean(xs), pstdev(xs)
         TRIO_SIG_DIV = float(globals().get("TRIO_SIG_DIV", 3.0))
         cutoff_mu_sig = mu + (sig/TRIO_SIG_DIV if sig > 0 else 0.0)
-        q = max(1, int(len(xs)*0.20))  # 上位1/5
+        # 上位1/5（=20%）の閾値
+        q = max(1, int(len(xs)*0.20))
         cutoff_topQ = np.partition(xs, -q)[-q]
         cutoff_trio = max(cutoff_mu_sig, float(cutoff_topQ))
         trios_filtered_display = [(a,b,c,s,"通常") for (a,b,c,s) in trios_from_cols if s >= cutoff_trio]
 
-# === ラインパワー枠（三連複：最大2点、2車ラインでも救済） ===
+# ラインパワー枠（三連複：最大2点）…◎-〇-ライン同僚／純ライン完結
 line_power_added = []
-gid = car_to_group.get(anchor_no, None)
+gid = car_to_group.get(anchor_no, None) if anchor_no is not None else None
 if gid in line_def:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
         others = [x for x in mem if x != anchor_no]
-
-        # ◎-〇-ライン仲間
-        if mark_circle:
+        # A) ◎-〇-ライン同僚 を優先
+        if mark_circle and mark_circle in mem:
             for extra in others:
-                k = tuple(sorted((anchor_no, mark_circle, extra)))
+                k = tuple(sorted((int(anchor_no), int(mark_circle), int(extra))))
                 line_power_added.append((k[0], k[1], k[2], _trio_score(*k), "ライン枠"))
                 if len(line_power_added) >= 2:
                     break
-
-        # ◎ラインが1人だけでも救済
-        if len(line_power_added) < 2 and len(others) >= 1:
-            for extra in others[:1]:
-                k = tuple(sorted((anchor_no, extra, mark_circle or extra)))
-                line_power_added.append((k[0], k[1], k[2], _trio_score(*k), "ライン枠"))
-
+        # B) まだ空きがあれば「純ライン完結」1点
+        if (len(line_power_added) < 2) and (len(others) >= 2):
+            a, b = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)[:2]
+            k = tuple(sorted((int(anchor_no), int(a), int(b))))
+            line_power_added.append((k[0], k[1], k[2], _trio_score(*k), "ライン枠"))
+# マージ（最大2点）
 trios_filtered_display.extend(line_power_added[:2])
 
 # =========================
-#  三連単（◎〇固定・2列目◎〇▲・上位1/8）＋ライン枠
+#  三連単（◎〇固定・2列目＝◎〇▲・上位1/8）＋ライン枠
 # =========================
 santan_filtered_display, cutoff_san = [], 0.0
 if L1 and L2 and L3:
@@ -1646,31 +1656,25 @@ if L1 and L2 and L3:
 
     if san_from_cols:
         xs = [s for (*_,s) in san_from_cols]
-        cutoff_san = np.percentile(xs, 100 * (1 - 1/8)) if xs else 0.0
+        cutoff_san = float(np.percentile(xs, 100*(1-1/8))) if xs else 0.0
         santan_filtered_display = [(a,b,c,s,"通常") for (a,b,c,s) in san_from_cols if s >= cutoff_san]
 
-# === ラインパワー枠（三連単：最大2点、2車ラインでも救済） ===
+# ラインパワー枠（三連単：最大2点）…順序は ◎→〇→ライン同僚／◎→強い順→次点
 santan_line_added = []
-gid = car_to_group.get(anchor_no, None)
 if gid in line_def:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
         others = [x for x in mem if x != anchor_no]
-
-        # ◎→〇→ライン仲間
-        if mark_circle:
+        if mark_circle and mark_circle in mem:
             for extra in others:
-                k = (anchor_no, mark_circle, extra)
+                k = (int(anchor_no), int(mark_circle), int(extra))
                 santan_line_added.append((k[0], k[1], k[2], _santan_score(*k), "ライン枠"))
                 if len(santan_line_added) >= 2:
                     break
-
-        # ◎ラインが1人だけでも救済
-        if len(santan_line_added) < 2 and len(others) >= 1:
-            for extra in others[:1]:
-                k = (anchor_no, extra, mark_circle or extra)
-                santan_line_added.append((k[0], k[1], k[2], _santan_score(*k), "ライン枠"))
-
+        if (len(santan_line_added) < 2) and (len(others) >= 2):
+            a, b = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)[:2]
+            k = (int(anchor_no), int(a), int(b))
+            santan_line_added.append((k[0], k[1], k[2], _santan_score(*k), "ライン枠"))
 santan_filtered_display.extend(santan_line_added[:2])
 
 # =========================
@@ -1679,79 +1683,75 @@ santan_filtered_display.extend(santan_line_added[:2])
 pairs_all_L12 = {}
 for a in L1:
     for b in L2:
-        if a == b: continue
+        if a == b: 
+            continue
         key = tuple(sorted((int(a), int(b))))
-        if key in pairs_all_L12: continue
-        s2 = float(race_t.get(a,50.0)) + float(race_t.get(b,50.0))
+        if key in pairs_all_L12:
+            continue
+        s2 = float(race_t.get(int(a),50.0)) + float(race_t.get(int(b),50.0))
         pairs_all_L12[key] = round(s2, 1)
 
 pairs_qn2_kept, qn2_cutoff = [], 0.0
 if pairs_all_L12:
     sc = list(pairs_all_L12.values())
     mu2, sig2 = mean(sc), pstdev(sc)
-    qn2_cutoff = np.percentile(sc, 100 * (1 - 1/5)) if sc else 0.0
+    # 上位1/5
+    qn2_cutoff = float(np.percentile(sc, 100*(1-1/5))) if sc else 0.0
     pairs_qn2_kept = [(a,b,s,"通常") for (a,b), s in pairs_all_L12.items() if s >= qn2_cutoff]
     pairs_qn2_kept.sort(key=lambda x:(-x[2], x[0], x[1]))
 
-# ライン枠（◎-ライン仲間）
+# ライン枠（◎-ライン同僚、最大2点）
 qn_line_added = []
-gid = car_to_group.get(anchor_no, None)
 if gid in line_def:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
-        others = [x for x in mem if x != anchor_no]
-        for extra in others[:2]:
-            k = tuple(sorted((anchor_no, extra)))
-            qn_line_added.append((k[0], k[1], race_t.get(k[0],50.0)+race_t.get(k[1],50.0),"ライン枠"))
+        for extra in [x for x in mem if x != anchor_no][:2]:
+            k = tuple(sorted((int(anchor_no), int(extra))))
+            s2 = float(race_t.get(k[0],50.0)) + float(race_t.get(k[1],50.0))
+            qn_line_added.append((k[0], k[1], s2, "ライン枠"))
 pairs_qn2_kept.extend(qn_line_added[:2])
 
 # =========================
 #  二車単（上位1/8）＋ライン枠
 # =========================
-rows_nitan_L12 = []
+rows_nitan_L12, cutoff_nit = [], 0.0
 if 'rows_nitan' in globals() and rows_nitan:
-    xs = [s for (_,s) in rows_nitan]
-    cutoff_nit = np.percentile(xs, 100 * (1 - 1/8)) if xs else 0.0
+    xs1 = [float(s) for (_,s) in rows_nitan]
+    cutoff_nit = float(np.percentile(xs1, 100*(1-1/8))) if xs1 else 0.0
     for k, s1 in rows_nitan:
         try:
             a,b = map(int, k.split("-"))
         except Exception:
             continue
-        if s1 >= cutoff_nit:
-            rows_nitan_L12.append((f"{a}-{b}", float(round(s1,1)),"通常"))
-
-# ライン枠（◎→ライン仲間）
+        if (a in L1) and (b in L2) and (a != b) and (float(s1) >= cutoff_nit):
+            rows_nitan_L12.append((f"{a}-{b}", float(round(s1,1)), "通常"))
+# ライン枠（◎→ライン同僚、最大2点）
 nit_line_added = []
-gid = car_to_group.get(anchor_no, None)
 if gid in line_def:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
-        others = [x for x in mem if x != anchor_no]
-        for extra in others[:2]:
-            k = f"{anchor_no}-{extra}"
-            nit_line_added.append((k, _santan_score(anchor_no, extra, extra), "ライン枠"))
+        for extra in [x for x in mem if x != anchor_no][:2]:
+            k = f"{int(anchor_no)}-{int(extra)}"
+            # S1指標は rows_nitan が持つ前提。無い場合の簡易代替として _santan_score を利用
+            s_line = _santan_score(int(anchor_no), int(extra), int(extra))
+            nit_line_added.append((k, float(round(s_line,1)), "ライン枠"))
 rows_nitan_L12.extend(nit_line_added[:2])
-
 
 # =========================
 #  出力用ヘルパー
 # =========================
 def _df_trio(rows, anchor_no):
-    # rows: [(a,b,c,s,tag), ...]  tag in {"通常","ライン枠"}
     out = []
     for (a,b,c,s,tag) in rows:
         k = [int(a),int(b),int(c)]; k.sort()
         label = "-".join(map(str,k))
-        if anchor_no in k:
-            label += "☆"
+        if anchor_no in k: label += "☆"
         note = f"｜{tag}" if tag == "ライン枠" else ""
-        out.append({"買い目": label, "偏差値S": f"{round(s,1)}{note}"})
-    # 偏差値Sで降順、同点は買い目で昇順
+        out.append({"買い目": label, "偏差値S": f"{round(float(s),1)}{note}"})
     out.sort(key=lambda x: (-float(x["偏差値S"].split("｜")[0]), x["買い目"]))
     return pd.DataFrame(out)
 
 def _df_pairs(rows):
-    # rows: [(a,b,s,tag), ...] or [(a,b,s)]  tag optional
     out = []
     for tup in rows:
         if len(tup) == 4:
@@ -1761,11 +1761,10 @@ def _df_pairs(rows):
         label = f"{int(a)}-{int(b)}"
         note = f"｜{tag}" if tag == "ライン枠" else ""
         out.append({"買い目": label, "S2(連対偏差値合計)": f"{round(float(s),1)}{note}"})
-    out.sort(key=lambda x: (-float(x["S2(連対偏差値合計)"].split("｜")[0]), x["買い目"]))
+    out.sort(key=lambda x: (-float(x["S2(連対偏差値合計)"].split('｜')[0]), x["買い目"]))
     return pd.DataFrame(out)
 
 def _df_nitan(rows):
-    # rows: [(k, s, tag), ...]  k="a-b"
     out = []
     for tup in rows:
         if len(tup) == 3:
@@ -1774,7 +1773,7 @@ def _df_nitan(rows):
             k,s = tup; tag = "通常"
         note = f"｜{tag}" if tag == "ライン枠" else ""
         out.append({"買い目": str(k), "S1(勝率偏差値合計)": f"{round(float(s),1)}{note}"})
-    out.sort(key=lambda x: (-float(x["S1(勝率偏差値合計)"].split("｜")[0]), x["買い目"]))
+    out.sort(key=lambda x: (-float(x["S1(勝率偏差値合計)"].split('｜')[0]), x["買い目"]))
     return pd.DataFrame(out)
 
 def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
@@ -1800,25 +1799,19 @@ n_nit  = len(rows_nitan_L12)
 # =========================
 #  画面出力
 # =========================
-# フォーメーション（既存の formation_label を利用）
-st.markdown(f"**フォーメーション**：{formation_label}")
-
-# 三連複
 st.markdown(f"#### 三連複（新方式｜しきい値 {cutoff_trio:.1f}点｜{n_trio}点）")
 st.caption(f"フォーメーション：{formation_label}（L3基準={float(globals().get('TRIO_L3_MIN',160.0)):.1f}）")
 if has_trio:
-    st.dataframe(_df_trio(trios_filtered_display, result_marks.get('◎')), use_container_width=True)
+    st.dataframe(_df_trio(trios_filtered_display, mark_star), use_container_width=True)
 else:
     st.markdown("対象外")
 
-# 三連単
 st.markdown(f"#### 三連単（新方式｜しきい値 {cutoff_san:.1f}点｜{n_triS}点）")
 if has_tri:
-    st.dataframe(_df_trio(santan_filtered_display, result_marks.get('◎')), use_container_width=True)
+    st.dataframe(_df_trio(santan_filtered_display, mark_star), use_container_width=True)
 else:
     st.markdown("対象外")
 
-# 二車複（常時表示に変更）
 st.markdown(f"#### 二車複（L1×L2｜上位1/5｜{n_qn}点）")
 st.caption(f"しきい値（参考）: {qn2_cutoff:.1f} 点")
 if has_qn:
@@ -1826,7 +1819,6 @@ if has_qn:
 else:
     st.markdown("対象外")
 
-# 二車単（常時表示に変更）
 st.markdown(f"#### 二車単（L1→L2｜上位1/8｜{n_nit}点）")
 if has_nit:
     st.dataframe(_df_nitan(rows_nitan_L12), use_container_width=True)
@@ -1840,7 +1832,7 @@ note_sections = []
 note_sections.append(f"{track}{race_no}R")
 note_sections.append(f"展開評価：{confidence}\n")
 
-# 点数行（統一表記）
+# 点数行
 note_sections.append("点数")
 note_sections.append(f"三連複　{n_trio}点　三連単　{n_triS}点")
 note_sections.append(f"二車複　{n_qn}点　二車単　{n_nit}点\n")
@@ -1854,18 +1846,15 @@ no_mark_ids = [int(i) for i in USED_IDS if int(i) not in set(result_marks.values
 note_sections.append(' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if m in result_marks))
 note_sections.append('無　' + (' '.join(map(str, no_mark_ids)) if no_mark_ids else '—'))
 
-# 偏差値
+# 偏差値・フォーメーション
 note_sections.append("\n偏差値（風・ライン込み）")
 note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
-
-# フォーメーション表示
 note_sections.append(f"\nフォーメーション：{formation_label}")
 
 # 三連複 明細
 if has_trio:
     triolist = "\n".join([
-        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}"
-        f"（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
+        f"{a}-{b}-{c}{('☆' if mark_star in (a,b,c) else '')}（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (a,b,c,s,tag) in sorted(trios_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
     ])
     note_sections.append(f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点／L3基準 {float(globals().get('TRIO_L3_MIN',160.0)):.1f}）\n{triolist}")
@@ -1875,31 +1864,30 @@ else:
 # 三連単 明細
 if has_tri:
     trifectalist = "\n".join([
-        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}"
-        f"（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
+        f"{a}-{b}-{c}{('☆' if mark_star in (a,b,c) else '')}（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
     ])
     note_sections.append(f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点）\n{trifectalist}")
 else:
     note_sections.append("\n三連単（現行方式）\n対象外")
 
-# 二車複 明細（常時）
+# 二車複 明細
 if has_qn:
     qnlist = "\n".join([
-        f"{a}-{b}（S2={s:.1f}{'｜ライン枠' if (len(row) == 4 and row[3] == 'ライン枠') else ''}）"
-        for row in pairs_qn2_kept
-        for (a, b, s) in [row[:3]]
+        f"{int(a)}-{int(b)}（S2={float(s):.1f}{'｜ライン枠' if (len(t)==4 and t[3]=='ライン枠') else ''}）"
+        for t in pairs_qn2_kept
+        for (a,b,s) in [t[:3]]
     ])
     note_sections.append(f"\n二車複（L1×L2｜上位1/5）\n{qnlist}")
 else:
     note_sections.append("\n二車複（L1×L2）\n対象外")
 
-# 二車単 明細（常時）
+# 二車単 明細
 if has_nit:
     nitanlist = "\n".join([
-        f"{k}（S1={v:.1f}{'｜ライン枠' if (len(row) == 3 and row[2] == 'ライン枠') else ''}）"
-        for row in rows_nitan_L12
-        for (k, v) in [row[:2]]
+        f"{k}（S1={float(v):.1f}{'｜ライン枠' if (len(t)==3 and t[2]=='ライン枠') else ''}）"
+        for t in rows_nitan_L12
+        for (k,v) in [t[:2]]
     ])
     note_sections.append(f"\n二車単（L1×L2｜上位1/8）\n{nitanlist}")
 else:
@@ -1908,3 +1896,5 @@ else:
 note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
 st.text_area("ここを選択してコピー", note_text, height=560)
+# ===== ここまで丸ごと貼り替え =====
+
