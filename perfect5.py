@@ -1897,13 +1897,14 @@ def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
 # =========================
 has_trio = bool(trios_filtered_display)
 has_tri  = bool(santan_filtered_display)
-has_qn   = bool(pairs_qn2_kept)
-has_nit  = bool(rows_nitan_L12)
+has_qn   = bool(pairs_qn2_filtered)   # ← 修正
+has_nit  = bool(rows_nitan_filtered)  # ← 修正
 
 n_trio = len(trios_filtered_display)
 n_triS = len(santan_filtered_display)
-n_qn   = len(pairs_qn2_kept)
-n_nit  = len(rows_nitan_L12)
+n_qn   = len(pairs_qn2_filtered)      # ← 修正
+n_nit  = len(rows_nitan_filtered)     # ← 修正
+
 
 # =========================
 #  画面出力（順番固定：三連複→三連単→二車複→二車単→note）
