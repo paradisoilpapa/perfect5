@@ -1689,6 +1689,12 @@ mark_star   = result_marks.get("◎")
 mark_circle = result_marks.get("〇")
 
 santan_filtered_display, cutoff_san = [], 0.0
+san_mu = san_sig = san_mu_sig = san_topq = 0.0
+san_adopt = "μ+σ/div"
+
+TRIFECTA_SIG_DIV  = float(globals().get("TRIFECTA_SIG_DIV", 8.0))
+TRIFECTA_TOP_FRAC = float(globals().get("TRIFECTA_TOP_FRAC", 1/8))
+
 if L1 and L2 and L3:
     first_col  = [x for x in [mark_star, mark_circle] if x is not None]
     second_col = [x for x in [mark_star, mark_circle, result_marks.get("▲")] if x is not None]
@@ -1698,15 +1704,15 @@ if L1 and L2 and L3:
     orderA = {n:i for i,n in enumerate(first_col)}
     orderB = {n:i for i,n in enumerate(second_col)}
 
-    # 重複なし・順序保持で候補生成
+    # 候補生成
     san_rows, seen = [], set()
     for a in first_col:
         for b in second_col:
             for c in third_col:
-                if len({a,b,c}) != 3:  # 2-5-5 のような重複排除
+                if len({a,b,c}) != 3:
                     continue
                 key = (int(a), int(b), int(c))
-                if key in seen: 
+                if key in seen:
                     continue
                 seen.add(key)
                 s = _santan_score(*key)
@@ -1714,25 +1720,28 @@ if L1 and L2 and L3:
 
     if san_rows:
         xs = [row[3] for row in san_rows]
-        mu = mean(xs); sig = pstdev(xs) if len(xs) > 1 else 0.0
-        cut_mu_sig = mu + (sig/8.0 if sig > 0 else 0.0)
-        cut_pct    = float(np.percentile(xs, 100*(1 - 1/8))) if xs else 0.0
-        cutoff_san = max(cut_mu_sig, cut_pct)
+        san_mu  = float(mean(xs))
+        san_sig = float(pstdev(xs)) if len(xs) > 1 else 0.0
+        san_mu_sig = san_mu + (san_sig / TRIFECTA_SIG_DIV if san_sig > 0 else 0.0)
+
+        q = max(1, int(len(xs) * TRIFECTA_TOP_FRAC))
+        san_topq = float(np.partition(xs, -q)[-q])
+
+        cutoff_san = max(san_mu_sig, san_topq)
+        san_adopt  = "μ+σ/div" if cutoff_san == san_mu_sig else f"top-{int(1/TRIFECTA_TOP_FRAC)}分位"
 
         santan_filtered_display = [r for r in san_rows if r[3] >= cutoff_san]
         santan_filtered_display.sort(
             key=lambda t: (-t[3], orderA.get(t[0], 99), orderB.get(t[1], 99), int(t[2]))
         )
 
-# === ラインパワー枠（三連単：最大2点、順序は ◎→〇→ライン仲間 を優先） ===
+# === ラインパワー枠（三連単：最大2点） ===
 santan_line_added = []
 gid = car_to_group.get(anchor_no, None) if 'anchor_no' in globals() else None
 if gid in line_def:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
         others = [x for x in mem if x != anchor_no]
-
-        # ◎→〇→(◎ライン) を優先
         if mark_circle:
             for extra in others:
                 k = (int(anchor_no), int(mark_circle), int(extra))
@@ -1740,8 +1749,6 @@ if gid in line_def:
                     santan_line_added.append((k[0],k[1],k[2], _santan_score(*k), "ライン枠"))
                 if len(santan_line_added) >= 2:
                     break
-
-        # まだ枠が余れば ◎→(ライン強い順→次点)
         if len(santan_line_added) < 2 and len(others) >= 2:
             a,b = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)[:2]
             k = (int(anchor_no), int(a), int(b))
@@ -1754,11 +1761,9 @@ santan_filtered_display.extend(santan_line_added[:2])
 pairs_all_L12 = {}
 for a in L1:
     for b in L2:
-        if a == b:
-            continue
+        if a == b: continue
         key = tuple(sorted((int(a), int(b))))
-        if key in pairs_all_L12:
-            continue
+        if key in pairs_all_L12: continue
         s2 = float(race_t.get(int(a), 50.0)) + float(race_t.get(int(b), 50.0))
         pairs_all_L12[key] = round(s2, 1)
 
@@ -1766,27 +1771,26 @@ pairs_qn2_filtered, cutoff_qn2 = [], 0.0
 qn2_mu = qn2_sig = qn2_mu_sig = qn2_topq = 0.0
 qn2_adopt = "μ+σ/div"
 
-QN_SIG_DIV = float(globals().get("QN_SIG_DIV", 3.0))
+QN_SIG_DIV  = float(globals().get("QN_SIG_DIV", 3.0))
 QN_TOP_FRAC = float(globals().get("QN_TOP_FRAC", 0.20))
 
 if pairs_all_L12:
     sc = list(pairs_all_L12.values())
-    mu = float(mean(sc))
-    sig = float(pstdev(sc)) if len(sc) > 1 else 0.0
-    qn2_mu, qn2_sig = mu, sig
-    qn2_mu_sig = mu + (sig / QN_SIG_DIV if sig > 0 else 0.0)
+    qn2_mu  = float(mean(sc))
+    qn2_sig = float(pstdev(sc)) if len(sc) > 1 else 0.0
+    qn2_mu_sig = qn2_mu + (qn2_sig / QN_SIG_DIV if qn2_sig > 0 else 0.0)
 
     q = max(1, int(len(sc) * QN_TOP_FRAC))
     qn2_topq = float(np.partition(sc, -q)[-q])
 
     cutoff_qn2 = max(qn2_mu_sig, qn2_topq)
-    qn2_adopt = "μ+σ/div" if cutoff_qn2 == qn2_mu_sig else f"top-{int(1/QN_TOP_FRAC)}分位"
+    qn2_adopt  = "μ+σ/div" if cutoff_qn2 == qn2_mu_sig else f"top-{int(1/QN_TOP_FRAC)}分位"
 
     pairs_qn2_filtered = [(a, b, s, "通常")
                           for (a, b), s in pairs_all_L12.items()
                           if s >= cutoff_qn2]
 
-# ライン枠追加（救済）
+# ライン枠追加
 if gid in line_def and anchor_no is not None:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
@@ -1795,17 +1799,16 @@ if gid in line_def and anchor_no is not None:
         if mark_circle:
             for extra in others:
                 k = tuple(sorted((int(anchor_no), int(extra))))
-                if not any((k[0] == a and k[1] == b) for (a, b, _, _) in pairs_qn2_filtered + qn_line_added):
-                    s_line = float(race_t.get(k[0], 50.0)) + float(race_t.get(k[1], 50.0))
-                    qn_line_added.append((k[0], k[1], round(s_line, 1), "ライン枠"))
-                if len(qn_line_added) >= 2:
-                    break
+                if not any((k[0]==a and k[1]==b) for (a,b,_,_) in pairs_qn2_filtered + qn_line_added):
+                    s_line = float(race_t.get(k[0],50.0)) + float(race_t.get(k[1],50.0))
+                    qn_line_added.append((k[0], k[1], round(s_line,1), "ライン枠"))
+                if len(qn_line_added) >= 2: break
         if len(qn_line_added) < 2 and len(others) >= 1:
-            best = max(others, key=lambda x: float(race_t.get(int(x), 50.0)))
+            best = max(others, key=lambda x: float(race_t.get(int(x),50.0)))
             k = tuple(sorted((int(anchor_no), int(best))))
-            if not any((k[0] == a and k[1] == b) for (a, b, _, _) in pairs_qn2_filtered + qn_line_added):
-                s_line = float(race_t.get(k[0], 50.0)) + float(race_t.get(k[1], 50.0))
-                qn_line_added.append((k[0], k[1], round(s_line, 1), "ライン枠"))
+            if not any((k[0]==a and k[1]==b) for (a,b,_,_) in pairs_qn2_filtered + qn_line_added):
+                s_line = float(race_t.get(k[0],50.0)) + float(race_t.get(k[1],50.0))
+                qn_line_added.append((k[0], k[1], round(s_line,1), "ライン枠"))
         pairs_qn2_filtered.extend(qn_line_added[:2])
 
 # ========== 二車単（新方式） ==========
@@ -1813,48 +1816,46 @@ rows_nitan_filtered, cutoff_nit = [], 0.0
 nit_mu = nit_sig = nit_mu_sig = nit_topq = 0.0
 nit_adopt = "μ+σ/div"
 
-NIT_SIG_DIV = float(globals().get("NIT_SIG_DIV", 3.0))
+NIT_SIG_DIV  = float(globals().get("NIT_SIG_DIV", 3.0))
 NIT_TOP_FRAC = float(globals().get("NIT_TOP_FRAC", 1/8))
 
-# --- 原始候補を強制生成（L1→L2の順序付き） ---
 rows_nitan = []
 if L1 and L2:
     for a in L1:
         for b in L2:
-            if a == b:
-                continue
+            if a == b: continue
             k = f"{int(a)}-{int(b)}"
             s1 = float(race_t.get(int(a),50.0)) + float(race_t.get(int(b),50.0))
             rows_nitan.append((k, s1))
 
 if rows_nitan:
-    xs = [float(s) for (_, s) in rows_nitan]
-    mu = float(mean(xs))
-    sig = float(pstdev(xs)) if len(xs) > 1 else 0.0
-    nit_mu, nit_sig = mu, sig
-    nit_mu_sig = mu + (sig / NIT_SIG_DIV if sig > 0 else 0.0)
+    xs = [s for (_,s) in rows_nitan]
+    nit_mu  = float(mean(xs))
+    nit_sig = float(pstdev(xs)) if len(xs) > 1 else 0.0
+    nit_mu_sig = nit_mu + (nit_sig / NIT_SIG_DIV if nit_sig > 0 else 0.0)
 
     q = max(1, int(len(xs) * NIT_TOP_FRAC))
     nit_topq = float(np.partition(xs, -q)[-q])
 
     cutoff_nit = max(nit_mu_sig, nit_topq)
-    nit_adopt = "μ+σ/div" if cutoff_nit == nit_mu_sig else f"top-{int(1/NIT_TOP_FRAC)}分位"
+    nit_adopt  = "μ+σ/div" if cutoff_nit == nit_mu_sig else f"top-{int(1/NIT_TOP_FRAC)}分位"
 
-    for k, s1 in rows_nitan:
+    for k,s1 in rows_nitan:
         if float(s1) >= cutoff_nit:
-            rows_nitan_filtered.append((k, round(float(s1), 1), "通常"))
+            rows_nitan_filtered.append((k, round(float(s1),1), "通常"))
 
-# --- ライン枠追加（救済） ---
+# ライン枠追加
 if gid in line_def and anchor_no is not None:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
         others = [x for x in mem if x != anchor_no]
         for extra in others[:2]:
             k = f"{anchor_no}-{extra}"
-            s_approx = next((v for (kk, v, tag) in rows_nitan_filtered if kk == k), None)
+            s_approx = next((v for (kk,v,tag) in rows_nitan_filtered if kk==k), None)
             if s_approx is None:
                 s_approx = float(race_t.get(anchor_no,50.0)) + float(race_t.get(extra,50.0))
-            rows_nitan_filtered.append((k, round(float(s_approx), 1), "ライン枠"))
+            rows_nitan_filtered.append((k, round(float(s_approx),1), "ライン枠"))
+
 
 # ========== 表示用ヘルパ関数 ==========
 def _df_trio(rows, anchor_no):
