@@ -1750,73 +1750,102 @@ if gid in line_def:
 
 santan_filtered_display.extend(santan_line_added[:2])
 
-# ========== 二車複（L1×L2｜上位 QN_TOP_FRAC） + ライン枠 ==========
+# ========== 二車複（新方式） ==========
 pairs_all_L12 = {}
 for a in L1:
     for b in L2:
-        if a == b: continue
+        if a == b:
+            continue
         key = tuple(sorted((int(a), int(b))))
-        if key in pairs_all_L12: continue
-        s2 = float(race_t.get(int(a),50.0)) + float(race_t.get(int(b),50.0))
+        if key in pairs_all_L12:
+            continue
+        s2 = float(race_t.get(int(a), 50.0)) + float(race_t.get(int(b), 50.0))
         pairs_all_L12[key] = round(s2, 1)
 
-pairs_qn2_kept = []
-qn2_cutoff = 0.0
+pairs_qn2_filtered, cutoff_qn2 = [], 0.0
+qn2_mu = qn2_sig = qn2_mu_sig = qn2_topq = 0.0
+qn2_adopt = "μ+σ/div"
+
+QN_SIG_DIV = float(globals().get("QN_SIG_DIV", 3.0))
+QN_TOP_FRAC = float(globals().get("QN_TOP_FRAC", 0.20))
+
 if pairs_all_L12:
     sc = list(pairs_all_L12.values())
-    qn2_cutoff = cutoff_mu_sig_vs_top(sc, float(globals().get("QN_SIG_DIV", 3.0)), QN_TOP_FRAC)
-    pairs_qn2_kept = [(a,b,s,"通常") for (a,b), s in pairs_all_L12.items() if s >= qn2_cutoff]
-    pairs_qn2_kept.sort(key=lambda x:(-x[2], x[0], x[1]))
+    mu = float(mean(sc))
+    sig = float(pstdev(sc)) if len(sc) > 1 else 0.0
+    qn2_mu, qn2_sig = mu, sig
+    qn2_mu_sig = mu + (sig / QN_SIG_DIV if sig > 0 else 0.0)
 
-# ライン枠（◎-ラインの誰か、最大2点）
+    q = max(1, int(len(sc) * QN_TOP_FRAC))
+    qn2_topq = float(np.partition(sc, -q)[-q])
+
+    cutoff_qn2 = max(qn2_mu_sig, qn2_topq)
+    qn2_adopt = "μ+σ/div" if cutoff_qn2 == qn2_mu_sig else f"top-{int(1/QN_TOP_FRAC)}分位"
+
+    pairs_qn2_filtered = [(a, b, s, "通常")
+                          for (a, b), s in pairs_all_L12.items()
+                          if s >= cutoff_qn2]
+
+# ライン枠追加（救済）
 if gid in line_def and anchor_no is not None:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
         others = [x for x in mem if x != anchor_no]
         qn_line_added = []
-        # 優先は◎-〇 ならそれを基に
         if mark_circle:
             for extra in others:
                 k = tuple(sorted((int(anchor_no), int(extra))))
-                if not any((int(k[0])==int(a) and int(k[1])==int(b)) for (a,b,_,_) in pairs_qn2_kept + qn_line_added):
-                    qn_line_added.append((k[0], k[1], float(race_t.get(k[0],50.0))+float(race_t.get(k[1],50.0)), "ライン枠"))
-                if len(qn_line_added) >= 2: break
-        # 純ライン完結救済（上位1点）
-        if len(qn_line_added) < 2 and len(others) >= 2:
-            others_sorted = sorted(others, key=lambda x: float(race_t.get(int(x),50.0)), reverse=True)
-            k = tuple(sorted((int(anchor_no), int(others_sorted[0]))))
-            if not any((int(k[0])==int(a) and int(k[1])==int(b)) for (a,b,_,_) in pairs_qn2_kept + qn_line_added):
-                qn_line_added.append((k[0], k[1], float(race_t.get(k[0],50.0))+float(race_t.get(k[1],50.0)), "ライン枠"))
-        pairs_qn2_kept.extend(qn_line_added[:2])
+                if not any((k[0] == a and k[1] == b) for (a, b, _, _) in pairs_qn2_filtered + qn_line_added):
+                    s_line = float(race_t.get(k[0], 50.0)) + float(race_t.get(k[1], 50.0))
+                    qn_line_added.append((k[0], k[1], round(s_line, 1), "ライン枠"))
+                if len(qn_line_added) >= 2:
+                    break
+        if len(qn_line_added) < 2 and len(others) >= 1:
+            best = max(others, key=lambda x: float(race_t.get(int(x), 50.0)))
+            k = tuple(sorted((int(anchor_no), int(best))))
+            if not any((k[0] == a and k[1] == b) for (a, b, _, _) in pairs_qn2_filtered + qn_line_added):
+                s_line = float(race_t.get(k[0], 50.0)) + float(race_t.get(k[1], 50.0))
+                qn_line_added.append((k[0], k[1], round(s_line, 1), "ライン枠"))
+        pairs_qn2_filtered.extend(qn_line_added[:2])
 
-# ========== 二車単（rows_nitan の上位 NIT_TOP_FRAC） + ライン枠 ==========
-rows_nitan_L12 = []
-cutoff_nit = 0.0
+# ========== 二車単（新方式） ==========
+rows_nitan_filtered, cutoff_nit = [], 0.0
+nit_mu = nit_sig = nit_mu_sig = nit_topq = 0.0
+nit_adopt = "μ+σ/div"
+
+NIT_SIG_DIV = float(globals().get("NIT_SIG_DIV", 3.0))
+NIT_TOP_FRAC = float(globals().get("NIT_TOP_FRAC", 1/8))
+
 if 'rows_nitan' in globals() and rows_nitan:
-    xs = [s for (_,s) in rows_nitan]
-    cutoff_nit = cutoff_mu_sig_vs_top(xs, float(globals().get("NIT_SIG_DIV", 3.0)), NIT_TOP_FRAC)
-    for k,s1 in rows_nitan:
-        try:
-            a,b = map(int, k.split("-"))
-        except Exception:
-            continue
-        if s1 >= cutoff_nit:
-            rows_nitan_L12.append((f"{a}-{b}", float(round(s1,1)), "通常"))
+    xs = [float(s) for (_, s) in rows_nitan]
+    mu = float(mean(xs))
+    sig = float(pstdev(xs)) if len(xs) > 1 else 0.0
+    nit_mu, nit_sig = mu, sig
+    nit_mu_sig = mu + (sig / NIT_SIG_DIV if sig > 0 else 0.0)
 
-# ライン枠追加（◎→ライン仲間、最大2点）
+    q = max(1, int(len(xs) * NIT_TOP_FRAC))
+    nit_topq = float(np.partition(xs, -q)[-q])
+
+    cutoff_nit = max(nit_mu_sig, nit_topq)
+    nit_adopt = "μ+σ/div" if cutoff_nit == nit_mu_sig else f"top-{int(1/NIT_TOP_FRAC)}分位"
+
+    for k, s1 in rows_nitan:
+        a, b = map(int, k.split("-"))
+        if float(s1) >= cutoff_nit:
+            rows_nitan_filtered.append((f"{a}-{b}", round(float(s1), 1), "通常"))
+
+# ライン枠追加（救済）
 if gid in line_def and anchor_no is not None:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
         others = [x for x in mem if x != anchor_no]
-        nit_line_added = []
         for extra in others[:2]:
             k = f"{anchor_no}-{extra}"
-            # S1: make a sensible approx if rows_nitan lacks entry
-            s_approx = next((v for (kk,v,tag) in rows_nitan_L12 if kk == k), None)
+            s_approx = next((v for (kk, v, tag) in rows_nitan_filtered if kk == k), None)
             if s_approx is None:
-                s_approx = float(race_t.get(anchor_no,50.0))+float(race_t.get(extra,50.0))
-            nit_line_added.append((k, float(round(s_approx,1)), "ライン枠"))
-        rows_nitan_L12.extend(nit_line_added[:2])
+                s_approx = float(race_t.get(anchor_no, 50.0)) + float(race_t.get(extra, 50.0))
+            rows_nitan_filtered.append((k, round(float(s_approx), 1), "ライン枠"))
+
 
 # ========== 表示用ヘルパ関数 ==========
 def _df_trio(rows, anchor_no):
@@ -1972,25 +2001,33 @@ if has_tri:
 else:
     note_sections.append("\n三連単（現行方式）\n対象外")
 
-# 二車複 明細（ライン枠も付記）
-if has_qn:
+# 二車複 明細（ライン枠も付記） ← ここから置き換え
+if pairs_qn2_filtered:
     qnlist = "\n".join([
-        f"{a}-{b}（S2={s:.1f}{'｜ライン枠' if (len(row)==4 and row[3]=='ライン枠') else ''}）"
-        for row in pairs_qn2_kept for (a,b,s) in [row[:3]]
+        f"{a}-{b}（S2={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
+        for (a, b, s, tag) in sorted(pairs_qn2_filtered, key=lambda x: (-x[2], x[0], x[1]))
     ])
-    note_sections.append(f"\n二車複（L1×L2｜上位1/5）\n{qnlist}")
+    note_sections.append(
+        f"\n二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／"
+        f"L2基準=μ+σ/{QN_SIG_DIV:g}→{qn2_mu_sig:.1f}（μ={qn2_mu:.1f}, σ={qn2_sig:.1f}）／"
+        f"top={int(100*(1-QN_TOP_FRAC))}th→{qn2_topq:.1f}｜採用={qn2_adopt}）\n{qnlist}"
+    )
 else:
-    note_sections.append("\n二車複（L1×L2）\n対象外")
+    note_sections.append("\n二車複（新方式）\n対象外")
 
 # 二車単 明細（ライン枠も付記）
-if has_nit:
+if rows_nitan_filtered:
     nitanlist = "\n".join([
-        f"{k}（S1={v:.1f}{'｜ライン枠' if (len(row)==3 and row[2]=='ライン枠') else ''}）"
-        for row in rows_nitan_L12 for (k,v) in [row[:2]]
+        f"{k}（S1={v:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
+        for (k, v, tag) in sorted(rows_nitan_filtered, key=lambda x: (-x[1], x[0]))
     ])
-    note_sections.append(f"\n二車単（L1×L2｜上位1/8）\n{nitanlist}")
+    note_sections.append(
+        f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／"
+        f"L2基準=μ+σ/{NIT_SIG_DIV:g}→{nit_mu_sig:.1f}（μ={nit_mu:.1f}, σ={nit_sig:.1f}）／"
+        f"top={int(100*(1-NIT_TOP_FRAC))}th→{nit_topq:.1f}｜採用={nit_adopt}）\n{nitanlist}"
+    )
 else:
-    note_sections.append("\n二車単（L1×L2）\n対象外")
+    note_sections.append("\n二車単（新方式）\n対象外")
 
 note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
