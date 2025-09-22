@@ -2043,9 +2043,9 @@ if has_tri:
         for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
     ])
     note_sections.append(
-    f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点／基準 "
-    f"μ+σ/{san_sig_div_used:g}→{san_mu_sig:.1f}、top-{san_top_den}分位→{san_topq:.1f}｜採用={san_adopt}）\n{trifectalist}"
-)
+        f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点／基準 "
+        f"μ+σ/{san_sig_div_used:g}→{san_mu_sig:.1f}、top-{san_top_den}分位→{san_topq:.1f}｜採用={san_adopt}）\n{trifectalist}"
+    )
 else:
     note_sections.append("\n三連単（新方式）\n対象外")
 
@@ -2069,13 +2069,14 @@ if has_nit:
         for (k,v,tag) in sorted(rows_nitan_filtered, key=lambda x:(-x[1], x[0]))
     ])
     note_sections.append(
-       f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／基準 "
-       f"μ+σ/{nit_sig_div_used:g}→{nit_mu_sig:.1f}、top-{nit_top_den}分位→{nit_topq:.1f}｜採用={nit_adopt}）\n{nitanlist}"
-)
+        f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／基準 "
+        f"μ+σ/{nit_sig_div_used:g}→{nit_mu_sig:.1f}、top-{nit_top_den}分位→{nit_topq:.1f}｜採用={nit_adopt}）\n{nitanlist}"
+    )
 else:
     note_sections.append("\n二車単（新方式）\n対象外")
 
 note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
 st.text_area("ここを選択してコピー", note_text, height=560)
+
 
