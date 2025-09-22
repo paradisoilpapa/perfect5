@@ -2048,47 +2048,56 @@ note_sections.append("\n偏差値（風・ライン込み）")
 note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
 note_sections.append(f"\nフォーメーション：{formation_label}")
 
-# 三連複 note
+# --- 三連複 note ---
 if has_trio:
     triolist = "\n".join([
         f"{a}-{b}-{c}{('☆' if (star_id is not None and star_id in (a,b,c)) else '')}"
         f"（S={float(s):.1f}{'｜'+str(tag) if str(tag)=='ライン枠' else ''}）"
         for (a,b,c,s,tag) in sorted(trios_filtered_display, key=lambda x:(-float(x[3]), x[0], x[1], x[2]))
     ])
-    note_sections.append("\n" + _hdr("三連複", cutoff_trio, _basis_trio(TRIO_L3_MIN)) + f"\n{triolist}")
+    note_sections.append(
+        f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点／基準 L3基準 {TRIO_L3_MIN:.1f}）\n{triolist}"
+    )
 else:
     note_sections.append("\n三連複（新方式）\n対象外")
 
-# 三連単 note
+# --- 三連単 note ---
 if has_tri:
     trifectalist = "\n".join([
         f"{a}-{b}-{c}{('☆' if (star_id is not None and star_id in (a,b,c)) else '')}"
         f"（S={float(s):.1f}{'｜'+str(tag) if str(tag)=='ライン枠' else ''}）"
         for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-float(x[3]), x[0], x[1], x[2]))
     ])
-    note_sections.append("\n" + _hdr("三連単", cutoff_san, _basis_combo(san_sig_div_used, san_mu_sig, san_top_den, san_topq, san_adopt)) + f"\n{trifectalist}")
+    note_sections.append(
+        f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点／基準 L3基準 {TRIO_L3_MIN:.1f}）\n{trifectalist}"
+    )
 else:
     note_sections.append("\n三連単（新方式）\n対象外")
 
-# 二車複 note
+# --- 二車複 note ---
 if has_qn:
     qnlist = "\n".join([
         f"{a}-{b}（S2={float(s):.1f}{'｜'+str(tag) if str(tag)=='ライン枠' else ''}）"
         for (a,b,s,tag) in sorted(pairs_qn2_filtered, key=lambda x:(-float(x[2]), x[0], x[1]))
     ])
-    note_sections.append("\n" + _hdr("二車複", cutoff_qn2, _basis_combo(qn_sig_div_used, qn2_mu_sig, qn_top_den, qn2_topq, qn2_adopt)) + f"\n{qnlist}")
+    note_sections.append(
+        f"\n二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／基準 L2基準 {qn2_mu_sig:.1f}）\n{qnlist}"
+    )
 else:
     note_sections.append("\n二車複（新方式）\n対象外")
 
-# 二車単 note
+# --- 二車単 note ---
 if has_nit:
     nitanlist = "\n".join([
         f"{k}（S1={float(v):.1f}{'｜'+str(tag) if str(tag)=='ライン枠' else ''}）"
         for (k,v,tag) in sorted(rows_nitan_filtered, key=lambda x:(-float(x[1]), x[0]))
     ])
-    note_sections.append("\n" + _hdr("二車単", cutoff_nit, _basis_combo(nit_sig_div_used, nit_mu_sig, nit_top_den, nit_topq, nit_adopt)) + f"\n{nitanlist}")
+    note_sections.append(
+        f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／基準 L2基準 {nit_mu_sig:.1f}）\n{nitanlist}"
+    )
 else:
     note_sections.append("\n二車単（新方式）\n対象外")
+
 
 note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
