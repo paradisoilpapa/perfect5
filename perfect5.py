@@ -1694,8 +1694,12 @@ san_adopt = "μ+σ/div"
 
 TRIFECTA_SIG_DIV  = float(globals().get("TRIFECTA_SIG_DIV", 8.0))
 TRIFECTA_TOP_FRAC = float(globals().get("TRIFECTA_TOP_FRAC", 1/8))
+
+# 表示用に“実際に使った値”を保持
 san_sig_div_used  = TRIFECTA_SIG_DIV
-san_top_frac_used = TRIFECTA_TOP_FRAC
+san_top_frac_used = TRIFECTA_TOP_FRAC if TRIFECTA_TOP_FRAC > 0 else 1/8
+san_top_den       = int(round(1.0 / san_top_frac_used))  # 1/8 → 8
+
 
 if L1 and L2 and L3:
     first_col  = [x for x in [mark_star, mark_circle] if x is not None]
@@ -1776,8 +1780,12 @@ qn2_adopt = "μ+σ/div"
 
 QN_SIG_DIV  = float(globals().get("QN_SIG_DIV", 3.0))
 QN_TOP_FRAC = float(globals().get("QN_TOP_FRAC", 0.20))
+
+# 表示用に“実際に使った値”を保持
 qn_sig_div_used  = QN_SIG_DIV
-qn_top_frac_used = QN_TOP_FRA
+qn_top_frac_used = QN_TOP_FRAC if QN_TOP_FRAC > 0 else 0.20
+qn_top_den       = int(round(1.0 / qn_top_frac_used))    # 0.2 → 5
+
 
 if pairs_all_L12:
     sc = list(pairs_all_L12.values())
@@ -1823,8 +1831,12 @@ nit_adopt = "μ+σ/div"
 
 NIT_SIG_DIV  = float(globals().get("NIT_SIG_DIV", 3.0))
 NIT_TOP_FRAC = float(globals().get("NIT_TOP_FRAC", 1/8))
+
+# 表示用に“実際に使った値”を保持
 nit_sig_div_used  = NIT_SIG_DIV
-nit_top_frac_used = NIT_TOP_FRAC
+nit_top_frac_used = NIT_TOP_FRAC if NIT_TOP_FRAC > 0 else 1/8
+nit_top_den       = int(round(1.0 / nit_top_frac_used))  # 1/8 → 8
+
 
 rows_nitan = []
 if L1 and L2:
