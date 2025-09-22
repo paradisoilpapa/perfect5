@@ -2016,6 +2016,19 @@ if has_trio:
 else:
     note_sections.append("\n三連複（新方式）\n対象外")
 
+# --- 三連複 note ---
+if has_trio:
+    triolist = "\n".join([
+        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}"
+        f"（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
+        for (a,b,c,s,tag) in sorted(trios_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
+    ])
+    note_sections.append(
+        f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点／基準 L3基準 {TRIO_L3_MIN:.1f}）\n{triolist}"
+    )
+else:
+    note_sections.append("\n三連複（新方式）\n対象外")
+
 # --- 三連単 note ---
 if has_tri:
     trifectalist = "\n".join([
@@ -2024,9 +2037,8 @@ if has_tri:
         for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
     ])
     note_sections.append(
-        f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点／"
-        f"μ+σ/{TRIFECTA_SIG_DIV:g}→{san_mu_sig:.1f}（μ={san_mu:.1f}, σ={san_sig:.1f}）／"
-        f"top={int(100*(1/TRIFECTA_TOP_FRAC))}th→{san_topq:.1f}｜採用={san_adopt}）\n{trifectalist}"
+        f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点／基準 μ+σ/{TRIFECTA_SIG_DIV:g}→{san_mu_sig:.1f}（μ={san_mu:.1f}, σ={san_sig:.1f}）／"
+        f"top={int(1/TRIFECTA_TOP_FRAC)}分位→{san_topq:.1f}｜採用={san_adopt}）\n{trifectalist}"
     )
 else:
     note_sections.append("\n三連単（新方式）\n対象外")
@@ -2038,9 +2050,8 @@ if has_qn:
         for (a,b,s,tag) in sorted(pairs_qn2_filtered, key=lambda x:(-x[2], x[0], x[1]))
     ])
     note_sections.append(
-        f"\n二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／"
-        f"μ+σ/{QN_SIG_DIV:g}→{qn2_mu_sig:.1f}（μ={qn2_mu:.1f}, σ={qn2_sig:.1f}）／"
-        f"top={int(100*(1-QN_TOP_FRAC))}th→{qn2_topq:.1f}｜採用={qn2_adopt}）\n{qnlist}"
+        f"\n二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／基準 μ+σ/{QN_SIG_DIV:g}→{qn2_mu_sig:.1f}（μ={qn2_mu:.1f}, σ={qn2_sig:.1f}）／"
+        f"top={int(1/QN_TOP_FRAC)}分位→{qn2_topq:.1f}｜採用={qn2_adopt}）\n{qnlist}"
     )
 else:
     note_sections.append("\n二車複（新方式）\n対象外")
@@ -2052,9 +2063,8 @@ if has_nit:
         for (k,v,tag) in sorted(rows_nitan_filtered, key=lambda x:(-x[1], x[0]))
     ])
     note_sections.append(
-        f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／"
-        f"μ+σ/{NIT_SIG_DIV:g}→{nit_mu_sig:.1f}（μ={nit_mu:.1f}, σ={nit_sig:.1f}）／"
-        f"top={int(100*(1-NIT_TOP_FRAC))}th→{nit_topq:.1f}｜採用={nit_adopt}）\n{nitanlist}"
+        f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／基準 μ+σ/{NIT_SIG_DIV:g}→{nit_mu_sig:.1f}（μ={nit_mu:.1f}, σ={nit_sig:.1f}）／"
+        f"top={int(1/NIT_TOP_FRAC)}分位→{nit_topq:.1f}｜採用={nit_adopt}）\n{nitanlist}"
     )
 else:
     note_sections.append("\n二車単（新方式）\n対象外")
