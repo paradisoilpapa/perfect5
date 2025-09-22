@@ -1876,50 +1876,25 @@ if gid in line_def and anchor_no is not None:
             rows_nitan_filtered.append((k, round(float(s_approx),1), "ライン枠"))
 
 
-# ========== 表示用ヘルパ関数 ==========
-def _df_trio(rows, anchor_no):
-    out = []
-    for (a,b,c,s,tag) in rows:
-        k = [int(a),int(b),int(c)]; k.sort()
-        label = "-".join(map(str,k))
-        if anchor_no in k: label += "☆"
-        note = f"｜{tag}" if tag == "ライン枠" else ""
-        out.append({"買い目": label, "偏差値S": f"{round(s,1)}{note}"})
-    out.sort(key=lambda x: (-float(x["偏差値S"].split("｜")[0]), x["買い目"]))
-    return pd.DataFrame(out)
+# ===== 表示用ヘルパ（統一） =====
 
-def _df_pairs(rows):
-    out = []
-    for tup in rows:
-        if len(tup) == 4:
-            a,b,s,tag = tup
-        else:
-            a,b,s = tup; tag = "通常"
-        label = f"{int(a)}-{int(b)}"
-        note = f"｜{tag}" if tag == "ライン枠" else ""
-        out.append({"買い目": label, "S2(連対偏差値合計)": f"{round(float(s),1)}{note}"})
-    out.sort(key=lambda x: (-float(x["S2(連対偏差値合計)"].split("｜")[0]), x["買い目"]))
-    return pd.DataFrame(out)
+def _basis_trio(TRIO_L3_MIN: float) -> str:
+    # 三連複だけは L3 基準
+    return f"L3基準 {TRIO_L3_MIN:.1f}"
 
-def _df_nitan(rows):
-    out = []
-    for tup in rows:
-        if len(tup) == 3:
-            k,s,tag = tup
-        else:
-            k,s = tup; tag = "通常"
-        note = f"｜{tag}" if tag == "ライン枠" else ""
-        out.append({"買い目": str(k), "S1(勝率偏差値合計)": f"{round(float(s),1)}{note}"})
-    out.sort(key=lambda x: (-float(x["S1(勝率偏差値合計)"].split("｜")[0]), x["買い目"]))
-    return pd.DataFrame(out)
+def _basis_combo(sig_div_used: float, mu_sig: float, top_den: int, topq: float, adopt: str) -> str:
+    # 三連単・二車複・二車単の「基準」文面（＝三連複形式に揃える）
+    # 例）基準 μ+σ/8→182.6、top-8分位→183.2｜採用=top-8分位
+    return (
+        f"μ+σ/{sig_div_used:g}→{mu_sig:.1f}、"
+        f"top-{int(top_den)}分位→{topq:.1f}｜採用={adopt}"
+    )
 
-def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
-    """偏差値を行ごとに整形"""
-    lines = []
-    for n in ids:
-        v = ts_map.get(n, "—")
-        lines.append(f"{n}: {float(v):.1f}" if isinstance(v,(int,float)) else f"{n}: —")
-    return "\n".join(lines)
+def _hdr(name: str, cutoff: float, basis: str, n: int | None = None) -> str:
+    # 例）三連単（新方式｜しきい値 183.2点／基準 μ+σ/8→…｜採用=…｜3点）
+    tail = f"｜{n}点" if isinstance(n, (int, float)) else ""
+    return f"{name}（新方式｜しきい値 {cutoff:.1f}点／基準 {basis}{tail}）"
+
 
 # =========================
 #  件数と有無
@@ -1951,49 +1926,37 @@ def _fmt_unified_header(kind: str, cutoff: float, base_label: str, npts: int | N
 # =========================
 st.markdown(f"**フォーメーション**：{formation_label}")
 
-# --- 三連複 ---
-st.markdown("#### " + _fmt_unified_header(
-    "三連複", cutoff_trio, f"L3基準 {TRIO_L3_MIN:.1f}", n_trio
-))
+# --- 三連複（L3基準） ---
+st.markdown("#### " + _hdr("三連複", cutoff_trio, _basis_trio(TRIO_L3_MIN), n_trio))
 if has_trio:
     st.dataframe(_df_trio(trios_filtered_display, result_marks.get('◎')), use_container_width=True)
 else:
     st.markdown("対象外")
 
-# --- 三連単（“used” 変数で同期） ---
-_base_tri = (
-    f"μ+σ/{san_sig_div_used:g}→{san_mu_sig:.1f}、"
-    f"top-{san_top_den}分位→{san_topq:.1f}｜採用={san_adopt}"
-)
-st.markdown("#### " + _fmt_unified_header("三連単", cutoff_san, _base_tri, n_triS))
+# --- 三連単（μ+σ/div と top-◯分位を“基準”に併記） ---
+_basis_tri = _basis_combo(san_sig_div_used, san_mu_sig, san_top_den, san_topq, san_adopt)
+st.markdown("#### " + _hdr("三連単", cutoff_san, _basis_tri, n_triS))
 if has_tri:
     st.dataframe(_df_trio(santan_filtered_display, result_marks.get('◎')), use_container_width=True)
 else:
     st.markdown("対象外")
 
 # --- 二車複 ---
-_base_qn = (
-    f"μ+σ/{qn_sig_div_used:g}→{qn2_mu_sig:.1f}、"
-    f"top-{qn_top_den}分位→{qn2_topq:.1f}｜採用={qn2_adopt}"
-)
-st.markdown("#### " + _fmt_unified_header("二車複", cutoff_qn2, _base_qn, n_qn))
-
+_basis_qn = _basis_combo(qn_sig_div_used, qn2_mu_sig, qn_top_den, qn2_topq, qn2_adopt)
+st.markdown("#### " + _hdr("二車複", cutoff_qn2, _basis_qn, n_qn))
 if has_qn:
     st.dataframe(_df_pairs(pairs_qn2_filtered), use_container_width=True)
 else:
     st.markdown("対象外")
 
 # --- 二車単 ---
-_base_nit = (
-    f"μ+σ/{nit_sig_div_used:g}→{nit_mu_sig:.1f}、"
-    f"top-{nit_top_den}分位→{nit_topq:.1f}｜採用={nit_adopt}"
-)
-st.markdown("#### " + _fmt_unified_header("二車単", cutoff_nit, _base_nit, n_nit))
-
+_basis_nit = _basis_combo(nit_sig_div_used, nit_mu_sig, nit_top_den, nit_topq, nit_adopt)
+st.markdown("#### " + _hdr("二車単", cutoff_nit, _basis_nit, n_nit))
 if has_nit:
     st.dataframe(_df_nitan(rows_nitan_filtered), use_container_width=True)
 else:
     st.markdown("対象外")
+
 
 
 # =========================
@@ -2019,31 +1982,25 @@ note_sections.append(f"{race_time}　{race_class}")
 note_sections.append(f"ライン　{'　'.join([x for x in globals().get('line_inputs', []) if str(x).strip()])}")
 note_sections.append(f"スコア順（SBなし）　{_format_rank_from_array(USED_IDS, xs_base_raw)}")
 
-# 印＋無印（同じ行にまとめる）
+# 印＋無印
 no_mark_ids = [int(i) for i in USED_IDS if int(i) not in set(result_marks.values())]
-marks_str = ' '.join(
-    f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if m in result_marks
-)
+marks_str = ' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if m in result_marks)
 no_str = ' '.join(map(str, no_mark_ids)) if no_mark_ids else '—'
 note_sections.append(f"{marks_str} 無{no_str}")
 
-
-# 偏差値 → フォーメーション（この順で固定）
+# 偏差値 → フォーメーション
 note_sections.append("\n偏差値（風・ライン込み）")
 note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
 note_sections.append(f"\nフォーメーション：{formation_label}")
 
-
-# --- 三連複 note ---
+# --- 三連複 note（L3基準） ---
 if has_trio:
     triolist = "\n".join([
         f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}"
         f"（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (a,b,c,s,tag) in sorted(trios_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
     ])
-    note_sections.append(
-        f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点／基準 L3基準 {TRIO_L3_MIN:.1f}）\n{triolist}"
-    )
+    note_sections.append("\n" + _hdr("三連複", cutoff_trio, _basis_trio(TRIO_L3_MIN)) + f"\n{triolist}")
 else:
     note_sections.append("\n三連複（新方式）\n対象外")
 
@@ -2054,10 +2011,7 @@ if has_tri:
         f"（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
     ])
-    note_sections.append(
-        f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点／基準 "
-        f"μ+σ/{san_sig_div_used:g}→{san_mu_sig:.1f}、top-{san_top_den}分位→{san_topq:.1f}｜採用={san_adopt}）\n{trifectalist}"
-    )
+    note_sections.append("\n" + _hdr("三連単", cutoff_san, _basis_combo(san_sig_div_used, san_mu_sig, san_top_den, san_topq, san_adopt)) + f"\n{trifectalist}")
 else:
     note_sections.append("\n三連単（新方式）\n対象外")
 
@@ -2067,10 +2021,7 @@ if has_qn:
         f"{a}-{b}（S2={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (a,b,s,tag) in sorted(pairs_qn2_filtered, key=lambda x:(-x[2], x[0], x[1]))
     ])
-    note_sections.append(
-        f"\n二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／基準 "
-        f"μ+σ/{qn_sig_div_used:g}→{qn2_mu_sig:.1f}、top-{qn_top_den}分位→{qn2_topq:.1f}｜採用={qn2_adopt}）\n{qnlist}"
-    )
+    note_sections.append("\n" + _hdr("二車複", cutoff_qn2, _basis_combo(qn_sig_div_used, qn2_mu_sig, qn_top_den, qn2_topq, qn2_adopt)) + f"\n{qnlist}")
 else:
     note_sections.append("\n二車複（新方式）\n対象外")
 
@@ -2080,15 +2031,10 @@ if has_nit:
         f"{k}（S1={v:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (k,v,tag) in sorted(rows_nitan_filtered, key=lambda x:(-x[1], x[0]))
     ])
-    note_sections.append(
-        f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／基準 "
-        f"μ+σ/{nit_sig_div_used:g}→{nit_mu_sig:.1f}、top-{nit_top_den}分位→{nit_topq:.1f}｜採用={nit_adopt}）\n{nitanlist}"
-    )
+    note_sections.append("\n" + _hdr("二車単", cutoff_nit, _basis_combo(nit_sig_div_used, nit_mu_sig, nit_top_den, nit_topq, nit_adopt)) + f"\n{nitanlist}")
 else:
     note_sections.append("\n二車単（新方式）\n対象外")
 
 note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
 st.text_area("ここを選択してコピー", note_text, height=560)
-
-
