@@ -1694,11 +1694,14 @@ san_adopt = "μ+σ/div"
 
 TRIFECTA_SIG_DIV  = float(globals().get("TRIFECTA_SIG_DIV", 8.0))
 TRIFECTA_TOP_FRAC = float(globals().get("TRIFECTA_TOP_FRAC", 1/8))
+san_sig_div_used  = TRIFECTA_SIG_DIV
+san_top_frac_used = TRIFECTA_TOP_FRAC
 
 if L1 and L2 and L3:
     first_col  = [x for x in [mark_star, mark_circle] if x is not None]
     second_col = [x for x in [mark_star, mark_circle, result_marks.get("▲")] if x is not None]
     third_col  = list(L3)
+
 
     # 並びの優先度（安定ソート用）
     orderA = {n:i for i,n in enumerate(first_col)}
@@ -1773,6 +1776,8 @@ qn2_adopt = "μ+σ/div"
 
 QN_SIG_DIV  = float(globals().get("QN_SIG_DIV", 3.0))
 QN_TOP_FRAC = float(globals().get("QN_TOP_FRAC", 0.20))
+qn_sig_div_used  = QN_SIG_DIV
+qn_top_frac_used = QN_TOP_FRA
 
 if pairs_all_L12:
     sc = list(pairs_all_L12.values())
@@ -1818,6 +1823,8 @@ nit_adopt = "μ+σ/div"
 
 NIT_SIG_DIV  = float(globals().get("NIT_SIG_DIV", 3.0))
 NIT_TOP_FRAC = float(globals().get("NIT_TOP_FRAC", 1/8))
+nit_sig_div_used  = NIT_SIG_DIV
+nit_top_frac_used = NIT_TOP_FRAC
 
 rows_nitan = []
 if L1 and L2:
@@ -1941,10 +1948,10 @@ if has_trio:
 else:
     st.markdown("対象外")
 
-# --- 三連単 ---
+# --- 三連単（“used” 変数で同期） ---
 _base_tri = (
-    f"μ+σ/{TRIFECTA_SIG_DIV:g}→{san_mu_sig:.1f}、"
-    f"top-{int(1/TRIFECTA_TOP_FRAC)}分位→{san_topq:.1f}｜採用={san_adopt}"
+    f"μ+σ/{san_sig_div_used:g}→{san_mu_sig:.1f}、"
+    f"top-{san_top_den}分位→{san_topq:.1f}｜採用={san_adopt}"
 )
 st.markdown("#### " + _fmt_unified_header("三連単", cutoff_san, _base_tri, n_triS))
 if has_tri:
@@ -1954,10 +1961,11 @@ else:
 
 # --- 二車複 ---
 _base_qn = (
-    f"μ+σ/{QN_SIG_DIV:g}→{qn2_mu_sig:.1f}、"
-    f"top-{int(1/QN_TOP_FRAC)}分位→{qn2_topq:.1f}｜採用={qn2_adopt}"
+    f"μ+σ/{qn_sig_div_used:g}→{qn2_mu_sig:.1f}、"
+    f"top-{qn_top_den}分位→{qn2_topq:.1f}｜採用={qn2_adopt}"
 )
 st.markdown("#### " + _fmt_unified_header("二車複", cutoff_qn2, _base_qn, n_qn))
+
 if has_qn:
     st.dataframe(_df_pairs(pairs_qn2_filtered), use_container_width=True)
 else:
@@ -1965,10 +1973,11 @@ else:
 
 # --- 二車単 ---
 _base_nit = (
-    f"μ+σ/{NIT_SIG_DIV:g}→{nit_mu_sig:.1f}、"
-    f"top-{int(1/NIT_TOP_FRAC)}分位→{nit_topq:.1f}｜採用={nit_adopt}"
+    f"μ+σ/{nit_sig_div_used:g}→{nit_mu_sig:.1f}、"
+    f"top-{nit_top_den}分位→{nit_topq:.1f}｜採用={nit_adopt}"
 )
 st.markdown("#### " + _fmt_unified_header("二車単", cutoff_nit, _base_nit, n_nit))
+
 if has_nit:
     st.dataframe(_df_nitan(rows_nitan_filtered), use_container_width=True)
 else:
@@ -2034,9 +2043,9 @@ if has_tri:
         for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
     ])
     note_sections.append(
-        f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点／基準 μ+σ/{TRIFECTA_SIG_DIV:g}→{san_mu_sig:.1f}（μ={san_mu:.1f}, σ={san_sig:.1f}）／"
-        f"top={int(1/TRIFECTA_TOP_FRAC)}分位→{san_topq:.1f}｜採用={san_adopt}）\n{trifectalist}"
-    )
+    f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点／基準 "
+    f"μ+σ/{san_sig_div_used:g}→{san_mu_sig:.1f}、top-{san_top_den}分位→{san_topq:.1f}｜採用={san_adopt}）\n{trifectalist}"
+)
 else:
     note_sections.append("\n三連単（新方式）\n対象外")
 
@@ -2046,10 +2055,10 @@ if has_qn:
         f"{a}-{b}（S2={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (a,b,s,tag) in sorted(pairs_qn2_filtered, key=lambda x:(-x[2], x[0], x[1]))
     ])
-    note_sections.append(
-        f"\n二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／基準 μ+σ/{QN_SIG_DIV:g}→{qn2_mu_sig:.1f}（μ={qn2_mu:.1f}, σ={qn2_sig:.1f}）／"
-        f"top={int(1/QN_TOP_FRAC)}分位→{qn2_topq:.1f}｜採用={qn2_adopt}）\n{qnlist}"
-    )
+   note_sections.append(
+    f"\n二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／基準 "
+    f"μ+σ/{qn_sig_div_used:g}→{qn2_mu_sig:.1f}、top-{qn_top_den}分位→{qn2_topq:.1f}｜採用={qn2_adopt}）\n{qnlist}"
+)
 else:
     note_sections.append("\n二車複（新方式）\n対象外")
 
@@ -2060,9 +2069,9 @@ if has_nit:
         for (k,v,tag) in sorted(rows_nitan_filtered, key=lambda x:(-x[1], x[0]))
     ])
     note_sections.append(
-        f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／基準 μ+σ/{NIT_SIG_DIV:g}→{nit_mu_sig:.1f}（μ={nit_mu:.1f}, σ={nit_sig:.1f}）／"
-        f"top={int(1/NIT_TOP_FRAC)}分位→{nit_topq:.1f}｜採用={nit_adopt}）\n{nitanlist}"
-    )
+    f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／基準 "
+    f"μ+σ/{nit_sig_div_used:g}→{nit_mu_sig:.1f}、top-{nit_top_den}分位→{nit_topq:.1f}｜採用={nit_adopt}）\n{nitanlist}"
+)
 else:
     note_sections.append("\n二車単（新方式）\n対象外")
 
