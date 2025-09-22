@@ -1942,7 +1942,10 @@ else:
     st.markdown("対象外")
 
 # --- 三連単 ---
-_base_tri = f"μ+σ/{TRIFECTA_SIG_DIV:g} vs top-{int(1/TRIFECTA_TOP_FRAC)}"
+_base_tri = (
+    f"μ+σ/{TRIFECTA_SIG_DIV:g}→{san_mu_sig:.1f}、"
+    f"top-{int(1/TRIFECTA_TOP_FRAC)}分位→{san_topq:.1f}｜採用={san_adopt}"
+)
 st.markdown("#### " + _fmt_unified_header("三連単", cutoff_san, _base_tri, n_triS))
 if has_tri:
     st.dataframe(_df_trio(santan_filtered_display, result_marks.get('◎')), use_container_width=True)
@@ -1950,7 +1953,10 @@ else:
     st.markdown("対象外")
 
 # --- 二車複 ---
-_base_qn = f"μ+σ/{QN_SIG_DIV:g} vs top-{int(1/QN_TOP_FRAC)}"
+_base_qn = (
+    f"μ+σ/{QN_SIG_DIV:g}→{qn2_mu_sig:.1f}、"
+    f"top-{int(1/QN_TOP_FRAC)}分位→{qn2_topq:.1f}｜採用={qn2_adopt}"
+)
 st.markdown("#### " + _fmt_unified_header("二車複", cutoff_qn2, _base_qn, n_qn))
 if has_qn:
     st.dataframe(_df_pairs(pairs_qn2_filtered), use_container_width=True)
@@ -1958,12 +1964,16 @@ else:
     st.markdown("対象外")
 
 # --- 二車単 ---
-_base_nit = f"μ+σ/{NIT_SIG_DIV:g} vs top-{int(1/NIT_TOP_FRAC)}"
+_base_nit = (
+    f"μ+σ/{NIT_SIG_DIV:g}→{nit_mu_sig:.1f}、"
+    f"top-{int(1/NIT_TOP_FRAC)}分位→{nit_topq:.1f}｜採用={nit_adopt}"
+)
 st.markdown("#### " + _fmt_unified_header("二車単", cutoff_nit, _base_nit, n_nit))
 if has_nit:
     st.dataframe(_df_nitan(rows_nitan_filtered), use_container_width=True)
 else:
     st.markdown("対象外")
+
 
 # =========================
 #  note 出力（最後にまとめて）
@@ -2002,19 +2012,6 @@ note_sections.append("\n偏差値（風・ライン込み）")
 note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
 note_sections.append(f"\nフォーメーション：{formation_label}")
 
-
-# --- 三連複 note ---
-if has_trio:
-    triolist = "\n".join([
-        f"{a}-{b}-{c}{('☆' if result_marks.get('◎') in (a,b,c) else '')}"
-        f"（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
-        for (a,b,c,s,tag) in sorted(trios_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
-    ])
-    note_sections.append("\n" + _fmt_unified_header(
-        "三連複", cutoff_trio, f"L3基準 {TRIO_L3_MIN:.1f}"
-    ) + f"\n{triolist}")
-else:
-    note_sections.append("\n三連複（新方式）\n対象外")
 
 # --- 三連複 note ---
 if has_trio:
