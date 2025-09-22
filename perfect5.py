@@ -1816,7 +1816,18 @@ nit_adopt = "μ+σ/div"
 NIT_SIG_DIV = float(globals().get("NIT_SIG_DIV", 3.0))
 NIT_TOP_FRAC = float(globals().get("NIT_TOP_FRAC", 1/8))
 
-if 'rows_nitan' in globals() and rows_nitan:
+# --- 原始候補を強制生成（L1→L2の順序付き） ---
+rows_nitan = []
+if L1 and L2:
+    for a in L1:
+        for b in L2:
+            if a == b:
+                continue
+            k = f"{int(a)}-{int(b)}"
+            s1 = float(race_t.get(int(a),50.0)) + float(race_t.get(int(b),50.0))
+            rows_nitan.append((k, s1))
+
+if rows_nitan:
     xs = [float(s) for (_, s) in rows_nitan]
     mu = float(mean(xs))
     sig = float(pstdev(xs)) if len(xs) > 1 else 0.0
@@ -1830,11 +1841,10 @@ if 'rows_nitan' in globals() and rows_nitan:
     nit_adopt = "μ+σ/div" if cutoff_nit == nit_mu_sig else f"top-{int(1/NIT_TOP_FRAC)}分位"
 
     for k, s1 in rows_nitan:
-        a, b = map(int, k.split("-"))
         if float(s1) >= cutoff_nit:
-            rows_nitan_filtered.append((f"{a}-{b}", round(float(s1), 1), "通常"))
+            rows_nitan_filtered.append((k, round(float(s1), 1), "通常"))
 
-# ライン枠追加（救済）
+# --- ライン枠追加（救済） ---
 if gid in line_def and anchor_no is not None:
     mem = [int(x) for x in line_def.get(gid, [])]
     if anchor_no in mem:
@@ -1843,9 +1853,8 @@ if gid in line_def and anchor_no is not None:
             k = f"{anchor_no}-{extra}"
             s_approx = next((v for (kk, v, tag) in rows_nitan_filtered if kk == k), None)
             if s_approx is None:
-                s_approx = float(race_t.get(anchor_no, 50.0)) + float(race_t.get(extra, 50.0))
+                s_approx = float(race_t.get(anchor_no,50.0)) + float(race_t.get(extra,50.0))
             rows_nitan_filtered.append((k, round(float(s_approx), 1), "ライン枠"))
-
 
 # ========== 表示用ヘルパ関数 ==========
 def _df_trio(rows, anchor_no):
