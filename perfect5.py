@@ -1927,18 +1927,30 @@ if has_tri:
 else:
     st.markdown("対象外")
 
-# 二車複（常時表示）
-st.markdown(f"#### 二車複（L1×L2｜上位1/5｜{n_qn}点）")
-st.caption(f"しきい値（参考）: {qn2_cutoff:.1f} 点")
-if has_qn:
-    st.dataframe(_df_pairs(pairs_qn2_kept), use_container_width=True)
+# =========================
+# 二車複 出力
+# =========================
+st.markdown(
+    f"#### 二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／"
+    f"μ+σ/{QN_SIG_DIV:g}→{qn2_mu_sig:.1f}（μ={qn2_mu:.1f}, σ={qn2_sig:.1f})／"
+    f"top={int(100*(1-QN_TOP_FRAC))}th→{qn2_topq:.1f}｜採用={qn2_adopt}｜{len(pairs_qn2_filtered)}点）"
+)
+if pairs_qn2_filtered:
+    st.dataframe(_df_pairs(pairs_qn2_filtered), use_container_width=True)
 else:
     st.markdown("対象外")
 
-# 二車単（常時表示）
-st.markdown(f"#### 二車単（L1→L2｜上位1/8｜{n_nit}点）")
-if has_nit:
-    st.dataframe(_df_nitan(rows_nitan_L12), use_container_width=True)
+
+# =========================
+# 二車単 出力
+# =========================
+st.markdown(
+    f"#### 二車単（新方式｜しきい値 {cutoff_nit:.1f}点／"
+    f"μ+σ/{NIT_SIG_DIV:g}→{nit_mu_sig:.1f}（μ={nit_mu:.1f}, σ={nit_sig:.1f})／"
+    f"top={int(100*(1-NIT_TOP_FRAC))}th→{nit_topq:.1f}｜採用={nit_adopt}｜{len(rows_nitan_filtered)}点）"
+)
+if rows_nitan_filtered:
+    st.dataframe(_df_nitan(rows_nitan_filtered), use_container_width=True)
 else:
     st.markdown("対象外")
 
