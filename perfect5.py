@@ -2023,7 +2023,11 @@ if has_tri:
         f"（S={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-x[3], x[0], x[1], x[2]))
     ])
-    note_sections.append("\n" + _fmt_unified_header("三連単", cutoff_san, _base_tri) + f"\n{trifectalist}")
+    note_sections.append(
+        f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点／"
+        f"μ+σ/{TRIFECTA_SIG_DIV:g}→{san_mu_sig:.1f}（μ={san_mu:.1f}, σ={san_sig:.1f}）／"
+        f"top={int(100*(1/TRIFECTA_TOP_FRAC))}th→{san_topq:.1f}｜採用={san_adopt}）\n{trifectalist}"
+    )
 else:
     note_sections.append("\n三連単（新方式）\n対象外")
 
@@ -2033,7 +2037,11 @@ if has_qn:
         f"{a}-{b}（S2={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (a,b,s,tag) in sorted(pairs_qn2_filtered, key=lambda x:(-x[2], x[0], x[1]))
     ])
-    note_sections.append("\n" + _fmt_unified_header("二車複", cutoff_qn2, _base_qn) + f"\n{qnlist}")
+    note_sections.append(
+        f"\n二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／"
+        f"μ+σ/{QN_SIG_DIV:g}→{qn2_mu_sig:.1f}（μ={qn2_mu:.1f}, σ={qn2_sig:.1f}）／"
+        f"top={int(100*(1-QN_TOP_FRAC))}th→{qn2_topq:.1f}｜採用={qn2_adopt}）\n{qnlist}"
+    )
 else:
     note_sections.append("\n二車複（新方式）\n対象外")
 
@@ -2043,11 +2051,15 @@ if has_nit:
         f"{k}（S1={v:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (k,v,tag) in sorted(rows_nitan_filtered, key=lambda x:(-x[1], x[0]))
     ])
-    note_sections.append("\n" + _fmt_unified_header("二車単", cutoff_nit, _base_nit) + f"\n{nitanlist}")
+    note_sections.append(
+        f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／"
+        f"μ+σ/{NIT_SIG_DIV:g}→{nit_mu_sig:.1f}（μ={nit_mu:.1f}, σ={nit_sig:.1f}）／"
+        f"top={int(100*(1-NIT_TOP_FRAC))}th→{nit_topq:.1f}｜採用={nit_adopt}）\n{nitanlist}"
+    )
 else:
     note_sections.append("\n二車単（新方式）\n対象外")
-
 
 note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
 st.text_area("ここを選択してコピー", note_text, height=560)
+
