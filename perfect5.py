@@ -2055,10 +2055,10 @@ if has_qn:
         f"{a}-{b}（S2={s:.1f}{'｜'+tag if tag=='ライン枠' else ''}）"
         for (a,b,s,tag) in sorted(pairs_qn2_filtered, key=lambda x:(-x[2], x[0], x[1]))
     ])
-   note_sections.append(
-    f"\n二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／基準 "
-    f"μ+σ/{qn_sig_div_used:g}→{qn2_mu_sig:.1f}、top-{qn_top_den}分位→{qn2_topq:.1f}｜採用={qn2_adopt}）\n{qnlist}"
-)
+    note_sections.append(
+        f"\n二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／基準 "
+        f"μ+σ/{qn_sig_div_used:g}→{qn2_mu_sig:.1f}、top-{qn_top_den}分位→{qn2_topq:.1f}｜採用={qn2_adopt}）\n{qnlist}"
+    )
 else:
     note_sections.append("\n二車複（新方式）\n対象外")
 
@@ -2069,8 +2069,8 @@ if has_nit:
         for (k,v,tag) in sorted(rows_nitan_filtered, key=lambda x:(-x[1], x[0]))
     ])
     note_sections.append(
-    f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／基準 "
-    f"μ+σ/{nit_sig_div_used:g}→{nit_mu_sig:.1f}、top-{nit_top_den}分位→{nit_topq:.1f}｜採用={nit_adopt}）\n{nitanlist}"
+       f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／基準 "
+       f"μ+σ/{nit_sig_div_used:g}→{nit_mu_sig:.1f}、top-{nit_top_den}分位→{nit_topq:.1f}｜採用={nit_adopt}）\n{nitanlist}"
 )
 else:
     note_sections.append("\n二車単（新方式）\n対象外")
