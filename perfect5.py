@@ -1706,7 +1706,7 @@ else:
             xs = [s for (*_,s) in trios_from_cols]
             mu, sig = mean(xs), pstdev(xs)
             TRIO_SIG_DIV = float(globals().get("TRIO_SIG_DIV", 3.0))
-            cutoff_mu_sig = mu + (sig/TRIO_SIG_DIV if sig > 0 else 0.0) + off_trio
+            cutoff_mu_sig = mu + (sig/TRIO_SIG_DIV if sig > 0 else 0.0)
             q = max(1, int(len(xs)*0.20))  # 上位1/5
             cutoff_topQ = np.partition(xs, -q)[-q]
             cutoff_trio = max(cutoff_mu_sig, float(cutoff_topQ))
@@ -1793,7 +1793,7 @@ if L1 and L2 and L3:
         xs = [row[3] for row in san_rows]
         san_mu  = float(mean(xs))
         san_sig = float(pstdev(xs)) if len(xs) > 1 else 0.0
-        san_mu_sig = san_mu + (san_sig / TRIFECTA_SIG_DIV if san_sig > 0 else 0.0) + off_triS
+        san_mu_sig = san_mu + (san_sig / TRIFECTA_SIG_DIV if san_sig > 0 else 0.0)
 
         q = max(1, int(len(xs) * TRIFECTA_TOP_FRAC))
         san_topq = float(np.partition(xs, -q)[-q])
@@ -1855,7 +1855,7 @@ if pairs_all_L12:
     sc = list(pairs_all_L12.values())
     qn2_mu  = float(mean(sc))
     qn2_sig = float(pstdev(sc)) if len(sc) > 1 else 0.0
-    qn2_mu_sig = qn2_mu + (qn2_sig / QN_SIG_DIV if qn2_sig > 0 else 0.0) + off_qn
+    qn2_mu_sig = qn2_mu + (qn2_sig / QN_SIG_DIV if qn2_sig > 0 else 0.0)
 
     q = max(1, int(len(sc) * QN_TOP_FRAC))
     qn2_topq = float(np.partition(sc, -q)[-q])
@@ -1915,7 +1915,7 @@ if rows_nitan:
     xs = [s for (_,s) in rows_nitan]
     nit_mu  = float(mean(xs))
     nit_sig = float(pstdev(xs)) if len(xs) > 1 else 0.0
-    nit_mu_sig = nit_mu + (nit_sig / NIT_SIG_DIV if nit_sig > 0 else 0.0) + off_nit
+    nit_mu_sig = nit_mu + (nit_sig / NIT_SIG_DIV if nit_sig > 0 else 0.0)
 
     q = max(1, int(len(xs) * NIT_TOP_FRAC))
     nit_topq = float(np.partition(xs, -q)[-q])
@@ -2082,14 +2082,6 @@ else:
 #  印の実測率 → グレード別の確率モデル → 買い目抽出（的中率しきい値）
 #  既存の買い目と重複したもの = 「オススメ買目」
 # =========================
-
-# --- 偏差値スコア由来『基準（μ + σ/div）』のオフセット ---
-st.sidebar.markdown("### 偏差値買目の基準オフセット（点）")
-off_trio = float(st.sidebar.slider("三連複 基準オフセット", -20.0, 20.0, 0.0, 0.1, key="off_trio"))
-off_triS = float(st.sidebar.slider("三連単 基準オフセット", -20.0, 20.0, 0.0, 0.1, key="off_triS"))
-off_qn   = float(st.sidebar.slider("二車複 基準オフセット", -20.0, 20.0, 0.0, 0.1, key="off_qn"))
-off_nit  = float(st.sidebar.slider("二車単 基準オフセット", -20.0, 20.0, 0.0, 0.1, key="off_nit"))
-
 
 # --- サイドバー：グレード選択＆しきい値（初期10%） ---
 st.sidebar.markdown("### 印実測率のグレード/しきい値")
