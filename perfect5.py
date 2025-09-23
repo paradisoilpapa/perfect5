@@ -151,20 +151,83 @@ VELODROME_MASTER = {
     "手入力":{"lat":None,"lon":None,"home_azimuth":None},
 }
 
-# --- 最新の印別実測率（表示はしないが内部保持）
-RANK_STATS = {
-    "◎": {"p1": 0.216, "pTop2": 0.456, "pTop3": 0.624},
-    "〇": {"p1": 0.193, "pTop2": 0.360, "pTop3": 0.512},
-    "▲": {"p1": 0.208, "pTop2": 0.384, "pTop3": 0.552},
-    "△": {"p1": 0.152, "pTop2": 0.248, "pTop3": 0.384},
-    "×": {"p1": 0.128, "pTop2": 0.256, "pTop3": 0.384},
-    "α": {"p1": 0.088, "pTop2": 0.152, "pTop3": 0.312},
-    "β": {"p1": 0.076, "pTop2": 0.151, "pTop3": 0.244},
+# --- 最新の印別実測率（写真ベース：小数＝実測％/100） -----------------
+# --- 実測率テーブル（写真の数値をそのまま反映。小数は0.000〜1.000で） ---
+RANK_STATS_TOTAL = {
+    "◎": {"p1": 0.361, "pTop2": 0.475, "pTop3": 0.574},
+    "〇": {"p1": 0.131, "pTop2": 0.262, "pTop3": 0.426},
+    "▲": {"p1": 0.131, "pTop2": 0.311, "pTop3": 0.475},
+    "△": {"p1": 0.098, "pTop2": 0.279, "pTop3": 0.443},
+    "×": {"p1": 0.098, "pTop2": 0.180, "pTop3": 0.279},
+    "α": {"p1": 0.098, "pTop2": 0.246, "pTop3": 0.361},
+    "無": {"p1": 0.060, "pTop2": 0.181, "pTop3": 0.325},
 }
+
+RANK_STATS_F2 = {
+    "◎": {"p1": 0.476, "pTop2": 0.619, "pTop3": 0.714},
+    "〇": {"p1": 0.095, "pTop2": 0.286, "pTop3": 0.524},
+    "▲": {"p1": 0.190, "pTop2": 0.476, "pTop3": 0.667},
+    "△": {"p1": 0.095, "pTop2": 0.333, "pTop3": 0.571},
+    "×": {"p1": 0.048, "pTop2": 0.095, "pTop3": 0.190},
+    "α": {"p1": 0.095, "pTop2": 0.143, "pTop3": 0.143},
+    "無": {"p1": 0.000, "pTop2": 0.048, "pTop3": 0.190},
+    }
+
+
+# --- F1 ---
+RANK_STATS_F1 = {
+    "◎": {"p1": 0.250, "pTop2": 0.333, "pTop3": 0.458},
+    "〇": {"p1": 0.250, "pTop2": 0.292, "pTop3": 0.458},
+    "▲": {"p1": 0.042, "pTop2": 0.167, "pTop3": 0.292},
+    "△": {"p1": 0.083, "pTop2": 0.292, "pTop3": 0.417},
+    "×": {"p1": 0.125, "pTop2": 0.250, "pTop3": 0.375},
+    "α": {"p1": 0.125, "pTop2": 0.375, "pTop3": 0.667},
+    "β": {"p1": 0.125, "pTop2": 0.292, "pTop3": 0.375},  # 画像にβ行があるので保持
+    "無": {"p1": 0.000, "pTop2": 0.000, "pTop3": 0.000},  # 無が無ければ0埋め
+}
+
+# --- G（S級） ---
+RANK_STATS_G = {
+    "◎": {"p1": 0.333, "pTop2": 0.500, "pTop3": 0.500},
+    "〇": {"p1": 0.083, "pTop2": 0.083, "pTop3": 0.083},
+    "▲": {"p1": 0.083, "pTop2": 0.167, "pTop3": 0.333},
+    "△": {"p1": 0.167, "pTop2": 0.250, "pTop3": 0.417},
+    "×": {"p1": 0.167, "pTop2": 0.167, "pTop3": 0.250},
+    "α": {"p1": 0.083, "pTop2": 0.250, "pTop3": 0.250},
+    "β": {"p1": 0.000, "pTop2": 0.000, "pTop3": 0.000},  # βの記録が無ければ0
+    "無": {"p1": 0.059, "pTop2": 0.206, "pTop3": 0.412},
+}
+
+# --- GIRLS（L級） ---
+RANK_STATS_GIRLS = {
+    "◎": {"p1": 0.50, "pTop2": 0.50, "pTop3": 0.75},
+    "〇": {"p1": 0.00, "pTop2": 0.50, "pTop3": 0.75},
+    "▲": {"p1": 0.50, "pTop2": 0.75, "pTop3": 1.00},
+    "△": {"p1": 0.00, "pTop2": 0.00, "pTop3": 0.00},
+    "×": {"p1": 0.00, "pTop2": 0.25, "pTop3": 0.50},
+    "α": {"p1": 0.00, "pTop2": 0.00, "pTop3": 0.00},
+    "β": {"p1": 0.00, "pTop2": 0.00, "pTop3": 0.00},  # βを0で保持
+    "無": {"p1": 0.00, "pTop2": 0.00, "pTop3": 0.00},
+}
+
+# --- グレード連動用マップ ---
+RANK_STATS_BY_GRADE = {
+    "TOTAL":  RANK_STATS_TOTAL,
+    "F2":     RANK_STATS_F2,
+    "F1":     RANK_STATS_F1,
+    "G":      RANK_STATS_G,
+    "GIRLS":  RANK_STATS_GIRLS,
+}
+
+# 互換: 旧コードが参照する RANK_STATS は TOTAL を指す
+RANK_STATS = RANK_STATS_TOTAL
+
 RANK_FALLBACK_MARK = "△"
 if RANK_FALLBACK_MARK not in RANK_STATS:
     RANK_FALLBACK_MARK = next(iter(RANK_STATS.keys()))
 FALLBACK_DIST = RANK_STATS.get(RANK_FALLBACK_MARK, {"p1": 0.15, "pTop2": 0.30, "pTop3": 0.45})
+
+
 
 # KO(勝ち上がり)関連
 KO_GIRLS_SCALE = 0.0
@@ -1431,11 +1494,12 @@ no_mark_ids = sorted(
 
 if "α" not in result_marks:
     used_now = set(result_marks.values())
-    pool = [i for i in USED_IDS if (i not in used_now and i != beta_id)]
+    pool = [i for i in USED_IDS if i not in used_now]
     if pool:
         alpha_pick = pool[-1]
         result_marks["α"] = alpha_pick
         reasons[alpha_pick] = reasons.get(alpha_pick, "α（フォールバック：禁止条件全滅→最弱を採用）")
+
 
 # -*- coding: utf-8 -*-
 import streamlit as st
@@ -2015,6 +2079,178 @@ else:
     st.markdown("対象外")
 
 # =========================
+#  印の実測率 → グレード別の確率モデル → 買い目抽出（的中率しきい値）
+#  既存の買い目と重複したもの = 「オススメ買目」
+# =========================
+
+# --- サイドバー：グレード選択＆しきい値（初期10%） ---
+st.sidebar.markdown("### 印実測率のグレード/しきい値")
+grade_for_marks = st.sidebar.selectbox(
+    "グレード（印の実測率テーブル）",
+    ["TOTAL","F2","F1","G","GIRLS"],
+    index=0,
+    key="grade_mark_stats"
+)
+hit_threshold = float(st.sidebar.slider("的中率しきい値", 0.01, 0.50, 0.10, 0.01, key="hit_threshold"))
+
+# --- テーブル選択（あなたが貼ったテーブル群を前提） ---
+RANK_TABLE = RANK_STATS_BY_GRADE.get(grade_for_marks, RANK_STATS_TOTAL)
+
+# --- 車番→印 を作る（未指定は「無」）
+marks_of_car = {int(i): "無" for i in USED_IDS}
+if isinstance(result_marks, dict):
+    for mk, no in result_marks.items():
+        if no is None: 
+            continue
+        if mk in {"◎","〇","▲","△","×","α","β"}:
+            marks_of_car[int(no)] = mk
+
+# --- 印→実測率を引くヘルパ（無ければ「無」を使う）
+def _get_stats(mark: str) -> dict:
+    d = RANK_TABLE.get(mark)
+    if not d:
+        d = RANK_TABLE.get("無", {"p1":0.0,"pTop2":0.0,"pTop3":0.0})
+    return {"p1": float(d["p1"]), "pTop2": float(d["pTop2"]), "pTop3": float(d["pTop3"])}
+
+# --- 確率モデル（独立近似／後で全候補で正規化） ---
+from itertools import permutations, combinations
+
+# 全候補の母集団（正規化用）
+ALL_PAIRS_UNORDERED   = [tuple(sorted(t)) for t in combinations(USED_IDS, 2)]
+ALL_PAIRS_ORDERED     = [t for t in permutations(USED_IDS, 2)]
+ALL_TRIPLES_UNORDERED = [tuple(sorted(t)) for t in combinations(USED_IDS, 3)]
+ALL_TRIPLES_ORDERED   = [t for t in permutations(USED_IDS, 3)]
+
+# 重複除去
+ALL_PAIRS_UNORDERED   = sorted(set(ALL_PAIRS_UNORDERED))
+ALL_TRIPLES_UNORDERED = sorted(set(ALL_TRIPLES_UNORDERED))
+
+# ウェイト定義
+def w_qn_pair(a,b):
+    sa, sb = _get_stats(marks_of_car[a]), _get_stats(marks_of_car[b])
+    return max(0.0, sa["pTop2"]*sb["pTop2"])
+
+def w_nit_pair(a,b):
+    sa, sb = _get_stats(marks_of_car[a]), _get_stats(marks_of_car[b])
+    return max(0.0, sa["p1"]*sb["pTop2"])
+
+def w_trio(a,b,c):
+    sa, sb, sc = _get_stats(marks_of_car[a]), _get_stats(marks_of_car[b]), _get_stats(marks_of_car[c])
+    return max(0.0, sa["pTop3"]*sb["pTop3"]*sc["pTop3"])
+
+def w_trifecta(a,b,c):
+    sa, sb, sc = _get_stats(marks_of_car[a]), _get_stats(marks_of_car[b]), _get_stats(marks_of_car[c])
+    return max(0.0, sa["p1"]*sb["pTop2"]*sc["pTop3"])
+
+# 正規化（全体合計=1）
+def _normalize(weights: dict) -> dict:
+    tot = float(sum(weights.values()))
+    if tot <= 0:
+        return {k: 0.0 for k in weights}
+    return {k: (v/tot) for k,v in weights.items()}
+
+# 全候補に対する確率分布（印の実測率ベース）
+QN_UNI   = _normalize({k: w_qn_pair(*k)   for k in ALL_PAIRS_UNORDERED})
+NIT_UNI  = _normalize({k: w_nit_pair(*k)  for k in ALL_PAIRS_ORDERED})
+TRIO_UNI = _normalize({k: w_trio(*k)      for k in ALL_TRIPLES_UNORDERED})
+TRI_UNI  = _normalize({k: w_trifecta(*k)  for k in ALL_TRIPLES_ORDERED})
+
+# --- 画面に現在の印の内訳（参考） ---
+with st.expander("印の内訳（今回のグレード実測率を使う）", expanded=False):
+    dfm = pd.DataFrame({
+        "車": USED_IDS,
+        "印": [marks_of_car[i] for i in USED_IDS],
+        "p1": [ _get_stats(marks_of_car[i])["p1"] for i in USED_IDS ],
+        "pTop2": [ _get_stats(marks_of_car[i])["pTop2"] for i in USED_IDS ],
+        "pTop3": [ _get_stats(marks_of_car[i])["pTop3"] for i in USED_IDS ],
+    })
+    st.dataframe(dfm, use_container_width=True)
+
+# --- 既存の候補群から「確率しきい値以上」だけ抽出 ---
+def _safe_list(x): 
+    return x if isinstance(x, list) else []
+
+# 三連複（既存の trios_filtered_display → k=(a,b,c) を昇順タプルで照合）
+trios_source = [(int(a),int(b),int(c),float(s),str(tag)) for (a,b,c,s,tag) in _safe_list(trios_filtered_display)]
+trio_prob_hits = []
+for a,b,c,s,tag in trios_source:
+    key = tuple(sorted((a,b,c)))
+    p = float(TRIO_UNI.get(key, 0.0))
+    if p >= hit_threshold:
+        trio_prob_hits.append((a,b,c,p,tag))
+
+# 三連単（既存の santan_filtered_display → k=(a,b,c) 順序そのまま照合）
+tri_source = [(int(a),int(b),int(c),float(s),str(tag)) for (a,b,c,s,tag) in _safe_list(santan_filtered_display)]
+tri_prob_hits = []
+for a,b,c,s,tag in tri_source:
+    key = (a,b,c)
+    p = float(TRI_UNI.get(key, 0.0))
+    if p >= hit_threshold:
+        tri_prob_hits.append((a,b,c,p,tag))
+
+# 二車複（既存の pairs_qn2_filtered → k=(a,b) 昇順）
+qn_source = [(int(a),int(b),float(s),str(tag)) for (a,b,s,tag) in _safe_list(pairs_qn2_filtered)]
+qn_prob_hits = []
+for a,b,s,tag in qn_source:
+    key = tuple(sorted((a,b)))
+    p = float(QN_UNI.get(key, 0.0))
+    if p >= hit_threshold:
+        qn_prob_hits.append((a,b,p,tag))
+
+# 二車単（既存の rows_nitan_filtered → k は "a-b" 文字列）
+nit_source = []
+for k,v,tag in _safe_list(rows_nitan_filtered):
+    try:
+        a,b = map(int, str(k).split("-"))
+        nit_source.append((a,b,float(v),str(tag)))
+    except Exception:
+        pass
+nit_prob_hits = []
+for a,b,s,tag in nit_source:
+    p = float(NIT_UNI.get((a,b), 0.0))
+    if p >= hit_threshold:
+        nit_prob_hits.append((a,b,p,tag))
+
+# --- 「オススメ買目」= 既存ロジックの候補 ∩ 確率しきい値クリア（=ここで既に交わってる） ---
+def _df_prob_trio(rows):
+    return pd.DataFrame([{"買い目": f"{a}-{b}-{c}", "確率(推定)": f"{p*100:.1f}%", "由来": tag} 
+                         for (a,b,c,p,tag) in sorted(rows, key=lambda t:(-t[3], t[0], t[1], t[2]))])
+
+def _df_prob_tri(rows):
+    return pd.DataFrame([{"買い目": f"{a}-{b}-{c}", "確率(推定)": f"{p*100:.1f}%", "由来": tag} 
+                         for (a,b,c,p,tag) in sorted(rows, key=lambda t:(-t[3], t[0], t[1], t[2]))])
+
+def _df_prob_qn(rows):
+    return pd.DataFrame([{"買い目": f"{a}-{b}", "確率(推定)": f"{p*100:.1f}%", "由来": tag}
+                         for (a,b,p,tag) in sorted(rows, key=lambda t:(-t[2], t[0], t[1]))])
+
+def _df_prob_nit(rows):
+    return pd.DataFrame([{"買い目": f"{a}-{b}", "確率(推定)": f"{p*100:.1f}%", "由来": tag}
+                         for (a,b,p,tag) in sorted(rows, key=lambda t:(-t[2], t[0], t[1]))])
+
+st.markdown("## 🎯 印の実測率ベース｜確率しきい値クリア")
+c1, c2 = st.columns(2)
+with c1:
+    st.markdown("#### 三連複（重複=おすすめ）")
+    st.dataframe(_df_prob_trio(trio_prob_hits), use_container_width=True)
+with c2:
+    st.markdown("#### 三連単（重複=おすすめ）")
+    st.dataframe(_df_prob_tri(tri_prob_hits), use_container_width=True)
+
+c3, c4 = st.columns(2)
+with c3:
+    st.markdown("#### 二車複（重複=おすすめ）")
+    st.dataframe(_df_prob_qn(qn_prob_hits), use_container_width=True)
+with c4:
+    st.markdown("#### 二車単（重複=おすすめ）")
+    st.dataframe(_df_prob_nit(nit_prob_hits), use_container_width=True)
+
+# === おすすめ買目（表示を分けたい場合の見出しだけ）
+st.markdown("## ✅ オススメ買目（偏差値ロジック or ライン枠 と重複）")
+st.caption("上の4表は既存候補と“しきい値クリア”の交差済み＝そのまま『おすすめ』です。")
+
+
+# =========================
 #  note 出力（最後にまとめて）
 # =========================
 def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
@@ -2097,6 +2333,86 @@ if has_nit:
     )
 else:
     note_sections.append("\n二車単（新方式）\n対象外")
+
+# =========================
+#  note 追記：印実測率ベースの「おすすめ買目」
+#  依存: grade_for_marks, hit_threshold, trio_prob_hits, tri_prob_hits, qn_prob_hits, nit_prob_hits, star_id
+# =========================
+
+def _fmt_prob(p: float) -> str:
+    try:
+        return f"{float(p)*100:.1f}%"
+    except Exception:
+        return "—"
+
+# セーフティ（未定義でも落ちないように）
+grade_for_marks = globals().get("grade_for_marks", "TOTAL")
+hit_threshold   = float(globals().get("hit_threshold", 0.10))
+trio_prob_hits  = globals().get("trio_prob_hits", [])   # [(a,b,c,p,tag), ...]
+tri_prob_hits   = globals().get("tri_prob_hits", [])    # [(a,b,c,p,tag), ...]
+qn_prob_hits    = globals().get("qn_prob_hits", [])     # [(a,b,p,tag), ...]
+nit_prob_hits   = globals().get("nit_prob_hits", [])    # [(a,b,p,tag), ...]
+star_id         = globals().get("star_id", None)
+
+# 並び順：確率↓ → 号車昇順
+trio_prob_hits = sorted(trio_prob_hits, key=lambda t: (-float(t[3]), int(t[0]), int(t[1]), int(t[2])))
+tri_prob_hits  = sorted(tri_prob_hits,  key=lambda t: (-float(t[3]), int(t[0]), int(t[1]), int(t[2])))
+qn_prob_hits   = sorted(qn_prob_hits,   key=lambda t: (-float(t[2]), int(t[0]), int(t[1])))
+nit_prob_hits  = sorted(nit_prob_hits,  key=lambda t: (-float(t[2]), int(t[0]), int(t[1])))
+
+# 各形式の note ラインを作る
+def _note_trio(rows):
+    if not rows:
+        return "該当なし"
+    return "\n".join(
+        f"{a}-{b}-{c}{('☆' if (star_id is not None and star_id in (a,b,c)) else '')}"
+        f"（{_fmt_prob(p)}{('｜'+str(tag)) if str(tag)=='ライン枠' else ''}）"
+        for (a,b,c,p,tag) in rows
+    )
+
+def _note_tri(rows):
+    if not rows:
+        return "該当なし"
+    return "\n".join(
+        f"{a}-{b}-{c}{('☆' if (star_id is not None and star_id in (a,b,c)) else '')}"
+        f"（{_fmt_prob(p)}{('｜'+str(tag)) if str(tag)=='ライン枠' else ''}）"
+        for (a,b,c,p,tag) in rows
+    )
+
+def _note_qn(rows):
+    if not rows:
+        return "該当なし"
+    return "\n".join(
+        f"{a}-{b}（{_fmt_prob(p)}{('｜'+str(tag)) if str(tag)=='ライン枠' else ''}）"
+        for (a,b,p,tag) in rows
+    )
+
+def _note_nit(rows):
+    if not rows:
+        return "該当なし"
+    return "\n".join(
+        f"{a}-{b}（{_fmt_prob(p)}{('｜'+str(tag)) if str(tag)=='ライン枠' else ''}）"
+        for (a,b,p,tag) in rows
+    )
+
+# 見出し（共通ヘッダ）
+hdr = f"（グレード={grade_for_marks}／閾={hit_threshold*100:.0f}%）"
+
+# 既存の note_sections に追記
+note_sections.append("\n――――――――――――――――――――")
+note_sections.append(f"◎おすすめ買目（印の実測率ベース）{hdr}")
+
+note_sections.append(f"\n三連複〔{len(trio_prob_hits)}点〕")
+note_sections.append(_note_trio(trio_prob_hits))
+
+note_sections.append(f"\n三連単〔{len(tri_prob_hits)}点〕")
+note_sections.append(_note_tri(tri_prob_hits))
+
+note_sections.append(f"\n二車複〔{len(qn_prob_hits)}点〕")
+note_sections.append(_note_qn(qn_prob_hits))
+
+note_sections.append(f"\n二車単〔{len(nit_prob_hits)}点〕")
+note_sections.append(_note_nit(nit_prob_hits))
 
 
 note_text = "\n".join(note_sections)
