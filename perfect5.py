@@ -1346,6 +1346,7 @@ if pool_total > 0.0 and _lines:
 # ← この後に既存の race_z 計算が続く
 
 
+
 race_z = (xs_race_t - 50.0) / 10.0
 
 hen_df = pd.DataFrame({
@@ -1513,12 +1514,18 @@ from itertools import combinations
 # ===== 基本データ =====
 S_TRIFECTA_MIN = globals().get("S_TRIFECTA_MIN", 164.0)  # 三連単基準
 
-# ===== 可変パラメータ =====
-TRIO_SIG_DIV = float(globals().get("TRIO_SIG_DIV", 1.5))   # 三連複：上位1/3目安
-TRIFECTA_SIG_DIV = float(globals().get("TRIFECTA_SIG_DIV", 2.5))  # 三連単：上位1/5目安
+# ===== 可変パラメータ（緩め設定：通過数↑）=====
+TRIO_SIG_DIV        = float(globals().get("TRIO_SIG_DIV", 5.5))   # 三連複：1.5→2.0でほんのり緩め
+TRIFECTA_SIG_DIV    = float(globals().get("TRIFECTA_SIG_DIV", 5.5))# 三連単：2.5→3.5で緩め
 
-TRIO_L3_MIN    = float(globals().get("TRIO_L3_MIN", 160.0))    # ★L3候補の固定しきい値（偏差値S合計）
-S_TRIFECTA_MIN = float(globals().get("S_TRIFECTA_MIN", 164.0)) # 三連単の基準（従来どおり）
+# L3 / 三連単の固定ゲートも少し緩める（買い目増やしたいなら下げる）
+TRIO_L3_MIN         = float(globals().get("TRIO_L3_MIN", 155.0))   # 160.0→155.0
+S_TRIFECTA_MIN      = float(globals().get("S_TRIFECTA_MIN", 160.0))# 164.0→160.0
+
+# （もしファイル内にあるなら）二車系も同様に少し緩める
+QN_SIG_DIV          = float(globals().get("QN_SIG_DIV", 3.5))      # 3.0→3.5 など
+NIT_SIG_DIV         = float(globals().get("NIT_SIG_DIV", 3.5))     # 3.0→3.5 など
+
 
 from statistics import mean, pstdev
 from itertools import product, combinations
@@ -1642,6 +1649,8 @@ if '_santan_score' not in globals():
 mark_star   = result_marks.get("◎")
 mark_circle = result_marks.get("〇")
 
+
+
 # ----------------------------
 # 統一版：フォーメーション→三連複/三連単/二車複/二車単→note 出力
 # 目的：μ + σ/div と 上位割合(top-q) の両方を算出して「高い方」を閾値採用（全セクション統一）
@@ -1742,6 +1751,60 @@ else:
                     line_power_added.append((k[0],k[1],k[2],_trio_score(*k),"ライン枠"))
 
     trios_filtered_display.extend(line_power_added[:2])
+
+# === 戦術：三連複「◎入り3点 / ◎抜き3点」 =========================
+try:
+    star_id = int(result_marks.get("◎")) if isinstance(result_marks, dict) else None
+except Exception:
+    star_id = None
+
+tri_inc, tri_exc = [], []
+if trios_filtered_display and star_id is not None:
+    # trios_filtered_display: (a,b,c,score,tag) の並び想定
+    tri_inc = [t for t in trios_filtered_display if star_id in t[:3]]
+    tri_exc = [t for t in trios_filtered_display if star_id not in t[:3]]
+
+    key_tri = lambda r: (-float(r[3]), int(r[0]), int(r[1]), int(r[2]))
+    tri_inc = sorted(tri_inc, key=key_tri)[:3]
+    tri_exc = sorted(tri_exc, key=key_tri)[:3]
+
+    # ◎抜き3点のフォールバック（tri_excが空なら、形成済みの列 or 全組合せから上位3点を拾う）
+if star_id is not None and not tri_exc:
+    pool_triples = set()
+    try:
+        # L1-L2-L3 があれば優先（フォーメーション内で取りにいく）
+        if L1 and L2 and L3:
+            for a in L1:
+                for b in L2:
+                    for c in L3:
+                        if len({a,b,c}) == 3 and star_id not in (a,b,c):
+                            pool_triples.add(tuple(sorted((int(a), int(b), int(c)))))
+        else:
+            # 無ければ全車のC(n,3)から◎抜きを収集
+            from itertools import combinations
+            for a, b, c in combinations(map(int, USED_IDS), 3):
+                if star_id not in (a, b, c):
+                    pool_triples.add(tuple(sorted((a, b, c))))
+    except Exception:
+        pool_triples = set()
+
+    cand = []
+    for a, b, c in pool_triples:
+        try:
+            s = _trio_score(int(a), int(b), int(c))  # 既存のS合計関数を再利用
+        except Exception:
+            # 念のためrace_t直足しでも可
+            s = float(race_t.get(int(a), 50.0)) + float(race_t.get(int(b), 50.0)) + float(race_t.get(int(c), 50.0))
+        cand.append((int(a), int(b), int(c), float(s), "フォールバック"))
+
+    cand.sort(key=lambda t: (-t[3], t[0], t[1], t[2]))
+    tri_exc = cand[:3]
+
+
+    st.markdown("#### 戦術：三連複（◎入り3点／◎抜き3点）")
+    st.write("◎入り3点", [f"{int(a)}-{int(b)}-{int(c)}" for (a,b,c,_,_) in tri_inc])
+    st.write("◎抜き3点", [f"{int(a)}-{int(b)}-{int(c)}" for (a,b,c,_,_) in tri_exc])
+
 
     # ↓ デバッグ短文（任意）：ライン枠が何件入ったかだけ確認
     # st.caption(f"[DBG] Trio line-power added = {len(line_power_added[:2])}")
@@ -2397,6 +2460,15 @@ def _note_nit(rows):
 
 # 見出し（共通ヘッダ）
 hdr = f"（グレード={grade_for_marks}／閾={hit_threshold*100:.0f}%）"
+
+# --- note: 戦術（◎入り3点／◎抜き3点） ---
+if (tri_inc or tri_exc):
+    note_sections.append("\n戦術（3連複）")
+    if tri_inc:
+        note_sections.append("確率枠◎入りTOP3: " + " / ".join(f"{int(a)}-{int(b)}-{int(c)}" for (a,b,c,_,_) in tri_inc))
+    if tri_exc:
+        note_sections.append("確率枠◎抜きTOP3: " + " / ".join(f"{int(a)}-{int(b)}-{int(c)}" for (a,b,c,_,_) in tri_exc))
+
 
 # 既存の note_sections に追記
 note_sections.append("\n――――――――――――――――――――")
