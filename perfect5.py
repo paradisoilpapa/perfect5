@@ -228,6 +228,67 @@ if RANK_FALLBACK_MARK not in RANK_STATS:
     RANK_FALLBACK_MARK = next(iter(RANK_STATS.keys()))
 FALLBACK_DIST = RANK_STATS.get(RANK_FALLBACK_MARK, {"p1": 0.15, "pTop2": 0.30, "pTop3": 0.45})
 
+# --- ランク別【回数】テーブル 最新版 -----------------------
+# c1=1着回数 / c2=2着回数 / c3=3着回数
+
+RANK_COUNTS_TOTAL = {
+    "◎": {"c1": 79, "c2": 38, "c3": 22},
+    "〇": {"c1": 34, "c2": 45, "c3": 33},
+    "▲": {"c1": 31, "c2": 36, "c3": 38},
+    "△": {"c1": 22, "c2": 34, "c3": 47},
+    "×": {"c1": 18, "c2": 25, "c3": 29},
+    "α": {"c1": 22, "c2": 21, "c3": 23},
+    "無": {"c1": 11, "c2": 16, "c3": 25},
+}
+
+RANK_COUNTS_F2 = {
+    "◎": {"c1": 52, "c2": 24, "c3": 13},
+    "〇": {"c1": 20, "c2": 27, "c3": 20},
+    "▲": {"c1": 18, "c2": 25, "c3": 24},
+    "△": {"c1": 12, "c2": 24, "c3": 34},
+    "×": {"c1": 10, "c2": 18, "c3": 17},
+    "α": {"c1": 15, "c2":  7, "c3": 14},
+    "無": {"c1":  6, "c2":  6, "c3": 11},
+}
+
+RANK_COUNTS_F1 = {
+    "◎": {"c1": 15, "c2":  9, "c3": 6},
+    "〇": {"c1": 10, "c2": 10, "c3":11},
+    "▲": {"c1":  9, "c2":  8, "c3": 8},
+    "△": {"c1":  6, "c2":  8, "c3": 8},
+    "×": {"c1":  6, "c2":  5, "c3": 5},
+    "α": {"c1":  5, "c2": 10, "c3": 7},
+    "無": {"c1":  3, "c2":  4, "c3": 5},
+}
+
+RANK_COUNTS_G = {
+    "◎": {"c1": 5, "c2": 4, "c3": 1},
+    "〇": {"c1": 2, "c2": 1, "c3": 1},
+    "▲": {"c1": 2, "c2": 2, "c3": 2},
+    "△": {"c1": 3, "c2": 2, "c3": 3},
+    "×": {"c1": 2, "c2": 1, "c3": 1},
+    "α": {"c1": 2, "c2": 2, "c3": 2},
+    "無": {"c1": 2, "c2": 6, "c3": 9},
+}
+
+RANK_COUNTS_GIRLS = {
+    "◎": {"c1": 7, "c2": 1, "c3": 2},
+    "〇": {"c1": 2, "c2": 7, "c3": 1},
+    "▲": {"c1": 2, "c2": 1, "c3": 4},
+    "△": {"c1": 1, "c2": 0, "c3": 2},
+    "×": {"c1": 0, "c2": 1, "c3": 2},
+    "α": {"c1": 0, "c2": 2, "c3": 1},
+    "無": {"c1": 0, "c2": 0, "c3": 0},
+}
+
+RANK_COUNTS_BY_GRADE = {
+    "TOTAL":  RANK_COUNTS_TOTAL,
+    "F2":     RANK_COUNTS_F2,
+    "F1":     RANK_COUNTS_F1,
+    "G":      RANK_COUNTS_G,
+    "GIRLS":  RANK_COUNTS_GIRLS,
+}
+RANK_COUNTS = RANK_COUNTS_TOTAL  # 互換
 
 
 # KO(勝ち上がり)関連
@@ -1773,709 +1834,6 @@ L3 = sorted(L3, key=lambda c: (-race_t.get(int(c), 50.0), int(c)))[:L3_TOPK]
 # --- 差し込みここまで ---
 
 
-# =========================
-#  フォーメーション表示
-# =========================
-def _fmt_form(col):
-    return "".join(str(x) for x in col) if col else "—"
-
-form_L1 = _fmt_form(L1)
-form_L2 = _fmt_form(L2)
-form_L3 = _fmt_form(L3)
-formation_label = f"{form_L1}-{form_L2}-{form_L3}"
-st.markdown(f"**フォーメーション**：{formation_label}")
-
-# 既存：三連複/三連単の基礎スコア計算関数が無い場合の保険
-if '_trio_score' not in globals():
-    S_BASE_MAP = {int(i): float(race_t.get(int(i), 50.0)) for i in USED_IDS}
-    def _trio_score(a, b, c):
-        return S_BASE_MAP.get(int(a), 0.0) + S_BASE_MAP.get(int(b), 0.0) + S_BASE_MAP.get(int(c), 0.0)
-
-# 既存：三連単の順序付きスコアが無い場合の保険
-if '_santan_score' not in globals():
-    def _santan_score(a:int, b:int, c:int) -> float:
-        base = _trio_score(a,b,c)
-        bonus = 0.0
-        if 'anchor_no' in globals() and a == anchor_no:
-            bonus += 2.0
-        return base + bonus
-
-# =========================
-#  印の取得
-# =========================
-mark_star   = result_marks.get("◎")
-mark_circle = result_marks.get("〇")
-
-
-
-# ----------------------------
-# 統一版：フォーメーション→三連複/三連単/二車複/二車単→note 出力
-# 目的：μ + σ/div と 上位割合(top-q) の両方を算出して「高い方」を閾値採用（全セクション統一）
-# ----------------------------
-
-from statistics import mean, pstdev
-from itertools import product
-import numpy as np
-
-# 可変パラメータ（グローバル指定があればそれを優先）
-TRIO_SIG_DIV      = float(globals().get("TRIO_SIG_DIV", 3.0))
-TRIO_L3_MIN       = float(globals().get("TRIO_L3_MIN", 160.0))
-TRIO_TOP_FRAC     = float(globals().get("TRIO_TOP_FRAC", 0.20))   # 上位比率（例 0.2 = 1/5）
-TRIFECTA_SIG_DIV  = float(globals().get("TRIFECTA_SIG_DIV", 8.0))
-TRIFECTA_TOP_FRAC = float(globals().get("TRIFECTA_TOP_FRAC", 1/8))# 1/8 等
-QN_TOP_FRAC       = float(globals().get("QN_TOP_FRAC", 0.20))     # 二車複 上位比率
-NIT_TOP_FRAC      = float(globals().get("NIT_TOP_FRAC", 1/8))     # 二車単 上位比率
-
-# safety defaults
-anchor_no   = globals().get("anchor_no", result_marks.get("◎") if 'result_marks' in globals() else None)
-mark_circle = globals().get("mark_circle", result_marks.get("〇") if 'result_marks' in globals() else None)
-gid         = car_to_group.get(anchor_no, None) if anchor_no is not None else None
-
-# ------------ フォーメーション表示（既存の formation_label をそのまま） ------------
-def _fmt_form(col):
-    return "".join(str(x) for x in col) if col else "—"
-form_L1 = _fmt_form(L1)
-form_L2 = _fmt_form(L2)
-form_L3 = _fmt_form(L3)
-formation_label = f"{form_L1}-{form_L2}-{form_L3}"
-st.markdown(f"**フォーメーション**：{formation_label}")
-
-# ------------ ヘルパ：閾値算出（μ+σ/div と 上位q を比較して高い方を返す） ------------
-def cutoff_mu_sig_vs_top(xs, sig_div, top_frac):
-    """xs: list of scores, sig_div: denominator for sigma, top_frac: fraction retained (0<top_frac<=1)."""
-    if not xs:
-        return 0.0
-    mu = float(mean(xs))
-    sig = float(pstdev(xs)) if len(xs) > 1 else 0.0
-    cutoff_mu_sig = mu + (sig / sig_div if sig > 0 else 0.0)
-    q = max(1, int(len(xs) * top_frac))
-    cutoff_topq = float(np.partition(xs, -q)[-q]) if xs else cutoff_mu_sig
-    return max(cutoff_mu_sig, cutoff_topq)
-
-# ---- ユニーク化 & 自己重複ガード（共通ヘルパ：一度だけ読み込めばOK） ----
-if "_uniq_trio" not in globals():
-
-    def _uniq_trio(rows):
-        """三連複: (a,b,c,s,tag) → 三者相違 & 昇順キーで一意化"""
-        seen, out = set(), []
-        for a,b,c,s,tag in rows:
-            a, b, c = int(a), int(b), int(c)
-            if len({a,b,c}) < 3:
-                continue
-            key = tuple(sorted((a,b,c)))
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append((key[0], key[1], key[2], s, tag))
-        return out
-
-    def _uniq_trifecta(rows):
-        """三連単: (a,b,c,s,tag) → 三者相違 & 並び固定で一意化"""
-        seen, out = set(), []
-        for a,b,c,s,tag in rows:
-            a, b, c = int(a), int(b), int(c)
-            if len({a,b,c}) < 3:
-                continue
-            key = (a,b,c)
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append((a,b,c,s,tag))
-        return out
-
-    def _uniq_qn(rows):
-        """二車複: (a,b,s,tag) → a!=b、昇順キーで一意化"""
-        seen, out = set(), []
-        for a,b,s,tag in rows:
-            a, b = int(a), int(b)
-            if a == b:
-                continue
-            key = tuple(sorted((a,b)))
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append((key[0], key[1], s, tag))
-        return out
-
-    def _uniq_nitan(rows):
-        """二車単: ("a-b", s, tag) → a!=b、並び固定で一意化"""
-        seen, out = set(), []
-        for k, s, tag in rows:
-            try:
-                a, b = map(int, str(k).split("-"))
-            except Exception:
-                continue
-            if a == b:
-                continue
-            key = f"{a}-{b}"
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append((key, s, tag))
-        return out
-
-
-# ===== 三連複（上位1/5 + ライン枠）＜LOCK付き＞ =====
-# 先頭にこれを置く：二重定義ガード
-if globals().get("__TRIO_LOCK__", False):
-    # すでに三連複を計算済みなら、再計算しない
-    pass
-else:
-    __TRIO_LOCK__ = True  # ← ロック
-
-    trios_filtered_display, cutoff_trio = [], 0.0
-    if L1 and L2 and L3:
-        trio_keys = set()
-        for a, b, c in product(L1, L2, L3):
-            if len({a,b,c}) != 3:
-                continue
-            trio_keys.add(tuple(sorted((int(a), int(b), int(c)))))
-        trios_from_cols = [(a,b,c,_trio_score(a,b,c)) for (a,b,c) in sorted(trio_keys)]
-        if trios_from_cols:
-            xs = [s for (*_,s) in trios_from_cols]
-            mu, sig = mean(xs), pstdev(xs)
-            TRIO_SIG_DIV = float(globals().get("TRIO_SIG_DIV", 3.0))
-            cutoff_mu_sig = mu + (sig/TRIO_SIG_DIV if sig > 0 else 0.0)
-            q = max(1, int(len(xs)*0.20))  # 上位1/5
-            cutoff_topQ = np.partition(xs, -q)[-q]
-            cutoff_trio = max(cutoff_mu_sig, float(cutoff_topQ))
-            trios_filtered_display = [
-                (a,b,c,s,"通常") for (a,b,c,s) in trios_from_cols if s >= cutoff_trio
-            ]
-
-# === ラインパワー枠（三連複：最大2点） ===
-line_power_added = []
-gid = car_to_group.get(anchor_no, None) if 'anchor_no' in globals() else None
-if gid in line_def:
-    mem = [int(x) for x in line_def.get(gid, [])]
-    if anchor_no in mem:
-        others = [x for x in mem if x != anchor_no]
-
-        # A) ◎-〇-（◎ラインの誰か）を優先
-        mark_star   = result_marks.get("◎")
-        mark_circle = result_marks.get("〇")
-        if mark_circle:
-            for extra in others:
-                if extra in {anchor_no, mark_circle}:  # 自己重複防止
-                    continue
-                k = tuple(sorted((int(anchor_no), int(mark_circle), int(extra))))
-                if not any(set(k) == {a,b,c} for (a,b,c,_,_) in trios_filtered_display + line_power_added):
-                    line_power_added.append((k[0],k[1],k[2],_trio_score(*k),"ライン枠"))
-                if len(line_power_added) >= 2:
-                    break
-
-        # B) 純ライン完結（◎＋同ライン上位2名）
-        if len(line_power_added) < 2 and len(others) >= 2:
-            a,b = sorted(others, key=lambda x: float(race_t.get(int(x),50.0)), reverse=True)[:2]
-            if a != b and anchor_no not in {a,b}:
-                k = tuple(sorted((int(anchor_no), int(a), int(b))))
-                if not any(set(k) == {a,b,c} for (a,b,c,_,_) in trios_filtered_display + line_power_added):
-                    line_power_added.append((k[0],k[1],k[2],_trio_score(*k),"ライン枠"))
-
-trios_filtered_display.extend(line_power_added[:2])
-# 重複・自己重複を最終除去
-trios_filtered_display = _uniq_trio(trios_filtered_display)
-n_trio = len(trios_filtered_display)
-
-# ============================================================
-# 戦術：三連複「◎入り3点 / ◎抜き3点（印別3着率3位の印を軸）」全面交換版
-# ============================================================
-
-import itertools
-
-# ---------------- ユーティリティ ----------------
-
-def _is_valid_trio(a, b, c) -> bool:
-    """三連複候補として同一番号を排除（例: 1-5-5 を弾く）"""
-    try:
-        aa, bb, cc = int(a), int(b), int(c)
-    except Exception:
-        return False
-    return len({aa, bb, cc}) == 3
-
-def _trio_key(a, b, c):
-    """順不同の一意キー（1-3-4 と 4-3-1 を同一視）"""
-    aa, bb, cc = sorted(map(int, (a, b, c)))
-    return (aa, bb, cc)
-
-def _ensure_top3(primary_rows, fallback_rows, need=3):
-    """
-    primary_rows / fallback_rows: [(a,b,c,score,tag), ...]
-    1) primary からスコア優先で採用
-    2) 足りない分を fallback から補完
-    3) 1-5-5 等は無効、重複は1点化
-    4) 同点は偏差値T合計でタイブレーク
-    """
-    def _rank_tuple(row):
-        a, b, c, s, _ = row
-        # 同点時のタイブレークに偏差値T合計を使用（race_t が無い時は 150 扱い）
-        tsum = (
-            float((race_t.get(int(a), 50.0) if 'race_t' in globals() and isinstance(race_t, dict) else 50.0)) +
-            float((race_t.get(int(b), 50.0) if 'race_t' in globals() and isinstance(race_t, dict) else 50.0)) +
-            float((race_t.get(int(c), 50.0) if 'race_t' in globals() and isinstance(race_t, dict) else 50.0))
-        )
-        return (float(s), float(tsum))
-
-    out, seen = [], set()
-    for src in (
-        sorted(primary_rows or [], key=_rank_tuple, reverse=True),
-        sorted(fallback_rows or [], key=_rank_tuple, reverse=True),
-    ):
-        for a, b, c, s, tag in src:
-            if not _is_valid_trio(a, b, c):
-                continue
-            k = _trio_key(a, b, c)
-            if k in seen:
-                continue
-            seen.add(k)
-            out.append((int(a), int(b), int(c), float(s), str(tag)))
-            if len(out) >= int(need):
-                return out
-    return out
-
-def _safe_iter(lst):
-    return lst if isinstance(lst, (list, tuple)) else []
-
-def _get_used_ids():
-    try:
-        return sorted(map(int, globals().get("USED_IDS", [])))
-    except Exception:
-        return []
-
-def _trio_score_safe(a, b, c):
-    # 既存の _trio_score があれば使い、無ければ偏差値T合計で代替
-    try:
-        if "_trio_score" in globals() and callable(globals()["_trio_score"]):
-            return float(globals()["_trio_score"](int(a), int(b), int(c)))
-    except Exception:
-        pass
-    rt = globals().get("race_t", {}) if isinstance(globals().get("race_t", {}), dict) else {}
-    return float(rt.get(int(a), 50.0)) + float(rt.get(int(b), 50.0)) + float(rt.get(int(c), 50.0))
-
-# -------- 印別3着率「3番手の印」を得る（可変：RANK_STATS_*を参照） --------
-
-def _third_symbol_by_top3(stats: dict) -> str:
-    """
-    印別集計(stats)から3着内率pTop3で3番手の印を返す。
-    stats 例:
-      {"◎":{"pTop3":0.714}, "〇":{"pTop3":0.524}, ...}
-    """
-    if not isinstance(stats, dict):
-        return "△"
-    cand = []
-    for k, v in stats.items():
-        if k in ("◎", "〇", "▲", "△", "×", "α", "無"):
-            try:
-                cand.append((k, float(v.get("pTop3", 0.0))))
-            except Exception:
-                cand.append((k, 0.0))
-    cand.sort(key=lambda x: x[1], reverse=True)
-    return cand[2][0] if len(cand) >= 3 else ("△" if cand else "△")
-
-def _active_rank_stats():
-    # 優先順：RANK_STATS_CURRENT > RANK_STATS_F2 > RANK_STATS
-    if "RANK_STATS_CURRENT" in globals() and isinstance(RANK_STATS_CURRENT, dict):
-        return RANK_STATS_CURRENT
-    if "RANK_STATS_F2" in globals() and isinstance(RANK_STATS_F2, dict):
-        return RANK_STATS_F2
-    return globals().get("RANK_STATS", {}) if isinstance(globals().get("RANK_STATS", {}), dict) else {}
-
-def _pick_axis_id_for_symbol(symbol: str):
-    """
-    与えられた印(symbol)の選手群から、race_t優先で“軸となる1頭”を返す。
-    """
-    rm = globals().get("result_marks", {})
-    if not isinstance(rm, dict):
-        return None
-    cand_ids = []
-    for k, v in rm.items():
-        try:
-            if str(v) == str(symbol):
-                cand_ids.append(int(k))
-        except Exception:
-            continue
-    if not cand_ids:
-        return None
-    def _axis_score(i):
-        t = float(globals().get("race_t", {}).get(int(i), 50.0)) if isinstance(globals().get("race_t", {}), dict) else 50.0
-        return (t, -int(i))  # 偏差値T優先・同点は番号小さい方
-    cand_ids.sort(key=_axis_score, reverse=True)
-    return cand_ids[0]
-
-# -------- フォールバック生成（◎側が2点以下など不足時に使用） --------
-
-def _gen_anchor_trios_fallback(anchor_id: int, max_take: int = 12):
-    """
-    ◎(anchor_id)を必ず含む三連複候補を生成。
-    1) L1-L2-L3 があればそれを優先
-    2) 無ければ USED_IDS から C(n-1, 2)（◎+2頭）を全列挙
-    戻り値: [(a,b,c,score,"FB◎"), ...] スコア降順
-    """
-    pool = set()
-    L1 = globals().get("L1"); L2 = globals().get("L2"); L3 = globals().get("L3")
-    try:
-        if L1 and L2 and L3:
-            for a in _safe_iter(L1):
-                for b in _safe_iter(L2):
-                    for c in _safe_iter(L3):
-                        tup = tuple(sorted(map(int, (a, b, c))))
-                        if anchor_id in tup and _is_valid_trio(*tup):
-                            pool.add(tup)
-        else:
-            ids = _get_used_ids()
-            others = [i for i in ids if i != int(anchor_id)]
-            for x, y in itertools.combinations(others, 2):
-                tup = tuple(sorted((int(anchor_id), int(x), int(y))))
-                if _is_valid_trio(*tup):
-                    pool.add(tup)
-    except Exception:
-        pool = set()
-
-    rows = []
-    for a, b, c in pool:
-        s = _trio_score_safe(a, b, c)
-        rows.append((int(a), int(b), int(c), float(s), "FB◎"))
-    rows.sort(key=lambda t: (-t[3], t[0], t[1], t[2]))
-    return rows[:max_take]
-
-# ============================================================
-# 三連複「◎入り3点 / ◎抜き3点」(短縮・自給自足・tri_inc/tri_exc固定)
-# ============================================================
-import itertools
-
-# --- mini utils ---
-def _is_valid_trio(a,b,c):
-    try: return len({int(a),int(b),int(c)})==3
-    except: return False
-
-def _trio_key(a,b,c): return tuple(sorted(map(int,(a,b,c))))
-
-def _trio_score_safe(a,b,c):
-    try:
-        return float(_trio_score(int(a),int(b),int(c)))
-    except Exception:
-        rt = globals().get("race_t", {}) if isinstance(globals().get("race_t", {}), dict) else {}
-        return float(rt.get(int(a),50.0))+float(rt.get(int(b),50.0))+float(rt.get(int(c),50.0))
-
-def _ensure_top3(primary_rows, fallback_rows, need=3):
-    def _rank_tuple(row):
-        a,b,c,s,_ = row
-        rt = globals().get("race_t", {}) if isinstance(globals().get("race_t", {}), dict) else {}
-        tsum = float(rt.get(int(a),50.0))+float(rt.get(int(b),50.0))+float(rt.get(int(c),50.0))
-        return (float(s), tsum)
-    out, seen = [], set()
-    for src in (sorted(primary_rows or [], key=_rank_tuple, reverse=True),
-                sorted(fallback_rows or [], key=_rank_tuple, reverse=True)):
-        for a,b,c,s,tag in src:
-            if not _is_valid_trio(a,b,c): continue
-            k=_trio_key(a,b,c)
-            if k in seen: continue
-            out.append((int(a),int(b),int(c),float(s),str(tag))); seen.add(k)
-            if len(out)>=need: return out
-    return out
-
-def _gen_anchor_trios_fallback(anchor_id, max_take=24):
-    ids = sorted(map(int, globals().get("USED_IDS", []))) if "USED_IDS" in globals() else []
-    pool=set()
-    for x,y in itertools.combinations([i for i in ids if i!=int(anchor_id)],2):
-        tup=tuple(sorted((int(anchor_id),int(x),int(y))))
-        if _is_valid_trio(*tup): pool.add(tup)
-    rows=[(a,b,c,_trio_score_safe(a,b,c),"FB◎") for a,b,c in pool]
-    rows.sort(key=lambda t:(-t[3],t[0],t[1],t[2]))
-    return rows[:max_take]
-
-def _active_rank_stats():
-    if "RANK_STATS_CURRENT" in globals() and isinstance(RANK_STATS_CURRENT, dict): return RANK_STATS_CURRENT
-    if "RANK_STATS_F2" in globals() and isinstance(RANK_STATS_F2, dict): return RANK_STATS_F2
-    return globals().get("RANK_STATS", {}) if isinstance(globals().get("RANK_STATS", {}), dict) else {}
-
-def _third_symbol_by_top3(stats: dict)->str:
-    cand=[]
-    for k,v in (stats or {}).items():
-        if k in ("◎","〇","▲","△","×","α","無"):
-            try: cand.append((k,float(v.get("pTop3",0.0))))
-            except: cand.append((k,0.0))
-    cand.sort(key=lambda x:x[1], reverse=True)
-    return cand[2][0] if len(cand)>=3 else "△"
-
-def _pick_axis_id_for_symbol(symbol: str):
-    rm = globals().get("result_marks", {})
-    if not isinstance(rm, dict): return None
-    cand=[int(k) for k,v in rm.items() if str(v)==str(symbol)]
-    if not cand: return None
-    rt = globals().get("race_t", {}) if isinstance(globals().get("race_t", {}), dict) else {}
-    return max(cand, key=lambda i: float(rt.get(int(i),50.0)))
-
-# --- main ---
-try:
-    anchor = int(result_marks.get("◎")) if (isinstance(result_marks, dict) and result_marks.get("◎") is not None) else int(anchor_no)
-except Exception:
-    anchor = int(globals().get("anchor_no",0) or 0)
-
-prob_trio_rows  = globals().get("trios_prob_filtered",  [])
-score_trio_rows = globals().get("trios_filtered_display", [])
-
-# ◎入り：まず候補を作る
-base_in = [(a,b,c,float(s),str(tag)) for (a,b,c,s,tag) in (prob_trio_rows or [])  if anchor in (a,b,c)]
-fb_in   = [(a,b,c,float(s),str(tag)) for (a,b,c,s,tag) in (score_trio_rows or []) if anchor in (a,b,c)]
-tri_inc = _ensure_top3(base_in, fb_in, need=3)
-
-# ◎入りが2点以下なら、◎固定フォールバックで埋める
-if len(tri_inc)<3 and anchor:
-    seen={_trio_key(a,b,c) for a,b,c,_,_ in tri_inc}
-    for a,b,c,s,tag in _gen_anchor_trios_fallback(anchor):
-        k=_trio_key(a,b,c)
-        if k in seen: continue
-        tri_inc.append((a,b,c,s,tag)); seen.add(k)
-        if len(tri_inc)>=3: break
-
-# ◎抜き：印別3着率3番手の印を軸（可変）。◎は軸にもヒモにも入れない
-non_star_symbol = _third_symbol_by_top3(_active_rank_stats())
-axis_id = _pick_axis_id_for_symbol(non_star_symbol)
-
-if axis_id is not None:
-    base_out = [(a,b,c,float(s),str(tag)) for (a,b,c,s,tag) in (prob_trio_rows or [])
-                if (anchor not in (a,b,c)) and (axis_id in (a,b,c))]
-    fb_out   = [(a,b,c,float(s),str(tag)) for (a,b,c,s,tag) in (score_trio_rows or [])
-                if (anchor not in (a,b,c)) and (axis_id in (a,b,c))]
-    tri_exc  = _ensure_top3(base_out, fb_out, need=3)
-else:
-    base_out = [(a,b,c,float(s),str(tag)) for (a,b,c,s,tag) in (prob_trio_rows or []) if anchor not in (a,b,c)]
-    fb_out   = [(a,b,c,float(s),str(tag)) for (a,b,c,s,tag) in (score_trio_rows or []) if anchor not in (a,b,c)]
-    tri_exc  = _ensure_top3(base_out, fb_out, need=3)
-
-# 安全網：万一混入した◎を除去し、足りなければ◎抜き全列挙で補完（可能なら axis_id を含むもの優先）
-tri_exc = [r for r in tri_exc if anchor not in r[:3]]
-if len(tri_exc)<3:
-    used_ids = sorted(map(int, globals().get("USED_IDS", []))) if "USED_IDS" in globals() else []
-    seen={_trio_key(a,b,c) for a,b,c,_,_ in tri_exc}
-    pool=[]
-    for a,b,c in itertools.combinations(used_ids,3):
-        if anchor in (a,b,c): continue
-        if axis_id is None or axis_id in (a,b,c):
-            pool.append((a,b,c))
-    if not pool:
-        pool=[t for t in itertools.combinations(used_ids,3) if anchor not in t]
-    cand=[(a,b,c,_trio_score_safe(a,b,c),"FB◎抜き") for (a,b,c) in pool]
-    cand.sort(key=lambda t:(-t[3],t[0],t[1],t[2]))
-    for a,b,c,s,tag in cand:
-        k=_trio_key(a,b,c)
-        if k in seen: continue
-        tri_exc.append((a,b,c,s,tag)); seen.add(k)
-        if len(tri_exc)>=3: break
-
-def _fmt_trio_list(rows): return " / ".join(f"{a}-{b}-{c}" for a,b,c,_,_ in rows) if rows else "—"
-st.markdown(f"**戦術（三連複）** ◎入り3点: {_fmt_trio_list(tri_inc)}　｜　◎抜き3点: {_fmt_trio_list(tri_exc)}")
-# st.write は削除
-
-
-
-# ===== 三連単（◎〇固定・2列目◎〇▲・3列目=L3） =====
-mark_star   = result_marks.get("◎")
-mark_circle = result_marks.get("〇")
-
-santan_filtered_display, cutoff_san = [], 0.0
-san_mu = san_sig = san_mu_sig = san_topq = 0.0
-san_adopt = "μ+σ/div"
-
-TRIFECTA_SIG_DIV  = float(globals().get("TRIFECTA_SIG_DIV", 8.0))
-TRIFECTA_TOP_FRAC = float(globals().get("TRIFECTA_TOP_FRAC", 1/8))
-
-# 表示用に“実際に使った値”を保持
-san_sig_div_used  = TRIFECTA_SIG_DIV
-san_top_frac_used = TRIFECTA_TOP_FRAC if TRIFECTA_TOP_FRAC > 0 else 1/8
-san_top_den       = int(round(1.0 / san_top_frac_used))  # 1/8 → 8
-
-
-if L1 and L2 and L3:
-    first_col  = [x for x in [mark_star, mark_circle] if x is not None]
-    second_col = [x for x in [mark_star, mark_circle, result_marks.get("▲")] if x is not None]
-    third_col  = list(L3)
-
-
-    # 並びの優先度（安定ソート用）
-    orderA = {n:i for i,n in enumerate(first_col)}
-    orderB = {n:i for i,n in enumerate(second_col)}
-
-    # 候補生成
-    san_rows, seen = [], set()
-    for a in first_col:
-        for b in second_col:
-            for c in third_col:
-                if len({a,b,c}) != 3:
-                    continue
-                key = (int(a), int(b), int(c))
-                if key in seen:
-                    continue
-                seen.add(key)
-                s = _santan_score(*key)
-                san_rows.append((key[0], key[1], key[2], s, "通常"))
-
-    if san_rows:
-        xs = [row[3] for row in san_rows]
-        san_mu  = float(mean(xs))
-        san_sig = float(pstdev(xs)) if len(xs) > 1 else 0.0
-        san_mu_sig = san_mu + (san_sig / TRIFECTA_SIG_DIV if san_sig > 0 else 0.0)
-
-        q = max(1, int(len(xs) * TRIFECTA_TOP_FRAC))
-        san_topq = float(np.partition(xs, -q)[-q])
-
-        cutoff_san = max(san_mu_sig, san_topq)
-        san_adopt  = "μ+σ/div" if cutoff_san == san_mu_sig else f"top-{int(1/TRIFECTA_TOP_FRAC)}分位"
-
-        santan_filtered_display = [r for r in san_rows if r[3] >= cutoff_san]
-        santan_filtered_display.sort(
-            key=lambda t: (-t[3], orderA.get(t[0], 99), orderB.get(t[1], 99), int(t[2]))
-        )
-
-# === ラインパワー枠（三連単：最大2点） ===
-santan_line_added = []
-gid = car_to_group.get(anchor_no, None) if 'anchor_no' in globals() else None
-if gid in line_def:
-    mem = [int(x) for x in line_def.get(gid, [])]
-    if anchor_no in mem:
-        others = [x for x in mem if x != anchor_no]
-
-        if mark_circle:
-            for extra in others:
-                if extra in {anchor_no, mark_circle}:
-                    continue
-                k = (int(anchor_no), int(mark_circle), int(extra))
-                if not any((a,b,c)==k for (a,b,c,_,_) in santan_filtered_display + santan_line_added):
-                    santan_line_added.append((k[0],k[1],k[2], _santan_score(*k), "ライン枠"))
-                if len(santan_line_added) >= 2:
-                    break
-
-        if len(santan_line_added) < 2 and len(others) >= 2:
-            a,b = sorted(others, key=lambda x: float(race_t.get(int(x), 50.0)), reverse=True)[:2]
-            if a != b and anchor_no not in {a,b}:
-                k = (int(anchor_no), int(a), int(b))
-                if not any((x,y,z)==k for (x,y,z,_,_) in santan_filtered_display + santan_line_added):
-                    santan_line_added.append((k[0],k[1],k[2], _santan_score(*k), "ライン枠"))
-
-santan_filtered_display.extend(santan_line_added[:2])
-# 重複・自己重複を最終除去
-santan_filtered_display = _uniq_trifecta(santan_filtered_display)
-n_triS = len(santan_filtered_display)
-
-
-# ========== 二車複（新方式） ==========
-pairs_all_L12 = {}
-for a in L1:
-    for b in L2:
-        if a == b: continue
-        key = tuple(sorted((int(a), int(b))))
-        if key in pairs_all_L12: continue
-        s2 = float(race_t.get(int(a), 50.0)) + float(race_t.get(int(b), 50.0))
-        pairs_all_L12[key] = round(s2, 1)
-
-pairs_qn2_filtered, cutoff_qn2 = [], 0.0
-qn2_mu = qn2_sig = qn2_mu_sig = qn2_topq = 0.0
-qn2_adopt = "μ+σ/div"
-
-QN_SIG_DIV  = float(globals().get("QN_SIG_DIV", 3.0))
-QN_TOP_FRAC = float(globals().get("QN_TOP_FRAC", 0.20))
-
-# 表示用に“実際に使った値”を保持
-qn_sig_div_used  = QN_SIG_DIV
-qn_top_frac_used = QN_TOP_FRAC if QN_TOP_FRAC > 0 else 0.20
-qn_top_den       = int(round(1.0 / qn_top_frac_used))    # 0.2 → 5
-
-
-if pairs_all_L12:
-    sc = list(pairs_all_L12.values())
-    qn2_mu  = float(mean(sc))
-    qn2_sig = float(pstdev(sc)) if len(sc) > 1 else 0.0
-    qn2_mu_sig = qn2_mu + (qn2_sig / QN_SIG_DIV if qn2_sig > 0 else 0.0)
-
-    q = max(1, int(len(sc) * QN_TOP_FRAC))
-    qn2_topq = float(np.partition(sc, -q)[-q])
-
-    cutoff_qn2 = max(qn2_mu_sig, qn2_topq)
-    qn2_adopt  = "μ+σ/div" if cutoff_qn2 == qn2_mu_sig else f"top-{int(1/QN_TOP_FRAC)}分位"
-
-    pairs_qn2_filtered = [(a, b, s, "通常")
-                          for (a, b), s in pairs_all_L12.items()
-                          if s >= cutoff_qn2]
-
-# ライン枠追加
-if gid in line_def and anchor_no is not None:
-    mem = [int(x) for x in line_def.get(gid, [])]
-    if anchor_no in mem:
-        others = [x for x in mem if x != anchor_no]
-        qn_line_added = []
-        if mark_circle:
-            for extra in others:
-                k = tuple(sorted((int(anchor_no), int(extra))))
-                if not any((k[0]==a and k[1]==b) for (a,b,_,_) in pairs_qn2_filtered + qn_line_added):
-                    s_line = float(race_t.get(k[0],50.0)) + float(race_t.get(k[1],50.0))
-                    qn_line_added.append((k[0], k[1], round(s_line,1), "ライン枠"))
-                if len(qn_line_added) >= 2: break
-        if len(qn_line_added) < 2 and len(others) >= 1:
-            best = max(others, key=lambda x: float(race_t.get(int(x),50.0)))
-            k = tuple(sorted((int(anchor_no), int(best))))
-            if not any((k[0]==a and k[1]==b) for (a,b,_,_) in pairs_qn2_filtered + qn_line_added):
-                s_line = float(race_t.get(k[0],50.0)) + float(race_t.get(k[1],50.0))
-                qn_line_added.append((k[0], k[1], round(s_line,1), "ライン枠"))
-        pairs_qn2_filtered.extend(qn_line_added[:2])
-
-pairs_qn2_filtered = _uniq_qn(pairs_qn2_filtered)
-n_qn = len(pairs_qn2_filtered)
-
-
-# ========== 二車単（新方式） ==========
-rows_nitan_filtered, cutoff_nit = [], 0.0
-nit_mu = nit_sig = nit_mu_sig = nit_topq = 0.0
-nit_adopt = "μ+σ/div"
-
-NIT_SIG_DIV  = float(globals().get("NIT_SIG_DIV", 3.0))
-NIT_TOP_FRAC = float(globals().get("NIT_TOP_FRAC", 1/8))
-
-# 表示用に“実際に使った値”を保持
-nit_sig_div_used  = NIT_SIG_DIV
-nit_top_frac_used = NIT_TOP_FRAC if NIT_TOP_FRAC > 0 else 1/8
-nit_top_den       = int(round(1.0 / nit_top_frac_used))  # 1/8 → 8
-
-
-rows_nitan = []
-if L1 and L2:
-    for a in L1:
-        for b in L2:
-            if a == b: continue
-            k = f"{int(a)}-{int(b)}"
-            s1 = float(race_t.get(int(a),50.0)) + float(race_t.get(int(b),50.0))
-            rows_nitan.append((k, s1))
-
-if rows_nitan:
-    xs = [s for (_,s) in rows_nitan]
-    nit_mu  = float(mean(xs))
-    nit_sig = float(pstdev(xs)) if len(xs) > 1 else 0.0
-    nit_mu_sig = nit_mu + (nit_sig / NIT_SIG_DIV if nit_sig > 0 else 0.0)
-
-    q = max(1, int(len(xs) * NIT_TOP_FRAC))
-    nit_topq = float(np.partition(xs, -q)[-q])
-
-    cutoff_nit = max(nit_mu_sig, nit_topq)
-    nit_adopt  = "μ+σ/div" if cutoff_nit == nit_mu_sig else f"top-{int(1/NIT_TOP_FRAC)}分位"
-
-    for k,s1 in rows_nitan:
-        if float(s1) >= cutoff_nit:
-            rows_nitan_filtered.append((k, round(float(s1),1), "通常"))
-
-# ライン枠追加
-if gid in line_def and anchor_no is not None:
-    mem = [int(x) for x in line_def.get(gid, [])]
-    if anchor_no in mem:
-        others = [x for x in mem if x != anchor_no]
-        for extra in others[:2]:
-            k = f"{anchor_no}-{extra}"
-            s_approx = next((v for (kk,v,tag) in rows_nitan_filtered if kk==k), None)
-            if s_approx is None:
-                s_approx = float(race_t.get(anchor_no,50.0)) + float(race_t.get(extra,50.0))
-            rows_nitan_filtered.append((k, round(float(s_approx),1), "ライン枠"))
-
-rows_nitan_filtered = _uniq_nitan(rows_nitan_filtered)
-n_nit = len(rows_nitan_filtered)
 
 # =========================
 #  安全ガード & ヘルパ（全部ここから貼る）
@@ -2625,488 +1983,151 @@ def _ensure_top3(base_rows, fallback_rows, need=3):
 
     return picked[:need]
 
-
 # =========================
-#  画面出力（順番固定）
-# =========================
-st.markdown(f"**フォーメーション**：{formation_label}")
-
-# 三連複
-st.markdown("#### " + _hdr("三連複", cutoff_trio, _basis_trio(TRIO_L3_MIN), n_trio))
-if has_trio:
-    st.dataframe(_df_trio(trios_filtered_display, star_id), use_container_width=True)
-else:
-    st.markdown("対象外")
-
-# 三連単
-_basis_tri = _basis_combo(san_sig_div_used, san_mu_sig, san_top_den, san_topq, san_adopt)
-st.markdown("#### " + _hdr("三連単", cutoff_san, _basis_tri, n_triS))
-if has_tri:
-    st.dataframe(_df_trio(santan_filtered_display, star_id), use_container_width=True)
-else:
-    st.markdown("対象外")
-
-# 二車複
-_basis_qn = _basis_combo(qn_sig_div_used, qn2_mu_sig, qn_top_den, qn2_topq, qn2_adopt)
-st.markdown("#### " + _hdr("二車複", cutoff_qn2, _basis_qn, n_qn))
-if has_qn:
-    st.dataframe(_df_pairs(pairs_qn2_filtered), use_container_width=True)
-else:
-    st.markdown("対象外")
-
-# 二車単
-_basis_nit = _basis_combo(nit_sig_div_used, nit_mu_sig, nit_top_den, nit_topq, nit_adopt)
-st.markdown("#### " + _hdr("二車単", cutoff_nit, _basis_nit, n_nit))
-if has_nit:
-    st.dataframe(_df_nitan(rows_nitan_filtered), use_container_width=True)
-else:
-    st.markdown("対象外")
-
-# =========================
-#  印の実測率 → グレード別の確率モデル → 買い目抽出（的中率しきい値）
-#  既存の買い目と重複したもの = 「オススメ買目」
+#  ここから下：フォーメーション最小出力だけ
 # =========================
 
-# --- サイドバー：グレード選択＆しきい値（初期10%） ---
-st.sidebar.markdown("### 印実測率のグレード/しきい値")
-grade_for_marks = st.sidebar.selectbox(
-    "グレード（印の実測率テーブル）",
-    ["TOTAL","F2","F1","G","GIRLS"],
-    index=0,
-    key="grade_mark_stats"
-)
-hit_threshold = float(st.sidebar.slider("的中率しきい値", 0.01, 0.50, 0.10, 0.01, key="hit_threshold"))
+from typing import Dict, List, Tuple
 
-# --- テーブル選択（あなたが貼ったテーブル群を前提） ---
-RANK_TABLE = RANK_STATS_BY_GRADE.get(grade_for_marks, RANK_STATS_TOTAL)
+# --- 回数→番号フォメ生成（3連複 着順フォメ用） ---
+def _topk_by_count(d: Dict[str, Dict[str, int]], key: str, k: int, order: List[str]) -> List[str]:
+    """d={"◎":{"c1":..,"c2":..,"c3":..},...} を回数降順→印順で上位k抽出"""
+    idx = {m:i for i,m in enumerate(order)}
+    items = sorted(((m, d[m].get(key, 0)) for m in d.keys()), key=lambda x: (-x[1], idx.get(x[0], 999)))
+    return [m for m,_ in items[:k]]
 
-# --- 車番→印 を作る（未指定は「無」）
-marks_of_car = {int(i): "無" for i in USED_IDS}
-if isinstance(result_marks, dict):
-    for mk, no in result_marks.items():
-        if no is None: 
-            continue
-        if mk in {"◎","〇","▲","△","×","α","β"}:
-            marks_of_car[int(no)] = mk
+def _mk_mark_to_no_map(mark_map_raw) -> Dict[str, int]:
+    """
+    result_marks が
+      1) {"◎":2,"〇":7,...}（印→番号）or
+      2) {2:"◎",7:"〇",...}（番号→印）
+    のどちらでも、印→番号 に正規化して返す。
+    """
+    symset = {"◎","〇","▲","△","×","α","無"}
+    if isinstance(mark_map_raw, dict) and any(k in symset for k in mark_map_raw.keys()):
+        return {str(k): int(v) for k,v in mark_map_raw.items() if str(k) in symset}
+    if isinstance(mark_map_raw, dict):
+        out = {}
+        for no, sym in mark_map_raw.items():
+            if str(sym) in symset:
+                out[str(sym)] = int(no)
+        return out
+    return {}
 
-# --- 印→実測率を引くヘルパ（無ければ「無」を使う）
-def _get_stats(mark: str) -> dict:
-    d = RANK_TABLE.get(mark)
-    if not d:
-        d = RANK_TABLE.get("無", {"p1":0.0,"pTop2":0.0,"pTop3":0.0})
-    return {"p1": float(d["p1"]), "pTop2": float(d["pTop2"]), "pTop3": float(d["pTop3"])}
+def build_trio_counts_formation(
+    rank_counts: Dict[str, Dict[str, int]],
+    result_marks: Dict,
+    ktuple: Tuple[int,int,int]=(2,3,2),
+    tie_order: List[str]=["◎","〇","▲","△","×","α","無"],
+) -> str:
+    """回数テーブル＋印→番号対応から '12-347-34' を生成"""
+    mark_to_no = _mk_mark_to_no_map(result_marks)
+    a = _topk_by_count(rank_counts, "c1", ktuple[0], tie_order)   # 1着回数 上位2
+    b = _topk_by_count(rank_counts, "c2", ktuple[1], tie_order)   # 2着回数 上位3
+    c = _topk_by_count(rank_counts, "c3", ktuple[2], tie_order)   # 3着回数 上位2
+    def _join_nums(ms): return "".join(str(mark_to_no[m]) for m in ms if m in mark_to_no)
+    return f"{_join_nums(a)}-{_join_nums(b)}-{_join_nums(c)}"
 
-# --- 確率モデル（独立近似／後で全候補で正規化） ---
-from itertools import permutations, combinations
+def _detect_grade_key() -> str:
+    """級別キー（TOTAL/F2/F1/G/GIRLS）を推定。無ければ TOTAL。"""
+    for k in ("grade_key", "GRADE_KEY", "race_grade", "RACE_GRADE"):
+        if k in globals() and isinstance(globals()[k], str) and globals()[k]:
+            return str(globals()[k]).upper()
+    return "TOTAL"
 
-# 全候補の母集団（正規化用）
-ALL_PAIRS_UNORDERED   = [tuple(sorted(t)) for t in combinations(USED_IDS, 2)]
-ALL_PAIRS_ORDERED     = [t for t in permutations(USED_IDS, 2)]
-ALL_TRIPLES_UNORDERED = [tuple(sorted(t)) for t in combinations(USED_IDS, 3)]
-ALL_TRIPLES_ORDERED   = [t for t in permutations(USED_IDS, 3)]
+# --- 表示（合意仕様：フォメ2本のみ） ---
+try:
+    # 三連複3着率フォーメーション（6点）…固定表記
+    st.markdown("**3連複3着率フォーメーション（6点）**")
+    st.markdown("1-2345-2345")
 
-# 重複除去
-ALL_PAIRS_UNORDERED   = sorted(set(ALL_PAIRS_UNORDERED))
-ALL_TRIPLES_UNORDERED = sorted(set(ALL_TRIPLES_UNORDERED))
+    # 三連複着順フォーメーション（4点）…回数から番号で生成
+    gk = _detect_grade_key()
+    counts_tbl = RANK_COUNTS_BY_GRADE.get(gk, RANK_COUNTS_TOTAL)
+    trio_counts_form = build_trio_counts_formation(counts_tbl, result_marks)
+    st.markdown("**3連複着順フォーメーション（4点）**")
+    st.markdown(trio_counts_form if trio_counts_form.replace("-", "") else "—")
 
-# ウェイト定義
-def w_qn_pair(a,b):
-    sa, sb = _get_stats(marks_of_car[a]), _get_stats(marks_of_car[b])
-    return max(0.0, sa["pTop2"]*sb["pTop2"])
-
-def w_nit_pair(a,b):
-    sa, sb = _get_stats(marks_of_car[a]), _get_stats(marks_of_car[b])
-    return max(0.0, sa["p1"]*sb["pTop2"])
-
-def w_trio(a,b,c):
-    sa, sb, sc = _get_stats(marks_of_car[a]), _get_stats(marks_of_car[b]), _get_stats(marks_of_car[c])
-    return max(0.0, sa["pTop3"]*sb["pTop3"]*sc["pTop3"])
-
-def w_trifecta(a,b,c):
-    sa, sb, sc = _get_stats(marks_of_car[a]), _get_stats(marks_of_car[b]), _get_stats(marks_of_car[c])
-    return max(0.0, sa["p1"]*sb["pTop2"]*sc["pTop3"])
-
-# 正規化（全体合計=1）
-def _normalize(weights: dict) -> dict:
-    tot = float(sum(weights.values()))
-    if tot <= 0:
-        return {k: 0.0 for k in weights}
-    return {k: (v/tot) for k,v in weights.items()}
-
-# 全候補に対する確率分布（印の実測率ベース）
-QN_UNI   = _normalize({k: w_qn_pair(*k)   for k in ALL_PAIRS_UNORDERED})
-NIT_UNI  = _normalize({k: w_nit_pair(*k)  for k in ALL_PAIRS_ORDERED})
-TRIO_UNI = _normalize({k: w_trio(*k)      for k in ALL_TRIPLES_UNORDERED})
-TRI_UNI  = _normalize({k: w_trifecta(*k)  for k in ALL_TRIPLES_ORDERED})
-
-# --- 画面に現在の印の内訳（参考） ---
-with st.expander("印の内訳（今回のグレード実測率を使う）", expanded=False):
-    dfm = pd.DataFrame({
-        "車": USED_IDS,
-        "印": [marks_of_car[i] for i in USED_IDS],
-        "p1": [ _get_stats(marks_of_car[i])["p1"] for i in USED_IDS ],
-        "pTop2": [ _get_stats(marks_of_car[i])["pTop2"] for i in USED_IDS ],
-        "pTop3": [ _get_stats(marks_of_car[i])["pTop3"] for i in USED_IDS ],
-    })
-    st.dataframe(dfm, use_container_width=True)
-
-# --- 既存の候補群から「確率しきい値以上」だけ抽出 ---
-def _safe_list(x): 
-    return x if isinstance(x, list) else []
-
-# 三連複（既存の trios_filtered_display → k=(a,b,c) を昇順タプルで照合）
-trios_source = [(int(a),int(b),int(c),float(s),str(tag)) for (a,b,c,s,tag) in _safe_list(trios_filtered_display)]
-trio_prob_hits = []
-for a,b,c,s,tag in trios_source:
-    key = tuple(sorted((a,b,c)))
-    p = float(TRIO_UNI.get(key, 0.0))
-    if p >= hit_threshold:
-        trio_prob_hits.append((a,b,c,p,tag))
-
-# 三連単（既存の santan_filtered_display → k=(a,b,c) 順序そのまま照合）
-tri_source = [(int(a),int(b),int(c),float(s),str(tag)) for (a,b,c,s,tag) in _safe_list(santan_filtered_display)]
-tri_prob_hits = []
-for a,b,c,s,tag in tri_source:
-    key = (a,b,c)
-    p = float(TRI_UNI.get(key, 0.0))
-    if p >= hit_threshold:
-        tri_prob_hits.append((a,b,c,p,tag))
-
-# 二車複（既存の pairs_qn2_filtered → k=(a,b) 昇順）
-qn_source = [(int(a),int(b),float(s),str(tag)) for (a,b,s,tag) in _safe_list(pairs_qn2_filtered)]
-qn_prob_hits = []
-for a,b,s,tag in qn_source:
-    key = tuple(sorted((a,b)))
-    p = float(QN_UNI.get(key, 0.0))
-    if p >= hit_threshold:
-        qn_prob_hits.append((a,b,p,tag))
-
-# 二車単（既存の rows_nitan_filtered → k は "a-b" 文字列）
-nit_source = []
-for k,v,tag in _safe_list(rows_nitan_filtered):
-    try:
-        a,b = map(int, str(k).split("-"))
-        nit_source.append((a,b,float(v),str(tag)))
-    except Exception:
-        pass
-nit_prob_hits = []
-for a,b,s,tag in nit_source:
-    p = float(NIT_UNI.get((a,b), 0.0))
-    if p >= hit_threshold:
-        nit_prob_hits.append((a,b,p,tag))
-
-# --- 「オススメ買目」= 既存ロジックの候補 ∩ 確率しきい値クリア（=ここで既に交わってる） ---
-def _df_prob_trio(rows):
-    return pd.DataFrame([{"買い目": f"{a}-{b}-{c}", "確率(推定)": f"{p*100:.1f}%", "由来": tag} 
-                         for (a,b,c,p,tag) in sorted(rows, key=lambda t:(-t[3], t[0], t[1], t[2]))])
-
-def _df_prob_tri(rows):
-    return pd.DataFrame([{"買い目": f"{a}-{b}-{c}", "確率(推定)": f"{p*100:.1f}%", "由来": tag} 
-                         for (a,b,c,p,tag) in sorted(rows, key=lambda t:(-t[3], t[0], t[1], t[2]))])
-
-def _df_prob_qn(rows):
-    return pd.DataFrame([{"買い目": f"{a}-{b}", "確率(推定)": f"{p*100:.1f}%", "由来": tag}
-                         for (a,b,p,tag) in sorted(rows, key=lambda t:(-t[2], t[0], t[1]))])
-
-def _df_prob_nit(rows):
-    return pd.DataFrame([{"買い目": f"{a}-{b}", "確率(推定)": f"{p*100:.1f}%", "由来": tag}
-                         for (a,b,p,tag) in sorted(rows, key=lambda t:(-t[2], t[0], t[1]))])
-
-st.markdown("## 🎯 印の実測率ベース｜確率しきい値クリア")
-c1, c2 = st.columns(2)
-with c1:
-    st.markdown("#### 三連複（重複=おすすめ）")
-    st.dataframe(_df_prob_trio(trio_prob_hits), use_container_width=True)
-with c2:
-    st.markdown("#### 三連単（重複=おすすめ）")
-    st.dataframe(_df_prob_tri(tri_prob_hits), use_container_width=True)
-
-c3, c4 = st.columns(2)
-with c3:
-    st.markdown("#### 二車複（重複=おすすめ）")
-    st.dataframe(_df_prob_qn(qn_prob_hits), use_container_width=True)
-with c4:
-    st.markdown("#### 二車単（重複=おすすめ）")
-    st.dataframe(_df_prob_nit(nit_prob_hits), use_container_width=True)
-
-# === おすすめ買目（表示を分けたい場合の見出しだけ）
-st.markdown("## ✅ オススメ買目（偏差値ロジック or ライン枠 と重複）")
-st.caption("上の4表は既存候補と“しきい値クリア”の交差済み＝そのまま『おすすめ』です。")
-
+except Exception as __e:
+    # 画面を落とさないフェイルセーフ
+    st.markdown("**3連複3着率フォーメーション（6点）**")
+    st.markdown("1-2345-2345")
+    st.markdown("**3連複着順フォーメーション（4点）**")
+    st.markdown(f"—  （生成失敗: {__e}）")
 
 # =========================
-#  note 出力（最後にまとめて）
+#  画面出力（最小：フォーメーション2本だけ）
 # =========================
-def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
-    lines = []
-    for n in ids:
-        v = ts_map.get(n, "—")
-        lines.append(f"{n}: {float(v):.1f}" if isinstance(v,(int,float)) else f"{n}: —")
-    return "\n".join(lines)
+from typing import Dict, List, Tuple
 
-note_sections = []
-note_sections.append(f"{track}{race_no}R")
-note_sections.append(f"展開評価：{confidence}\n")
+# --- result_marks を「印→番号」に正規化 ---
+def _mk_mark_to_no_map(mark_map_raw) -> Dict[str, int]:
+    """
+    result_marks が
+      1) {"◎":2,"〇":7,...}（印→番号）or
+      2) {2:"◎",7:"〇",...}（番号→印）
+    のどちらでも、印→番号 に正規化して返す。
+    """
+    symset = {"◎","〇","▲","△","×","α","無"}
+    if isinstance(mark_map_raw, dict) and any(k in symset for k in mark_map_raw.keys()):
+        return {str(k): int(v) for k,v in mark_map_raw.items() if str(k) in symset and v is not None}
+    if isinstance(mark_map_raw, dict):
+        out = {}
+        for no, sym in mark_map_raw.items():
+            try:
+                if str(sym) in symset:
+                    out[str(sym)] = int(no)
+            except Exception:
+                pass
+        return out
+    return {}
 
-# 点数
-note_sections.append("点数")
-note_sections.append(f"三連複　{n_trio}点　三連単　{n_triS}点")
-note_sections.append(f"二車複　{n_qn}点　二車単　{n_nit}点\n")
+# --- 回数テーブルから番号フォメを作る（着順フォメ 2-3-2） ---
+def _topk_by_count(d: Dict[str, Dict[str, int]], key: str, k: int, order: List[str]) -> List[str]:
+    idx = {m:i for i,m in enumerate(order)}
+    items = sorted(((m, d.get(m, {}).get(key, 0)) for m in order), key=lambda x: (-x[1], idx[x[0]]))
+    return [m for m,_ in items[:k]]
 
-note_sections.append(f"{race_time}　{race_class}")
-note_sections.append(f"ライン　{'　'.join([x for x in line_inputs if str(x).strip()])}")
-note_sections.append(f"スコア順（SBなし）　{_format_rank_from_array(USED_IDS, xs_base_raw)}")
-
-# 印＋無印
-no_mark_ids = [int(i) for i in USED_IDS if int(i) not in set(result_marks.values())] if isinstance(result_marks, dict) else []
-marks_str = ' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if isinstance(result_marks, dict) and m in result_marks)
-no_str = ' '.join(map(str, no_mark_ids)) if no_mark_ids else '—'
-note_sections.append(f"{marks_str} 無{no_str}")
-
-# 偏差値 → フォーメーション
-note_sections.append("\n偏差値（風・ライン込み）")
-note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
-note_sections.append(f"\nフォーメーション：{formation_label}")
-
-
-
-
-# --- 三連複 note ---
-if has_trio:
-    triolist = "\n".join([
-        f"{a}-{b}-{c}{('☆' if (star_id is not None and star_id in (a,b,c)) else '')}"
-        f"（S={float(s):.1f}{'｜'+str(tag) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,c,s,tag) in sorted(trios_filtered_display, key=lambda x:(-float(x[3]), x[0], x[1], x[2]))
-    ])
-    note_sections.append(
-        f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点／基準 L3基準 {TRIO_L3_MIN:.1f}）\n{triolist}"
-    )
-else:
-    note_sections.append("\n三連複（新方式）\n対象外")
-
-# --- 三連単 note ---
-if has_tri:
-    trifectalist = "\n".join([
-        f"{a}-{b}-{c}{('☆' if (star_id is not None and star_id in (a,b,c)) else '')}"
-        f"（S={float(s):.1f}{'｜'+str(tag) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-float(x[3]), x[0], x[1], x[2]))
-    ])
-    note_sections.append(
-        f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点／基準 L3基準 {TRIO_L3_MIN:.1f}）\n{trifectalist}"
-    )
-else:
-    note_sections.append("\n三連単（新方式）\n対象外")
-
-# --- 二車複 note ---
-if has_qn:
-    qnlist = "\n".join([
-        f"{a}-{b}（S2={float(s):.1f}{'｜'+str(tag) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,s,tag) in sorted(pairs_qn2_filtered, key=lambda x:(-float(x[2]), x[0], x[1]))
-    ])
-    note_sections.append(
-        f"\n二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／基準 L2基準 {qn2_mu_sig:.1f}）\n{qnlist}"
-    )
-else:
-    note_sections.append("\n二車複（新方式）\n対象外")
-
-# --- 二車単 note ---
-if has_nit:
-    nitanlist = "\n".join([
-        f"{k}（S1={float(v):.1f}{'｜'+str(tag) if str(tag)=='ライン枠' else ''}）"
-        for (k,v,tag) in sorted(rows_nitan_filtered, key=lambda x:(-float(x[1]), x[0]))
-    ])
-    note_sections.append(
-        f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／基準 L2基準 {nit_mu_sig:.1f}）\n{nitanlist}"
-    )
-else:
-    note_sections.append("\n二車単（新方式）\n対象外")
-
-# =========================
-#  note 追記：印実測率ベースの「おすすめ買目」
-#  依存: grade_for_marks, hit_threshold, trio_prob_hits, tri_prob_hits, qn_prob_hits, nit_prob_hits, star_id
-# =========================
-
-def _fmt_prob(p: float) -> str:
-    try:
-        return f"{float(p)*100:.1f}%"
-    except Exception:
+def build_trio_counts_formation(
+    rank_counts: Dict[str, Dict[str, int]],
+    result_marks: Dict,
+    ktuple: Tuple[int,int,int]=(2,3,2),
+    tie_order: List[str]=["◎","〇","▲","△","×","α","無"],
+) -> str:
+    mark_to_no = _mk_mark_to_no_map(result_marks)
+    if not mark_to_no:
         return "—"
+    a = _topk_by_count(rank_counts, "c1", ktuple[0], tie_order)   # 1着回数 上位2
+    b = _topk_by_count(rank_counts, "c2", ktuple[1], tie_order)   # 2着回数 上位3
+    c = _topk_by_count(rank_counts, "c3", ktuple[2], tie_order)   # 3着回数 上位2
+    def _join(ms): return "".join(str(mark_to_no[m]) for m in ms if m in mark_to_no)
+    a_s, b_s, c_s = _join(a), _join(b), _join(c)
+    return f"{a_s}-{b_s}-{c_s}" if (a_s and b_s and c_s) else "—"
 
-# セーフティ（未定義でも落ちないように）
-grade_for_marks = globals().get("grade_for_marks", "TOTAL")
-hit_threshold   = float(globals().get("hit_threshold", 0.10))
-trio_prob_hits  = globals().get("trio_prob_hits", [])   # [(a,b,c,p,tag), ...]
-tri_prob_hits   = globals().get("tri_prob_hits", [])    # [(a,b,c,p,tag), ...]
-qn_prob_hits    = globals().get("qn_prob_hits", [])     # [(a,b,p,tag), ...]
-nit_prob_hits   = globals().get("nit_prob_hits", [])    # [(a,b,p,tag), ...]
-star_id         = globals().get("star_id", None)
+# --- 級別キー（TOTAL/F2/F1/G/GIRLS）を推定。無ければ TOTAL ---
+def _detect_grade_key() -> str:
+    for k in ("grade_key", "GRADE_KEY", "race_grade", "RACE_GRADE"):
+        if k in globals() and isinstance(globals()[k], str) and globals()[k]:
+            return str(globals()[k]).upper()
+    return "TOTAL"
 
-# 並び順：確率↓ → 号車昇順
-trio_prob_hits = sorted(trio_prob_hits, key=lambda t: (-float(t[3]), int(t[0]), int(t[1]), int(t[2])))
-tri_prob_hits  = sorted(tri_prob_hits,  key=lambda t: (-float(t[3]), int(t[0]), int(t[1]), int(t[2])))
-qn_prob_hits   = sorted(qn_prob_hits,   key=lambda t: (-float(t[2]), int(t[0]), int(t[1])))
-nit_prob_hits  = sorted(nit_prob_hits,  key=lambda t: (-float(t[2]), int(t[0]), int(t[1])))
+# --- 出力：合意仕様どおり “フォメ2本のみ” ---
+try:
+    # 3連複3着率フォーメーション（6点）…固定表記
+    st.markdown("**3連複3着率フォーメーション（6点）**")
+    st.markdown("1-2345-2345")
 
-# 各形式の note ラインを作る
-def _note_trio(rows):
-    if not rows:
-        return "該当なし"
-    return "\n".join(
-        f"{a}-{b}-{c}{('☆' if (star_id is not None and star_id in (a,b,c)) else '')}"
-        f"（{_fmt_prob(p)}{('｜'+str(tag)) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,c,p,tag) in rows
-    )
+    # 3連複着順フォーメーション（4点）…回数テーブルから番号で生成
+    gk = _detect_grade_key()
+    counts_tbl = RANK_COUNTS_BY_GRADE.get(gk, RANK_COUNTS_TOTAL)  # ← 既に追加済みの回数テーブル群を参照
+    trio_counts_form = build_trio_counts_formation(counts_tbl, globals().get("result_marks", {}))
 
-def _note_tri(rows):
-    if not rows:
-        return "該当なし"
-    return "\n".join(
-        f"{a}-{b}-{c}{('☆' if (star_id is not None and star_id in (a,b,c)) else '')}"
-        f"（{_fmt_prob(p)}{('｜'+str(tag)) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,c,p,tag) in rows
-    )
+    st.markdown("**3連複着順フォーメーション（4点）**")
+    st.markdown(trio_counts_form if trio_counts_form != "—" else "—")
 
-def _note_qn(rows):
-    if not rows:
-        return "該当なし"
-    return "\n".join(
-        f"{a}-{b}（{_fmt_prob(p)}{('｜'+str(tag)) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,p,tag) in rows
-    )
-
-def _note_nit(rows):
-    if not rows:
-        return "該当なし"
-    return "\n".join(
-        f"{a}-{b}（{_fmt_prob(p)}{('｜'+str(tag)) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,p,tag) in rows
-    )
-
-# 見出し（共通ヘッダ）
-hdr = f"（グレード={grade_for_marks}／閾={hit_threshold*100:.0f}%）"
-
-# 互換エイリアス（この2行を note 出力の直前に）
-top3_in  = tri_inc
-top3_out = tri_exc
-
-# --- note: 戦術（◎入り3点／◎抜き3点） ---  ← ここを丸ごと置き換え
-if (top3_in or top3_out):
-    inc_str = ", ".join(f"{int(a)}-{int(b)}-{int(c)}" for (a,b,c,_,_) in top3_in) if top3_in else "—"
-    exc_str = ", ".join(f"{int(a)}-{int(b)}-{int(c)}" for (a,b,c,_,_) in top3_out) if top3_out else "—"
-    note_sections.append(
-        "戦術（3連複）\n"
-        f"◎入り: {inc_str}\n"
-        f"◎抜き: {exc_str}"
-    )
-
-# ================== 【3着率ランキングフォーメーション】（堅牢・偏差値不使用） ==================
-
-def _active_rank_stats():
-    if "RANK_STATS_CURRENT" in globals() and isinstance(RANK_STATS_CURRENT, dict): return RANK_STATS_CURRENT
-    if "RANK_STATS_F2" in globals() and isinstance(RANK_STATS_F2, dict): return RANK_STATS_F2
-    return globals().get("RANK_STATS", {}) if isinstance(globals().get("RANK_STATS", {}), dict) else {}
-
-# 「○」→「〇」など記号を正規化
-def _norm_sym(s):
-    s = str(s).strip()
-    return "〇" if s == "○" else s
-
-# result_marks を {車番:int -> 印:str} に正規化（{印->車番}でもOKにする）
-def _id2sym():
-    rm = globals().get("result_marks", {})
-    if not isinstance(rm, dict): return {}
-    # 形判定：キーが数字orintなら {id->sym} とみなす
-    numeric_key = any(isinstance(k, int) or (isinstance(k, str) and k.isdigit()) for k in rm.keys())
-    d = {}
-    if numeric_key:
-        for k, v in rm.items():
-            try:
-                d[int(k)] = _norm_sym(v)
-            except:
-                pass
-    else:
-        # {印->車番} を反転
-        for sym, vid in rm.items():
-            try:
-                d[int(vid)] = _norm_sym(sym)
-            except:
-                pass
-    return d
-
-# 印を3着率(pTop3)で並べる（存在印だけ）
-def _symbols_by_pTop3_for_present(stats, present_syms):
-    cand = []
-    for sym in present_syms:
-        try:
-            p = float(stats.get(sym, {}).get("pTop3", 0.0))
-        except:
-            p = 0.0
-        cand.append((sym, p))
-    cand.sort(key=lambda x: x[1], reverse=True)
-    return [sym for sym, _ in cand]
-
-# 指定印の車番を1つ選ぶ（偏差値使わず、単純に番号小さい順）
-def _pick_one_id(id2sym, symbol):
-    ids = sorted(i for i, s in id2sym.items() if _norm_sym(s) == _norm_sym(symbol))
-    return ids[0] if ids else None
-
-# ---- 実処理 ----
-stats   = _active_rank_stats()
-id2sym  = _id2sym()
-present = set(_norm_sym(s) for s in id2sym.values() if s)
-
-# ランキング対象の印（存在する印のみ）
-rank_order = _symbols_by_pTop3_for_present(stats, present)
-
-axis_id, partners = None, []
-
-if rank_order:
-    # 1位印 → 軸
-    axis_sym = rank_order[0]
-    axis_id  = _pick_one_id(id2sym, axis_sym)
-
-    # 2〜5位印 → 相手（各印から1人・番号小さい方）
-    for sym in rank_order[1:5]:
-        pid = _pick_one_id(id2sym, sym)
-        if pid is not None:
-            partners.append(pid)
-
-# 出力（軸が取れたら、相手はあるだけ出す／不足はそのまま）
-if axis_id:
-    partners_str  = "".join(str(i) for i in sorted(set(partners)))
-    formation_str = f"{axis_id}-{partners_str}-{partners_str}" if partners_str else f"{axis_id}-—-—"
-else:
-    formation_str = "—"
-
-st.markdown("### 【3着率ランキングフォーメーション】")
-st.write(formation_str)
-
-if 'note_sections' in globals():
-    note_sections.append("【3着率ランキングフォーメーション】 " + formation_str)
-# =================================================================================================
-
-# ======================================================================
-
-# 既存の note_sections に追記
-note_sections.append("\n――――――――――――――――――――")
-note_sections.append(f"◎おすすめ買目（印の実測率ベース）{hdr}")
-
-note_sections.append(f"\n三連複〔{len(trio_prob_hits)}点〕")
-note_sections.append(_note_trio(trio_prob_hits))
-
-note_sections.append(f"\n三連単〔{len(tri_prob_hits)}点〕")
-note_sections.append(_note_tri(tri_prob_hits))
-
-note_sections.append(f"\n二車複〔{len(qn_prob_hits)}点〕")
-note_sections.append(_note_qn(qn_prob_hits))
-
-note_sections.append(f"\n二車単〔{len(nit_prob_hits)}点〕")
-note_sections.append(_note_nit(nit_prob_hits))
-
-
-note_text = "\n".join(note_sections)
-st.markdown("### 📋 note用（コピーエリア）")
-st.text_area("ここを選択してコピー", note_text, height=560)
-# =========================
-#  一括置換ブロック ここまで
-# =========================
+except Exception as __e:
+    # フェイルセーフ（画面を落とさない）
+    st.markdown("**3連複3着率フォーメーション（6点）**")
+    st.markdown("1-2345-2345")
+    st.markdown("**3連複着順フォーメーション（4点）**")
+    st.markdown(f"—  （生成失敗: {__e}）")
