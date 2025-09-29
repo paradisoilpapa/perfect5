@@ -1749,188 +1749,122 @@ def _detect_grade_key() -> str:
     for k in ("grade_key", "GRADE_KEY", "race_grade", "RACE_GRADE"):
         if k in globals() and isinstance(globals()[k], str) and globals()[k]:
             return str(globals()[k]).upper()
+    # race_class から推定（保険）
+    rc = str(globals().get("race_class", ""))
+    if "ガール" in rc: return "GIRLS"
+    if "Ｓ級" in rc or "S級" in rc: return "G"
+    if "チャレンジ" in rc: return "F2"
+    if "Ａ級" in rc or "A級" in rc: return "F1"
     return "TOTAL"
+
+# ===== pTop3ベース：3連複3着率フォーメーション生成 =====
+def _norm_sym(s: str) -> str:
+    s = str(s).strip()
+    return "〇" if s == "○" else s
+
+def _id2sym_from_result_marks(rm) -> dict[int, str]:
+    """result_marks が『印→番号』でも『番号→印』でもOKにして {id->印} を返す"""
+    if not isinstance(rm, dict):
+        return {}
+    symset = {"◎","〇","▲","△","×","α","無"}
+    out = {}
+    # 1) 印→番号
+    if any(k in symset for k in rm.keys()):
+        for sym, vid in rm.items():
+            try:
+                if _norm_sym(sym) in symset and vid is not None:
+                    out[int(vid)] = _norm_sym(sym)
+            except Exception:
+                pass
+        return out
+    # 2) 番号→印
+    for vid, sym in rm.items():
+        try:
+            if _norm_sym(sym) in symset:
+                out[int(vid)] = _norm_sym(sym)
+        except Exception:
+            pass
+    return out
+
+def _symbols_present(id2sym: dict[int,str]) -> list[str]:
+    return sorted({_norm_sym(s) for s in id2sym.values() if s})
+
+def _symbols_by_pTop3(stats: dict, present_syms: list[str]) -> list[str]:
+    rows = []
+    for sym in present_syms:
+        p = float(stats.get(sym, {}).get("pTop3", 0.0))
+        rows.append((sym, p))
+    rows.sort(key=lambda t: t[1], reverse=True)  # pTop3降順
+    return [sym for sym,_ in rows]
+
+def _pick_first_id_of_symbol(id2sym: dict[int,str], symbol: str, exclude: set[int] | None = None) -> int | None:
+    ex = exclude or set()
+    cands = sorted([i for i,s in id2sym.items() if _norm_sym(s) == _norm_sym(symbol) and i not in ex])
+    return cands[0] if cands else None
+
+def build_trio_3chaku_formation_from_pTop3() -> str:
+    """
+    仕様：軸＝◎（無ければ pTop3 最大の印グループの最小番号）
+          相手＝pTop3が高い印から1名ずつ拾い最大4名（不足は番号で補完）
+          出力＝ 軸-相手4-相手4 （6点）
+    """
+    # 実測率テーブル
+    gk = _detect_grade_key()
+    stats = globals().get("RANK_STATS_BY_GRADE", {}).get(gk, globals().get("RANK_STATS_TOTAL", {}))
+
+    # 今回レースの『番号→印』
+    id2sym = _id2sym_from_result_marks(globals().get("result_marks", {}))
+    if not id2sym:
+        return "—"  # 印が未決なら出さない
+
+    present = _symbols_present(id2sym)
+    order_syms = _symbols_by_pTop3(stats, present)
+
+    # 軸：◎があれば◎の最小番号、無ければ pTop3 最大印から最小番号
+    axis_id = _pick_first_id_of_symbol(id2sym, "◎")
+    if axis_id is None and order_syms:
+        axis_id = _pick_first_id_of_symbol(id2sym, order_syms[0])
+    if axis_id is None:
+        return "—"
+
+    axis_sym = id2sym.get(axis_id)
+    mates: list[int] = []
+
+    # 相手：pTop3高い順で、各印から1名ずつ。◎印の“別人”も候補に入れる
+    used = {axis_id}
+    for sym in order_syms:
+        pick = _pick_first_id_of_symbol(id2sym, sym, exclude=used)
+        if pick is not None:
+            mates.append(pick); used.add(pick)
+        if len(mates) >= 4:
+            break
+
+    # 足りなければ番号で補完
+    if len(mates) < 4:
+        pool = [i for i in sorted(globals().get("USED_IDS", list(id2sym.keys()))) if i not in used]
+        mates += pool[:(4-len(mates))]
+
+    right = "".join(map(str, mates)) if mates else "—"
+    return f"{axis_id}-{right}-{right}"
 
 # --- 表示（合意仕様：フォメ2本のみ） ---
 try:
-    # 三連複3着率フォーメーション（6点）…固定表記
+    # 3連複3着率フォーメーション（6点）…pTop3ベース生成
+    trio_3chaku_form = build_trio_3chaku_formation_from_pTop3()
     st.markdown("**3連複3着率フォーメーション（6点）**")
-    st.markdown("1-2345-2345")
+    st.markdown(trio_3chaku_form if trio_3chaku_form != "—" else "—")
+    globals()["_trio_3chaku"] = trio_3chaku_form  # note貼り付け用にも使えるよう保持
 
-    # 三連複着順フォーメーション（4点）…回数から番号で生成
+    # 3連複着順フォーメーション（4点）…回数から番号で生成
     gk = _detect_grade_key()
-    counts_tbl = RANK_COUNTS_BY_GRADE.get(gk, RANK_COUNTS_TOTAL)
-    trio_counts_form = build_trio_counts_formation(counts_tbl, result_marks)
+    counts_tbl = globals().get("RANK_COUNTS_BY_GRADE", {}).get(gk, globals().get("RANK_COUNTS_TOTAL", {}))
+    trio_counts_form = globals().get("build_trio_counts_formation")(counts_tbl, globals().get("result_marks", {}))
     st.markdown("**3連複着順フォーメーション（4点）**")
-    st.markdown(trio_counts_form if trio_counts_form.replace("-", "") else "—")
+    st.markdown(trio_counts_form if trio_counts_form and trio_counts_form.replace("-", "") else "—")
 
 except Exception as __e:
-    # 画面を落とさないフェイルセーフ
+    # フェイルセーフ（画面を落とさない）
     st.markdown("**3連複3着率フォーメーション（6点）**")
-    st.markdown("1-2345-2345")
-    st.markdown("**3連複着順フォーメーション（4点）**")
-    st.markdown(f"—  （生成失敗: {__e}）")
-
-# ==============================
-# レース内T偏差値（anchor_scoreを母集団に統一）
-# ==============================
-import numpy as np
-import pandas as pd
-import streamlit as st
-
-HEN_DEC_PLACES = int(globals().get("HEN_DEC_PLACES", 1))
-n_cars = int(globals().get("n_cars", 9))
-
-# 対象車番
-try:
-    USED_IDS = sorted(int(i) for i in (globals().get("active_cars") or range(1, n_cars+1)))
-except Exception:
-    USED_IDS = list(range(1, n_cars+1))
-M = len(USED_IDS)
-
-def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
-    v = values.astype(float, copy=True)
-    finite = np.isfinite(v)
-    k = int(finite.sum())
-    if k < 2:
-        return np.full_like(v, 50.0), (float("nan") if k==0 else float(v[finite][0])), 0.0, k
-    mu = float(np.mean(v[finite]))
-    sd = float(np.std(v[finite], ddof=0))
-    if (not np.isfinite(sd)) or sd < eps:
-        return np.full_like(v, 50.0), mu, 0.0, k
-    T = 50.0 + 10.0 * ((v - mu) / sd)
-    T[~finite] = 50.0
-    return T, mu, sd, k
-
-def _safe_anchor(i:int) -> float:
-    try:
-        return float(globals()["anchor_score"](int(i)))
-    except Exception:
-        return float("nan")
-
-xs_base_raw = np.array([_safe_anchor(i) for i in USED_IDS], dtype=float)
-xs_race_t, mu_sb, sd_sb, k_finite = t_score_from_finite(xs_base_raw)
-
-missing = ~np.isfinite(xs_base_raw)
-if missing.any():
-    sb_for_sort = {i: (xs_base_raw[j] if np.isfinite(xs_base_raw[j]) else -1e18)
-                   for j,i in enumerate(USED_IDS)}
-    idxs = np.where(missing)[0].tolist()
-    idxs.sort(key=lambda ii: (-float(sb_for_sort.get(USED_IDS[ii], -1e18)), USED_IDS[ii]))
-    k = len(idxs); delta = 0.12; center = (k - 1)/2.0 if k > 1 else 0.0
-    for r, ii in enumerate(idxs):
-        xs_race_t[ii] = 50.0 + delta * (center - r)
-
-race_t = {USED_IDS[idx]: float(round(xs_race_t[idx], HEN_DEC_PLACES)) for idx in range(M)}
-race_z = (xs_race_t - 50.0) / 10.0
-
-hen_df = pd.DataFrame({
-    "車": USED_IDS,
-    "SBなし(母集団=anchor_score)": [None if not np.isfinite(x) else float(x) for x in xs_base_raw],
-    "偏差値T(レース内)": [race_t[i] for i in USED_IDS],
-}).sort_values(["偏差値T(レース内)","車"], ascending=[False, True]).reset_index(drop=True)
-
-st.markdown("### 偏差値（レース内T＝平均50・SD10｜母集団=anchor_score）")
-st.caption(f"μ={mu_sb if np.isfinite(mu_sb) else 'nan'} / σ={sd_sb:.6f} / 有効k={k_finite}")
-st.dataframe(hen_df, use_container_width=True)
-
-globals()["USED_IDS"] = USED_IDS
-globals()["race_t"] = race_t
-globals()["race_z"] = race_z
-
-
-# ==============================
-# 印付け（◎〇▲△×α＋無）
-# ==============================
-sb_base = {int(USED_IDS[idx]): float(xs_base_raw[idx]) if np.isfinite(xs_base_raw[idx]) else -1e18
-           for idx in range(len(USED_IDS))}
-
-order_by_T = sorted(USED_IDS, key=lambda i: (-race_t.get(i,50.0), -sb_base.get(i,-1e18), i))
-
-result_marks: dict[str,int] = {}
-for mk, car in zip(["◎","〇","▲"], order_by_T):
-    result_marks[mk] = int(car)
-
-used = set(result_marks.values())
-rest = [i for i in order_by_T if i not in used]
-
-for mk in ["△","×","α"]:
-    if rest:
-        result_marks[mk] = int(rest.pop(0))
-
-no_mark_ids = [i for i in USED_IDS if i not in result_marks.values()]
-
-marks_str = " ".join(f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α"] if m in result_marks)
-no_str = " ".join(map(str, no_mark_ids)) if no_mark_ids else "—"
-
-st.markdown("### 印（今回レース）")
-st.write(marks_str + "　無 " + no_str)
-
-
-# ==============================
-# ライン表示
-# ==============================
-line_inputs = globals().get("line_inputs", [])
-if line_inputs:
-    st.markdown("### ライン")
-    st.write("　".join([x for x in line_inputs if str(x).strip()]))
-
-
-# ==============================
-# フォーメーション（2本だけ）
-# ==============================
-from typing import Dict, List, Tuple
-
-def _mk_mark_to_no_map(mark_map_raw) -> Dict[str, int]:
-    symset = {"◎","〇","▲","△","×","α","無"}
-    if isinstance(mark_map_raw, dict) and any(k in symset for k in mark_map_raw.keys()):
-        return {str(k): int(v) for k,v in mark_map_raw.items() if str(k) in symset and v is not None}
-    if isinstance(mark_map_raw, dict):
-        out = {}
-        for no, sym in mark_map_raw.items():
-            try:
-                if str(sym) in symset:
-                    out[str(sym)] = int(no)
-            except Exception: pass
-        return out
-    return {}
-
-def _topk_by_count(d: Dict[str, Dict[str, int]], key: str, k: int, order: List[str]) -> List[str]:
-    idx = {m:i for i,m in enumerate(order)}
-    items = sorted(((m, d.get(m, {}).get(key, 0)) for m in order), key=lambda x: (-x[1], idx[x[0]]))
-    return [m for m,_ in items[:k]]
-
-def build_trio_counts_formation(rank_counts: Dict[str, Dict[str, int]], result_marks: Dict,
-    ktuple: Tuple[int,int,int]=(2,3,2),
-    tie_order: List[str]=["◎","〇","▲","△","×","α","無"]) -> str:
-    mark_to_no = _mk_mark_to_no_map(result_marks)
-    if not mark_to_no: return "—"
-    a = _topk_by_count(rank_counts, "c1", ktuple[0], tie_order)
-    b = _topk_by_count(rank_counts, "c2", ktuple[1], tie_order)
-    c = _topk_by_count(rank_counts, "c3", ktuple[2], tie_order)
-    def _join(ms): return "".join(str(mark_to_no[m]) for m in ms if m in mark_to_no)
-    a_s,b_s,c_s = _join(a),_join(b),_join(c)
-    return f"{a_s}-{b_s}-{c_s}" if (a_s and b_s and c_s) else "—"
-
-def _detect_grade_key() -> str:
-    for k in ("grade_key","GRADE_KEY","race_grade","RACE_GRADE"):
-        if k in globals() and isinstance(globals()[k], str) and globals()[k]:
-            return str(globals()[k]).upper()
-    return "TOTAL"
-
-try:
-    st.markdown("**3連複3着率フォーメーション（6点）**")
-    st.markdown("1-2345-2345")
-
-    gk = _detect_grade_key()
-    counts_tbl = RANK_COUNTS_BY_GRADE.get(gk, RANK_COUNTS_TOTAL)
-    trio_counts_form = build_trio_counts_formation(counts_tbl, result_marks)
-
-    st.markdown("**3連複着順フォーメーション（4点）**")
-    st.markdown(trio_counts_form if trio_counts_form != "—" else "—")
-
-except Exception as __e:
-    st.markdown("**3連複3着率フォーメーション（6点）**")
-    st.markdown("1-2345-2345")
+    st.markdown("—")
     st.markdown("**3連複着順フォーメーション（4点）**")
     st.markdown(f"—  （生成失敗: {__e}）")
