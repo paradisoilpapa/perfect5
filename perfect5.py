@@ -1346,32 +1346,14 @@ velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
                      df_sorted_wo["合計_SBなし"].round(3).tolist()))
 
 # ==============================
-# ★ レース内T偏差値 → 印 → 買い目 → note出力（2車系対応＋会場個性浸透版）
+# ★ レース内T偏差値 → 印（最小構成：フォメ2本用の下地だけ）
 # ==============================
-import math
 import numpy as np
-import pandas as pd
-import streamlit as st
-from itertools import combinations
 
-# ===== しきい値（S＝偏差値Tの合算） =====
-S_TRIO_MIN_WIDE  = 158.0   # 三連複：手広く
-S_TRIO_MIN_CORE  = 163.0   # 三連複：基準クリア（これが“本線”）
-S_QN_MIN         = 122.0
-S_WIDE_MIN       = 116.0
-
-# 三連単は“基準クリア”側に合わせて運用（相談どおり164）
-S_TRIFECTA_MIN   = 164.0
-
-# 目標回収率（据え置き）
-TARGET_ROI = {"trio":1.20, "qn":1.10, "wide":1.05}
-ODDS_FLOOR_QN   = 8.0
-ODDS_FLOOR_WIDE = 4.0
+# --- ユーティリティ（最小） ---
 HEN_DEC_PLACES = 1
 EPS = 1e-12
 
-
-# ====== ユーティリティ ======
 def coerce_score_map(d, n_cars: int) -> dict[int, float]:
     out: dict[int, float] = {}
     t = str(type(d)).lower()
@@ -1400,18 +1382,12 @@ def coerce_score_map(d, n_cars: int) -> dict[int, float]:
                 out[i] = x
     elif "pandas.core.series" in t:
         for k, v in d.to_dict().items():
-            try:
-                i = int(k); x = float(v)
-            except Exception:
-                continue
-            out[i] = x
+            try: out[int(k)] = float(v)
+            except Exception: continue
     elif hasattr(d, "items"):
         for k, v in d.items():
-            try:
-                i = int(k); x = float(v)
-            except Exception:
-                continue
-            out[i] = x
+            try: out[int(k)] = float(v)
+            except Exception: continue
     elif isinstance(d, (list, tuple, np.ndarray)):
         arr = list(d)
         if len(arr) == n_cars and all(not isinstance(x,(list,tuple,dict)) for x in arr):
@@ -1444,48 +1420,24 @@ def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
     T[~finite] = 50.0
     return T, mu, sd, k
 
+# ====== ここから処理本体（race_t と result_marks のみ作る） ======
 
-# ★Form の偏差値化（t_score_from_finite 定義の直後）
-form_list = [Form[n] for n in active_cars]
-form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
-form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
-
-
-
-
-
-
-def _format_rank_from_array(ids, arr):
-    pairs = [(i, float(arr[idx])) for idx, i in enumerate(ids)]
-    pairs.sort(key=lambda kv: ((1,0) if not np.isfinite(kv[1]) else (0,-kv[1]), kv[0]))
-    return " ".join(str(i) for i,_ in pairs)
-
-# ====== ここから処理本体 ======
-
-# 1) 母集団車番
+# 1) 母集団車番（active_cars / n_cars は上流で定義済み前提）
 try:
     USED_IDS = sorted(int(i) for i in (active_cars if active_cars else range(1, n_cars+1)))
 except Exception:
     USED_IDS = list(range(1, int(n_cars)+1))
 M = len(USED_IDS)
 
-# 2) SBなしのソース（df優先→velobi_wo）
+# 2) 偏差値母集団は anchor_score に統一（anchor_score は上流で定義済み）
 score_map_from_df = coerce_score_map(globals().get("df_sorted_wo", None), n_cars)
 score_map_vwo     = coerce_score_map(globals().get("velobi_wo", None),   n_cars)
-SB_BASE_MAP = score_map_from_df if any(np.isfinite(list(score_map_from_df.values()))) else score_map_vwo
-
-# ★強制：偏差値の母集団を anchor_score に統一（ここが命）
+_ = score_map_from_df if any(np.isfinite(list(score_map_from_df.values()))) else score_map_vwo  # 互換
 SB_BASE_MAP = {int(i): float(anchor_score(int(i))) for i in USED_IDS}
 
-
-# 3) スコア配列（スコア順表示と偏差値母集団を共用）
+# 3) 偏差値T（レース内：平均50・SD10、NaN→50）
 xs_base_raw = np.array([SB_BASE_MAP.get(i, np.nan) for i in USED_IDS], dtype=float)
-
-# 4) 偏差値T（レース内：平均50・SD10、NaN→50）
 xs_race_t, mu_sb, sd_sb, k_finite = t_score_from_finite(xs_base_raw)
-
-
-
 
 missing = ~np.isfinite(xs_base_raw)
 if missing.any():
@@ -1496,168 +1448,75 @@ if missing.any():
     for r, ii in enumerate(idxs):
         xs_race_t[ii] = 50.0 + delta * (center - r)
 
-# 5) dict化・表示用
 race_t = {USED_IDS[idx]: float(round(xs_race_t[idx], HEN_DEC_PLACES)) for idx in range(M)}
 
-# === 5.5) クラス別ライン偏差値ボーナス（ライン間→ライン内：低T優先 3:2:1） ===
-# クラス別の総ポイント（Girlsは無効）
-CLASS_LINE_POOL = {
-    "Ｓ級":           21.0,
-    "Ａ級":           15.0,
-    "Ａ級チャレンジ":  9.0,
-    "ガールズ":        0.0,
-}
-pool_total = float(CLASS_LINE_POOL.get(race_class, 0.0))
+# ===（任意）クラス別ライン偏差値ボーナス：必要なら有効化。不要なら次の if を False に。===
+_enable_line_bonus = True
+if _enable_line_bonus:
+    def _line_rank_weights(n_lines: int) -> list[float]:
+        if n_lines <= 1: return [1.0]
+        if n_lines == 2: return [3.0, 2.0]
+        if n_lines == 3: return [5.0, 4.0, 3.0]
+        base = [6.0, 5.0, 4.0, 3.0, 2.0, 1.0]
+        return base[:n_lines]
 
-def _line_rank_weights(n_lines: int) -> list[float]:
-    # 2本: 3:2 / 3本: 5:4:3 / 4本以上: 6,5,4,3,2,1...
-    if n_lines <= 1: return [1.0]
-    if n_lines == 2: return [3.0, 2.0]
-    if n_lines == 3: return [5.0, 4.0, 3.0]
-    base = [6.0, 5.0, 4.0, 3.0, 2.0, 1.0]
-    if n_lines <= len(base): return base[:n_lines]
-    ext = base[:]
-    while len(ext) < n_lines:
-        ext.append(max(1.0, ext[-1]-1.0))
-    return ext[:n_lines]
+    def _in_line_weights(members_sorted_lowT_first: list[int]) -> dict[int, float]:
+        raw = [3.0, 2.0, 1.0]; w = {}
+        for i, car in enumerate(members_sorted_lowT_first):
+            w[int(car)] = (raw[i] if i < len(raw) else 0.0)
+        s = sum(w.values());  return {k: (v/s if s > 0 else 0.0) for k, v in w.items()}
 
-def _in_line_weights(members_sorted_lowT_first: list[int]) -> dict[int, float]:
-    # ライン内は「低T優先で 3:2:1、4人目以降0」→合計1に正規化
-    raw = [3.0, 2.0, 1.0]
-    w = {}
-    for i, car in enumerate(members_sorted_lowT_first):
-        w[int(car)] = (raw[i] if i < len(raw) else 0.0)
-    s = sum(w.values())
-    return {k: (v/s if s > 0 else 0.0) for k, v in w.items()}
+    CLASS_LINE_POOL = {"Ｓ級":21.0, "Ａ級":15.0, "Ａ級チャレンジ":9.0, "ガールズ":0.0}
+    pool_total = float(CLASS_LINE_POOL.get(race_class, 0.0))
+    _lines = list((globals().get("line_def") or {}).values())
 
-_lines = list((globals().get("line_def") or {}).values())
-if pool_total > 0.0 and _lines:
-    # ライン強度＝そのラインの race_t 平均
-    line_scores = []
-    for mem in _lines:
-        if not mem: 
-            continue
-        avg_t = float(np.mean([race_t.get(int(c), 50.0) for c in mem]))
-        line_scores.append((tuple(mem), avg_t))
-    # 強い順に並べてライン間ポイント配分
-    line_scores.sort(key=lambda x: (-x[1], x[0]))
-    rank_w = _line_rank_weights(len(line_scores))
-    sum_rank_w = float(sum(rank_w)) if rank_w else 1.0
-    line_share = {}
-    for (mem, _avg), wr in zip(line_scores, rank_w):
-        line_share[mem] = pool_total * (float(wr) / sum_rank_w)
+    if pool_total > 0.0 and _lines:
+        line_scores = []
+        for mem in _lines:
+            if not mem: continue
+            avg_t = float(np.mean([race_t.get(int(c), 50.0) for c in mem]))
+            line_scores.append((tuple(mem), avg_t))
+        line_scores.sort(key=lambda x: (-x[1], x[0]))
+        rank_w = _line_rank_weights(len(line_scores))
+        sum_rank_w = float(sum(rank_w)) if rank_w else 1.0
 
-    # 各ラインの配分を「低T→高T」の順に 3:2:1 で割り振り
-    bonus_map = {int(i): 0.0 for i in USED_IDS}
-    for mem, share in line_share.items():
-        mem = list(mem)
-        mem_sorted_lowT = sorted(mem, key=lambda c: (race_t.get(int(c), 50.0), int(c)))
-        w_in = _in_line_weights(mem_sorted_lowT)  # 合計1
-        for car in mem_sorted_lowT:
-            bonus_map[int(car)] += share * w_in[int(car)]
+        line_share = {}
+        for (mem, _avg), wr in zip(line_scores, rank_w):
+            line_share[mem] = pool_total * (float(wr) / sum_rank_w)
 
-    # 偏差値に加算（xs_race_tが計算本体。race_tは表示用に丸め直す）
-    for idx, car in enumerate(USED_IDS):
-        add = float(bonus_map.get(int(car), 0.0))
-        xs_race_t[idx] = float(xs_race_t[idx]) + add
-        race_t[int(car)] = float(round(xs_race_t[idx], HEN_DEC_PLACES))
-# ← この後に既存の race_z 計算が続く
+        bonus_map = {int(i): 0.0 for i in USED_IDS}
+        for mem, share in line_share.items():
+            mem = list(mem)
+            mem_sorted_lowT = sorted(mem, key=lambda c: (race_t.get(int(c), 50.0), int(c)))
+            w_in = _in_line_weights(mem_sorted_lowT)
+            for car in mem_sorted_lowT:
+                bonus_map[int(car)] += share * w_in[int(car)]
 
+        for idx, car in enumerate(USED_IDS):
+            add = float(bonus_map.get(int(car), 0.0))
+            xs_race_t[idx] = float(xs_race_t[idx]) + add
+            race_t[int(car)] = float(round(xs_race_t[idx], HEN_DEC_PLACES))
 
-
-race_z = (xs_race_t - 50.0) / 10.0
-
-hen_df = pd.DataFrame({
-    "車": USED_IDS,
-    "SBなし(母集団)": [None if not np.isfinite(x) else float(x) for x in xs_base_raw],
-    "偏差値T(レース内)": [race_t[i] for i in USED_IDS],
-}).sort_values(["偏差値T(レース内)","車"], ascending=[False, True]).reset_index(drop=True)
-
-st.markdown("### 偏差値（レース内T＝平均50・SD10｜SBなしと同一母集団）")
-st.caption(f"μ={mu_sb if np.isfinite(mu_sb) else 'nan'} / σ={sd_sb:.6f} / 有効件数k={k_finite}")
-st.dataframe(hen_df, use_container_width=True)
-
-# 6) PL用重み（購入計算に使用：既存近似）
-tau = 1.0
-w   = np.exp(race_z * tau)
-S_w = float(np.sum(w))
-w_idx = {USED_IDS[idx]: float(w[idx]) for idx in range(M)}
-
-def prob_top2_pair_pl(i: int, j: int) -> float:
-    wi, wj = w_idx[i], w_idx[j]
-    d_i = max(S_w - wi, EPS); d_j = max(S_w - wj, EPS)
-    return (wi / S_w) * (wj / d_i) + (wj / S_w) * (wi / d_j)
-
-def prob_top3_triple_pl(i: int, j: int, k: int) -> float:
-    a, b, c = w_idx[i], w_idx[j], w_idx[k]
-    total = 0.0
-    for x, y, z in ((a,b,c),(a,c,b),(b,a,c),(b,c,a),(c,a,b),(c,b,a)):
-        d1 = max(S_w - x, EPS)
-        d2 = max(S_w - x - y, EPS)
-        total += (x / S_w) * (y / d1) * (z / d2)
-    return total
-
-def prob_wide_pair_pl(i: int, j: int) -> float:
-    total = 0.0
-    for k in USED_IDS:
-        if k == i or k == j: continue
-        total += prob_top3_triple_pl(i, j, k)
-    return total
-
-# 7) 印（◎〇▲）＝ T↓ → SBなし↓ → 車番↑（βは除外）
-if "select_beta" not in globals():
-    def select_beta(cars): return None
-if "enforce_alpha_eligibility" not in globals():
-    def enforce_alpha_eligibility(m): return m
-
-# ===== βラベル付与（単なる順位ラベル） =====
-def assign_beta_label(result_marks: dict[str,int], used_ids: list[int], df_sorted) -> dict[str,int]:
-    marks = dict(result_marks)
-    # 6車以下は出さない（集計仕様）
-    if len(used_ids) <= 6:
-        return marks
-    # 既にβがあれば何もしない
-    if "β" in marks:
-        return marks
-    try:
-        last_car = int(df_sorted.loc[len(df_sorted)-1, "車番"])
-        if last_car not in marks.values():
-            marks["β"] = last_car
-    except Exception:
-        pass
-    return marks
-
-
-# ===== 印の採番（β廃止→無印で保持）========================================
-# 依存: USED_IDS, race_t, xs_base_raw, line_def, car_to_group が上で定義済み
-
-# スコアの補助（安定のため race_t 優先→同点は sb_base でタイブレーク）
+# 4) 印（◎〇▲△×α）…βは作らない
 sb_base = {
     int(USED_IDS[idx]): float(xs_base_raw[idx]) if np.isfinite(xs_base_raw[idx]) else float("-inf")
     for idx in range(len(USED_IDS))
 }
-
 def _race_t_val(i: int) -> float:
-    try:
-        return float(race_t.get(int(i), 50.0))
-    except Exception:
-        return 50.0
+    try: return float(race_t.get(int(i), 50.0))
+    except Exception: return 50.0
 
-# === βは作らない。全員を候補にして上位から印を振る
 seed_pool = list(map(int, USED_IDS))
-order_by_T = sorted(
-    seed_pool,
-    key=lambda i: (-_race_t_val(i), -sb_base.get(i, float("-inf")), i)
-)
+order_by_T = sorted(seed_pool, key=lambda i: (-_race_t_val(i), -sb_base.get(i, float("-inf")), i))
 
 result_marks: dict[str,int] = {}
 reasons: dict[int,str] = {}
 
-# ◎〇▲ を上位から
+# ◎〇▲
 for mk, car in zip(["◎","〇","▲"], order_by_T):
     result_marks[mk] = int(car)
 
-# ◎の同ラインを優先して残り印（△, ×, α）を埋める
+# 残り（△×α）は◎と同ライン優先
 line_def     = globals().get("line_def", {}) or {}
 car_to_group = globals().get("car_to_group", {}) or {}
 anchor_no    = result_marks.get("◎", None)
@@ -1674,166 +1533,22 @@ if anchor_no is not None:
 
 used = set(result_marks.values())
 overall_rest = [int(c) for c in USED_IDS if int(c) not in used]
-overall_rest = sorted(
-    overall_rest,
-    key=lambda x: (-sb_base.get(int(x), float("-inf")), int(x))
-)
+overall_rest = sorted(overall_rest, key=lambda x: (-sb_base.get(int(x), float("-inf")), int(x)))
 
-# 同ライン優先 → 残りスコア順
 tail_priority = mates_sorted + [c for c in overall_rest if c not in mates_sorted]
-
 for mk in ["△","×","α"]:
-    if mk in result_marks:
-        continue
-    if not tail_priority:
-        break
+    if mk in result_marks: continue
+    if not tail_priority:  break
     no = int(tail_priority.pop(0))
     result_marks[mk] = no
     reasons[no] = f"{mk}（◎ライン優先→残りスコア順）"
 
-# === 無印の集合（＝上の印が付かなかった残り全員）
+# 無印（note用）
 marked_ids = set(result_marks.values())
 no_mark_ids = [int(c) for c in USED_IDS if int(c) not in marked_ids]
-# 表示はT優先・同点はsb_base
-no_mark_ids = sorted(
-    no_mark_ids,
-    key=lambda x: (-_race_t_val(int(x)), -sb_base.get(int(x), float("-inf")), int(x))
-)
+no_mark_ids = sorted(no_mark_ids, key=lambda x: (-_race_t_val(int(x)), -sb_base.get(int(x), float("-inf")), int(x)))
 
-# ===== 以降のUI出力での使い方 ==============================================
-# ・印の一行（note用）: 既存の join を差し替え
-#   例）(' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if m in result_marks))
-#   の直後などに「無」を追加
-#   例）
-#   ('無　' + (' '.join(map(str, no_mark_ids)) if no_mark_ids else '—'))
-#
-# ・以降のロジックでは「β」への参照を残さないこと（Noneチェック含め全削除OK）
-#   もし `if i != result_marks.get("β")` のような行が残っていたら、単に削除してください。
-
-
-if "α" not in result_marks:
-    used_now = set(result_marks.values())
-    pool = [i for i in USED_IDS if i not in used_now]
-    if pool:
-        alpha_pick = pool[-1]
-        result_marks["α"] = alpha_pick
-        reasons[alpha_pick] = reasons.get(alpha_pick, "α（フォールバック：禁止条件全滅→最弱を採用）")
-
-
-# -*- coding: utf-8 -*-
-import streamlit as st
-import numpy as np
-import pandas as pd
-import math
-from statistics import mean, pstdev
-from itertools import combinations
-
-
-# ===== 基本データ =====
-S_TRIFECTA_MIN = globals().get("S_TRIFECTA_MIN", 164.0)  # 三連単基準
-
-# ===== 可変パラメータ（緩め設定：通過数↑）=====
-TRIO_SIG_DIV        = float(globals().get("TRIO_SIG_DIV", 5.5))   # 三連複：1.5→2.0でほんのり緩め
-TRIFECTA_SIG_DIV    = float(globals().get("TRIFECTA_SIG_DIV", 5.5))# 三連単：2.5→3.5で緩め
-
-# L3 / 三連単の固定ゲートも少し緩める（買い目増やしたいなら下げる）
-TRIO_L3_MIN         = float(globals().get("TRIO_L3_MIN", 155.0))   # 160.0→155.0
-S_TRIFECTA_MIN      = float(globals().get("S_TRIFECTA_MIN", 160.0))# 164.0→160.0
-
-# （もしファイル内にあるなら）二車系も同様に少し緩める
-QN_SIG_DIV          = float(globals().get("QN_SIG_DIV", 3.5))      # 3.0→3.5 など
-NIT_SIG_DIV         = float(globals().get("NIT_SIG_DIV", 3.5))     # 3.0→3.5 など
-
-
-from statistics import mean, pstdev
-from itertools import product, combinations
-
-# ===== スコア（偏差値T合計） =====
-S_BASE_MAP = {int(i): float(race_t.get(int(i), 50.0)) for i in USED_IDS}
-def _pair_score(a, b):   return S_BASE_MAP.get(a, 0.0) + S_BASE_MAP.get(b, 0.0)
-def _trio_score(a, b, c): return S_BASE_MAP.get(a, 0.0) + S_BASE_MAP.get(b, 0.0) + S_BASE_MAP.get(c, 0.0)
-
-# β/× を安全に拾う（無ければ None）
-mark_beta = (result_marks["β"] if ("result_marks" in globals() and "β" in result_marks) else None)
-mark_x    = (result_marks["×"] if ("result_marks" in globals() and "×" in result_marks) else None)
-
-def _santan_score(a:int, b:int, c:int) -> float:
-    base = _trio_score(a,b,c)
-    bonus = 0.0
-    if 'anchor_no' in globals() and a == anchor_no:  # 1着に◎なら加点
-        bonus += 2.0
-    if c is not None and (c == mark_beta or c == mark_x):  # 3着にβ/×なら減点
-        bonus -= 1.0
-    return base + bonus
-
-
-def _top_k_unique(seq, k):
-    out, seen = [], set()
-    for x in seq:
-        if x in seen: continue
-        seen.add(x); out.append(x)
-        if len(out) >= k: break
-    return out
-
-# ---------- L1/L2（Nゲート＋Tゲートの合流） ----------
-# Nゲート：二車単 rows_nitan から 1着/2着の順に候補を抽出
-n1_list, n2_list = [], []
-for k,_s in (rows_nitan if 'rows_nitan' in globals() and rows_nitan else []):
-    try:
-        a,b = map(int, k.split("-"))
-        n1_list.append(a); n2_list.append(b)
-    except Exception:
-        pass
-L1N = _top_k_unique(n1_list, 3)
-L2N = _top_k_unique(n2_list, 4)
-
-# Tゲート：偏差値T上位（◎・〇を種に加える）
-T_sorted = sorted(USED_IDS, key=lambda i: (-S_BASE_MAP.get(i,50.0), i))
-L1T_seed = [result_marks.get("◎")] if result_marks.get("◎") is not None else []
-L2T_seed = [result_marks.get("〇")] if result_marks.get("〇") is not None else []
-L1T = _top_k_unique(L1T_seed + T_sorted, 3)
-L2T = _top_k_unique(L2T_seed + [i for i in T_sorted if i not in L1T], 4)
-
-# 合流
-L1 = sorted(set(L1N) | set(L1T))
-L2 = sorted(set(L2N) | set(L2T))
-
-# ---------- L3（3列目候補） ----------
-# 既存の三連単 rows_trifecta があれば、その3列目のみを採用
-def _collect_l3_from_trifecta(rows):
-    s = set()
-    for k,_sv in rows:
-        try:
-            a,b,c = map(int, k.split("-"))
-            s.add(c)
-        except Exception:
-            pass
-    return s
-
-trifecta_ok = bool(('rows_trifecta' in globals()) and rows_trifecta)
-L3_from_tri = _collect_l3_from_trifecta(rows_trifecta) if trifecta_ok else set()
-
-# ★フォールバック：L1×L2 と任意の c で S ≥ TRIO_L3_MIN を満たす c を抽出（重複排除）
-L3_from_160 = set()
-for a in L1:
-    for b in L2:
-        if a == b: continue
-        for c in USED_IDS:
-            if c in (a,b): continue
-            if _trio_score(a,b,c) >= TRIO_L3_MIN:
-                L3_from_160.add(int(c))
-
-# 最終L3は「三単由来 ∪ 160しきい値」の和集合
-L3 = sorted(L3_from_tri | L3_from_160)
-
-# --- ここから差し込み（L3が全車化するのを防ぐ） ---
-L3_TMIN = float(globals().get("L3_TMIN", 52.0))  # 例: 52.0で低Tを切る（要調整）
-L3_TOPK = int(globals().get("L3_TOPK", 5))       # 例: 上位5名まで
-L3 = [c for c in L3 if race_t.get(int(c), 50.0) >= L3_TMIN]
-L3 = sorted(L3, key=lambda c: (-race_t.get(int(c), 50.0), int(c)))[:L3_TOPK]
-# --- 差し込みここまで ---
-
-
+# 以降（買い目計算・PL・三連単L1/L2/L3 等）は全面カット済み
 
 # =========================
 #  安全ガード & ヘルパ（全部ここから貼る）
@@ -1982,6 +1697,7 @@ def _ensure_top3(base_rows, fallback_rows, need=3):
             break
 
     return picked[:need]
+
 
 # =========================
 #  ここから下：フォーメーション最小出力だけ
