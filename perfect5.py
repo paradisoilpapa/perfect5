@@ -1699,172 +1699,103 @@ def _ensure_top3(base_rows, fallback_rows, need=3):
     return picked[:need]
 
 
-# =========================
-#  ここから下：フォーメーション最小出力だけ
-# =========================
+# ==============================
+# note用 最終出力フォーマット
+# ==============================
+import streamlit as st
 
-from typing import Dict, List, Tuple
+# --- 基本情報 ---
+track     = str(globals().get("track", "弥彦"))       # 会場名
+race_no   = str(globals().get("race_no", "1R"))      # R番号
+tenkai    = str(globals().get("tenkai_eval", "互角")) # 展開評価
+race_class = str(globals().get("race_class", "ミッドナイト　ガールズ"))
 
-# --- 回数→番号フォメ生成（3連複 着順フォメ用） ---
-def _topk_by_count(d: Dict[str, Dict[str, int]], key: str, k: int, order: List[str]) -> List[str]:
-    """d={"◎":{"c1":..,"c2":..,"c3":..},...} を回数降順→印順で上位k抽出"""
-    idx = {m:i for i,m in enumerate(order)}
-    items = sorted(((m, d[m].get(key, 0)) for m in d.keys()), key=lambda x: (-x[1], idx.get(x[0], 999)))
-    return [m for m,_ in items[:k]]
+# --- ライン・スコア順・印 ---
+line_inputs = globals().get("line_inputs", []) or []
+line_str = "　".join([str(x) for x in line_inputs if str(x).strip()])
 
-def _mk_mark_to_no_map(mark_map_raw) -> Dict[str, int]:
-    """
-    result_marks が
-      1) {"◎":2,"〇":7,...}（印→番号）or
-      2) {2:"◎",7:"〇",...}（番号→印）
-    のどちらでも、印→番号 に正規化して返す。
-    """
+USED_IDS   = globals().get("USED_IDS", [])
+sb_base    = globals().get("xs_base_raw", [])
+race_t     = globals().get("race_t", {})
+
+# 印
+result_marks = globals().get("result_marks", {})
+marks_str = " ".join(
+    f"{m}{result_marks[m]}" for m in ["◎","〇","▲","△","×","α"] if m in result_marks
+)
+no_mark_ids = [i for i in USED_IDS if i not in result_marks.values()]
+no_str = " ".join(map(str, no_mark_ids)) if no_mark_ids else "—"
+marks_str = marks_str + " 無" + ("" if no_str=="—" else " " + no_str)
+
+# 偏差値リスト
+hen_list = []
+for i in USED_IDS:
+    val = race_t.get(i, None)
+    if val is not None:
+        hen_list.append(f"{i}: {val:.1f}")
+
+# --- フォーメーション ---
+def _detect_grade_key() -> str:
+    for k in ("grade_key","GRADE_KEY","race_grade","RACE_GRADE"):
+        if k in globals() and isinstance(globals()[k], str) and globals()[k]:
+            return str(globals()[k]).upper()
+    return "TOTAL"
+
+def _mk_mark_to_no_map(mark_map_raw):
     symset = {"◎","〇","▲","△","×","α","無"}
     if isinstance(mark_map_raw, dict) and any(k in symset for k in mark_map_raw.keys()):
-        return {str(k): int(v) for k,v in mark_map_raw.items() if str(k) in symset}
+        return {str(k): int(v) for k,v in mark_map_raw.items() if str(k) in symset and v is not None}
     if isinstance(mark_map_raw, dict):
         out = {}
         for no, sym in mark_map_raw.items():
-            if str(sym) in symset:
-                out[str(sym)] = int(no)
+            try:
+                if str(sym) in symset:
+                    out[str(sym)] = int(no)
+            except Exception: pass
         return out
     return {}
 
-def build_trio_counts_formation(
-    rank_counts: Dict[str, Dict[str, int]],
-    result_marks: Dict,
-    ktuple: Tuple[int,int,int]=(2,3,2),
-    tie_order: List[str]=["◎","〇","▲","△","×","α","無"],
-) -> str:
-    """回数テーブル＋印→番号対応から '12-347-34' を生成"""
+def _topk_by_count(d, key: str, k: int, order):
+    idx = {m:i for i,m in enumerate(order)}
+    items = sorted(((m, d.get(m, {}).get(key, 0)) for m in order),
+                   key=lambda x: (-x[1], idx[x[0]]))
+    return [m for m,_ in items[:k]]
+
+def build_trio_counts_formation(rank_counts, result_marks,
+    ktuple=(2,3,2), tie_order=["◎","〇","▲","△","×","α","無"]):
     mark_to_no = _mk_mark_to_no_map(result_marks)
-    a = _topk_by_count(rank_counts, "c1", ktuple[0], tie_order)   # 1着回数 上位2
-    b = _topk_by_count(rank_counts, "c2", ktuple[1], tie_order)   # 2着回数 上位3
-    c = _topk_by_count(rank_counts, "c3", ktuple[2], tie_order)   # 3着回数 上位2
-    def _join_nums(ms): return "".join(str(mark_to_no[m]) for m in ms if m in mark_to_no)
-    return f"{_join_nums(a)}-{_join_nums(b)}-{_join_nums(c)}"
+    if not mark_to_no: return "—"
+    a = _topk_by_count(rank_counts, "c1", ktuple[0], tie_order)
+    b = _topk_by_count(rank_counts, "c2", ktuple[1], tie_order)
+    c = _topk_by_count(rank_counts, "c3", ktuple[2], tie_order)
+    def _join(ms): return "".join(str(mark_to_no[m]) for m in ms if m in mark_to_no)
+    a_s,b_s,c_s = _join(a),_join(b),_join(c)
+    return f"{a_s}-{b_s}-{c_s}" if (a_s and b_s and c_s) else "—"
 
-def _detect_grade_key() -> str:
-    """級別キー（TOTAL/F2/F1/G/GIRLS）を推定。無ければ TOTAL。"""
-    for k in ("grade_key", "GRADE_KEY", "race_grade", "RACE_GRADE"):
-        if k in globals() and isinstance(globals()[k], str) and globals()[k]:
-            return str(globals()[k]).upper()
-    # race_class から推定（保険）
-    rc = str(globals().get("race_class", ""))
-    if "ガール" in rc: return "GIRLS"
-    if "Ｓ級" in rc or "S級" in rc: return "G"
-    if "チャレンジ" in rc: return "F2"
-    if "Ａ級" in rc or "A級" in rc: return "F1"
-    return "TOTAL"
+# --- 出力 ---
+st.markdown(f"{track}{race_no}")
+st.markdown(f"展開評価：{tenkai}\n")
 
-# ===== pTop3ベース：3連複3着率フォーメーション生成 =====
-def _norm_sym(s: str) -> str:
-    s = str(s).strip()
-    return "〇" if s == "○" else s
+st.markdown(race_class)
+if line_str:
+    st.markdown(f"ライン　{line_str}")
+if USED_IDS:
+    st.markdown("スコア順（SBなし）　" + " ".join(str(i) for i in USED_IDS))
+st.markdown(marks_str)
 
-def _id2sym_from_result_marks(rm) -> dict[int, str]:
-    """result_marks が『印→番号』でも『番号→印』でもOKにして {id->印} を返す"""
-    if not isinstance(rm, dict):
-        return {}
-    symset = {"◎","〇","▲","△","×","α","無"}
-    out = {}
-    # 1) 印→番号
-    if any(k in symset for k in rm.keys()):
-        for sym, vid in rm.items():
-            try:
-                if _norm_sym(sym) in symset and vid is not None:
-                    out[int(vid)] = _norm_sym(sym)
-            except Exception:
-                pass
-        return out
-    # 2) 番号→印
-    for vid, sym in rm.items():
-        try:
-            if _norm_sym(sym) in symset:
-                out[int(vid)] = _norm_sym(sym)
-        except Exception:
-            pass
-    return out
+if hen_list:
+    st.markdown("\n偏差値（風・ライン込み）")
+    st.markdown("\n".join(hen_list))
 
-def _symbols_present(id2sym: dict[int,str]) -> list[str]:
-    return sorted({_norm_sym(s) for s in id2sym.values() if s})
-
-def _symbols_by_pTop3(stats: dict, present_syms: list[str]) -> list[str]:
-    rows = []
-    for sym in present_syms:
-        p = float(stats.get(sym, {}).get("pTop3", 0.0))
-        rows.append((sym, p))
-    rows.sort(key=lambda t: t[1], reverse=True)  # pTop3降順
-    return [sym for sym,_ in rows]
-
-def _pick_first_id_of_symbol(id2sym: dict[int,str], symbol: str, exclude: set[int] | None = None) -> int | None:
-    ex = exclude or set()
-    cands = sorted([i for i,s in id2sym.items() if _norm_sym(s) == _norm_sym(symbol) and i not in ex])
-    return cands[0] if cands else None
-
-def build_trio_3chaku_formation_from_pTop3() -> str:
-    """
-    仕様：軸＝◎（無ければ pTop3 最大の印グループの最小番号）
-          相手＝pTop3が高い印から1名ずつ拾い最大4名（不足は番号で補完）
-          出力＝ 軸-相手4-相手4 （6点）
-    """
-    # 実測率テーブル
-    gk = _detect_grade_key()
-    stats = globals().get("RANK_STATS_BY_GRADE", {}).get(gk, globals().get("RANK_STATS_TOTAL", {}))
-
-    # 今回レースの『番号→印』
-    id2sym = _id2sym_from_result_marks(globals().get("result_marks", {}))
-    if not id2sym:
-        return "—"  # 印が未決なら出さない
-
-    present = _symbols_present(id2sym)
-    order_syms = _symbols_by_pTop3(stats, present)
-
-    # 軸：◎があれば◎の最小番号、無ければ pTop3 最大印から最小番号
-    axis_id = _pick_first_id_of_symbol(id2sym, "◎")
-    if axis_id is None and order_syms:
-        axis_id = _pick_first_id_of_symbol(id2sym, order_syms[0])
-    if axis_id is None:
-        return "—"
-
-    axis_sym = id2sym.get(axis_id)
-    mates: list[int] = []
-
-    # 相手：pTop3高い順で、各印から1名ずつ。◎印の“別人”も候補に入れる
-    used = {axis_id}
-    for sym in order_syms:
-        pick = _pick_first_id_of_symbol(id2sym, sym, exclude=used)
-        if pick is not None:
-            mates.append(pick); used.add(pick)
-        if len(mates) >= 4:
-            break
-
-    # 足りなければ番号で補完
-    if len(mates) < 4:
-        pool = [i for i in sorted(globals().get("USED_IDS", list(id2sym.keys()))) if i not in used]
-        mates += pool[:(4-len(mates))]
-
-    right = "".join(map(str, mates)) if mates else "—"
-    return f"{axis_id}-{right}-{right}"
-
-# --- 表示（合意仕様：フォメ2本のみ） ---
+# フォーメーション出力
 try:
-    # 3連複3着率フォーメーション（6点）…pTop3ベース生成
-    trio_3chaku_form = build_trio_3chaku_formation_from_pTop3()
-    st.markdown("**3連複3着率フォーメーション（6点）**")
-    st.markdown(trio_3chaku_form if trio_3chaku_form != "—" else "—")
-    globals()["_trio_3chaku"] = trio_3chaku_form  # note貼り付け用にも使えるよう保持
+    st.markdown("\n【3着率ランキングフォーメーション】 1-2345-2345")
 
-    # 3連複着順フォーメーション（4点）…回数から番号で生成
     gk = _detect_grade_key()
-    counts_tbl = globals().get("RANK_COUNTS_BY_GRADE", {}).get(gk, globals().get("RANK_COUNTS_TOTAL", {}))
-    trio_counts_form = globals().get("build_trio_counts_formation")(counts_tbl, globals().get("result_marks", {}))
-    st.markdown("**3連複着順フォーメーション（4点）**")
-    st.markdown(trio_counts_form if trio_counts_form and trio_counts_form.replace("-", "") else "—")
+    counts_tbl = RANK_COUNTS_BY_GRADE.get(gk, RANK_COUNTS_TOTAL)
+    trio_counts_form = build_trio_counts_formation(counts_tbl, result_marks)
 
+    st.markdown(f"【着順回数フォーメーション】 {trio_counts_form}")
 except Exception as __e:
-    # フェイルセーフ（画面を落とさない）
-    st.markdown("**3連複3着率フォーメーション（6点）**")
-    st.markdown("—")
-    st.markdown("**3連複着順フォーメーション（4点）**")
-    st.markdown(f"—  （生成失敗: {__e}）")
+    st.markdown("【3着率ランキングフォーメーション】 1-2345-2345")
+    st.markdown(f"【着順回数フォーメーション】 — （生成失敗: {__e}）")
