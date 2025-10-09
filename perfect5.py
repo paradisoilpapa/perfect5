@@ -259,10 +259,12 @@ def _stab_n0(n: int) -> int:
 # ユーティリティ
 # ==============================
 def clamp(x,a,b): return max(a, min(b, x))
+
 def zscore_list(arr):
     arr = np.array(arr, dtype=float)
     m, s = float(np.mean(arr)), float(np.std(arr))
     return np.zeros_like(arr) if s==0 else (arr-m)/s
+
 def zscore_val(x, xs):
     xs = np.array(xs, dtype=float); m, s = float(np.mean(xs)), float(np.std(xs))
     return 0.0 if s==0 else (float(x)-m)/s
@@ -285,11 +287,13 @@ def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
 def extract_car_list(s, nmax):
     s = str(s or "").strip()
     return [int(c) for c in s if c.isdigit() and 1 <= int(c) <= nmax]
+
 def build_line_maps(lines):
     labels = "ABCDEFG"
     line_def = {labels[i]: lst for i,lst in enumerate(lines) if lst}
     car_to_group = {c:g for g,mem in line_def.items() for c in mem}
     return line_def, car_to_group
+
 def role_in_line(car, line_def):
     for g, mem in line_def.items():
         if car in mem:
@@ -297,9 +301,11 @@ def role_in_line(car, line_def):
             idx = mem.index(car)
             return ['head','second','thirdplus'][idx] if idx<3 else 'thirdplus'
     return 'single'
+
 def pos_coeff(role, line_factor):
     base = {'head':1.0,'second':0.7,'thirdplus':0.5,'single':0.9}.get(role,0.9)
     return base * line_factor
+
 def tenscore_correction(tenscores):
     n = len(tenscores)
     if n<=2: return [0.0]*n
@@ -313,6 +319,19 @@ def tenscore_correction(tenscores):
 
 def wind_adjust(wind_dir, wind_speed, role, prof_escape):
     s = max(0.0, float(wind_speed))
+    WIND_ZERO   = float(globals().get("WIND_ZERO", 0.0))
+    WIND_SIGN   = float(globals().get("WIND_SIGN", 1.0))
+    WIND_GAIN   = float(globals().get("WIND_GAIN", 1.0))  # 33では別処理で0.5倍にしておく想定
+    WIND_CAP    = float(globals().get("WIND_CAP", 0.06))
+    WIND_MODE   = globals().get("WIND_MODE", "scalar")
+    WIND_COEFF  = globals().get("WIND_COEFF", {})
+    SPECIAL_DIRECTIONAL_VELODROMES = globals().get("SPECIAL_DIRECTIONAL_VELODROMES", set())
+    s_state_track = None
+    try:
+        s_state_track = st.session_state.get("track", "")
+    except Exception:
+        pass
+
     if s <= WIND_ZERO:
         base = 0.0
     elif s <= 5.0:
@@ -321,29 +340,41 @@ def wind_adjust(wind_dir, wind_speed, role, prof_escape):
         base = 0.021 + 0.008 * (s - 5.0)
     else:
         base = 0.045 + 0.010 * min(s - 8.0, 4.0)
+
     pos = {'head':1.00,'second':0.85,'single':0.75,'thirdplus':0.65}.get(role, 0.75)
     prof = 0.35 + 0.65*float(prof_escape)
     val = base * pos * prof
-    if (WIND_MODE == "directional") or (s >= 7.0 and st.session_state.get("track", "") in SPECIAL_DIRECTIONAL_VELODROMES):
+
+    if (WIND_MODE == "directional") or (s >= 7.0 and s_state_track in SPECIAL_DIRECTIONAL_VELODROMES):
         wd = WIND_COEFF.get(wind_dir, 0.0)
         dir_term = clamp(s * wd * (0.30 + 0.70*float(prof_escape)) * 0.6, -0.03, 0.03)
         val += dir_term
+
     val = (val * float(WIND_SIGN)) * float(WIND_GAIN)
     return round(clamp(val, -float(WIND_CAP), float(WIND_CAP)), 3)
 
 
-
-# === 直線ラスト200m（残脚）補正 =========================================
-L200_ESC_PENALTY = float(globals().get("L200_ESC_PENALTY", -0.06))  # 先行は垂れやすい
+# === 直線ラスト200m（残脚）補正｜33バンク対応版 ==============================
+# 33（<=340m）は「先行ペナ弱め／差し・追込ボーナス控えめ」へ最適化
+L200_ESC_PENALTY = float(globals().get("L200_ESC_PENALTY", -0.06))  # 先行は垂れやすい（基本）
 L200_SASHI_BONUS = float(globals().get("L200_SASHI_BONUS", +0.03))  # 差しは伸びやすい
 L200_MARK_BONUS  = float(globals().get("L200_MARK_BONUS",  +0.02))  # 追込は少し上げ
+
 L200_GRADE_GAIN  = globals().get("L200_GRADE_GAIN", {
     "F2": 1.18, "F1": 1.10, "G": 1.05, "GIRLS": 0.95, "TOTAL": 1.00
 })
-L200_SHORT_GAIN  = float(globals().get("L200_SHORT_GAIN", 1.15))    # 333mなど短走路で効き増
-L200_LONG_RELAX  = float(globals().get("L200_LONG_RELAX", 0.90))    # 直線長いバンクで緩和
-L200_CAP         = float(globals().get("L200_CAP", 0.08))           # 絶対値キャップ
-L200_WET_GAIN    = float(globals().get("L200_WET_GAIN", 1.15))      # 雨（任意で増幅）
+
+# 短走路増幅：旧1.15 → 33はむしろ緩和（0.85）
+L200_SHORT_GAIN_33   = float(globals().get("L200_SHORT_GAIN_33", 0.85))
+L200_SHORT_GAIN_OTH  = float(globals().get("L200_SHORT_GAIN_OTH", 1.00))
+L200_LONG_RELAX      = float(globals().get("L200_LONG_RELAX", 0.90))
+L200_CAP             = float(globals().get("L200_CAP", 0.08))
+L200_WET_GAIN        = float(globals().get("L200_WET_GAIN", 1.15))
+
+# 33専用 成分別スケーリング
+L200_33_ESC_MULT   = float(globals().get("L200_33_ESC_MULT", 0.80))  # 逃ペナ 20%縮小
+L200_33_SASHI_MULT = float(globals().get("L200_33_SASHI_MULT", 0.85))# 差し  15%縮小
+L200_33_MARK_MULT  = float(globals().get("L200_33_MARK_MULT", 0.90)) # 追込  10%縮小
 
 def _grade_key_from_class(race_class: str) -> str:
     if "ガール" in race_class: return "GIRLS"
@@ -364,20 +395,34 @@ def l200_adjust(role: str,
     ラスト200mの“残脚”を脚質×バンク×グレードで調整した無次元値（±）を返す。
     ※ ENV合計（total_raw）には足さず、独立柱として z 化→anchor_score へ。
     """
-    base = (
-        L200_ESC_PENALTY * float(prof_escape) +
-        L200_SASHI_BONUS * float(prof_sashi)  +
-        L200_MARK_BONUS  * float(prof_oikomi)
-    )
-    if float(bank_length) <= 340.0:      # 333m系など短走路
-        base *= L200_SHORT_GAIN
-    if float(straight_length) >= 60.0:   # 直線が長いバンク
+    esc_term   = L200_ESC_PENALTY * float(prof_escape)
+    sashi_term = L200_SASHI_BONUS * float(prof_sashi)
+    mark_term  = L200_MARK_BONUS  * float(prof_oikomi)
+
+    is_33 = float(bank_length) <= 340.0
+    if is_33:
+        esc_term   *= L200_33_ESC_MULT
+        sashi_term *= L200_33_SASHI_MULT
+        mark_term  *= L200_33_MARK_MULT
+
+    base = esc_term + sashi_term + mark_term
+
+    if is_33:
+        base *= L200_SHORT_GAIN_33
+    else:
+        base *= L200_SHORT_GAIN_OTH
+
+    if float(straight_length) >= 60.0:
         base *= L200_LONG_RELAX
+
     base *= float(L200_GRADE_GAIN.get(_grade_key_from_class(race_class), 1.0))
+
     if is_wet:
         base *= L200_WET_GAIN
+
     pos_factor = {'head':1.00,'second':0.85,'thirdplus':0.70,'single':0.80}.get(role, 0.80)
     base *= pos_factor
+
     return round(clamp(base, -float(L200_CAP), float(L200_CAP)), 3)
 
 
@@ -386,20 +431,51 @@ def bank_character_bonus(bank_angle, straight_length, prof_escape, prof_sashi):
     angle_factor = (float(bank_angle)-25.0)/5.0
     total = clamp(-0.1*straight_factor + 0.1*angle_factor, -0.05, 0.05)
     return round(total*prof_escape - 0.5*total*prof_sashi, 3)
+
 def bank_length_adjust(bank_length, prof_oikomi):
     delta = clamp((float(bank_length)-411.0)/100.0, -0.05, 0.05)
     return round(delta*prof_oikomi, 3)
 
 def compute_lineSB_bonus(line_def, S, B, line_factor=1.0, exclude=None, cap=0.06, enable=True):
+    """
+    33m系（<=340）では自動で効きを半減：
+      - LINE_SB_33_MULT（既定0.5）を line_factor に乗算
+      - LINE_SB_CAP_33_MULT（既定0.5）を cap に乗算
+    bank_length は以下で推定：
+      - st.session_state['bank_length'] or ['track_length'] があれば使用
+      - なければ globals()['BANK_LENGTH'] があれば使用
+      - いずれも無ければ通常通り
+    """
     if not enable or not line_def:
-        return {g:0.0 for g in line_def.keys()} if line_def else {}, {}
+        return ({g:0.0 for g in line_def.keys()} if line_def else {}), {}
+
+    # === 33かどうかの自動推定 ===
+    bank_len = None
+    try:
+        bank_len = st.session_state.get("bank_length", st.session_state.get("track_length", None))
+    except Exception:
+        bank_len = globals().get("BANK_LENGTH", None)
+
+    eff_line_factor = float(line_factor)
+    eff_cap = float(cap)
+
+    if bank_len is not None:
+        try:
+            if float(bank_len) <= 340.0:
+                mult = float(globals().get("LINE_SB_33_MULT", 0.50))
+                capm = float(globals().get("LINE_SB_CAP_33_MULT", 0.50))
+                eff_line_factor *= mult
+                eff_cap *= capm
+        except Exception:
+            pass
+
     w_pos_base = {'head':1.0,'second':0.4,'thirdplus':0.2,'single':0.7}
     Sg, Bg = {}, {}
     for g, mem in line_def.items():
         s=b=0.0
         for car in mem:
             if exclude is not None and car==exclude: continue
-            w = w_pos_base[role_in_line(car, line_def)] * line_factor
+            w = w_pos_base[role_in_line(car, line_def)] * eff_line_factor
             s += w*float(S.get(car,0)); b += w*float(B.get(car,0))
         Sg[g]=s; Bg[g]=b
     raw={}
@@ -408,7 +484,7 @@ def compute_lineSB_bonus(line_def, S, B, line_factor=1.0, exclude=None, cap=0.06
         ratioS = s/(s+b+1e-6)
         raw[g] = (0.6*b + 0.4*s) * (0.6 + 0.4*ratioS)
     zz = zscore_list(list(raw.values())) if raw else []
-    bonus={g: clamp(0.02*float(zz[i]), -cap, cap) for i,g in enumerate(raw.keys())}
+    bonus={g: clamp(0.02*float(zz[i]), -eff_cap, eff_cap) for i,g in enumerate(raw.keys())}
     return bonus, raw
 
 def input_float_text(label: str, key: str, placeholder: str = "") -> float | None:
@@ -425,6 +501,7 @@ def _role_of(car, mem):
     if len(mem)==1: return 'single'
     i = mem.index(car)
     return ['head','second','thirdplus'][i] if i<3 else 'thirdplus'
+
 def _line_strength_raw(line_def, S, B, line_factor=1.0):
     if not line_def: return {}
     w_pos = {'head':1.0,'second':0.4,'thirdplus':0.2,'single':0.7}
@@ -432,21 +509,24 @@ def _line_strength_raw(line_def, S, B, line_factor=1.0):
     for g, mem in line_def.items():
         s=b=0.0
         for c in mem:
-            w = w_pos[_role_of(c, mem)] * line_factor
+            w = w_pos[_role_of(c, mem)] * float(line_factor)
             s += w*float(S.get(c,0)); b += w*float(B.get(c,0))
         ratioS = s/(s+b+1e-6)
         raw[g] = (0.6*b + 0.4*s) * (0.6 + 0.4*ratioS)
     return raw
+
 def _top2_lines(line_def, S, B, line_factor=1.0):
     raw = _line_strength_raw(line_def, S, B, line_factor)
     order = sorted(raw.keys(), key=lambda g: raw[g], reverse=True)
     return (order[0], order[1]) if len(order)>=2 else (order[0], None) if order else (None, None)
+
 def _extract_role_car(line_def, gid, role_name):
     if gid is None or gid not in line_def: return None
     mem = line_def[gid]
     if role_name=='head':    return mem[0] if len(mem)>=1 else None
     if role_name=='second':  return mem[1] if len(mem)>=2 else None
     return None
+
 def _ko_order(v_base_map, line_def, S, B, line_factor=1.0, gap_delta=0.010):
     cars = list(v_base_map.keys())
     if not line_def or len(line_def)<1:
@@ -516,6 +596,7 @@ def format_rank_all(score_map: dict[int,float], P_floor_val: float | None = None
         else:
             rows.append(f"{i}" if score_map[i] >= P_floor_val else f"{i}(P未満)")
     return " ".join(rows)
+
 
 # ==============================
 # 風の自動取得（Open-Meteo / 時刻固定）
@@ -2836,205 +2917,180 @@ st.caption("上の4表は既存候補と“しきい値クリア”の交差済�
 
 
 # =========================
-#  note 出力（最後にまとめて）
+#  note 出力（最後にまとめて）〈貼り替え版：未定義ガード付き〉
 # =========================
-def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
-    lines = []
-    for n in ids:
-        v = ts_map.get(n, "—")
-        lines.append(f"{n}: {float(v):.1f}" if isinstance(v,(int,float)) else f"{n}: —")
-    return "\n".join(lines)
 
+# ---- 未定義ガード（このブロックの先頭に置く） ----
+try:
+    _fmt_hen_lines  # type: ignore
+except NameError:
+    def _fmt_hen_lines(ts_map: dict, ids: list[int]) -> str:
+        lines = []
+        ts_map = ts_map or {}
+        for n in (ids or []):
+            v = ts_map.get(n, "—")
+            lines.append(f"{n}: {float(v):.1f}" if isinstance(v, (int, float)) else f"{n}: —")
+        return "\n".join(lines)
+
+try:
+    _fmt_rank  # type: ignore
+except NameError:
+    def _fmt_rank(marks_dict: dict, used_ids: list[int]) -> tuple[str, str]:
+        no_mark_ids = [int(i) for i in (used_ids or [])
+                       if isinstance(marks_dict, dict) and int(i) not in set(marks_dict.values())]
+        marks_str = ' '.join(
+            f'{m}{marks_dict[m]}' for m in ['◎','〇','▲','△','×','α']
+            if isinstance(marks_dict, dict) and m in marks_dict
+        )
+        no_str = ' '.join(map(str, no_mark_ids)) if no_mark_ids else '—'
+        return marks_str, f"無{no_str}"
+
+# 3着率フォメは関数があれば使い、無ければグローバル/ダッシュ
+try:
+    trio_rank_form_str = get_trio_rank_formation(False)
+except NameError:
+    trio_rank_form_str = str(globals().get('trio_rank_form_str', '—'))
+
+# ---- ここから狙いたいレースの再計算（既出のユーティリティを利用） ----
+try:
+    _parse_lines  # type: ignore
+except NameError:
+    def _parse_lines(_line_inputs, nmax: int):
+        groups = []
+        for s in _line_inputs:
+            ids = extract_car_list(s, nmax)  # 既存ユーティリティ想定
+            if ids:
+                groups.append(ids)
+        return groups
+
+try:
+    _is_target_by_3line  # type: ignore
+except NameError:
+    def _is_target_by_3line(groups: list[list[int]], dev_map: dict[int, float], anchor_no: int | None) -> bool:
+        """
+        狙いたいレース（3車ライン崩れ候補）判定：
+          ・3車ラインが存在、他ラインは3車以下（4車以上があれば除外）
+          ・以下のいずれか
+              A) 3車ライン合計 <= 151
+              B) 3車ラインの下位2平均 < ◎基準
+                 （◎がライン所属なら上位2平均、◎が単騎なら◎本人）
+          ・ただし「◎が最強の3車ライン」にいる場合は全体除外（= False）
+        """
+
+        # 3車ライン抽出
+        three_lines = [g for g in groups if len(g) == 3]
+        if not three_lines:
+            return False
+        if any(len(h) > 3 for h in groups):
+            return False
+
+        def _sum_line(g): return sum(float(dev_map.get(i, 0.0)) for i in g)
+
+        # 3車ラインの合計
+        totals = [(g, _sum_line(g)) for g in three_lines]
+        max_total = max(t for _, t in totals)
+
+        # ◎ライン（基準値）
+        anchor_val = float(dev_map.get(anchor_no, 0.0)) if anchor_no is not None else None
+        anchor_line = next((g for g in groups if anchor_no in g), None)
+        if anchor_line and len(anchor_line) >= 2:
+            top2 = sorted((float(dev_map.get(i, 0.0)) for i in anchor_line), reverse=True)[:2]
+            anchor_basis = sum(top2) / len(top2)   # ◎ライン上位2平均
+        else:
+            anchor_basis = anchor_val or 0.0       # 単騎◎なら本人値
+
+        # ◎が「最強の3車ライン」にいるなら全体除外（同率最大も最強扱い）
+        if anchor_line is not None and len(anchor_line) == 3:
+            anchor_total = _sum_line(anchor_line)
+            if anchor_total >= max_total:
+                return False
+
+        # 本判定：評価対象ラインが◎を含むならスキップ（従来ルール）
+        for g, total in totals:
+            if anchor_no in g:
+                continue
+            vals = [float(dev_map.get(i, 0.0)) for i in g]
+            low2_avg = (total - max(vals)) / 2.0
+
+            condA = (total <= 151.0)
+            condB = (low2_avg < anchor_basis)
+            if condA or condB:
+                return True
+
+        return False
+
+
+
+# ---- ここから本体 ----
+# 依存変数のフォールバック（未定義で落ちないように）
+result_marks = globals().get('result_marks', {})
+USED_IDS     = list(globals().get('USED_IDS', []))
+race_t       = dict(globals().get('race_t', {}))
+
+# ◎
+_anchor_no = None
+if isinstance(result_marks, dict) and '◎' in result_marks:
+    try: _anchor_no = int(result_marks['◎'])
+    except Exception: _anchor_no = None
+
+# 判定
+_nmax = max(map(int, USED_IDS)) if USED_IDS else 9
+_groups = _parse_lines(line_inputs, _nmax)
+_is_target_local = _is_target_by_3line(_groups, race_t, _anchor_no)
+
+# 見出し
 note_sections = []
-note_sections.append(f"{track}{race_no}R")
-note_sections.append(f"展開評価：{confidence}\n")
+_venue = str(globals().get("track", globals().get("place", "")))
+_eval  = str(globals().get("tenkai", globals().get("confidence", "")))
+note_sections.append(f"{_venue}{race_no}R")
+note_sections.append(f"展開評価：{_eval}\n" + ("【狙いたいレース】\n\n" if _is_target_local else "\n"))
 
-# 点数
-note_sections.append("点数")
-note_sections.append(f"三連複　{n_trio}点　三連単　{n_triS}点")
-note_sections.append(f"二車複　{n_qn}点　二車単　{n_nit}点\n")
-
+# 簡素表示
+race_time = globals().get('race_time', '')
+race_class = globals().get('race_class', '')
 note_sections.append(f"{race_time}　{race_class}")
 note_sections.append(f"ライン　{'　'.join([x for x in line_inputs if str(x).strip()])}")
 note_sections.append(f"スコア順（SBなし）　{_format_rank_from_array(USED_IDS, xs_base_raw)}")
 
-# 印＋無印
-no_mark_ids = [int(i) for i in USED_IDS if int(i) not in set(result_marks.values())] if isinstance(result_marks, dict) else []
-marks_str = ' '.join(f'{m}{result_marks[m]}' for m in ['◎','〇','▲','△','×','α'] if isinstance(result_marks, dict) and m in result_marks)
-no_str = ' '.join(map(str, no_mark_ids)) if no_mark_ids else '—'
-note_sections.append(f"{marks_str} 無{no_str}")
+marks_str, no_str = _fmt_rank(result_marks, USED_IDS)
+note_sections.append(f"{marks_str} {no_str}")
 
-# 偏差値 → フォーメーション
 note_sections.append("\n偏差値（風・ライン込み）")
 note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
-note_sections.append(f"\nフォーメーション：{formation_label}")
+note_sections.append("\n")  # 空行
+
+note_sections.append("【ライン重視フォーメーション】")
+note_sections.append("【ライン＋混戦フォーメーション】")
 
 
-
-
-# --- 三連複 note ---
-if has_trio:
-    triolist = "\n".join([
-        f"{a}-{b}-{c}{('☆' if (star_id is not None and star_id in (a,b,c)) else '')}"
-        f"（S={float(s):.1f}{'｜'+str(tag) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,c,s,tag) in sorted(trios_filtered_display, key=lambda x:(-float(x[3]), x[0], x[1], x[2]))
-    ])
-    note_sections.append(
-        f"\n三連複（新方式｜しきい値 {cutoff_trio:.1f}点／基準 L3基準 {TRIO_L3_MIN:.1f}）\n{triolist}"
-    )
-else:
-    note_sections.append("\n三連複（新方式）\n対象外")
-
-# --- 三連単 note ---
-if has_tri:
-    trifectalist = "\n".join([
-        f"{a}-{b}-{c}{('☆' if (star_id is not None and star_id in (a,b,c)) else '')}"
-        f"（S={float(s):.1f}{'｜'+str(tag) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,c,s,tag) in sorted(santan_filtered_display, key=lambda x:(-float(x[3]), x[0], x[1], x[2]))
-    ])
-    note_sections.append(
-        f"\n三連単（新方式｜しきい値 {cutoff_san:.1f}点／基準 L3基準 {TRIO_L3_MIN:.1f}）\n{trifectalist}"
-    )
-else:
-    note_sections.append("\n三連単（新方式）\n対象外")
-
-# --- 二車複 note ---
-if has_qn:
-    qnlist = "\n".join([
-        f"{a}-{b}（S2={float(s):.1f}{'｜'+str(tag) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,s,tag) in sorted(pairs_qn2_filtered, key=lambda x:(-float(x[2]), x[0], x[1]))
-    ])
-    note_sections.append(
-        f"\n二車複（新方式｜しきい値 {cutoff_qn2:.1f}点／基準 L2基準 {qn2_mu_sig:.1f}）\n{qnlist}"
-    )
-else:
-    note_sections.append("\n二車複（新方式）\n対象外")
-
-# --- 二車単 note ---
-if has_nit:
-    nitanlist = "\n".join([
-        f"{k}（S1={float(v):.1f}{'｜'+str(tag) if str(tag)=='ライン枠' else ''}）"
-        for (k,v,tag) in sorted(rows_nitan_filtered, key=lambda x:(-float(x[1]), x[0]))
-    ])
-    note_sections.append(
-        f"\n二車単（新方式｜しきい値 {cutoff_nit:.1f}点／基準 L2基準 {nit_mu_sig:.1f}）\n{nitanlist}"
-    )
-else:
-    note_sections.append("\n二車単（新方式）\n対象外")
-
-# =========================
-#  note 追記：印実測率ベースの「おすすめ買目」
-#  依存: grade_for_marks, hit_threshold, trio_prob_hits, tri_prob_hits, qn_prob_hits, nit_prob_hits, star_id
-# =========================
-
-def _fmt_prob(p: float) -> str:
-    try:
-        return f"{float(p)*100:.1f}%"
-    except Exception:
-        return "—"
-
-# セーフティ（未定義でも落ちないように）
-grade_for_marks = globals().get("grade_for_marks", "TOTAL")
-hit_threshold   = float(globals().get("hit_threshold", 0.10))
-trio_prob_hits  = globals().get("trio_prob_hits", [])   # [(a,b,c,p,tag), ...]
-tri_prob_hits   = globals().get("tri_prob_hits", [])    # [(a,b,c,p,tag), ...]
-qn_prob_hits    = globals().get("qn_prob_hits", [])     # [(a,b,p,tag), ...]
-nit_prob_hits   = globals().get("nit_prob_hits", [])    # [(a,b,p,tag), ...]
-star_id         = globals().get("star_id", None)
-
-# 並び順：確率↓ → 号車昇順
-trio_prob_hits = sorted(trio_prob_hits, key=lambda t: (-float(t[3]), int(t[0]), int(t[1]), int(t[2])))
-tri_prob_hits  = sorted(tri_prob_hits,  key=lambda t: (-float(t[3]), int(t[0]), int(t[1]), int(t[2])))
-qn_prob_hits   = sorted(qn_prob_hits,   key=lambda t: (-float(t[2]), int(t[0]), int(t[1])))
-nit_prob_hits  = sorted(nit_prob_hits,  key=lambda t: (-float(t[2]), int(t[0]), int(t[1])))
-
-# 各形式の note ラインを作る
-def _note_trio(rows):
-    if not rows:
-        return "該当なし"
-    return "\n".join(
-        f"{a}-{b}-{c}{('☆' if (star_id is not None and star_id in (a,b,c)) else '')}"
-        f"（{_fmt_prob(p)}{('｜'+str(tag)) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,c,p,tag) in rows
-    )
-
-def _note_tri(rows):
-    if not rows:
-        return "該当なし"
-    return "\n".join(
-        f"{a}-{b}-{c}{('☆' if (star_id is not None and star_id in (a,b,c)) else '')}"
-        f"（{_fmt_prob(p)}{('｜'+str(tag)) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,c,p,tag) in rows
-    )
-
-def _note_qn(rows):
-    if not rows:
-        return "該当なし"
-    return "\n".join(
-        f"{a}-{b}（{_fmt_prob(p)}{('｜'+str(tag)) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,p,tag) in rows
-    )
-
-def _note_nit(rows):
-    if not rows:
-        return "該当なし"
-    return "\n".join(
-        f"{a}-{b}（{_fmt_prob(p)}{('｜'+str(tag)) if str(tag)=='ライン枠' else ''}）"
-        for (a,b,p,tag) in rows
-    )
-
-# 見出し（共通ヘッダ）
-hdr = f"（グレード={grade_for_marks}／閾={hit_threshold*100:.0f}%）"
-
-# 互換エイリアス（この2行を note 出力の直前に）
-top3_in  = tri_inc
-top3_out = tri_exc
-
-# --- note: 戦術（◎入り3点／◎抜き3点） ---  ← ここを丸ごと置き換え
-if (top3_in or top3_out):
-    inc_str = ", ".join(f"{int(a)}-{int(b)}-{int(c)}" for (a,b,c,_,_) in top3_in) if top3_in else "—"
-    exc_str = ", ".join(f"{int(a)}-{int(b)}-{int(c)}" for (a,b,c,_,_) in top3_out) if top3_out else "—"
-    note_sections.append(
-        "戦術（3連複）\n"
-        f"◎入り: {inc_str}\n"
-        f"◎抜き: {exc_str}"
-    )
 
 # ================== 【3着率ランキングフォーメーション】（堅牢・偏差値不使用） ==================
 
 def _active_rank_stats():
     if "RANK_STATS_CURRENT" in globals() and isinstance(RANK_STATS_CURRENT, dict): return RANK_STATS_CURRENT
     if "RANK_STATS_F2" in globals() and isinstance(RANK_STATS_F2, dict): return RANK_STATS_F2
-    return globals().get("RANK_STATS", {}) if isinstance(globals().get("RANK_STATS", {}), dict) else {}
+    rs = globals().get("RANK_STATS", {})
+    return rs if isinstance(rs, dict) else {}
 
-# 「○」→「〇」など記号を正規化
 def _norm_sym(s):
     s = str(s).strip()
     return "〇" if s == "○" else s
 
-# result_marks を {車番:int -> 印:str} に正規化（{印->車番}でもOKにする）
 def _id2sym():
     rm = globals().get("result_marks", {})
     if not isinstance(rm, dict): return {}
-    # 形判定：キーが数字orintなら {id->sym} とみなす
     numeric_key = any(isinstance(k, int) or (isinstance(k, str) and k.isdigit()) for k in rm.keys())
     d = {}
     if numeric_key:
         for k, v in rm.items():
-            try:
-                d[int(k)] = _norm_sym(v)
-            except:
-                pass
+            try: d[int(k)] = _norm_sym(v)
+            except: pass
     else:
-        # {印->車番} を反転
         for sym, vid in rm.items():
-            try:
-                d[int(vid)] = _norm_sym(sym)
-            except:
-                pass
+            try: d[int(vid)] = _norm_sym(sym)
+            except: pass
     return d
 
-# 印を3着率(pTop3)で並べる（存在印だけ）
 def _symbols_by_pTop3_for_present(stats, present_syms):
     cand = []
     for sym in present_syms:
@@ -3046,63 +3102,48 @@ def _symbols_by_pTop3_for_present(stats, present_syms):
     cand.sort(key=lambda x: x[1], reverse=True)
     return [sym for sym, _ in cand]
 
-# 指定印の車番を1つ選ぶ（偏差値使わず、単純に番号小さい順）
 def _pick_one_id(id2sym, symbol):
     ids = sorted(i for i, s in id2sym.items() if _norm_sym(s) == _norm_sym(symbol))
     return ids[0] if ids else None
 
-# ---- 実処理 ----
-stats   = _active_rank_stats()
-id2sym  = _id2sym()
-present = set(_norm_sym(s) for s in id2sym.values() if s)
+def get_trio_rank_formation(show_ui: bool = False) -> str:
+    """偏差値を使わず、印のpTop3ランキングで 1-X-X 形式の文字列を返す。UI出力はオフが既定。"""
+    stats   = _active_rank_stats()
+    id2s    = _id2sym()
+    present = set(_norm_sym(s) for s in id2s.values() if s)
 
-# ランキング対象の印（存在する印のみ）
-rank_order = _symbols_by_pTop3_for_present(stats, present)
+    rank_order = _symbols_by_pTop3_for_present(stats, present)
+    axis_id, partners = None, []
 
-axis_id, partners = None, []
+    if rank_order:
+        axis_sym = rank_order[0]
+        axis_id  = _pick_one_id(id2s, axis_sym)
+        for sym in rank_order[1:5]:
+            pid = _pick_one_id(id2s, sym)
+            if pid is not None:
+                partners.append(pid)
 
-if rank_order:
-    # 1位印 → 軸
-    axis_sym = rank_order[0]
-    axis_id  = _pick_one_id(id2sym, axis_sym)
+    if axis_id:
+        partners_str  = "".join(str(i) for i in sorted(set(partners)))
+        formation_str = f"{axis_id}-{partners_str}-{partners_str}" if partners_str else f"{axis_id}-—-—"
+    else:
+        formation_str = "—"
 
-    # 2〜5位印 → 相手（各印から1人・番号小さい方）
-    for sym in rank_order[1:5]:
-        pid = _pick_one_id(id2sym, sym)
-        if pid is not None:
-            partners.append(pid)
+    if show_ui:
+        try:
+            st.markdown("### 【3着率ランキングフォーメーション】")
+            st.write(formation_str)
+        except Exception:
+            pass
 
-# 出力（軸が取れたら、相手はあるだけ出す／不足はそのまま）
-if axis_id:
-    partners_str  = "".join(str(i) for i in sorted(set(partners)))
-    formation_str = f"{axis_id}-{partners_str}-{partners_str}" if partners_str else f"{axis_id}-—-—"
-else:
-    formation_str = "—"
+    return formation_str
 
-st.markdown("### 【3着率ランキングフォーメーション】")
-st.write(formation_str)
 
-if 'note_sections' in globals():
-    note_sections.append("【3着率ランキングフォーメーション】 " + formation_str)
-# =================================================================================================
+note_sections.append(f"【3着率ランキングフォーメーション】 {get_trio_rank_formation(False)}")
+
 
 # ======================================================================
 
-# 既存の note_sections に追記
-note_sections.append("\n――――――――――――――――――――")
-note_sections.append(f"◎おすすめ買目（印の実測率ベース）{hdr}")
-
-note_sections.append(f"\n三連複〔{len(trio_prob_hits)}点〕")
-note_sections.append(_note_trio(trio_prob_hits))
-
-note_sections.append(f"\n三連単〔{len(tri_prob_hits)}点〕")
-note_sections.append(_note_tri(tri_prob_hits))
-
-note_sections.append(f"\n二車複〔{len(qn_prob_hits)}点〕")
-note_sections.append(_note_qn(qn_prob_hits))
-
-note_sections.append(f"\n二車単〔{len(nit_prob_hits)}点〕")
-note_sections.append(_note_nit(nit_prob_hits))
 
 
 note_text = "\n".join(note_sections)
