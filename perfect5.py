@@ -3059,9 +3059,202 @@ note_sections.append("\n偏差値（風・ライン込み）")
 note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
 note_sections.append("\n")  # 空行
 
-note_sections.append("【ライン重視フォーメーション】")
-note_sections.append("【ライン＋混戦フォーメーション】")
+# === 狙いたいレース着順フォーメーション（12-123-1234◎ 完全整合版） ===
 
+try:
+    _norm_sym  # type: ignore
+except NameError:
+    def _norm_sym(s):
+        s = str(s).strip()
+        return "〇" if s == "○" else s
+
+try:
+    _id2sym  # type: ignore
+except NameError:
+    def _id2sym():
+        rm = globals().get("result_marks", None)
+        if not isinstance(rm, dict):
+            rm = globals().get("marks", {})
+        if not isinstance(rm, dict) or not rm:
+            return {}
+        numeric_key = any(isinstance(k, int) or (isinstance(k, str) and k.isdigit()) for k in rm.keys())
+        d = {}
+        if numeric_key:
+            for k, v in rm.items():
+                try: d[int(k)] = _norm_sym(v)
+                except: pass
+        else:
+            for sym, vid in rm.items():
+                try: d[int(vid)] = _norm_sym(sym)
+                except: pass
+        return d
+
+def _active_finish_stats():
+    stats = globals().get("FINISH_STATS_CURRENT") or globals().get("FINISH_STATS")
+    if isinstance(stats, dict):
+        return stats
+    return {  # 既定値
+        "◎": {"p1": 0.253, "p2": 0.437, "p3": 0.621},
+        "〇": {"p1": 0.253, "p2": 0.425, "p3": 0.540},
+        "▲": {"p1": 0.149, "p2": 0.333, "p3": 0.437},
+        "△": {"p1": 0.092, "p2": 0.195, "p3": 0.379},
+        "×": {"p1": 0.103, "p2": 0.276, "p3": 0.391},
+        "α": {"p1": 0.093, "p2": 0.198, "p3": 0.326},
+        "無": {"p1": 0.061, "p2": 0.122, "p3": 0.305},
+    }
+
+def _p(stats, sym, key):
+    try:
+        d = stats.get(_norm_sym(sym), {})
+        if key == "p3":
+            return float(d.get("p3", d.get("pTop3", 0.0)))
+        if key == "p2":
+            return float(d.get("p2", d.get("pTop2", 0.0)))
+        if key == "p1":
+            return float(d.get("p1", d.get("pTop1", 0.0)))
+        return 0.0
+    except:
+        return 0.0
+
+def _anchor_id(id2sym):
+    for i, s in id2sym.items():
+        if _norm_sym(s) == "◎":
+            return i
+    return None
+
+def _parse_line_inputs(line_inputs):
+    groups = []
+    for s in (line_inputs or []):
+        ids = [int(ch) for ch in str(s) if ch.isdigit()]
+        if ids:
+            groups.append(ids)
+    return groups
+
+# --- 偏差値・確率・車番をまとめて比較 ---
+def _score_for_sort(i, id2sym, stats, race_t):
+    sym = _norm_sym(id2sym.get(i, "無"))
+    t = float(race_t.get(i, 0.0))
+    p2 = _p(stats, sym, "p2")
+    p1 = _p(stats, sym, "p1")
+    return (-t, -p2, -p1, i)  # 小さい方が優先（偏差値高→p2高→p1高→番号小）
+
+def _pick_best(ids, id2sym, stats, race_t, exclude=set()):
+    cands = [i for i in ids if i not in exclude]
+    if not cands:
+        return None
+    cands.sort(key=lambda i: _score_for_sort(i, id2sym, stats, race_t))
+    return cands[0]
+
+def _pick_median(ids, id2sym, stats, race_t, exclude=set()):
+    cands = [i for i in ids if i not in exclude]
+    if not cands:
+        return None
+    cands.sort(key=lambda i: _score_for_sort(i, id2sym, stats, race_t))
+    mid = len(cands)//2
+    return cands[mid]
+
+def _pick_low2_ids(stats, id2sym, race_t, ids):
+    def _get(sym, k, k_alt=None):
+        d = stats.get(sym, {})
+        return float(d.get(k, d.get(k_alt, 0.0))) if isinstance(d, dict) else 0.0
+    rows = []
+    for i in ids:
+        sym = _norm_sym(id2sym.get(i, "無"))
+        p3 = _get(sym, "p3", "pTop3")
+        p2 = _get(sym, "p2", "pTop2")
+        p1 = _get(sym, "p1", "pTop1")
+        t  = float(race_t.get(i, 0.0))
+        rows.append((i, p3, -p2, -p1, -t))
+    rows.sort(key=lambda x: (x[1], x[2], x[3], x[4], x[0]))
+    if not rows:
+        return None, None
+    if len(rows) == 1:
+        return rows[0][0], None
+    a, b = rows[0], rows[1]
+    # p2高→p1高→偏差値高→小番
+    if a[2] < b[2]: return a[0], b[0]
+    if b[2] < a[2]: return b[0], a[0]
+    if a[3] < b[3]: return a[0], b[0]
+    if b[3] < a[3]: return b[0], a[0]
+    if a[4] < b[4]: return a[0], b[0]
+    if b[4] < a[4]: return b[0], a[0]
+    return (a[0], b[0]) if a[0] < b[0] else (b[0], a[0])
+
+def _is_target_race():
+    if bool(globals().get("_is_target_local", False)):
+        return True
+    for k in ("IS_TARGET_RACE","WANT_RACE","want_race","is_target_race"):
+        v = globals().get(k, None)
+        if isinstance(v, bool) and v:
+            return True
+    rm = globals().get("race_meta", {})
+    if isinstance(rm, dict):
+        for key in ("want","target","狙いたいレース"):
+            val = rm.get(key, None)
+            if isinstance(val, bool) and val:
+                return True
+    return False
+
+def get_target_finish_trio_anchor_low(show_ui=False):
+    id2sym = _id2sym()
+    stats  = _active_finish_stats()
+    race_t = globals().get("race_t", {}) or {}
+
+    if not id2sym:
+        return "—"
+
+    groups = _parse_line_inputs(globals().get("line_inputs", []))
+    anc = _anchor_id(id2sym)
+    if anc is None:
+        return "—"
+
+    used = {anc}
+
+    # 1 = ◎ライン相棒（偏差値トップ）／◎単騎時は別ライン偏差値2位
+    g_anc = next((g for g in groups if anc in g), [])
+    one = _pick_best([i for i in g_anc if i != anc], id2sym, stats, race_t)
+    if one is None:
+        others = [i for g in groups for i in g if i != anc]
+        others.sort(key=lambda i: _score_for_sort(i, id2sym, stats, race_t))
+        if len(others) >= 2:
+            one = others[1]  # 別ライン偏差値2位
+        elif others:
+            one = others[0]
+    used.add(one)
+
+    # 2 = 対象3車ラインの偏差値・真ん中
+    three_lines = [g for g in groups if len(g) == 3]
+    target3 = next((g for g in three_lines if anc not in g), (three_lines[0] if three_lines else []))
+    two = _pick_median(target3, id2sym, stats, race_t, exclude=used)
+    if two is None:
+        pool = [i for i in id2sym.keys() if i not in used]
+        two = _pick_best(pool, id2sym, stats, race_t)
+    used.add(two)
+
+    # 3 = 残りから p3下位2 → p2高い方
+    rest = [i for i in id2sym.keys() if i not in used]
+    three, four = _pick_low2_ids(stats, id2sym, race_t, rest)
+    used |= {three, four}
+
+    # 3列目 = {1,2,3,4,◎}
+    col1 = "".join(str(i) for i in [one, two] if i)
+    col2 = "".join(str(i) for i in [one, two, three] if i)
+    col3 = "".join(str(i) for i in [one, two, three, four, anc] if i)
+    s = f"{col1}-{col2}-{col3}"
+
+    if show_ui:
+        try:
+            st.markdown("### 【狙いたいレース着順フォーメーション】")
+            st.write(s)
+        except:
+            pass
+    return s
+
+if _is_target_race():
+    note_sections.append(f"【狙いたいレース着順フォーメーション】 {get_target_finish_trio_anchor_low(False)}")
+else:
+    note_sections.append("【狙いたいレース着順フォーメーション】 該当レースではありません")
+# === END 完全整合版 ===
 
 
 # ================== 【3着率ランキングフォーメーション】（堅牢・偏差値不使用） ==================
