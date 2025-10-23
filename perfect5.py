@@ -8,7 +8,7 @@ from statistics import mean, pstdev
 from itertools import combinations
 from datetime import datetime, date, time, timedelta, timezone
 
-# ===========================F===
+# ==============================
 # ページ設定
 # ==============================
 st.set_page_config(page_title="ヴェロビ：級別×日程ダイナミクス（5〜9車・買い目付き / 統合版）", layout="wide")
@@ -1118,6 +1118,162 @@ df = pd.DataFrame(rows, columns=[
     "車番","役割","脚質基準(会場)","風補正","得点補正","バンク補正",
     "周長補正","周回補正","個人補正","安定度","ラスト200","合計_SBなし_raw",
 ])
+
+# === ここは df = pd.DataFrame(...) の直後に貼るだけ ===
+
+# --- fallback: note_sections が無い環境でも落ちないように ---
+ns = globals().get("note_sections", None)
+if not isinstance(ns, list):
+    ns = []
+    globals()["note_sections"] = ns
+note_sections = ns
+
+
+# ❶ バンク分類を“みなし直線/周長”から決定（33 / 400 / 500）
+def _bank_str_from_lengths(bank_length: float) -> str:
+    try:
+        bl = float(bank_length)
+    except:
+        bl = 400.0
+    if bl <= 340.0:   # 333系
+        return "33"
+    elif bl >= 480.0: # 500系
+        return "500"
+    return "400"
+
+# ❷ 会場の“有利脚質”セット
+def _favorable_styles(bank_str: str) -> set[str]:
+    if bank_str == "33":   # 33＝先行系・ライン寄り
+        return {"逃げ", "マーク"}
+    if bank_str == "500":  # 500＝差し・マーク寄り
+        return {"差し", "マーク"}
+    return {"まくり", "差し"}  # 既定=400
+
+# ❸ 役割の日本語化（lineの並びから）
+def _role_jp(no: int, line_def: dict) -> str:
+    r = role_in_line(no, line_def)  # 'head'/'second'/'thirdplus'/'single'
+    return {"head":"先頭","second":"番手","thirdplus":"三番手","single":"先頭"}.get(r, "先頭")
+
+# ❹ 入力の“逃/捲/差/マ”から、その選手の実脚質を決定（同点時はライン位置でブレない決め方）
+def _dominant_style(no: int) -> str:
+    vec = [("逃げ", k_esc.get(no,0)), ("まくり", k_mak.get(no,0)),
+           ("差し", k_sashi.get(no,0)), ("マーク", k_mark.get(no,0))]
+    m = max(v for _,v in vec)
+    cand = [s for s,v in vec if v == m and m > 0]
+    if cand:
+        # タイブレーク：先頭>番手>三番手>単騎 を優先（先行気味→差し→マークの順）
+        pr = {"先頭":3,"番手":2,"三番手":1,"単騎":0}
+        role = role_in_line(no, line_def)
+        role_pr = {"head":"先頭","second":"番手","thirdplus":"三番手","single":"単騎"}.get(role,"単騎")
+        if "逃げ" in cand: return "逃げ"
+        # 残りはライン位置で“差し”優先、その次に“マーク”
+        if "差し" in cand and pr.get(role_pr,0) >= 2: return "差し"
+        if "マーク" in cand: return "マーク"
+        return cand[0]
+    # 出走履歴ゼロなら位置で決める
+    role = role_in_line(no, line_def)
+    return {"head":"逃げ","second":"差し","thirdplus":"マーク","single":"まくり"}.get(role,"まくり")
+
+# ❺ Rider 構造体（このファイル上部で既に宣言済みなら再定義不要）
+from dataclasses import dataclass
+@dataclass
+class Rider:
+    num: int; hensa: float; line_id: int; role: str; style: str
+
+# ❻ 偏差値（Tスコア）を “合計_SBなし_raw” から作る（なければ Form で代用）
+def _hensa_map_from_df(df: pd.DataFrame) -> dict[int,float]:
+    col = "合計_SBなし_raw" if "合計_SBなし_raw" in df.columns else None
+    base = [float(df.loc[df["車番"]==no, col].values[0]) if col else float(form_T_map[no]) for no in active_cars]
+    T, _, _, _ = t_score_from_finite(np.array(base, dtype=float))
+    return {no: float(T[i]) for i,no in enumerate(active_cars)}
+
+# ❼ RIDERS を“実データ”で構築（脚質は ❹、偏差値は ❻）
+bank_str = _bank_str_from_lengths(bank_length)
+hensa_map = _hensa_map_from_df(df)
+RIDERS = []
+for no in active_cars:
+    # ラインIDは“そのラインの先頭車番”を代表IDに
+    gid = None
+    for g, mem in line_def.items():
+        if no in mem:
+            gid = mem[0]; break
+    if gid is None: gid = no
+    RIDERS.append(
+        Rider(
+            num=int(no),
+            hensa=float(hensa_map[no]),
+            line_id=int(gid),
+            role=_role_jp(no, line_def),
+            style=_dominant_style(no),
+        )
+    )
+
+# ❽ 三連複フォーメーション（本命−2−全）：1列目=有利脚質内の偏差値最大
+def _pick_axis(riders: list[Rider], bank_str: str) -> Rider:
+    fav = _favorable_styles(bank_str)
+    cand = [r for r in riders if r.style in fav]
+    if not cand:
+        raise ValueError(f"有利脚質{sorted(fav)}に該当0（bank={bank_str} / style誤りの可能性）")
+    return max(cand, key=lambda r: r.hensa)
+
+def _role_priority(bank_str: str) -> dict[str,int]:
+    return ({"マーク":3,"番手":2,"三番手":1,"先頭":0} if bank_str=="33"
+            else {"番手":3,"マーク":2,"三番手":1,"先頭":0})
+
+def _pick_support(riders: list[Rider], first: Rider, bank_str: str) -> Rider|None:
+    pr = _role_priority(bank_str)
+    same = [r for r in riders if r.line_id==first.line_id and r.num!=first.num]
+    if not same: return None
+    same.sort(key=lambda r: (pr.get(r.role,0), r.hensa), reverse=True)
+    return same[0]
+
+# 印（◎→▲→偏差値補完）
+def _read_marks_idmap() -> dict[int,str]:
+    rm = globals().get("result_marks") or globals().get("marks") or {}
+    out={}
+    if isinstance(rm, dict):
+        if any(isinstance(k,int) or (isinstance(k,str) and k.isdigit()) for k in rm.keys()):
+            for k,v in rm.items():
+                try: out[int(k)] = ("○" if str(v) in ("○","〇") else str(v))
+                except: pass
+        else:
+            for sym,vid in rm.items():
+                try: out[int(vid)] = ("○" if str(sym) in ("○","〇") else str(sym))
+                except: pass
+    return out
+
+def _pick_partner(riders: list[Rider], used: set[int]) -> int|None:
+    id2sym = _read_marks_idmap()
+    for want in ("◎","▲"):
+        t = next((i for i,s in id2sym.items() if i not in used and s==want), None)
+        if t is not None: return t
+    # 補完：偏差値上位
+    rest = sorted([r for r in riders if r.num not in used], key=lambda r: r.hensa, reverse=True)
+    return rest[0].num if rest else None
+
+def make_trio_formation_final(riders: list[Rider], bank_str: str) -> str:
+    first = _pick_axis(riders, bank_str)
+    support = _pick_support(riders, first, bank_str)
+    used = {first.num} | ({support.num} if support else set())
+    partner = _pick_partner(riders, used)
+    second = []
+    if support: second.append(support.num)
+    if partner is not None: second.append(partner)
+    if len(second) < 2:
+        # 2車に満たなければ偏差値補完
+        rest = sorted([r.num for r in riders if r.num not in ({first.num}|set(second))],
+                      key=lambda n: next(rr.hensa for rr in riders if rr.num==n),
+                      reverse=True)
+        if rest: second.append(rest[0])
+    second = sorted(set(second))[:2]
+    return f"三連複フォーメーション：{first.num}－{','.join(map(str, second))}－全"
+
+# ❾ 出力（note_sections があればそこへ）
+try:
+    out = make_trio_formation_final(RIDERS, bank_str)
+    (note_sections.append if isinstance(note_sections, list) else print)(f"【狙いたいレースフォーメーション】 {out}")
+except Exception as e:
+    (note_sections.append if isinstance(note_sections, list) else print)(f"【狙いたいレースフォーメーション】 エラー: {e}")
 
 
 mu = float(df["合計_SBなし_raw"].mean()) if not df.empty else 0.0
@@ -3059,289 +3215,168 @@ note_sections.append("\n偏差値（風・ライン込み）")
 note_sections.append(_fmt_hen_lines(race_t, USED_IDS))
 note_sections.append("\n")  # 空行
 
-# === 狙いたいレース着順フォーメーション（12-123-1234◎ 完全整合版） ===
+# ===== note出力直後に貼るだけ（完全統合版） =====
+# ここから追記（note_sections への固定2-4/2-3 出力・完全版）
 
+# --- 入力整形 ---
 try:
-    _norm_sym  # type: ignore
-except NameError:
-    def _norm_sym(s):
-        s = str(s).strip()
-        return "〇" if s == "○" else s
+    # ライン表記（全角スペース対応）
+    lines_str = " ".join([str(x).replace("　", " ").strip() for x in (line_inputs or []) if str(x).strip()])
+except Exception:
+    lines_str = ""
 
-try:
-    _id2sym  # type: ignore
-except NameError:
-    def _id2sym():
-        rm = globals().get("result_marks", None)
-        if not isinstance(rm, dict):
-            rm = globals().get("marks", {})
-        if not isinstance(rm, dict) or not rm:
-            return {}
-        numeric_key = any(isinstance(k, int) or (isinstance(k, str) and k.isdigit()) for k in rm.keys())
-        d = {}
-        if numeric_key:
-            for k, v in rm.items():
-                try: d[int(k)] = _norm_sym(v)
-                except: pass
-        else:
-            for sym, vid in rm.items():
-                try: d[int(vid)] = _norm_sym(sym)
-                except: pass
-        return d
+# 印（◎ など）
+marks = result_marks if isinstance(result_marks, dict) else {}
 
-def _active_finish_stats():
-    stats = globals().get("FINISH_STATS_CURRENT") or globals().get("FINISH_STATS")
-    if isinstance(stats, dict):
-        return stats
-    return {  # 既定値
-        "◎": {"p1": 0.253, "p2": 0.437, "p3": 0.621},
-        "〇": {"p1": 0.253, "p2": 0.425, "p3": 0.540},
-        "▲": {"p1": 0.149, "p2": 0.333, "p3": 0.437},
-        "△": {"p1": 0.092, "p2": 0.195, "p3": 0.379},
-        "×": {"p1": 0.103, "p2": 0.276, "p3": 0.391},
-        "α": {"p1": 0.093, "p2": 0.198, "p3": 0.326},
-        "無": {"p1": 0.061, "p2": 0.122, "p3": 0.305},
-    }
-
-def _p(stats, sym, key):
+# 偏差値スコアの抽出（race_t から柔軟に拾う）
+def _num(v):
     try:
-        d = stats.get(_norm_sym(sym), {})
-        if key == "p3":
-            return float(d.get("p3", d.get("pTop3", 0.0)))
-        if key == "p2":
-            return float(d.get("p2", d.get("pTop2", 0.0)))
-        if key == "p1":
-            return float(d.get("p1", d.get("pTop1", 0.0)))
-        return 0.0
-    except:
-        return 0.0
-
-def _anchor_id(id2sym):
-    for i, s in id2sym.items():
-        if _norm_sym(s) == "◎":
-            return i
-    return None
-
-def _parse_line_inputs(line_inputs):
-    groups = []
-    for s in (line_inputs or []):
-        ids = [int(ch) for ch in str(s) if ch.isdigit()]
-        if ids:
-            groups.append(ids)
-    return groups
-
-# --- 偏差値・確率・車番をまとめて比較 ---
-def _score_for_sort(i, id2sym, stats, race_t):
-    sym = _norm_sym(id2sym.get(i, "無"))
-    t = float(race_t.get(i, 0.0))
-    p2 = _p(stats, sym, "p2")
-    p1 = _p(stats, sym, "p1")
-    return (-t, -p2, -p1, i)  # 小さい方が優先（偏差値高→p2高→p1高→番号小）
-
-def _pick_best(ids, id2sym, stats, race_t, exclude=set()):
-    cands = [i for i in ids if i not in exclude]
-    if not cands:
-        return None
-    cands.sort(key=lambda i: _score_for_sort(i, id2sym, stats, race_t))
-    return cands[0]
-
-def _pick_median(ids, id2sym, stats, race_t, exclude=set()):
-    cands = [i for i in ids if i not in exclude]
-    if not cands:
-        return None
-    cands.sort(key=lambda i: _score_for_sort(i, id2sym, stats, race_t))
-    mid = len(cands)//2
-    return cands[mid]
-
-def _pick_low2_ids(stats, id2sym, race_t, ids):
-    def _get(sym, k, k_alt=None):
-        d = stats.get(sym, {})
-        return float(d.get(k, d.get(k_alt, 0.0))) if isinstance(d, dict) else 0.0
-    rows = []
-    for i in ids:
-        sym = _norm_sym(id2sym.get(i, "無"))
-        p3 = _get(sym, "p3", "pTop3")
-        p2 = _get(sym, "p2", "pTop2")
-        p1 = _get(sym, "p1", "pTop1")
-        t  = float(race_t.get(i, 0.0))
-        rows.append((i, p3, -p2, -p1, -t))
-    rows.sort(key=lambda x: (x[1], x[2], x[3], x[4], x[0]))
-    if not rows:
-        return None, None
-    if len(rows) == 1:
-        return rows[0][0], None
-    a, b = rows[0], rows[1]
-    # p2高→p1高→偏差値高→小番
-    if a[2] < b[2]: return a[0], b[0]
-    if b[2] < a[2]: return b[0], a[0]
-    if a[3] < b[3]: return a[0], b[0]
-    if b[3] < a[3]: return b[0], a[0]
-    if a[4] < b[4]: return a[0], b[0]
-    if b[4] < a[4]: return b[0], a[0]
-    return (a[0], b[0]) if a[0] < b[0] else (b[0], a[0])
-
-def _is_target_race():
-    if bool(globals().get("_is_target_local", False)):
-        return True
-    for k in ("IS_TARGET_RACE","WANT_RACE","want_race","is_target_race"):
-        v = globals().get(k, None)
-        if isinstance(v, bool) and v:
-            return True
-    rm = globals().get("race_meta", {})
-    if isinstance(rm, dict):
-        for key in ("want","target","狙いたいレース"):
-            val = rm.get(key, None)
-            if isinstance(val, bool) and val:
-                return True
-    return False
-
-def get_target_finish_trio_anchor_low(show_ui=False):
-    id2sym = _id2sym()
-    stats  = _active_finish_stats()
-    race_t = globals().get("race_t", {}) or {}
-
-    if not id2sym:
-        return "—"
-
-    groups = _parse_line_inputs(globals().get("line_inputs", []))
-    anc = _anchor_id(id2sym)
-    if anc is None:
-        return "—"
-
-    used = {anc}
-
-    # 1 = ◎ライン相棒（偏差値トップ）／◎単騎時は別ライン偏差値2位
-    g_anc = next((g for g in groups if anc in g), [])
-    one = _pick_best([i for i in g_anc if i != anc], id2sym, stats, race_t)
-    if one is None:
-        others = [i for g in groups for i in g if i != anc]
-        others.sort(key=lambda i: _score_for_sort(i, id2sym, stats, race_t))
-        if len(others) >= 2:
-            one = others[1]  # 別ライン偏差値2位
-        elif others:
-            one = others[0]
-    used.add(one)
-
-    # 2 = 対象3車ラインの偏差値・真ん中
-    three_lines = [g for g in groups if len(g) == 3]
-    target3 = next((g for g in three_lines if anc not in g), (three_lines[0] if three_lines else []))
-    two = _pick_median(target3, id2sym, stats, race_t, exclude=used)
-    if two is None:
-        pool = [i for i in id2sym.keys() if i not in used]
-        two = _pick_best(pool, id2sym, stats, race_t)
-    used.add(two)
-
-    # 3 = 残りから p3下位2 → p2高い方
-    rest = [i for i in id2sym.keys() if i not in used]
-    three, four = _pick_low2_ids(stats, id2sym, race_t, rest)
-    used |= {three, four}
-
-    # 3列目 = {1,2,3,4,◎}
-    col1 = "".join(str(i) for i in [one, two] if i)
-    col2 = "".join(str(i) for i in [one, two, three] if i)
-    col3 = "".join(str(i) for i in [one, two, three, four, anc] if i)
-    s = f"{col1}-{col2}-{col3}"
-
-    if show_ui:
+        return float(v)
+    except Exception:
         try:
-            st.markdown("### 【狙いたいレース着順フォーメーション】")
-            st.write(s)
-        except:
-            pass
-    return s
-
-if _is_target_race():
-    note_sections.append(f"【狙いたいレース着順フォーメーション】 {get_target_finish_trio_anchor_low(False)}")
-else:
-    note_sections.append("【狙いたいレース着順フォーメーション】 該当レースではありません")
-# === END 完全整合版 ===
-
-
-# ================== 【3着率ランキングフォーメーション】（堅牢・偏差値不使用） ==================
-
-def _active_rank_stats():
-    if "RANK_STATS_CURRENT" in globals() and isinstance(RANK_STATS_CURRENT, dict): return RANK_STATS_CURRENT
-    if "RANK_STATS_F2" in globals() and isinstance(RANK_STATS_F2, dict): return RANK_STATS_F2
-    rs = globals().get("RANK_STATS", {})
-    return rs if isinstance(rs, dict) else {}
-
-def _norm_sym(s):
-    s = str(s).strip()
-    return "〇" if s == "○" else s
-
-def _id2sym():
-    rm = globals().get("result_marks", {})
-    if not isinstance(rm, dict): return {}
-    numeric_key = any(isinstance(k, int) or (isinstance(k, str) and k.isdigit()) for k in rm.keys())
-    d = {}
-    if numeric_key:
-        for k, v in rm.items():
-            try: d[int(k)] = _norm_sym(v)
-            except: pass
-    else:
-        for sym, vid in rm.items():
-            try: d[int(vid)] = _norm_sym(sym)
-            except: pass
-    return d
-
-def _symbols_by_pTop3_for_present(stats, present_syms):
-    cand = []
-    for sym in present_syms:
-        try:
-            p = float(stats.get(sym, {}).get("pTop3", 0.0))
-        except:
-            p = 0.0
-        cand.append((sym, p))
-    cand.sort(key=lambda x: x[1], reverse=True)
-    return [sym for sym, _ in cand]
-
-def _pick_one_id(id2sym, symbol):
-    ids = sorted(i for i, s in id2sym.items() if _norm_sym(s) == _norm_sym(symbol))
-    return ids[0] if ids else None
-
-def get_trio_rank_formation(show_ui: bool = False) -> str:
-    """偏差値を使わず、印のpTop3ランキングで 1-X-X 形式の文字列を返す。UI出力はオフが既定。"""
-    stats   = _active_rank_stats()
-    id2s    = _id2sym()
-    present = set(_norm_sym(s) for s in id2s.values() if s)
-
-    rank_order = _symbols_by_pTop3_for_present(stats, present)
-    axis_id, partners = None, []
-
-    if rank_order:
-        axis_sym = rank_order[0]
-        axis_id  = _pick_one_id(id2s, axis_sym)
-        for sym in rank_order[1:5]:
-            pid = _pick_one_id(id2s, sym)
-            if pid is not None:
-                partners.append(pid)
-
-    if axis_id:
-        partners_str  = "".join(str(i) for i in sorted(set(partners)))
-        formation_str = f"{axis_id}-{partners_str}-{partners_str}" if partners_str else f"{axis_id}-—-—"
-    else:
-        formation_str = "—"
-
-    if show_ui:
-        try:
-            st.markdown("### 【3着率ランキングフォーメーション】")
-            st.write(formation_str)
+            return float(str(v).replace("%","").strip())
         except Exception:
-            pass
+            return 0.0
 
-    return formation_str
+def _get_score_from_entry(e):
+    if isinstance(e, (int, float)): return float(e)
+    if isinstance(e, dict):
+        for k in ("偏差値","hensachi","dev","score","sc","S","s","val","value"):
+            if k in e: return _num(e[k])
+    return 0.0
+
+scores = {}
+try:
+    for n in USED_IDS:
+        e = race_t.get(n, race_t.get(int(n), race_t.get(str(n), {})))
+        scores[int(n)] = _get_score_from_entry(e)
+except Exception:
+    # フォールバック：全員0
+    scores = {int(n): 0.0 for n in USED_IDS}
+
+# --- フォーメーション生成（既存があれば使用、無ければ内蔵版） ---
+if "generate_fixed24" in globals() and callable(globals()["generate_fixed24"]):
+    _gen_fixed = globals()["generate_fixed24"]
+else:
+    # 最小・堅牢な内蔵版（単騎軸対応／2-3 or 2-4）
+    from typing import Dict, List, Tuple, Set
+    def generate_fixed24(marks: Dict[str, int], lines_str: str, scores: Dict[int, float], adaptive: bool = True) -> Dict[str, object]:
+        scores = {int(k): float(v) for k, v in (scores or {}).items()}
+        def _norm(s): return (s or "").replace("　", " ").strip()
+        def _parse_lines_local(s: str) -> List[List[int]]:
+            parts = [p for p in _norm(s).split() if p]
+            out: List[List[int]] = []
+            for p in parts:
+                nums = [int(ch) for ch in p if ch.isdigit()]
+                if nums: out.append(nums)
+            return out
+        def _buckets(lines: List[List[int]]) -> Dict[int, str]:
+            m: Dict[int,str] = {}; lid = 0
+            for ln in lines:
+                if len(ln) == 1:
+                    m[ln[0]] = f"S{ln[0]}"
+                else:
+                    lid += 1
+                    for n in ln: m[n] = f"L{lid}"
+            return m
+        lines = _parse_lines_local(lines_str)
+        if not lines:
+            base = sorted(scores.keys() or [marks.get("◎", 1)])
+            lines = [[n] for n in base]
+        buckets = _buckets(lines)
+        all_nums = sorted({n for ln in lines for n in ln})
+        if not all_nums:
+            return {"note":"—","pairs_nf":[],"pairs_w":[],"trios":[],"pattern":"","second":[],"third":[]}
+        anchor = int((marks or {}).get("◎", all_nums[0]))
+        if anchor not in all_nums:
+            anchor = max(all_nums, key=lambda n: scores.get(n, 0.0))
+        cands = sorted([n for n in all_nums if n != anchor], key=lambda n: (-scores.get(n,0.0), n))
+        ab = buckets.get(anchor, None)
+
+        # 第2列
+        second: List[int] = []
+        if ab and ab.startswith("L"):
+            same = [n for n in next((ln for ln in lines if anchor in ln), []) if n != anchor]
+            if same:
+                second.append(sorted(same, key=lambda n: (-scores.get(n,0.0), n))[0])
+            for n in cands:
+                if n in second: continue
+                if buckets.get(n) != ab:
+                    second.append(n); break
+            for n in cands:
+                if len(second) >= 2: break
+                if n not in second: second.append(n)
+        else:
+            # 単騎軸：スコア順 2名（ライン重複は軽回避）
+            used: Set[int] = {anchor}
+            for n in cands:
+                if len(second) >= 2: break
+                if n in used: continue
+                second.append(n); used.add(n)
+        second = second[:2]
+
+        # 第3列サイズ（展開厚み）
+        line_cnt = sum(1 for ln in lines if len(ln) >= 2)
+        sing_cnt = sum(1 for ln in lines if len(ln) == 1)
+        tsz = 3 if (adaptive and line_cnt <= 2 and sing_cnt <= 1) else 4
+
+        # 第3列（第2列内包）
+        third = list(second)
+        for n in cands:
+            if len(third) >= tsz: break
+            if n not in third: third.append(n)
+        third = third[:tsz]
+
+        # 実点
+        pairs = [(anchor, x) for x in second]
+        seen: Set[Tuple[int,int,int]] = set()
+        trios: List[Tuple[int,int,int]] = []
+        for a in second:
+            for b in third:
+                if a == b: continue
+                t = tuple(sorted((anchor, a, b)))
+                if t not in seen:
+                    seen.add(t); trios.append(t)
+
+        def _fmt(nums): return "・".join(str(x) for x in nums) if nums else "—"
+        def _cmp(nums): return "".join(str(x) for x in nums) if nums else ""
+        title = "【フォーメーション（固定2-4）】" if tsz == 4 else "【フォーメーション（固定2-3）】"
+        pattern = f"{anchor}-{_cmp(second)}-{_cmp(third)}"
+        note = "\n".join([
+            title,
+            f"ライン：{lines_str or '—'}",
+            f"軸：{anchor}",
+            f"第2列（2車）：{_fmt(second)}",
+            f"第3列（{tsz}車）：{_fmt(third)}",
+            (f"ワイド＆２車複：{pairs[0][0]}-{pairs[0][1]} / {pairs[1][0]}-{pairs[1][1]}" if len(pairs) >= 2 else "ワイド＆２車複：—"),
+            f"三連複（展開）：{pattern if pattern else '—'}",
+        ])
+        return {"pairs_nf": pairs, "pairs_w": pairs, "trios": trios, "pattern": pattern, "note": note,
+                "second": second, "third": third}
+    _gen_fixed = generate_fixed24
+
+# --- 生成して note_sections に追記 ---
+try:
+    res__ = _gen_fixed(marks=marks, lines_str=lines_str, scores=scores, adaptive=True)
+    note_sections.append(res__["note"])
+    # 実点の列挙（表は使わない）
+    if res__.get("trios"):
+        _triostr = ", ".join(f"{a}-{b}-{c}" for a,b,c in res__["trios"])
+       
+except Exception as _e:
+    note_sections.append(f"⚠ フォーメーション生成エラー: {type(_e).__name__}: {str(_e)}")
 
 
-note_sections.append(f"【3着率ランキングフォーメーション】 {get_trio_rank_formation(False)}")
 
-
-# ======================================================================
+# === ここまで ===
 
 
 
 note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
 st.text_area("ここを選択してコピー", note_text, height=560)
+# =========================
+
 # =========================
 #  一括置換ブロック ここまで
 # =========================
