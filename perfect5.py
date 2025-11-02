@@ -4339,34 +4339,34 @@ if _t369_render_once(_render_key):
         except Exception:
             dbg_scores_keys = '—'
 
-        try:
-            _flow_diag_raw = compute_flow_indicators(lines_str, marks, scores)
-            _flow_diag = _flow_diag_raw if isinstance(_flow_diag_raw, dict) else {}
-        except Exception as e:
-            _flow_diag = {}
-            note_sections.append(f"⚠ compute_flow_indicators(診断)エラー: {type(e).__name__}: {e}")
+        # ==== 診断（FR/VTX/U＋FR内訳のみ表示） ====
+try:
+    _flow_diag_raw = compute_flow_indicators(lines_str, marks, scores)
+    _flow_diag = _flow_diag_raw if isinstance(_flow_diag_raw, dict) else {}
 
+    # --- FR/VTX/U 表示 ---
+    note_sections.append(
+        f"FR={_flow_diag.get('FR', 0.0):.3f}  "
+        f"VTX={_flow_diag.get('VTX', 0.0):.3f}  "
+        f"U={_flow_diag.get('U', 0.0):.3f}"
+    )
+
+    # --- FR内訳 表示 ---
+    _dbg = _flow_diag.get("dbg", {}) if isinstance(_flow_diag, dict) else {}
+    if isinstance(_dbg, dict) and _dbg:
         note_sections.append(
-            "【Tesla369診断】"
-            f"\nlines_str={lines_str or '—'}"
-            f"\nlines_list={dbg_lines}"
-            f"\nmarks={dbg_marks}"
-            f"\nscores.keys={dbg_scores_keys}"
-            f"\nFR={_flow_diag.get('FR',0.0):.3f}  "
-            f"VTX={_flow_diag.get('VTX',0.0):.3f}  "
-            f"U={_flow_diag.get('U',0.0):.3f}"
-            f"\n※どれかが '—' なら入力が読めていません。"
+            f"[FR内訳] blend_star={_dbg.get('blend_star', 0.0):.3f} "
+            f"blend_none={_dbg.get('blend_none', 0.0):.3f} "
+            f"sd={_dbg.get('sd', 0.0):.3f} "
+            f"nu={_dbg.get('nu', 0.0):.3f}"
         )
 
-        _dbg = _flow_diag.get("dbg", {}) if isinstance(_flow_diag, dict) else {}
-        if isinstance(_dbg, dict) and _dbg:
-            note_sections.append(
-                f"[FR内訳] blend_star={_dbg.get('blend_star',0.0):.3f} "
-                f"blend_none={_dbg.get('blend_none',0.0):.3f} "
-                f"sd={_dbg.get('sd',0.0):.3f} nu={_dbg.get('nu',0.0):.3f}"
-            )
-    except Exception as _e:
-        note_sections.append(f"⚠ Tesla369診断エラー: {type(_e).__name__}: {str(_e)}")
+except Exception as _e:
+    note_sections.append(
+        f"⚠ Tesla369診断エラー: {type(_e).__name__}: {str(_e)}"
+    )
+
+
 else:
     pass
 
