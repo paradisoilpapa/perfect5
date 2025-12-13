@@ -3007,8 +3007,6 @@ grade_for_marks = st.sidebar.selectbox(
 )
 hit_threshold = float(st.sidebar.slider("的中率しきい値", 0.01, 0.50, 0.10, 0.01, key="hit_threshold"))
 
-# --- テーブル選択（あなたが貼ったテーブル群を前提） ---
-RANK_TABLE = RANK_STATS_BY_GRADE.get(grade_for_marks, RANK_STATS_TOTAL)
 
 # --- 車番→印 を作る（未指定は「無」）
 marks_of_car = {int(i): "無" for i in USED_IDS}
