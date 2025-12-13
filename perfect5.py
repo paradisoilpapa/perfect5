@@ -165,6 +165,95 @@ RANK_STATS_TOTAL = {
     "無": {"p1": 0.003, "pTop2": 0.118, "pTop3": 0.256},
 }
 
+# --- FR順位と印・どの確率を使うかの対応表 ---
+
+# 7車立て
+RANK_MAPPING_7 = {
+    1: ("〇", "p1"),      # FR1位 × 〇の1着率
+    2: ("◎", "p1"),      # FR2位 × ◎の1着率
+    3: ("△", "pTop2"),   # FR3位 × △の2着内率
+    4: ("▲", "pTop2"),   # FR4位 × ▲の2着内率
+    5: ("無", "pTop3"),   # FR5位 × 無の3着内率
+    6: ("α", "pTop3"),   # FR6位 × αの3着内率
+    7: ("×", "pTop3"),   # FR7位 × ×の3着内率
+}
+
+# 6車立て（FR5位*αの3着率／FR6位*×の3着率）
+RANK_MAPPING_6 = {
+    1: ("〇", "p1"),
+    2: ("◎", "p1"),
+    3: ("△", "pTop2"),
+    4: ("▲", "pTop2"),
+    5: ("α", "pTop3"),
+    6: ("×", "pTop3"),
+}
+
+RANK_MAPPING_BY_N = {
+    6: RANK_MAPPING_6,
+    7: RANK_MAPPING_7,
+}
+
+PROB_LABEL = {
+    "p1": "1着率",
+    "pTop2": "2着内率",
+    "pTop3": "3着内率",
+}
+
+
+def compute_weighted_rank_from_carfr_text(carfr_txt, rank_stats=RANK_STATS_TOTAL):
+    """
+    carfr_txt: 「【carFR順位】」の本文
+      例：
+        1位：2 (0.0918)
+        2位：3 (0.0787)
+        ...
+
+    戻り値: スコア計算＆最終順位付けした dict のリスト（score降順）
+    """
+    import re
+
+    # 「1位：2 (0.0918)」のような行を全部抜き出す
+    matches = re.findall(r'(\d+)位：(\d+)\s*\((\d+\.\d+)\)', carfr_txt)
+    if not matches:
+        return []
+
+    n = len(matches)
+    mapping = RANK_MAPPING_BY_N.get(n)
+    if not mapping:
+        # 6車立て／7車立て以外はスキップ
+        return []
+
+    rows = []
+    for rank_str, car_str, fr_str in matches:
+        fr_rank = int(rank_str)     # FR順位（1〜n）
+        car_no = int(car_str)       # 車番
+        fr_val = float(fr_str)      # FR値
+
+        # FR順位 → 印・どの確率を使うか
+        if fr_rank not in mapping:
+            continue
+        mark, prob_key = mapping[fr_rank]          # 例: ("〇", "p1")
+        prob = rank_stats[mark][prob_key]          # 例: 0.235
+        score = fr_val * prob                      # 例: 0.0918 * 0.235
+
+        rows.append({
+            "car_no": car_no,
+            "fr_rank": fr_rank,
+            "fr_value": fr_val,
+            "mark": mark,
+            "prob_key": prob_key,
+            "prob_label": PROB_LABEL.get(prob_key, prob_key),
+            "prob": prob,
+            "score": score,
+        })
+
+    # スコアの大きい順に並べる → これが「最終順位」
+    rows_sorted = sorted(rows, key=lambda x: x["score"], reverse=True)
+
+    for final_rank, row in enumerate(rows_sorted, start=1):
+        row["final_rank"] = final_rank
+
+    return rows_sorted
 
 
 
@@ -3212,20 +3301,32 @@ for ln in all_lines:
 
 # === carFR順位（表示） ===
 try:
-    import re, statistics  # 追加
+    import re, statistics
     _scores_for_rank = {int(k): float(v) for k, v in (globals().get("scores", {}) or {}).items() if str(k).isdigit()}
     _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(all_lines, _scores_for_rank, line_fr_map)
     note_sections.append("\n【carFR順位】")
     note_sections.append(_carfr_txt)
 
-    # ↓↓↓ ここから追加（平均値を出して追記）
+    # 平均値を出して追記
     _vals = [float(x) for x in re.findall(r'\((\d+\.\d+)\)', _carfr_txt)]
     _avg = statistics.mean(_vals) if _vals else 0.0
     note_sections.append(f"\n平均値 {_avg:.5f}")
-    # ↑↑↑ ここまで
+
+    # FR×印着内率スコアによる最終順位を追記
+    _weighted_rows = compute_weighted_rank_from_carfr_text(_carfr_txt)
+    if _weighted_rows:
+        note_sections.append("\n【carFR×印着内率スコア順位】")
+        for r in _weighted_rows:
+            note_sections.append(
+                f"{r['final_rank']}位：{r['car_no']} "
+                f"(FR{r['fr_rank']}位 {r['fr_value']:.4f} × "
+                f"{r['mark']}の{r['prob_label']}={r['prob']:.3f} → "
+                f"{r['score']:.6f})"
+            )
 
 except Exception:
     pass
+
 
 
 note_sections.append("")  # 空行
