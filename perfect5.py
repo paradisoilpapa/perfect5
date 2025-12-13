@@ -156,71 +156,20 @@ VELODROME_MASTER = {
 
 # --- 全体 ---
 RANK_STATS_TOTAL = {
-    "◎": {"p1": 0.25, "pTop2": 0.441, "pTop3": 0.638},
-    "〇": {"p1": 0.263, "pTop2": 0.454, "pTop3": 0.572},
-    "▲": {"p1": 0.145, "pTop2": 0.329, "pTop3": 0.461},
-    "△": {"p1": 0.132, "pTop2": 0.322, "pTop3": 0.461},
-    "×": {"p1": 0.086, "pTop2": 0.125, "pTop3": 0.316},
-    "α": {"p1": 0.086, "pTop2": 0.219, "pTop3": 0.331},
-    "無": {"p1": 0.042, "pTop2": 0.118, "pTop3": 0.236},
+    "◎": {"p1": 0.261, "pTop2": 0.459, "pTop3": 0.617},
+    "〇": {"p1": 0.235, "pTop2": 0.403, "pTop3": 0.533},
+    "▲": {"p1": 0.175, "pTop2": 0.331, "pTop3": 0.484},
+    "△": {"p1": 0.133, "pTop2": 0.282, "pTop3": 0.434},
+    "×": {"p1": 0.109, "pTop2": 0.242, "pTop3": 0.39},
+    "α": {"p1": 0.059, "pTop2": 0.167, "pTop3": 0.295},
+    "無": {"p1": 0.003, "pTop2": 0.118, "pTop3": 0.256},
 }
-
-# --- F2（最新 9/28） ---
-RANK_STATS_F2 = {
-    "◎": {"p1": 0.358, "pTop2": 0.540, "pTop3": 0.637},
-    "〇": {"p1": 0.163, "pTop2": 0.358, "pTop3": 0.493},
-    "▲": {"p1": 0.144, "pTop2": 0.312, "pTop3": 0.484},
-    "△": {"p1": 0.102, "pTop2": 0.288, "pTop3": 0.521},
-    "×": {"p1": 0.084, "pTop2": 0.209, "pTop3": 0.335},
-    "α": {"p1": 0.098, "pTop2": 0.149, "pTop3": 0.274},
-    "無": {"p1": 0.050, "pTop2": 0.139, "pTop3": 0.257},
-}
-
-
-# --- F1 ---
-RANK_STATS_F1 = {
-    "◎": {"p1": 0.278, "pTop2": 0.444, "pTop3": 0.556},
-    "〇": {"p1": 0.185, "pTop2": 0.370, "pTop3": 0.574},
-    "▲": {"p1": 0.167, "pTop2": 0.315, "pTop3": 0.463},
-    "△": {"p1": 0.111, "pTop2": 0.259, "pTop3": 0.407},
-    "×": {"p1": 0.111, "pTop2": 0.204, "pTop3": 0.370},
-    "α": {"p1": 0.093, "pTop2": 0.278, "pTop3": 0.407},
-    "無": {"p1": 0.057, "pTop2": 0.132, "pTop3": 0.226},
-}
-
-# --- G ---
-RANK_STATS_G = {
-    "◎": {"p1": 0.278, "pTop2": 0.500, "pTop3": 0.556},
-    "〇": {"p1": 0.111, "pTop2": 0.167, "pTop3": 0.222},
-    "▲": {"p1": 0.111, "pTop2": 0.222, "pTop3": 0.333},
-    "△": {"p1": 0.167, "pTop2": 0.278, "pTop3": 0.444},
-    "×": {"p1": 0.111, "pTop2": 0.167, "pTop3": 0.222},
-    "α": {"p1": 0.111, "pTop2": 0.222, "pTop3": 0.278},
-    "無": {"p1": 0.040, "pTop2": 0.160, "pTop3": 0.340},
-}
-
-# --- ガールズ（L級） ---
-RANK_STATS_GIRLS = {
-    "◎": {"p1": 0.583, "pTop2": 0.667, "pTop3": 0.833},
-    "〇": {"p1": 0.167, "pTop2": 0.750, "pTop3": 0.833},
-    "▲": {"p1": 0.167, "pTop2": 0.250, "pTop3": 0.583},
-    "△": {"p1": 0.083, "pTop2": 0.083, "pTop3": 0.250},
-    "×": {"p1": 0.000, "pTop2": 0.083, "pTop3": 0.250},
-    "α": {"p1": 0.000, "pTop2": 0.167, "pTop3": 0.250},
-    "無": {"p1": 0.000, "pTop2": 0.000, "pTop3": 0.000},
-}
-
 
 
 # --- グレード連動用マップ ---
 RANK_STATS_BY_GRADE = {
     "TOTAL":  RANK_STATS_TOTAL,
-    "F2":     RANK_STATS_F2,
-    "F1":     RANK_STATS_F1,
-    "G":      RANK_STATS_G,
-    "GIRLS":  RANK_STATS_GIRLS,
-}
-
+    
 # 互換: 旧コードが参照する RANK_STATS は TOTAL を指す
 RANK_STATS = RANK_STATS_TOTAL
 
@@ -4490,24 +4439,6 @@ if callable(_fmt_rank_fn):
 else:
     note_sections.append(f"スコア順（SBなし）　{' '.join(map(str, USED_IDS))}")
 
-# === 印＋未指名 ===
-try:
-    result_marks = globals().get("result_marks", {})
-    marks_str, no_str = _free_fmt_marks_line(result_marks, USED_IDS)
-    mline = f"{marks_str} {no_str}".strip()
-    if mline:
-        note_sections.append(mline)
-except Exception:
-    pass
-
-# === 偏差値 ===
-try:
-    race_t = dict(globals().get("race_t", {}))
-    note_sections.append("\n偏差値（風・ライン込み）")
-    note_sections.append(_free_fmt_hens(race_t, USED_IDS))
-    note_sections.append("\n")
-except Exception:
-    note_sections.append("偏差値データなし\n")
 
 # === ライン想定FR（順流/渦/逆流 + その他） ===
 _FR_line  = _bets.get("FR_line", _flow.get("FR_line"))
@@ -4545,35 +4476,6 @@ except Exception:
 
 note_sections.append("")  # 空行
 
-# === 買い目（決定済み） ===
-_trio_block = _bets.get("note", "")
-if not _trio_block:
-    try:
-        _tres = trio_free_completion(globals().get("scores", {}), globals().get("marks", {}), flow_ctx=_flow)
-        _trio_text = _tres[0] if (isinstance(_tres, tuple) and len(_tres) >= 1) else str(_tres)
-        _trio_block = "【買い目】\n三連複：" + _trio_text
-    except Exception:
-        _trio_block = "【買い目】出力なし"
-note_sections.append(_trio_block)
-note_sections.append("")  # 空行
-
-# === 診断（レースFRベース／記事整合） ===
-try:
-    note_sections.append("【Tesla369診断（レースFRベース）】")
-    note_sections.append(f"レースFR={FRv:.3f}  VTX={VTXv:.3f}  U={Uv:.3f}")
-    if axis_line:
-        note_sections.append(f"（参考）軸ラインFR={axis_line_fr:.3f}［軸={axis_id}／ライン={_free_fmt_nums(axis_line)}］")
-    dbg = _flow.get("dbg", {})
-    if isinstance(dbg, dict) and dbg:
-        note_sections.append(
-            f"[FR内訳（レース）] "
-            f"blend_star={dbg.get('blend_star',0.0):.3f} "
-            f"blend_none={dbg.get('blend_none',0.0):.3f} "
-            f"sd={dbg.get('sd',0.0):.3f} "
-            f"nu={dbg.get('nu',0.0):.3f}"
-        )
-except Exception:
-    pass
 
 # === ＜短評＞（コンパクト） ===
 try:
