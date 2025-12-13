@@ -1607,23 +1607,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-
-# ===== しきい値（S＝偏差値Tの合算） =====
-S_TRIO_MIN_WIDE  = 158.0   # 三連複：手広く
-S_TRIO_MIN_CORE  = 163.0   # 三連複：基準クリア（これが“本線”）
-S_QN_MIN         = 122.0
-S_WIDE_MIN       = 116.0
-
-# 三連単は“基準クリア”側に合わせて運用（相談どおり164）
-S_TRIFECTA_MIN   = 164.0
-
-# 目標回収率（据え置き）
-TARGET_ROI = {"trio":1.20, "qn":1.10, "wide":1.05}
-ODDS_FLOOR_QN   = 8.0
-ODDS_FLOOR_WIDE = 4.0
 HEN_DEC_PLACES = 1
 EPS = 1e-12
-
 
 # ====== ユーティリティ ======
 def coerce_score_map(d, n_cars: int) -> dict[int, float]:
@@ -1831,32 +1816,6 @@ st.markdown("### 偏差値（レース内T＝平均50・SD10｜SBなしと同一
 st.caption(f"μ={mu_sb if np.isfinite(mu_sb) else 'nan'} / σ={sd_sb:.6f} / 有効件数k={k_finite}")
 st.dataframe(hen_df, use_container_width=True)
 
-# 6) PL用重み（購入計算に使用：既存近似）
-tau = 1.0
-w   = np.exp(race_z * tau)
-S_w = float(np.sum(w))
-w_idx = {USED_IDS[idx]: float(w[idx]) for idx in range(M)}
-
-def prob_top2_pair_pl(i: int, j: int) -> float:
-    wi, wj = w_idx[i], w_idx[j]
-    d_i = max(S_w - wi, EPS); d_j = max(S_w - wj, EPS)
-    return (wi / S_w) * (wj / d_i) + (wj / S_w) * (wi / d_j)
-
-def prob_top3_triple_pl(i: int, j: int, k: int) -> float:
-    a, b, c = w_idx[i], w_idx[j], w_idx[k]
-    total = 0.0
-    for x, y, z in ((a,b,c),(a,c,b),(b,a,c),(b,c,a),(c,a,b),(c,b,a)):
-        d1 = max(S_w - x, EPS)
-        d2 = max(S_w - x - y, EPS)
-        total += (x / S_w) * (y / d1) * (z / d2)
-    return total
-
-def prob_wide_pair_pl(i: int, j: int) -> float:
-    total = 0.0
-    for k in USED_IDS:
-        if k == i or k == j: continue
-        total += prob_top3_triple_pl(i, j, k)
-    return total
 
 # 7) 印（◎〇▲）＝ T↓ → SBなし↓ → 車番↑（βは除外）
 if "select_beta" not in globals():
