@@ -166,17 +166,6 @@ RANK_STATS_TOTAL = {
 }
 
 
-# --- グレード連動用マップ ---
-RANK_STATS_BY_GRADE = {
-    "TOTAL":  RANK_STATS_TOTAL,
-    
-# 互換: 旧コードが参照する RANK_STATS は TOTAL を指す
-RANK_STATS = RANK_STATS_TOTAL
-
-RANK_FALLBACK_MARK = "△"
-if RANK_FALLBACK_MARK not in RANK_STATS:
-    RANK_FALLBACK_MARK = next(iter(RANK_STATS.keys()))
-FALLBACK_DIST = RANK_STATS.get(RANK_FALLBACK_MARK, {"p1": 0.15, "pTop2": 0.30, "pTop3": 0.45})
 
 
 
