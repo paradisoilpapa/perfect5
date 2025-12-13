@@ -4245,18 +4245,8 @@ line_inputs = globals().get("line_inputs", [])
 if isinstance(line_inputs, list) and any(str(x).strip() for x in line_inputs):
     note_sections.append("ライン　" + "　".join([x for x in line_inputs if str(x).strip()]))
 
-# === スコア順（SBなし） ===
-_fmt_rank_fn = globals().get("_format_rank_from_array", None)
-USED_IDS    = list(globals().get("USED_IDS", []))
-xs_base_raw = globals().get("xs_base_raw", [])
-if callable(_fmt_rank_fn):
-    try:
-        note_sections.append(f"スコア順（SBなし）　{_fmt_rank_fn(USED_IDS, xs_base_raw)}")
-    except Exception:
-        note_sections.append(f"スコア順（SBなし）　{' '.join(map(str, USED_IDS))}")
-else:
-    note_sections.append(f"スコア順（SBなし）　{' '.join(map(str, USED_IDS))}")
 
+note_sections.append("")  # 空行
 
 # === ライン想定FR（順流/渦/逆流 + その他） ===
 _FR_line  = _bets.get("FR_line", _flow.get("FR_line"))
