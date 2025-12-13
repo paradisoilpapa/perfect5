@@ -4227,10 +4227,7 @@ def infer_eval_with_share(fr_v: float, vtx_v: float, u_v: float, share_pct: floa
     return "互角"
 
 note_sections.append(f"展開評価：{infer_eval_with_share(FRv, VTXv, Uv, share_pct)}")
-if axis_line:
-    note_sections.append(f"ラインFR={axis_line_fr:.3f}（軸={axis_id}／ライン={_free_fmt_nums(axis_line)}）")
-else:
-    note_sections.append(f"ラインFR=—")
+
 note_sections.append("")  # 空行
 
 # === 時刻・クラス ===
