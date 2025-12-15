@@ -3350,10 +3350,10 @@ try:
         for r in _weighted_rows:
             note_sections.append(
                 f"{r['final_rank']}位：{r['car_no']} "
-                f"(FR{r['fr_rank']}位 {r['fr_value']:.4f} × "
-                f"{r['mark']}の{r['prob_label']}={r['prob']:.3f} → "
-                f"{r['score']:.6f})"
+                f"(スコア={r['score']:.6f})"
             )
+
+
 
 except Exception:
     pass
