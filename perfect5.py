@@ -3297,10 +3297,6 @@ def infer_eval_with_share(fr_v: float, vtx_v: float, u_v: float, share_pct: floa
 
 note_sections.append(f"展開評価：{infer_eval_with_share(FRv, VTXv, Uv, share_pct)}")
 
-    # 平均値を出して追記
-    _vals = [float(x) for x in re.findall(r'\((\d+\.\d+)\)', _carfr_txt)]
-    _avg = statistics.mean(_vals) if _vals else 0.0
-    note_sections.append(f"\n平均値 {_avg:.5f}")
 
 note_sections.append("")  # 空行
 
@@ -3347,7 +3343,10 @@ for ln in all_lines:
                 f"(スコア={r['score']:.6f})"
             )
 
-
+    # 平均値を出して追記
+    _vals = [float(x) for x in re.findall(r'\((\d+\.\d+)\)', _carfr_txt)]
+    _avg = statistics.mean(_vals) if _vals else 0.0
+    note_sections.append(f"\n平均値 {_avg:.5f}")
 
 except Exception:
     pass
