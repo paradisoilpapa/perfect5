@@ -3297,6 +3297,11 @@ def infer_eval_with_share(fr_v: float, vtx_v: float, u_v: float, share_pct: floa
 
 note_sections.append(f"展開評価：{infer_eval_with_share(FRv, VTXv, Uv, share_pct)}")
 
+    # 平均値を出して追記
+    _vals = [float(x) for x in re.findall(r'\((\d+\.\d+)\)', _carfr_txt)]
+    _avg = statistics.mean(_vals) if _vals else 0.0
+    note_sections.append(f"\n平均値 {_avg:.5f}")
+
 note_sections.append("")  # 空行
 
 # === 時刻・クラス ===
@@ -3330,18 +3335,7 @@ for ln in all_lines:
         continue
     note_sections.append(f"　　　その他ライン {_free_fmt_nums(ln)}：想定FR={_line_fr_val(ln):.3f}")
 
-# === carFR順位（表示） ===
-try:
-    import re, statistics
-    _scores_for_rank = {int(k): float(v) for k, v in (globals().get("scores", {}) or {}).items() if str(k).isdigit()}
-    _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(all_lines, _scores_for_rank, line_fr_map)
-    note_sections.append("\n【carFR順位】")
-    note_sections.append(_carfr_txt)
 
-    # 平均値を出して追記
-    _vals = [float(x) for x in re.findall(r'\((\d+\.\d+)\)', _carfr_txt)]
-    _avg = statistics.mean(_vals) if _vals else 0.0
-    note_sections.append(f"\n平均値 {_avg:.5f}")
 
     # FR×印着内率スコアによる最終順位を追記
     _weighted_rows = compute_weighted_rank_from_carfr_text(_carfr_txt)
