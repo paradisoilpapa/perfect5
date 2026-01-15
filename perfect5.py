@@ -1037,7 +1037,6 @@ def input_float_text(label: str, key: str, placeholder: str = "") -> float | Non
 st.subheader("個人データ（直近4か月：回数）")
 cols = st.columns(n_cars)
 ratings, S, B = {}, {}, {}
-...
 
 k_esc, k_mak, k_sashi, k_mark = {}, {}, {}, {}
 x1, x2, x3, x_out = {}, {}, {}, {}
@@ -2528,11 +2527,12 @@ def select_tri_opponents_v2(
     vtx_line_str: Optional[str] = None,
     u_line_str: Optional[str] = None,
     n_opps: int = 4,
-    fr_v: float | None = None,   # ← 追加
+    fr_v: float | None = None,   # ← これを追加
 ) -> List[int]:
-    ...
+
+    
     # （中略：既存ロジックそのまま）
-    ...
+    
 
     # === ここから「最終保険〜return」までを置換 ===
 
@@ -2545,10 +2545,20 @@ def select_tri_opponents_v2(
             if len(picks) >= n_opps:
                 break
 
-       # ==== 3車ラインの「3番手」保証（FR帯 0.25〜0.65 限定） ====
+    # ==== 3車ラインの「3番手」保証（FR帯 0.25〜0.65 限定） ====
     BAND_LO, BAND_HI = 0.25, 0.65
-    THIRD_MIN = 40.0  # しきい値はあなたの設定どおり
+    THIRD_MIN = 40.0
     _FRv = float(fr_v or 0.0)
+
+    if BAND_LO <= _FRv <= BAND_HI and axis_line and len(axis_line) >= 3:
+        third = axis_line[2]  # 「3番手」をライン並びで定義してる前提
+        if hens.get(int(third), 0.0) >= THIRD_MIN and int(third) not in picks and int(third) != axis:
+            # 相方は絶対保持（axis_partnerが picks に入ってる前提）
+            drop_cands = [x for x in picks if x != axis_partner]
+            if drop_cands:
+                worst = min(drop_cands, key=lambda x: hens.get(int(x), 0.0))
+                picks = [x for x in picks if x != worst] + [int(third)]
+
 
     # --- 二車軸ロック（相方は絶対保持） ---
     axis_partner = _t369p_best_in_group(axis_line, hens, exclude=axis) if axis_line else None
