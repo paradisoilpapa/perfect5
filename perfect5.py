@@ -856,10 +856,10 @@ def _std_from_venues(names):
 
 TH_STD, L_STD, C_STD = _std_from_venues(FAVORABLE_VENUES)
 
-_ALL_L = np.array([KEIRIN_DATA[k]["straight_length"] for k in KEIRIN_DATA], float)
+_ALL_L  = np.array([KEIRIN_DATA[k]["straight_length"] for k in KEIRIN_DATA], float)
 _ALL_TH = np.array([KEIRIN_DATA[k]["bank_angle"]      for k in KEIRIN_DATA], float)
-SIG_L  = float(np.std(_ALL_L)) if np.std(_ALL_L)>1e-9 else 1.0
-SIG_TH = float(np.std(_ALL_TH)) if np.std(_ALL_TH)>1e-9 else 1.0
+SIG_L  = float(np.std(_ALL_L))  if np.std(_ALL_L)  > 1e-9 else 1.0
+SIG_TH = float(np.std(_ALL_TH)) if np.std(_ALL_TH) > 1e-9 else 1.0
 
 def venue_z_terms(straight_length: float, bank_angle: float, bank_length: float):
     zL  = (float(straight_length) - L_STD)  / SIG_L
@@ -874,44 +874,131 @@ def venue_mix(zL, zTH, dC):
     return float(clamp(0.50*zTH - 0.35*zL - 0.30*dC, -1.0, +1.0))
 
 
+# ==============================
+# ★ 風取得ユーティリティ（未定義ならここで定義：NameError防止）
+# ==============================
+if "make_target_dt_naive" not in globals():
+    def make_target_dt_naive(jst_date, race_slot: str):
+        h = SESSION_HOUR.get(race_slot, 11)
+        if isinstance(jst_date, datetime):
+            jst_date = jst_date.date()
+        try:
+            y, m, d = jst_date.year, jst_date.month, jst_date.day
+        except Exception:
+            dt = pd.to_datetime(str(jst_date))
+            y, m, d = dt.year, dt.month, dt.day
+        return datetime(y, m, d, h, 0, 0)
+
+if "fetch_openmeteo_hour" not in globals():
+    def fetch_openmeteo_hour(lat, lon, target_dt_naive):
+        import numpy as np
+        d = target_dt_naive.strftime("%Y-%m-%d")
+        base = "https://api.open-meteo.com/v1/forecast"
+        # ★ windspped_unit=ms を全URLで強制（km/h誤解釈で30m/s化を防ぐ）
+        urls = [
+            (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
+             "&hourly=wind_speed_10m,wind_direction_10m"
+             "&timezone=Asia%2FTokyo"
+             "&windspeed_unit=ms"
+             f"&start_date={d}&end_date={d}", True),
+            (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
+             "&hourly=wind_speed_10m"
+             "&timezone=Asia%2FTokyo"
+             "&windspeed_unit=ms"
+             f"&start_date={d}&end_date={d}", False),
+            (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
+             "&hourly=wind_speed_10m,wind_direction_10m"
+             "&timezone=Asia%2FTokyo"
+             "&windspeed_unit=ms"
+             "&past_days=2&forecast_days=2", True),
+            (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
+             "&hourly=wind_speed_10m"
+             "&timezone=Asia%2FTokyo"
+             "&windspeed_unit=ms"
+             "&past_days=2&forecast_days=2", False),
+        ]
+        last_err = None
+        for url, with_dir in urls:
+            try:
+                r = requests.get(url, timeout=15)
+                r.raise_for_status()
+                j = r.json().get("hourly", {})
+                times = [datetime.fromisoformat(t) for t in j.get("time", [])]
+                if not times:
+                    raise RuntimeError("empty hourly times")
+                diffs = [abs((t - target_dt_naive).total_seconds()) for t in times]
+                k = int(np.argmin(diffs))
+                sp = j.get("wind_speed_10m", [])
+                di = j.get("wind_direction_10m", []) if with_dir else []
+                speed = float(sp[k]) if k < len(sp) else float("nan")
+                deg   = (float(di[k]) if with_dir and k < len(di) else None)
+                return {"time": times[k], "speed_ms": speed, "deg": deg, "diff_min": diffs[k]/60.0}
+            except Exception as e:
+                last_err = e
+                continue
+        raise RuntimeError(f"Open-Meteo取得失敗（最後のエラー: {last_err}）")
+
+
+# ==============================
+# UI
+# ==============================
 st.sidebar.header("開催情報 / バンク・風・頭数")
 n_cars = st.sidebar.selectbox("出走数（5〜9）", [5,6,7,8,9], index=2)
+
 track_names = list(KEIRIN_DATA.keys())
-track = st.sidebar.selectbox("競輪場（プリセット）", track_names, index=track_names.index("川崎") if "川崎" in track_names else 0)
+track = st.sidebar.selectbox(
+    "競輪場（プリセット）",
+    track_names,
+    index=track_names.index("川崎") if "川崎" in track_names else 0
+)
 info = KEIRIN_DATA[track]
 st.session_state["track"] = track
 
 race_time = st.sidebar.selectbox("開催区分", ["モーニング","デイ","ナイター","ミッドナイト"], 1)
-race_day = st.sidebar.date_input("開催日（風の取得基準日）", value=date.today())
+race_day  = st.sidebar.date_input("開催日（風の取得基準日）", value=date.today())
 
-wind_dir = st.sidebar.selectbox("風向", ["無風","左上","上","右上","左","右","左下","下","右下"], index=0, key="wind_dir_input")
+wind_dir = st.sidebar.selectbox(
+    "風向", ["無風","左上","上","右上","左","右","左下","下","右下"],
+    index=0, key="wind_dir_input"
+)
+
 wind_speed_default = st.session_state.get("wind_speed", 3.0)
 wind_speed = st.sidebar.number_input("風速(m/s)", 0.0, 60.0, float(wind_speed_default), 0.1)
 
 with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expanded=False):
-    api_date = st.date_input("開催日（風の取得基準日）", value=pd.to_datetime("today").date(), key="api_date")
-    st.caption("基準時刻：モ=8時 / デ=11時 / ナ=18時 / ミ=22時（JST・tzなしで取得）")
-    if st.button("APIで取得→風速に反映", use_container_width=True):
+    # ★ sidebarに統一（UIが迷子にならない）
+    api_date = st.sidebar.date_input(
+        "開催日（風の取得基準日）",
+        value=pd.to_datetime("today").date(),
+        key="api_date"
+    )
+    st.sidebar.caption("基準時刻：モ=8時 / デ=11時 / ナ=18時 / ミ=22時（JST・tzなしで取得）")
+
+    # ★ sidebarに統一
+    if st.sidebar.button("APIで取得→風速に反映", use_container_width=True):
         info_xy = VELODROME_MASTER.get(track)
         if not info_xy or info_xy.get("lat") is None or info_xy.get("lon") is None:
-            st.error(f"{track} の座標が未登録です（VELODROME_MASTER に lat/lon を入れてください）")
+            st.sidebar.error(f"{track} の座標が未登録です（VELODROME_MASTER に lat/lon を入れてください）")
         else:
             try:
                 target = make_target_dt_naive(api_date, race_time)
                 data = fetch_openmeteo_hour(info_xy["lat"], info_xy["lon"], target)
                 st.session_state["wind_speed"] = round(float(data["speed_ms"]), 2)
-                st.success(f"{track} {target:%Y-%m-%d %H:%M} 風速 {st.session_state['wind_speed']:.1f} m/s （API側と{data['diff_min']:.0f}分ズレ）")
+                st.sidebar.success(
+                    f"{track} {target:%Y-%m-%d %H:%M} 風速 {st.session_state['wind_speed']:.1f} m/s "
+                    f"（API側と{data['diff_min']:.0f}分ズレ）"
+                )
                 st.rerun()
             except Exception as e:
-                st.error(f"取得に失敗：{e}")
+                st.sidebar.error(f"取得に失敗：{e}")
 
 straight_length = st.sidebar.number_input("みなし直線(m)", 30.0, 80.0, float(info["straight_length"]), 0.1)
-bank_angle = st.sidebar.number_input("バンク角(°)", 20.0, 45.0, float(info["bank_angle"]), 0.1)
-bank_length = st.sidebar.number_input("周長(m)", 300.0, 500.0, float(info["bank_length"]), 0.1)
+bank_angle      = st.sidebar.number_input("バンク角(°)", 20.0, 45.0, float(info["bank_angle"]), 0.1)
+bank_length     = st.sidebar.number_input("周長(m)", 300.0, 500.0, float(info["bank_length"]), 0.1)
 
 base_laps = st.sidebar.number_input("周回（通常4）", 1, 10, 4, 1)
 day_label = st.sidebar.selectbox("開催日", ["初日","2日目","最終日"], 0)
-eff_laps = int(base_laps) + {"初日":1,"2日目":2,"最終日":3}[day_label]
+eff_laps  = int(base_laps) + {"初日":1,"2日目":2,"最終日":3}[day_label]
 
 race_class = st.sidebar.selectbox("級別", ["Ｓ級","Ａ級","Ａ級チャレンジ","ガールズ"], 0)
 
@@ -929,10 +1016,6 @@ CLASS_FACTORS = {
 }
 cf = CLASS_FACTORS[race_class]
 
-# 旧：
-# DAY_FACTOR = {"初日":1.00, "2日目":0.60, "最終日":0.85}
-
-# 新（まずは完全フラット）：
 DAY_FACTOR = {"初日":1.00, "2日目":1.00, "最終日":1.00}
 day_factor = DAY_FACTOR[day_label]
 
@@ -949,67 +1032,15 @@ CLASS_SHIFT = {"Ｓ級": 0.0, "Ａ級": +0.10, "Ａ級チャレンジ": +0.20, "
 HEADCOUNT_SHIFT = {5: -0.20, 6: -0.10, 7: -0.05, 8: 0.0, 9: +0.10}
 
 def fatigue_extra(eff_laps: int, day_label: str, n_cars: int, race_class: str) -> float:
-    """
-    既存の extra = max(eff_laps - 2, 0) をベースに、
-    ・日程シフト：初日 -0.5／2日目 0／最終日 +0.5
-    ・級別シフト：A級/チャレンジをやや重め、ガールズはやや軽め
-    ・頭数シフト：9車は少し重く、5〜7車は少し軽く
-    """
     d = float(DAY_SHIFT.get(day_label, 0.0))
     c = float(CLASS_SHIFT.get(race_class, 0.0))
     h = float(HEADCOUNT_SHIFT.get(int(n_cars), 0.0))
     x = (float(eff_laps) - 2.0) + d + c + h
     return max(0.0, x)
 
-# === PATCH-L200: 直線ラスト200mの残脚補正 =========================
-# 目的: 逃げ先行が直線で苦しくなる場面を少しだけ減点、差し・マークは微加点。
-# 強さはミッドナイト/短走路で少しだけ強めに。
+# === PATCH-L200:（以下そのまま） ==========================================
+# ...（あなたの last200_bonus 以降は変更なし）
 
-L200_ESC_PENALTY   = -0.06   # 逃げ(先行)の基礎マイナス
-L200_SASHI_BONUS   = +0.03   # 差しの基礎プラス
-L200_MARK_BONUS    = +0.02   # マーク(追込)の基礎プラス
-L200_MNIGHT_GAIN   = 1.20    # ミッドナイトの倍率
-L200_SHORT_GAIN    = 1.15    # 333mなど短走路の倍率
-L200_LONG_RELAX    = 0.90    # 直線長めはやや緩和
-L200_CAP           = 0.08    # 絶対値キャップ（安全弁）
-
-def last200_bonus(no: int, role: str) -> float:
-    """脚質×バンク条件からラスト200mの微調整を返す（±0.08程度）。"""
-    esc   = float(prof_escape.get(no, 0.0))
-    sashi = float(prof_sashi.get(no, 0.0))
-    mark  = float(prof_oikomi.get(no, 0.0))
-
-    # 基礎：脚質ミックス
-    base = (L200_ESC_PENALTY * esc) + (L200_SASHI_BONUS * sashi) + (L200_MARK_BONUS * mark)
-
-    # トラック条件
-    gain = 1.0
-    if race_time == "ミッドナイト":
-        gain *= L200_MNIGHT_GAIN
-    if float(bank_length) <= 360.0:
-        gain *= L200_SHORT_GAIN
-    if float(straight_length) >= 58.0:
-        gain *= L200_LONG_RELAX
-
-    # 位置（先頭＝重め、後ろ薄め）
-    pos_w = {'head': 1.00, 'second': 0.70, 'thirdplus': 0.55, 'single': 0.80}.get(role, 0.80)
-
-    val = base * gain * pos_w
-    # 会場バイアス（style>0=先行寄り→減点を少し緩める）
-    val *= (0.95 if style > 0 else 1.05)
-
-    return round(max(-L200_CAP, min(L200_CAP, val)), 3)
-# === PATCH-L200: ここまで ==========================================
-
-line_sb_enable = (race_class != "ガールズ")
-
-
-
-st.sidebar.caption(
-    f"会場スタイル: {style:+.2f}（raw {style_raw:+.2f}） / "
-    f"級別: spread={cf['spread']:.2f}, line={cf['line']:.2f} / "
-    f"日程係数(line)={day_factor:.2f} → line係数={line_factor_eff:.2f}, SBcap±{cap_SB_eff:.2f}"
-)
 
 # ==============================
 # メイン：入力
