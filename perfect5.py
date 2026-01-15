@@ -1789,19 +1789,6 @@ def coerce_score_map(d, n_cars: int) -> dict[int, float]:
         out.setdefault(i, np.nan)
     return out
 
-def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
-    v = values.astype(float, copy=True)
-    finite = np.isfinite(v)
-    k = int(finite.sum())
-    if k < 2:
-        return np.full_like(v, 50.0), (float("nan") if k==0 else float(v[finite][0])), 0.0, k
-    mu = float(np.mean(v[finite]))
-    sd = float(np.std(v[finite], ddof=0))
-    if (not np.isfinite(sd)) or sd < eps:
-        return np.full_like(v, 50.0), mu, 0.0, k
-    T = 50.0 + 10.0 * ((v - mu) / sd)
-    T[~finite] = 50.0
-    return T, mu, sd, k
 
 
 # ★Form の偏差値化（t_score_from_finite 定義の直後）
