@@ -1523,13 +1523,6 @@ def make_trio_formation_final(riders: list[Rider], bank_str: str) -> str:
     second = sorted(set(second))[:2]
     return f"三連複フォーメーション：{first.num}－{','.join(map(str, second))}－全"
 
-# ❾ 出力（note_sections があればそこへ）
-try:
-    out = make_trio_formation_final(RIDERS, bank_str)
-    (note_sections.append if isinstance(note_sections, list) else print)(f"【狙いたいレースフォーメーション】 {out}")
-except Exception as e:
-    (note_sections.append if isinstance(note_sections, list) else print)(f"【狙いたいレースフォーメーション】 エラー: {e}")
-
 
 mu = float(df["合計_SBなし_raw"].mean()) if not df.empty else 0.0
 df["合計_SBなし"] = mu + 1.0 * (df["合計_SBなし_raw"] - mu)
