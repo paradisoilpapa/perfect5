@@ -1668,6 +1668,9 @@ ENV_Z = {int(n): (float(v_final.get(n, mu_env)) - mu_env) / _den for n in active
 FORM_Z = {int(n): (float(form_T_map.get(n, 50.0)) - 50.0) / 10.0 for n in active_cars}
 
 
+# --- ここで必ず定義してから使う（NameError防止） ---
+line_sb_enable = bool(globals().get("line_sb_enable", (race_class != "ガールズ")))
+
 def _pos_idx(no:int) -> int:
     g = car_to_group.get(no, None)
     if g is None or g not in line_def:
@@ -1678,25 +1681,27 @@ def _pos_idx(no:int) -> int:
     except Exception:
         return 0
 
-bonus_init,_ = compute_lineSB_bonus(
+bonus_init, _ = compute_lineSB_bonus(
     line_def, S, B,
     line_factor=line_factor_eff,
     exclude=None, cap=cap_SB_eff,
     enable=line_sb_enable
 )
 
-
-
 def anchor_score(no: int) -> float:
     role = role_in_line(no, line_def)
-    sb = float(bonus_init.get(car_to_group.get(no, None), 0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0))
+    sb = float(
+        bonus_init.get(car_to_group.get(no, None), 0.0)
+        * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
+    )
     pos_term  = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
     env_term  = SD_ENV  * float(ENV_Z.get(int(no), 0.0))
     form_term = SD_FORM * float(FORM_Z.get(int(no), 0.0))
     stab_term = SD_STAB * float(STAB_Z.get(int(no), 0.0))
-    l200_term = SD_L200 * float(L200_Z.get(int(no), 0.0))   # ← 追加
+    l200_term = SD_L200 * float(L200_Z.get(int(no), 0.0))
     tiny      = SMALL_Z_RATING * float(zt_map.get(int(no), 0.0))
     return env_term + form_term + stab_term + l200_term + sb + pos_term + tiny
+
 
 
 
