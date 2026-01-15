@@ -793,17 +793,6 @@ def format_rank_all(score_map: dict[int, float], P_floor_val: float | None = Non
 # ==============================
 # 風の自動取得（Open-Meteo / 時刻固定）
 # ==============================
-def make_target_dt_naive(jst_date, race_slot: str):
-    h = SESSION_HOUR.get(race_slot, 11)
-    if isinstance(jst_date, datetime):
-        jst_date = jst_date.date()
-    try:
-        y, m, d = jst_date.year, jst_date.month, jst_date.day
-    except Exception:
-        dt = pd.to_datetime(str(jst_date))
-        y, m, d = dt.year, dt.month, dt.day
-    return datetime(y, m, d, h, 0, 0)
-
 def fetch_openmeteo_hour(lat, lon, target_dt_naive):
     import numpy as np
     d = target_dt_naive.strftime("%Y-%m-%d")
@@ -812,17 +801,23 @@ def fetch_openmeteo_hour(lat, lon, target_dt_naive):
         (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
          "&hourly=wind_speed_10m,wind_direction_10m"
          "&timezone=Asia%2FTokyo"
+         "&windspeed_unit=ms"
          f"&start_date={d}&end_date={d}", True),
         (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
          "&hourly=wind_speed_10m"
          "&timezone=Asia%2FTokyo"
+         "&windspeed_unit=ms"
          f"&start_date={d}&end_date={d}", False),
         (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
          "&hourly=wind_speed_10m,wind_direction_10m"
-         "&timezone=Asia%2FTokyo&past_days=2&forecast_days=2", True),
+         "&timezone=Asia%2FTokyo"
+         "&windspeed_unit=ms"
+         "&past_days=2&forecast_days=2", True),
         (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
          "&hourly=wind_speed_10m"
-         "&timezone=Asia%2FTokyo&past_days=2&forecast_days=2", False),
+         "&timezone=Asia%2FTokyo"
+         "&windspeed_unit=ms"
+         "&past_days=2&forecast_days=2", False),
     ]
     last_err = None
     for url, with_dir in urls:
@@ -831,7 +826,8 @@ def fetch_openmeteo_hour(lat, lon, target_dt_naive):
             r.raise_for_status()
             j = r.json().get("hourly", {})
             times = [datetime.fromisoformat(t) for t in j.get("time", [])]
-            if not times: raise RuntimeError("empty hourly times")
+            if not times:
+                raise RuntimeError("empty hourly times")
             diffs = [abs((t - target_dt_naive).total_seconds()) for t in times]
             k = int(np.argmin(diffs))
             sp = j.get("wind_speed_10m", [])
@@ -843,6 +839,7 @@ def fetch_openmeteo_hour(lat, lon, target_dt_naive):
             last_err = e
             continue
     raise RuntimeError(f"Open-Meteo取得失敗（最後のエラー: {last_err}）")
+
 
 # ==============================
 # サイドバー：開催情報 / バンク・風・頭数
