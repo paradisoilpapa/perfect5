@@ -1194,12 +1194,15 @@ tens_list = [ratings_val[no] for no in active_cars]
 t_corr = tenscore_correction(tens_list) if active_cars else []
 tens_corr = {no:t_corr[i] for i,no in enumerate(active_cars)} if active_cars else {}
 
-rows = []
+
+# ==============================
+# L200_RAW（観測用）を先に作る：ここでは laps_adj 等は一切計算しない
+# ==============================
 _wind_func = wind_adjust
 eff_wind_dir   = globals().get("eff_wind_dir",   wind_dir)
 eff_wind_speed = globals().get("eff_wind_speed", wind_speed)
-L200_RAW = {}  # ← 新規
 
+L200_RAW = {}
 for no in active_cars:
     role = role_in_line(no, line_def)
 
@@ -1216,17 +1219,10 @@ for no in active_cars:
     )
     L200_RAW[int(no)] = float(l200)
 
-    # --- 周回疲労（既存） ---
-    extra = fatigue_extra(eff_laps, day_label, n_cars, race_class)
-    fatigue_scale = (1.0 if race_class == "Ｓ級" else
-                     1.1 if race_class == "Ａ級" else
-                     1.2 if race_class == "Ａ級チャレンジ" else
-                     1.05)
-    laps_adj = (
-        -0.10 * extra * (1.0 if prof_escape[no] > 0.5 else 0.0)
-        + 0.05 * extra * (1.0 if prof_oikomi[no] > 0.4 else 0.0)
-    ) * fatigue_scale
 
+# ==============================
+# rows（本体計算）ここで laps_adj を計算して使う（2重計算しない）
+# ==============================
 rows = []
 _wind_func = wind_adjust
 eff_wind_dir   = globals().get("eff_wind_dir", wind_dir)
@@ -1234,8 +1230,6 @@ eff_wind_speed = globals().get("eff_wind_speed", wind_speed)
 
 for no in active_cars:
     role = role_in_line(no, line_def)
-    # ここに各種計算と rows.append(...) が続く
-
 
     # 周回疲労（DAY×頭数×級別を反映）
     extra = fatigue_extra(eff_laps, day_label, n_cars, race_class)
@@ -1246,9 +1240,11 @@ for no in active_cars:
         1.05
     )
     laps_adj = (
-        -0.10 * extra * (1.0 if prof_escape[no] > 0.5 else 0.0)
-        + 0.05 * extra * (1.0 if prof_oikomi[no] > 0.4 else 0.0)
+        -0.10 * extra * (1.0 if float(prof_escape[no]) > 0.5 else 0.0)
+        + 0.05 * extra * (1.0 if float(prof_oikomi[no]) > 0.4 else 0.0)
     ) * fatigue_scale
+
+
 
     # 環境・個人補正（既存）
     wind     = _wind_func(eff_wind_dir, float(eff_wind_speed or 0.0), role, float(prof_escape[no]))
