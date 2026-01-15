@@ -388,21 +388,37 @@ def tenscore_correction(tenscores):
         return round(abs(baseline-row["得点"])*0.03, 3) if row["順位"] in [2,3,4] else 0.0
     return df.apply(corr, axis=1).tolist()
 
+def track_effective_ratio(track_name: str,
+                           alpha_goal: float = 0.50,
+                           beta_corner: float = 0.25) -> float:
+    d = KEIRIN_DATA.get(track_name)
+    if not d:
+        return 0.50
+    lap  = float(d.get("bank_length", 400))
+    home = float(d.get("straight_length", 52.0))
+    back = 2.0 * home  # ゴール前は半分の仮定
+    corner_total = max(lap - home - back, 0.0)
+    L_eff = back + alpha_goal * home + beta_corner * corner_total
+    ratio = (L_eff / lap) if lap > 0 else 0.50
+    return clamp(ratio, 0.20, 0.90)
+
+
 def wind_adjust(wind_dir, wind_speed, role, prof_escape):
     s = max(0.0, float(wind_speed))
     WIND_ZERO   = float(globals().get("WIND_ZERO", 0.0))
     WIND_SIGN   = float(globals().get("WIND_SIGN", 1.0))
-    WIND_GAIN   = float(globals().get("WIND_GAIN", 1.0))  # 33では別処理で0.5倍にしておく想定
+    WIND_GAIN   = float(globals().get("WIND_GAIN", 1.0))
     WIND_CAP    = float(globals().get("WIND_CAP", 0.06))
     WIND_MODE   = globals().get("WIND_MODE", "scalar")
     WIND_COEFF  = globals().get("WIND_COEFF", {})
     SPECIAL_DIRECTIONAL_VELODROMES = globals().get("SPECIAL_DIRECTIONAL_VELODROMES", set())
-    s_state_track = None
+
     try:
         s_state_track = st.session_state.get("track", "")
     except Exception:
-        pass
+        s_state_track = ""
 
+    # --- 風速→基礎量 ---
     if s <= WIND_ZERO:
         base = 0.0
     elif s <= 5.0:
@@ -412,14 +428,32 @@ def wind_adjust(wind_dir, wind_speed, role, prof_escape):
     else:
         base = 0.045 + 0.010 * min(s - 8.0, 4.0)
 
+    # --- 位置係数 ---
     pos = {'head':1.00,'second':0.85,'single':0.75,'thirdplus':0.65}.get(role, 0.75)
-    prof = 0.35 + 0.65*float(prof_escape)
+
+    # ===== ★ここ①：強風ほど番手・後位を不利にする =====
+    wind01 = clamp((s - WIND_ZERO) / (8.0 - WIND_ZERO), 0.0, 1.0)
+    track_ratio = track_effective_ratio(s_state_track)
+    wind_eff01 = wind01 * track_ratio
+
+    if role in ("second", "thirdplus"):
+        pos *= (1.0 - 0.20 * wind_eff01)   # 最大20%だけ削る
+
+    # --- 脚質（自力） ---
+    prof = 0.35 + 0.65 * float(prof_escape)
     val = base * pos * prof
 
+    # --- 風向き（既存） ---
     if (WIND_MODE == "directional") or (s >= 7.0 and s_state_track in SPECIAL_DIRECTIONAL_VELODROMES):
         wd = WIND_COEFF.get(wind_dir, 0.0)
-        dir_term = clamp(s * wd * (0.30 + 0.70*float(prof_escape)) * 0.6, -0.03, 0.03)
+        dir_term = clamp(
+            s * wd * (0.30 + 0.70 * float(prof_escape)) * 0.6,
+            -0.03, 0.03
+        )
         val += dir_term
+
+    # ===== ★ここ②：会場ごとに風の効きをスケール =====
+    val *= clamp(track_ratio / 0.50, 0.60, 1.40)
 
     val = (val * float(WIND_SIGN)) * float(WIND_GAIN)
     return round(clamp(val, -float(WIND_CAP), float(WIND_CAP)), 3)
