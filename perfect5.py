@@ -3478,16 +3478,11 @@ try:
 
 
 def parse_line_str(line_str: str):
-    """
-    "146　72　35" / "146 72 35" / "1 46 72 35" みたいなのを
-    ["146","72","35"] に正規化して返す
-    """
+    import re
     if not line_str:
         return []
-    s = str(line_str).strip()
-    s = s.replace("　", " ")  # 全角スペース→半角
+    s = str(line_str).strip().replace("　", " ")
     parts = [p for p in re.split(r"\s+", s) if p]
-    # 数字以外は除去（念のため）
     out = []
     for p in parts:
         p2 = re.sub(r"\D", "", p)
@@ -3496,12 +3491,7 @@ def parse_line_str(line_str: str):
     return out
 
 def initial_queue_from_lines(lines):
-    """
-    ["146","72","35"] -> ["1","4","6","7","2","3","5"]
-    ライン順＝初手隊列（前→後ろ）としてフラット化
-    """
-    q = []
-    seen = set()
+    q, seen = [], set()
     for ln in lines:
         for ch in str(ln):
             if ch.isdigit() and ch not in seen:
@@ -3510,40 +3500,26 @@ def initial_queue_from_lines(lines):
     return q
 
 def estimate_finaljump_queue(init_queue, score_rank, k=2.2):
-    """
-    既存の「初手隊列」と「スコア順位(強い順)」から、
-    “強いほど前に来やすい” だけを入れた簡易推定。
-
-    - 初手の並びをベースに、スコア上位ほど前方バイアス
-    - ただし大崩れしないように “前に詰める” だけ（安定）
-    """
     if not init_queue:
         return list(score_rank) if score_rank else []
     init = [str(x) for x in init_queue if str(x).isdigit()]
     sr = [str(x) for x in score_rank if str(x).isdigit()]
-
-    # スコア順位の強さ（小さいほど強い）
     n = max(len(init), 1)
-    rank_pos = {car: i for i, car in enumerate(sr)}  # 0が最強
+    rank_pos = {car: i for i, car in enumerate(sr)}
     def strength(car):
-        # srに無い車は弱め扱い（後ろ寄り）
         i = rank_pos.get(car, n)
-        return (n - i) / n  # 1.0に近いほど強い
-
-    # “前にいるほど得” + “強いほど得” の合成で並び替え（安定に前詰め）
-    # ここで k が強さの効き（2.2 はあなたの案を踏襲）
+        return (n - i) / n
     scored = []
     for idx, car in enumerate(init):
         front_bonus = (n - idx) / n
         val = front_bonus + k * strength(car)
         scored.append((val, idx, car))
-
-    # valが高いほど前へ。ただし同点なら元の前後を保つ
     scored.sort(key=lambda x: (-x[0], x[1]))
     return [car for _, _, car in scored]
 
 def arrow_format(seq):
     return "先頭 → " + " → ".join([str(x) for x in seq]) + " → 最後方"
+
 
     
 # =========================================================
