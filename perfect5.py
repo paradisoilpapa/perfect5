@@ -3480,28 +3480,11 @@ try:
 except Exception:
     pass
 
-# === 最終ジャン想定隊列 ＋ 予想最終順位（矢印） ===
-try:
-    if _weighted_rows:
-        _score_rank = [r["car_no"] for r in sorted(_weighted_rows, key=lambda x: x["final_rank"])]
-
-        # 初手隊列は「ライン入力(all_lines)の並び」を素直に採用
-        _init_queue = _initial_queue_from_lines(all_lines)
-
-        _finaljump_queue = _estimate_finaljump_queue(_init_queue, _score_rank, k=2.2)
-
-        note_sections.append("\n【最終ジャン想定隊列】")
-        note_sections.append(_arrow_format(_finaljump_queue))
-
-        note_sections.append("\n【予想最終順位（隊列ベース）】")
-        note_sections.append(_arrow_format(_finaljump_queue))
-
-        # 参考（要らなければ削除OK）
-        note_sections.append("\n【参考：スコア順位（矢印）】")
-        note_sections.append(_arrow_format(_score_rank))
-except Exception:
-    pass
-
+# =========================================================
+# ★ 最終ジャン想定隊列 ＋ 予想最終順位（矢印形式）
+#    ※ 事前入力は増やさず、既存の「line_inputs」と「_weighted_rows」を使う
+#    ※ 「参考：スコア順位（矢印）」は出さない（要望どおり削除）
+# =========================================================
 
 def parse_line_str(line_str: str):
     import re
@@ -3518,7 +3501,7 @@ def parse_line_str(line_str: str):
 
 def initial_queue_from_lines(lines):
     q, seen = [], set()
-    for ln in lines:
+    for ln in (lines or []):
         for ch in str(ln):
             if ch.isdigit() and ch not in seen:
                 q.append(ch)
@@ -3526,20 +3509,37 @@ def initial_queue_from_lines(lines):
     return q
 
 def estimate_finaljump_queue(init_queue, score_rank, k=2.2):
-    if not init_queue:
-        return list(score_rank) if score_rank else []
-    init = [str(x) for x in init_queue if str(x).isdigit()]
-    sr = [str(x) for x in score_rank if str(x).isdigit()]
-    n = max(len(init), 1)
-    rank_pos = {car: i for i, car in enumerate(sr)}
+    # 型を全部「文字」に統一（重複・二周の原因潰し）
+    init = [str(x) for x in (init_queue or []) if str(x).isdigit()]
+    sr   = [str(x) for x in (score_rank or []) if str(x).isdigit()]
+
+    # initに全車が揃ってない場合に備えて、sr側も後ろに補完（ただし重複なし）
+    seen = set()
+    merged = []
+    for x in init + sr:
+        if x not in seen:
+            merged.append(x)
+            seen.add(x)
+
+    if not merged:
+        return []
+
+    n = len(merged)
+    rank_pos = {car: i for i, car in enumerate(sr)}  # 0が最強
+
     def strength(car):
+        # srに無い車は弱め扱い
         i = rank_pos.get(car, n)
         return (n - i) / n
+
     scored = []
-    for idx, car in enumerate(init):
+    for idx, car in enumerate(merged):
+        # 前にいるほど有利（初手位置）
         front_bonus = (n - idx) / n
+        # スコア順位が良いほど前に来やすい
         val = front_bonus + k * strength(car)
         scored.append((val, idx, car))
+
     scored.sort(key=lambda x: (-x[0], x[1]))
     return [car for _, _, car in scored]
 
@@ -3547,46 +3547,29 @@ def arrow_format(seq):
     return "先頭 → " + " → ".join([str(x) for x in seq]) + " → 最後方"
 
 
-    
-# =========================================================
-# ★ 最終ジャン想定隊列 ＋ 予想最終順位（矢印形式）を追記
-#    ※ 事前入力は増やさず、既存の「ライン文字列」と「スコア順位」を使う
-# =========================================================
-
-# 1) スコア順位（強い順の車番リスト）を作る
-_score_rank = [str(r["car_no"]) for r in sorted(_weighted_rows, key=lambda x: x["final_rank"])]
-
-# 2) ライン文字列を作る（既存の line_inputs をそのまま使う）
-line_inputs = globals().get("line_inputs", [])
-line_str = " ".join([str(x).strip() for x in line_inputs if str(x).strip()])  # ←これが正解
-
+# === 出力 ===
 try:
-    _lines = parse_line_str(line_str)
-    _init_queue = initial_queue_from_lines(_lines)
+    if _weighted_rows:
+        # 1) スコア順位（強い順）
+        _score_rank = [str(r["car_no"]) for r in sorted(_weighted_rows, key=lambda x: x["final_rank"])]
 
-    _finaljump_queue = estimate_finaljump_queue(_init_queue, _score_rank, k=2.2)
+        # 2) ライン文字列（既存 line_inputs から生成）
+        line_inputs = globals().get("line_inputs", [])
+        line_str = " ".join([str(x).strip() for x in line_inputs if str(x).strip()])
 
-    note_sections.append("\n【最終ジャン想定隊列】")
-    note_sections.append(arrow_format(_finaljump_queue))
+        _lines = parse_line_str(line_str)
+        _init_queue = initial_queue_from_lines(_lines)
 
-    # あなたの要望：最終順位はコピペしやすい矢印形式
-    note_sections.append("\n【予想最終順位（隊列ベース）】")
-    note_sections.append(arrow_format(_finaljump_queue))
+        _finaljump_queue = estimate_finaljump_queue(_init_queue, _score_rank, k=2.2)
 
-    # 参考（不要なら削除OK）
-    note_sections.append("\n【参考：スコア順位（矢印）】")
-    note_sections.append(arrow_format(_score_rank))
+        note_sections.append("\n【最終ジャン想定隊列】")
+        note_sections.append(arrow_format(_finaljump_queue))
 
-except Exception as e:
-    note_sections.append("\n【最終ジャン想定隊列】")
-    note_sections.append(f"(算出失敗: {e})")
-
+        note_sections.append("\n【予想最終順位（隊列ベース）】")
+        note_sections.append(arrow_format(_finaljump_queue))
 
 except Exception:
     pass
-
-
-
 
 note_sections.append("")  # 空行
 
