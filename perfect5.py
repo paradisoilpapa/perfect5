@@ -3452,7 +3452,8 @@ def _estimate_finaljump_queue(init_queue, score_rank, k=2.2):
             all_cars.append(c)
     return sorted(all_cars, key=_key)
 
-_init_queue = _initial_queue_from_lines(_lines)
+_init_queue = _initial_queue_from_lines(all_lines)
+
 
 # === carFR順位（表示） ===
 
@@ -3475,6 +3476,31 @@ try:
                 f"{r['final_rank']}位：{r['car_no']} "
                 f"(スコア={r['score']:.6f})"
             )
+
+except Exception:
+    pass
+
+# === 最終ジャン想定隊列 ＋ 予想最終順位（矢印） ===
+try:
+    if _weighted_rows:
+        _score_rank = [r["car_no"] for r in sorted(_weighted_rows, key=lambda x: x["final_rank"])]
+
+        # 初手隊列は「ライン入力(all_lines)の並び」を素直に採用
+        _init_queue = _initial_queue_from_lines(all_lines)
+
+        _finaljump_queue = _estimate_finaljump_queue(_init_queue, _score_rank, k=2.2)
+
+        note_sections.append("\n【最終ジャン想定隊列】")
+        note_sections.append(_arrow_format(_finaljump_queue))
+
+        note_sections.append("\n【予想最終順位（隊列ベース）】")
+        note_sections.append(_arrow_format(_finaljump_queue))
+
+        # 参考（要らなければ削除OK）
+        note_sections.append("\n【参考：スコア順位（矢印）】")
+        note_sections.append(_arrow_format(_score_rank))
+except Exception:
+    pass
 
 
 def parse_line_str(line_str: str):
