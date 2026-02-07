@@ -2367,7 +2367,41 @@ def compute_flow_indicators(lines_str, marks, scores):
             "vtx_bid": VTX_bid, "lines": lines, "dbg": dbg}
 
 
-# === v2.2: 相手4枠ロジック（3車厚め“強制保証”＆U高域でも最大2枚まで許容）===
+# === v2.3: 相手4枠ロジック（3車厚め“強制保証”＋3番手保証(帯)＋U高域でも最大2枚まで許容）===
+
+import re
+from typing import List, Dict, Optional
+
+def _t369p_parse_groups(lines_str: str) -> List[List[int]]:
+    parts = re.findall(r'[0-9]+', str(lines_str or ""))
+    groups: List[List[int]] = []
+    for p in parts:
+        g = [int(ch) for ch in p]
+        if g:
+            groups.append(g)
+    return groups
+
+def _t369p_find_line_of(num: int, groups: List[List[int]]) -> List[int]:
+    for g in groups:
+        if num in g:
+            return g
+    return []
+
+def _t369p_line_avg(g: List[int], hens: Dict[int, float]) -> float:
+    if not g:
+        return -1e9
+    return sum(hens.get(x, 0.0) for x in g) / len(g)
+
+def _t369p_best_in_group(
+    g: List[int],
+    hens: Dict[int, float],
+    exclude: Optional[int] = None
+) -> Optional[int]:
+    cand = [x for x in (g or []) if x != exclude]
+    if not cand:
+        return None
+    return max(cand, key=lambda x: hens.get(x, 0.0), default=None)
+
 def select_tri_opponents_v2(
     axis: int,
     lines_str: str,
@@ -2375,12 +2409,23 @@ def select_tri_opponents_v2(
     vtx: float,                          # 渦の強さ（0〜1）
     u: float,                            # 逆流の強さ（0〜1）
     marks: Dict[str, int],               # 印（{'◎':5, ...}）
-    shissoku_label: str = "中",         # ◎ラインの「失速危険」ラベル：'低'/'中'/'高'
-    vtx_line_str: Optional[str] = None,  # 渦候補ライン文字列（例 '375'）
-    u_line_str: Optional[str] = None,    # 逆流ライン文字列（例 '63'）
-    n_opps: int = 4
+    shissoku_label: str = "中",          # ◎ラインの「失速危険」：'低'/'中'/'高'
+    vtx_line_str: Optional[str] = None,  # 渦候補ライン（例 '375'）
+    u_line_str: Optional[str] = None,    # 逆流ライン（例 '63'）
+    n_opps: int = 4,
+    fr_v: float | None = None,           # レースFR（帯判定用）
 ) -> List[int]:
-    U_HIGH = 0.90  # ← 0.85→0.90に引き上げ（代表1枚化の発動を絞る）
+
+    # しきい値/ブースト
+    U_HIGH       = 0.90
+    THIRD_BOOST  = 0.18
+    THICK_BASE   = 0.25
+    AXIS_LINE_2P = 0.35
+
+    # 3番手保証（FR帯）
+    BAND_LO, BAND_HI = 0.25, 0.65
+    THIRD_MIN = 40.0
+    _FRv = float(fr_v or 0.0)
 
     groups     = _t369p_parse_groups(lines_str)
     axis_line  = _t369p_find_line_of(int(axis), groups)
@@ -2396,7 +2441,6 @@ def select_tri_opponents_v2(
         FR_line = max(groups, key=lambda g: _t369p_line_avg(g, hens))
 
     thick_groups = [g for g in groups if len(g) >= 3]  # 3車(以上)ライン
-    # 軸ライン以外の“最厚”を特定（平均偏差で最大）
     thick_others = [g for g in thick_groups if g != (axis_line or [])]
     best_thick_other = max(thick_others, key=lambda g: _t369p_line_avg(g, hens), default=None)
 
@@ -2415,7 +2459,7 @@ def select_tri_opponents_v2(
     if opp_rep is not None:
         picks_must.append(opp_rep)
 
-    # ③ 逆流代表（U高域のみ“代表”）。※3車u_groupは最大2枚まで許容
+    # ③ 逆流代表（U高域のみ）。※3車u_groupは最大2枚まで許容
     u_rep = None
     if u >= U_HIGH:
         if u_group:
@@ -2446,7 +2490,6 @@ def select_tri_opponents_v2(
     if u >= U_HIGH and u_rep is not None and u_rep in scores_local:
         scores_local[u_rep] += 1.00
         if u_group:
-            # 3車以上ならペナルティ緩和（-0.15）、それ以外は従来（-0.40）
             penalty = 0.15 if len(u_group) >= 3 else 0.40
             for x in u_group:
                 if x != u_rep and x in scores_local:
@@ -2468,7 +2511,8 @@ def select_tri_opponents_v2(
     if isinstance(g_star, int) and shissoku_label == "高":
         g_line = _t369p_find_line_of(g_star, groups)
         g_ban  = _t369p_best_in_group(g_line, hens, exclude=g_star) if g_line else None
-        if g_star in scores_local: scores_local[g_star] -= 0.60
+        if g_star in scores_local:
+            scores_local[g_star] -= 0.60
         if g_ban is not None and g_ban in scores_local:
             scores_local[g_ban] += 0.70
 
@@ -2476,30 +2520,41 @@ def select_tri_opponents_v2(
     for g3 in thick_groups:
         for x in g3:
             if x != axis and x in scores_local:
-                scores_local[x] += 0.25
-    #  軸が3車(以上)なら“同ライン2枚体制”を最低保証（後段で強制補正も入れる）
+                scores_local[x] += THICK_BASE
+
+    # 軸が3車(以上)なら同ライン2枚体制を厚め
     if axis_line and len(axis_line) >= 3:
         for x in axis_line:
             if x not in (axis, axis_partner) and x in scores_local:
-                scores_local[x] += 0.35
-    #  渦/FRが3車(以上)なら中核を少し厚め
+                scores_local[x] += AXIS_LINE_2P
+
+    # 渦/FRが3車(以上)なら中核を少し厚め
     if vtx_group and len(vtx_group) >= 3:
         best_vtx = _t369p_best_in_group(vtx_group, hens, exclude=None)
         if best_vtx is not None and best_vtx in scores_local:
             scores_local[best_vtx] += 0.30
+
     if FR_line and len(FR_line) >= 3:
         add_fr = 0.30 if shissoku_label != "高" else 0.15
         for x in FR_line:
             if x != axis and x in scores_local:
                 scores_local[x] += add_fr
 
+    # 3列目ブースト（“3番手”を軽く押す：ライン並びの3番手がいる前提）
+    if axis_line and len(axis_line) >= 3:
+        third = axis_line[2]
+        if third in scores_local:
+            scores_local[third] += THIRD_BOOST
+
     # まずは必須枠を採用（順序維持）
     def _unique_keep_order(xs: List[int]) -> List[int]:
         seen, out = set(), []
         for x in xs:
             if x not in seen:
-                out.append(x); seen.add(x)
+                out.append(x)
+                seen.add(x)
         return out
+
     picks = [x for x in _unique_keep_order(picks_must) if x in scores_local and x != axis]
 
     # 補充：スコア高い順。ただしU高域では u_group の人数上限（1 or 2）を守る
@@ -2525,7 +2580,7 @@ def select_tri_opponents_v2(
         if len(present) < 2 and len(axis_members) >= 2:
             cand = max([x for x in axis_members if x not in picks], key=lambda x: hens.get(x, 0.0), default=None)
             if cand is not None:
-                drop_cands = [x for x in picks if x not in axis_members]
+                drop_cands = [x for x in picks if x not in axis_members and x != axis_partner]
                 if drop_cands:
                     worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
                     picks = [x for x in picks if x != worst] + [cand]
@@ -2533,14 +2588,16 @@ def select_tri_opponents_v2(
     # ★ 強制保証２：軸ライン以外で“最厚”の3車(以上)ラインは、相手4枠に最低2枚を確保
     if best_thick_other:
         have = [x for x in picks if x in best_thick_other]
-        need = min(2, len(best_thick_other))  # 2枚（グループ人数が2ならその人数）
+        need = min(2, len(best_thick_other))
         while len(have) < need and len(picks) > 0:
-            cand = max([x for x in best_thick_other if x not in picks and x != axis],
-                       key=lambda x: hens.get(x, 0.0), default=None)
+            cand = max(
+                [x for x in best_thick_other if x not in picks and x != axis],
+                key=lambda x: hens.get(x, 0.0),
+                default=None
+            )
             if cand is None:
                 break
-            # 落とし：その厚めグループ外で最もスコアの低い1名
-            drop_cands = [x for x in picks if x not in best_thick_other]
+            drop_cands = [x for x in picks if x not in best_thick_other and x != axis_partner]
             if not drop_cands:
                 break
             worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
@@ -2552,69 +2609,12 @@ def select_tri_opponents_v2(
     # 最終保険：不足分があれば偏差順で埋める
     if len(picks) < n_opps:
         rest = [x for x in others_all if x not in picks and x != axis]
-        rest_sorted = sorted(rest, key=lambda x: hens.get(x, 0.0), reverse=True)
-        for x in rest_sorted:
+        for x in sorted(rest, key=lambda x: hens.get(x, 0.0), reverse=True):
             picks.append(x)
             if len(picks) >= n_opps:
                 break
 
-   # 変更後シグネチャ（fr_vを追加）
-def select_tri_opponents_v2(
-    axis: int,
-    lines_str: str,
-    hens: Dict[int, float],
-    vtx: float,
-    u: float,
-    marks: Dict[str, int],
-    shissoku_label: str = "中",
-    vtx_line_str: Optional[str] = None,
-    u_line_str: Optional[str] = None,
-    n_opps: int = 4,
-    fr_v: float | None = None,   # ← これを追加
-) -> List[int]:
-
-    
-    # （中略：既存ロジックそのまま）
-    
-
-    # === ここから「最終保険〜return」までを置換 ===
-
-    # 最終保険：不足分があれば偏差順で埋める
-    if len(picks) < n_opps:
-        rest = [x for x in others_all if x not in picks and x != axis]
-        rest_sorted = sorted(rest, key=lambda x: hens.get(x, 0.0), reverse=True)
-        for x in rest_sorted:
-            picks.append(x)
-            if len(picks) >= n_opps:
-                break
-
-    # ==== 3車ラインの「3番手」保証（FR帯 0.25〜0.65 限定） ====
-    BAND_LO, BAND_HI = 0.25, 0.65
-    THIRD_MIN = 40.0
-    _FRv = float(fr_v or 0.0)
-
-    if BAND_LO <= _FRv <= BAND_HI and axis_line and len(axis_line) >= 3:
-        third = axis_line[2]  # 「3番手」をライン並びで定義してる前提
-        if hens.get(int(third), 0.0) >= THIRD_MIN and int(third) not in picks and int(third) != axis:
-            # 相方は絶対保持（axis_partnerが picks に入ってる前提）
-            drop_cands = [x for x in picks if x != axis_partner]
-            if drop_cands:
-                worst = min(drop_cands, key=lambda x: hens.get(int(x), 0.0))
-                picks = [x for x in picks if x != worst] + [int(third)]
-
-
-    # --- 二車軸ロック（相方は絶対保持） ---
-    axis_partner = _t369p_best_in_group(axis_line, hens, exclude=axis) if axis_line else None
-    if (axis_partner is not None) and (axis_partner not in picks):
-        # 相方を必ず入れる（相方以外を1名落とす）
-        drop_cands = [x for x in picks if x not in (axis_line or []) or x == _t369p_best_in_group(axis_line, hens, exclude=axis_partner)]
-        if drop_cands:
-            worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
-            picks = [x for x in picks if x != worst] + [axis_partner]
-        else:
-            picks.append(axis_partner)
-
-    # --- 3番手保証（相方は落とさない） ---
+    # ==== 3番手保証（FR帯 0.25〜0.65 限定）====
     if BAND_LO <= _FRv <= BAND_HI:
         target = axis_line if (axis_line and len(axis_line) >= 3) else (
             best_thick_other if (best_thick_other and len(best_thick_other) >= 3) else None
@@ -2623,28 +2623,15 @@ def select_tri_opponents_v2(
             g_sorted = sorted(target, key=lambda x: hens.get(x, 0.0), reverse=True)
             if len(g_sorted) >= 3:
                 third = g_sorted[2]
-                if (third not in picks) and (hens.get(third, 0.0) >= THIRD_MIN):
-                    # 相方を落とさない・target外から落とす
+                if (third not in picks) and (hens.get(third, 0.0) >= THIRD_MIN) and (third != axis):
                     drop_cands = [x for x in picks if (x not in target) and (x != axis_partner)]
                     if drop_cands:
                         worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
                         if worst != third:
                             picks = [x for x in picks if x != worst] + [third]
-                    # どうしても対象が無ければ“target内の相方以外の末位”と置換
-                    elif len(picks) >= n_opps:
-                        target_inside = [x for x in picks if (x in target) and (x not in (axis, axis_partner))]
-                        if target_inside:
-                            worst = min(target_inside, key=lambda x: scores_local.get(x, -1e9))
-                            if worst != third:
-                                picks = [x for x in picks if x != worst] + [third]
-                        else:
-                            # 入りきらない場合でも相方は守る
-                            if len(picks) < n_opps:
-                                picks.append(third)
 
-    # --- 二車軸の最終確認（相方が必ず残るよう再チェック） ---
+    # --- 二車軸ロック（相方は絶対保持） ---
     if (axis_partner is not None) and (axis_partner not in picks):
-        # 相方復帰（相方以外の最低スコアを落とす）
         drop_cands = [x for x in picks if x != axis_partner]
         if drop_cands:
             worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
@@ -2652,22 +2639,22 @@ def select_tri_opponents_v2(
         else:
             picks.append(axis_partner)
 
-    # --- ユニーク＆サイズ調整 ---
+    # --- ユニーク＆サイズ調整（相方保護） ---
     seen = set()
     picks = [x for x in picks if not (x in seen or seen.add(x))]
+
     if len(picks) > n_opps:
-        # 相方を保護しつつ超過を落とす
         to_drop = len(picks) - n_opps
         cand = [x for x in picks if x != axis_partner]
         cand_sorted = sorted(cand, key=lambda x: scores_local.get(x, -1e9))
         for i in range(min(to_drop, len(cand_sorted))):
-            picks.remove(cand_sorted[i])
+            if cand_sorted[i] in picks:
+                picks.remove(cand_sorted[i])
 
     return picks
 
+# === /v2.3 ===
 
-
-# === /v2.2 ===
 
 
 
@@ -2676,57 +2663,65 @@ def format_tri_1x4(axis: int, opps: List[int]) -> str:
     return f"{axis}-{opps_sorted}-{opps_sorted}"
 
 # === PATCH（generate_tesla_bets の直前に挿入）==============================
-# ※ re は上で import 済みの想定。未インポートなら `import re` を先頭に追加。
+# 前提：ファイル上部に import re があるならここでは不要（無ければ追加）
+# 前提：typing を上で import 済みならここでは不要（無ければ追加）
 
 # 軸選定用（generate_tesla_bets から呼ばれる）
 def _topk(line, k, scores):
     line = list(line or [])
     return sorted(line, key=lambda x: (scores.get(x, -1.0), -int(x)), reverse=True)[:k]
 
-# ---- 相手4枠ロジック v2.3（3車厚め“強制保証”＋3列目ブースト＋U高域でも最大2枚許容）----
-from typing import List, Dict, Optional
-
-def _t369p_parse_groups(lines_str: str) -> List[List[int]]:
-    parts = re.findall(r'[0-9]+', str(lines_str or ""))
-    groups: List[List[int]] = []
+def _t369p_parse_groups(lines_str: str):
+    parts = re.findall(r"[0-9]+", str(lines_str or ""))
+    groups = []
     for p in parts:
         g = [int(ch) for ch in p]
-        if g: groups.append(g)
+        if g:
+            groups.append(g)
     return groups
 
-def _t369p_find_line_of(num: int, groups: List[List[int]]) -> List[int]:
+def _t369p_find_line_of(num: int, groups):
     for g in groups:
         if num in g:
             return g
     return []
 
-def _t369p_line_avg(g: List[int], hens: Dict[int, float]) -> float:
-    if not g: return -1e9
+def _t369p_line_avg(g, hens):
+    if not g:
+        return -1e9
     return sum(hens.get(x, 0.0) for x in g) / len(g)
 
-def _t369p_best_in_group(g: List[int], hens: Dict[int, float], exclude: Optional[int] = None) -> Optional[int]:
+def _t369p_best_in_group(g, hens, exclude=None):
     cand = [x for x in (g or []) if x != exclude]
-    if not cand: return None
+    if not cand:
+        return None
     return max(cand, key=lambda x: hens.get(x, 0.0), default=None)
 
+
+# ---- 相手4枠ロジック v2.3（3車厚め“強制保証”＋3番手保証(帯)＋U高域でも最大2枚許容）----
 def select_tri_opponents_v2(
     axis: int,
     lines_str: str,
-    hens: Dict[int, float],              # 偏差値/スコアのマップ
-    vtx: float,                          # 渦の強さ（0〜1）
-    u: float,                            # 逆流の強さ（0〜1）
-    marks: Dict[str, int],               # 印（{'◎':5, ...}）※ {印:車番}でもOK（外で正規化済を推奨）
-    shissoku_label: str = "中",          # ◎ラインの「失速危険」：'低'/'中'/'高'
-    vtx_line_str: Optional[str] = None,  # 渦候補ライン（例 '375'）
-    u_line_str: Optional[str] = None,    # 逆流ライン（例 '63'）
+    hens: dict,              # {車番:int -> 偏差値/スコア:float}
+    vtx: float,              # 渦の強さ（0〜1）
+    u: float,                # 逆流の強さ（0〜1）
+    marks: dict,             # {印:車番} or {車番:印} が来るので両対応
+    shissoku_label: str = "中",
+    vtx_line_str=None,
+    u_line_str=None,
     n_opps: int = 4,
-    fr_v: float | None = None,           # ← レースFRを必ず渡す（帯判定用）
-) -> List[int]:
+    fr_v: float | None = None,   # レースFR（帯判定用）
+):
     # しきい値/ブースト
     U_HIGH       = 0.90
     THIRD_BOOST  = 0.18
     THICK_BASE   = 0.25
     AXIS_LINE_2P = 0.35
+
+    # 3番手保証（FR帯）
+    BAND_LO, BAND_HI = 0.25, 0.65
+    THIRD_MIN = 40.0
+    _FRv = float(fr_v or 0.0)
 
     groups     = _t369p_parse_groups(lines_str)
     axis_line  = _t369p_find_line_of(int(axis), groups)
@@ -2735,15 +2730,14 @@ def select_tri_opponents_v2(
     vtx_group = _t369p_parse_groups(vtx_line_str)[0] if vtx_line_str else []
     u_group   = _t369p_parse_groups(u_line_str)[0]   if u_line_str   else []
 
-    # FRライン（◎のライン。なければ平均最大）
-    # marksは {車番:印} でも {印:車番} でも来ることがあるので両対応
+    # --- ◎車番を marks から取得（{印:車番} / {車番:印} 両対応）---
     g_star = None
     if marks:
-        # {印:車番}
+        # {印:車番} の可能性
         if all(isinstance(v, int) for v in marks.values()):
             g_star = marks.get("◎", None)
         else:
-            # {車番:印}
+            # {車番:印} の可能性
             for cid, sym in marks.items():
                 try:
                     if sym == "◎":
@@ -2752,31 +2746,32 @@ def select_tri_opponents_v2(
                 except Exception:
                     pass
 
+    # FRライン（◎のライン。なければ平均最大ライン）
     FR_line = _t369p_find_line_of(int(g_star), groups) if isinstance(g_star, int) else []
-    if not FR_line and groups:
+    if (not FR_line) and groups:
         FR_line = max(groups, key=lambda g: _t369p_line_avg(g, hens))
 
-    # 3車(以上)ライン群
+    # 3車(以上)ライン群と「軸以外の最厚」
     thick_groups     = [g for g in groups if len(g) >= 3]
     thick_others     = [g for g in thick_groups if g != (axis_line or [])]
     best_thick_other = max(thick_others, key=lambda g: _t369p_line_avg(g, hens), default=None)
 
-    # 必須枠
-    picks_must: List[int] = []
+    # --- 必須枠 ---
+    picks_must = []
 
     # ① 軸相方（番手）
     axis_partner = _t369p_best_in_group(axis_line, hens, exclude=axis) if axis_line else None
     if axis_partner is not None:
         picks_must.append(axis_partner)
 
-    # ② 対抗ライン代表（平均偏差最大ライン）
+    # ② 対抗ライン代表（平均偏差最大ラインの代表）
     other_lines = [g for g in groups if g != axis_line]
     best_other_line = max(other_lines, key=lambda g: _t369p_line_avg(g, hens), default=None)
     opp_rep = _t369p_best_in_group(best_other_line, hens, exclude=None) if best_other_line else None
     if opp_rep is not None:
         picks_must.append(opp_rep)
 
-    # ③ 逆流代表（U高域のみ）。※3車u_groupは最大2枚まで許容
+    # ③ 逆流代表（U高域のみ）。※u_group が3車以上なら最大2枚許容
     u_rep = None
     if u >= U_HIGH:
         if u_group:
@@ -2787,12 +2782,12 @@ def select_tri_opponents_v2(
         if u_rep is not None:
             picks_must.append(u_rep)
 
-    # ④ スコアリング
-    scores_local: Dict[int, float] = {x: 0.0 for x in others_all}
+    # --- スコアリング ---
+    scores_local = {x: 0.0 for x in others_all}
     for x in scores_local:
         scores_local[x] += hens.get(x, 0.0) / 100.0  # 土台
 
-    # 軸ライン：相方を強化、同ライン他は控えめ
+    # 軸ライン：相方強化、同ライン他は控えめ
     if axis_partner is not None and axis_partner in scores_local:
         scores_local[axis_partner] += 1.50
     for x in (axis_line or []):
@@ -2803,7 +2798,7 @@ def select_tri_opponents_v2(
     if opp_rep is not None and opp_rep in scores_local:
         scores_local[opp_rep] += 1.20
 
-    # U高域：代表強化＋“2枚目抑制（3車はペナルティ緩和）”
+    # U高域：代表強化＋2枚目抑制（3車以上は緩め）
     if u >= U_HIGH and u_rep is not None and u_rep in scores_local:
         scores_local[u_rep] += 1.00
         if u_group:
@@ -2828,11 +2823,12 @@ def select_tri_opponents_v2(
     if isinstance(g_star, int) and shissoku_label == "高":
         g_line = _t369p_find_line_of(g_star, groups)
         g_ban  = _t369p_best_in_group(g_line, hens, exclude=g_star) if g_line else None
-        if g_star in scores_local: scores_local[g_star] -= 0.60
+        if g_star in scores_local:
+            scores_local[g_star] -= 0.60
         if g_ban is not None and g_ban in scores_local:
             scores_local[g_ban] += 0.70
 
-    # ★ 3車(以上)ライン厚め：基礎加点＋“3列目”ブースト
+    # ★ 3車(以上)ライン厚め：基礎加点＋“3列目”ブースト（各ラインの3番手）
     for g3 in thick_groups:
         for x in g3:
             if x != axis and x in scores_local:
@@ -2861,16 +2857,18 @@ def select_tri_opponents_v2(
                 scores_local[x] += add_fr
 
     # 必須（順序維持）
-    def _unique_keep_order(xs: List[int]) -> List[int]:
+    def _unique_keep_order(xs):
         seen, out = set(), []
         for x in xs:
             if x not in seen:
-                out.append(x); seen.add(x)
+                out.append(x)
+                seen.add(x)
         return out
+
     picks = [x for x in _unique_keep_order(picks_must) if x in scores_local and x != axis]
 
     # 補充：スコア順。U高域では u_group の人数上限（1 or 2）を守る
-    def _same_group(a: int, b: int, group: List[int]) -> bool:
+    def _same_group(a, b, group):
         return bool(group and a in group and b in group)
 
     for x, _sc in sorted(scores_local.items(), key=lambda kv: kv[1], reverse=True):
@@ -2892,7 +2890,7 @@ def select_tri_opponents_v2(
         if len(present) < 2 and len(axis_members) >= 2:
             cand = max([x for x in axis_members if x not in picks], key=lambda x: hens.get(x, 0.0), default=None)
             if cand is not None:
-                drop_cands = [x for x in picks if x not in axis_members]
+                drop_cands = [x for x in picks if x not in axis_members and x != axis_partner]
                 if drop_cands:
                     worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
                     picks = [x for x in picks if x != worst] + [cand]
@@ -2906,7 +2904,7 @@ def select_tri_opponents_v2(
                        key=lambda x: hens.get(x, 0.0), default=None)
             if cand is None:
                 break
-            drop_cands = [x for x in picks if x not in best_thick_other]
+            drop_cands = [x for x in picks if x not in best_thick_other and x != axis_partner]
             if not drop_cands:
                 break
             worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
@@ -2918,46 +2916,47 @@ def select_tri_opponents_v2(
     # 最終保険：不足分を偏差順で埋める
     if len(picks) < n_opps:
         rest = [x for x in others_all if x not in picks and x != axis]
-        rest_sorted = sorted(rest, key=lambda x: hens.get(x, 0.0), reverse=True)
-        for x in rest_sorted:
+        for x in sorted(rest, key=lambda x: hens.get(x, 0.0), reverse=True):
             picks.append(x)
             if len(picks) >= n_opps:
                 break
 
-       # ===== 3車ラインの「3番手」保証（FR帯 0.25〜0.65）=====
-    BAND_LO, BAND_HI = 0.25, 0.65
-    THIRD_MIN = 40.0  # 3番手の最低偏差値しきい値（あなたの指定）
-
-    # 軸ライン(3車以上)の3番手を抽出
-    axis_line = _t369p_find_line_of(int(axis), groups)
-    axis_third = None
-    if axis_line and len(axis_line) >= 3:
+    # ===== 3番手保証（FR帯 0.25〜0.65）=====
+    if (BAND_LO <= _FRv <= BAND_HI) and axis_line and len(axis_line) >= 3:
         g_sorted = sorted(axis_line, key=lambda x: hens.get(x, 0.0), reverse=True)
-        # g_sorted[0] が軸 or 相方になりやすいので、3番手はインデックス2
         if len(g_sorted) >= 3:
             axis_third = g_sorted[2]
-
-    # FR帯が 0.25〜0.65 のときだけ発動
-    if (fr_v is not None) and (BAND_LO <= float(fr_v) <= BAND_HI) and axis_third is not None:
-        if hens.get(axis_third, 0.0) >= THIRD_MIN and axis_third not in picks:
-            # target外（=軸ライン外）から最もスコアの低い1名を落として3番手を入れる
-            drop_cands = [x for x in picks if x not in axis_line]
-            if drop_cands:
-                worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
-                if worst != axis_third:
+            if (axis_third not in picks) and (hens.get(axis_third, 0.0) >= THIRD_MIN) and (axis_third != axis):
+                drop_cands = [x for x in picks if (x not in axis_line) and (x != axis_partner)]
+                if drop_cands:
+                    worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
                     picks = [x for x in picks if x != worst] + [axis_third]
 
-    # ユニーク＆サイズ調整
+    # --- ユニーク＆サイズ調整（相方を落とさない） ---
     seen = set()
-    picks = [x for x in picks if not (x in seen or seen.add(x))][:n_opps]
+    uniq = []
+    for x in picks:
+        if x not in seen:
+            uniq.append(x)
+            seen.add(x)
+    picks = uniq
+
+    if len(picks) > n_opps:
+        # 相方は保護して、残りから低スコアを落とす
+        protect = set([axis_partner]) if axis_partner is not None else set()
+        drop_pool = [x for x in picks if x not in protect]
+        drop_pool_sorted = sorted(drop_pool, key=lambda x: scores_local.get(x, -1e9))
+        while len(picks) > n_opps and drop_pool_sorted:
+            picks.remove(drop_pool_sorted.pop(0))
+
     return picks
+
 
 def _format_tri_axis_partner_rest(axis: int, opps: list, axis_line: list,
                                   hens: dict, lines: list) -> str:
     """
     出力形式： 軸・相方 － 残り3枠 － 残り3枠
     並び規則：対抗ラインの2名（番号昇順）→ 軸ラインの3番手（存在時）→ 残りをスコア順で充填
-    ※ 常に 3 枠埋め切る
     """
     if not isinstance(axis, int) or axis <= 0 or not isinstance(opps, list):
         return "—"
@@ -2974,10 +2973,10 @@ def _format_tri_axis_partner_rest(axis: int, opps: list, axis_line: list,
 
     # フォールバック：相方不在なら通常 1-XXXX-XXXX
     if partner is None:
-        rest = ''.join(str(x) for x in sorted(opps))
+        rest = "".join(str(x) for x in sorted(opps))
         return f"{axis}-{rest}-{rest}"
 
-    # 軸3番手
+    # 軸3番手（スコア順の3番手）
     axis_third = None
     if len(axis_line) >= 3:
         g_sorted = sorted(axis_line, key=lambda x: hens.get(x, 0.0), reverse=True)
@@ -2986,46 +2985,40 @@ def _format_tri_axis_partner_rest(axis: int, opps: list, axis_line: list,
 
     # 対抗ライン（＝軸ライン以外で平均偏差最大）
     def _line_avg(g):
-        return sum(hens.get(x, 0.0) for x in g)/len(g) if g else -1e9
+        return sum(hens.get(x, 0.0) for x in g) / len(g) if g else -1e9
     other_lines = [g for g in (lines or []) if g != axis_line]
     opp_line = max(other_lines, key=_line_avg) if other_lines else []
 
     # 残り3枠（相方を除く）
     pool = [x for x in opps if x != partner]
 
-    # まず対抗ラインの2名（昇順で最大2名まで）
+    # まず対抗ラインの2名（昇順で最大2名）
     opp_two = sorted([x for x in pool if x in (opp_line or [])])[:2]
 
     rest_three = []
     rest_three.extend(opp_two)
 
-    # 軸3番手を優先的に追加（まだ入っておらず、プールに居るなら）
+    # 軸3番手を追加（まだ入っておらず、poolに居るなら）
     if axis_third is not None and axis_third in pool and axis_third not in rest_three:
         rest_three.append(axis_third)
 
-    # ★不足充填：3枠になるまでスコア（偏差）降順→番号昇順で埋める
+    # 不足充填：スコア降順→番号昇順で埋める
     if len(rest_three) < 3:
         remain = [x for x in pool if x not in rest_three]
         remain_sorted = sorted(remain, key=lambda x: (hens.get(x, 0.0), -int(x)), reverse=True)
-        take = 3 - len(rest_three)
-        rest_three.extend(remain_sorted[:take])
+        rest_three.extend(remain_sorted[: (3 - len(rest_three))])
 
-    # 最終整形（ちょうど3つ）
     rest_three = rest_three[:3]
-    # 表示は「対抗2名（昇順） → 軸3番手（ある場合）」の並びを保つ
-    def _fmt(rest):
-        # 対抗に入っているものは昇順、残りはそのままの順を尊重
-        in_opp = [x for x in rest if x in (opp_line or [])]
-        not_opp = [x for x in rest if x not in (opp_line or [])]
-        return ''.join(str(x) for x in (sorted(in_opp) + not_opp))
-    rest_str = _fmt(rest_three)
+
+    # 表示は「対抗(昇順) → それ以外」の順
+    in_opp = [x for x in rest_three if x in (opp_line or [])]
+    not_opp = [x for x in rest_three if x not in (opp_line or [])]
+    rest_str = "".join(str(x) for x in (sorted(in_opp) + not_opp))
 
     return f"{axis}・{partner} － {rest_str} － {rest_str}"
 
-
-
-
 # === /PATCH ==============================================================
+
 
 # ======================= T369｜FREE-ONLY 完全置換ブロック（精簡版） =======================
 
