@@ -3482,81 +3482,111 @@ except Exception:
 
 # =========================================================
 # ★ 最終ジャン想定隊列 ＋ 予想最終順位（矢印形式）
-#    ※ 事前入力は増やさず、既存の「line_inputs」と「_weighted_rows」を使う
-#    ※ ラインは壊さない（塊の順番だけ入れ替える）
+#    ・事前入力は増やさない（line_inputs と _weighted_rows を使う）
+#    ・ラインを壊さない（ラインの“塊”は維持）
+#    ・追い抜き「制限」は入れない（スコア反映は自由）
 # =========================================================
 
 def _arrow_format(seq):
     return "先頭 → " + " → ".join([str(x) for x in seq]) + " → 最後方"
 
-def _parse_lines_from_inputs(line_inputs):
-    # line_inputs: ["516","27","34"] / ["516 27 34"] / ["516　27　34"] など混在OK
-    if not line_inputs:
-        return []
-    parts = []
-    for x in line_inputs:
-        s = str(x).strip().replace("　", " ")
-        if not s:
-            continue
-        parts.extend([p for p in s.split(" ") if p])
+def _digits_only(s):
+    return "".join(ch for ch in str(s) if ch.isdigit())
 
+def _parse_lines_from_line_inputs(line_inputs):
+    # line_inputs: ["516", "27", "34"] みたいな想定（全角スペース等は上流で分割されてる前提）
     out = []
-    for p in parts:
-        p2 = "".join(ch for ch in p if ch.isdigit())
-        if p2:
-            out.append(p2)
+    for x in (line_inputs or []):
+        d = _digits_only(x)
+        if d:
+            out.append(d)
     return out
 
-def _line_strength(line_str, car_strength):
-    cars = [ch for ch in str(line_str) if ch.isdigit()]
-    if not cars:
-        return -1e9
-    # 「そのラインに最強格がいる」ラインを前へ（ここは max が一番素直）
-    return max(car_strength.get(c, 0.0) for c in cars)
+def _score_map_from_weighted_rows(weighted_rows):
+    # car_no: "2" など / score: float
+    m = {}
+    for r in (weighted_rows or []):
+        c = str(r.get("car_no", "")).strip()
+        if c.isdigit():
+            m[c] = float(r.get("score", 0.0) or 0.0)
+    return m
 
+def _finaljump_queue_keep_lines(lines, score_map):
+    """
+    lines: ["516","27","34"] のようなライン配列
+    score_map: {"2":0.028..., ...}
+
+    方針：
+    1) ライン（塊）同士の並び替え：そのラインのスコア合計が高いほど前へ
+    2) ライン内の並び替え：その車のスコアが高いほど前へ（同点は元順）
+    3) 7車に揃ってない等の欠けがあれば、残り車を最後尾にスコア順で補完（重複なし）
+    """
+    # (A) ライン内をスコアで並べ替え（元順をタイブレークにする）
+    line_lists = []
+    for ln in (lines or []):
+        cars = [c for c in list(_digits_only(ln)) if c.isdigit()]
+        seen = set()
+        cars = [c for c in cars if not (c in seen or seen.add(c))]  # 重複除去（元順維持）
+        cars_sorted = sorted(
+            cars,
+            key=lambda c: (-(score_map.get(c, 0.0)), cars.index(c))
+        )
+        line_lists.append(cars_sorted)
+
+    # (B) ライン（塊）を合計スコアで並べ替え（元のライン順をタイブレークに）
+    def line_sum(idx):
+        return sum(score_map.get(c, 0.0) for c in line_lists[idx])
+
+    line_order = sorted(
+        range(len(line_lists)),
+        key=lambda i: (-(line_sum(i)), i)
+    )
+
+    # (C) 連結して最終ジャン隊列に
+    out = []
+    for i in line_order:
+        for c in line_lists[i]:
+            if c not in out:
+                out.append(c)
+
+    # (D) 欠け車があれば補完（最後尾にスコア順）
+    #    7車想定だけど、念のためスコアに出てくる車番を拾う
+    all_from_scores = [c for c in score_map.keys() if c.isdigit()]
+    for c in sorted(all_from_scores, key=lambda x: -score_map.get(x, 0.0)):
+        if c not in out:
+            out.append(c)
+
+    return out
+
+# === 出力 ===
 try:
     if _weighted_rows:
-        # 1) 車ごとの強さ（順位が良いほど大）
+        # スコア順（強い順）：予想最終順位用
         _score_rank = [str(r["car_no"]) for r in sorted(_weighted_rows, key=lambda x: x["final_rank"])]
-        n = max(len(_score_rank), 1)
-        car_strength = {car: (n - i) for i, car in enumerate(_score_rank)}  # 1位が最大
 
-        # 2) ライン（塊）を取得
-        line_inputs = globals().get("line_inputs", [])
-        _lines = _parse_lines_from_inputs(line_inputs)
+        # ライン（既存 line_inputs から）
+        _line_inputs = globals().get("line_inputs", [])
+        _lines = _parse_lines_from_line_inputs(_line_inputs)
 
-        if _lines:
-            # 3) ラインの順番だけ決める（強いラインほど前、同点は入力順優先）
-            scored_lines = []
-            for idx, ln in enumerate(_lines):
-                s = _line_strength(ln, car_strength)
-                scored_lines.append((s, -idx, ln))
-            scored_lines.sort(reverse=True)
+        # スコアmap
+        _smap = _score_map_from_weighted_rows(_weighted_rows)
 
-            # 4) ラインの中身は壊さず連結（重複は除去）
-            _finaljump_queue = []
-            seen = set()
-            for _, __, ln in scored_lines:
-                for ch in str(ln):
-                    if ch.isdigit() and ch not in seen:
-                        _finaljump_queue.append(ch)
-                        seen.add(ch)
+        # 最終ジャン想定（ラインを壊さずスコア反映）
+        _finaljump_queue = _finaljump_queue_keep_lines(_lines, _smap)
 
-            # 念のため：抜け車があれば最後尾へ（通常は起きない）
-            for car in _score_rank:
-                if car not in seen:
-                    _finaljump_queue.append(car)
-                    seen.add(car)
+        note_sections.append("\n【最終ジャン想定隊列】")
+        note_sections.append(_arrow_format(_finaljump_queue))
 
-            note_sections.append("\n【最終ジャン想定隊列】")
-            note_sections.append(_arrow_format(_finaljump_queue))
-
-            note_sections.append("\n【予想最終順位】")
-            note_sections.append(_arrow_format(_finaljump_queue))
+        # 予想最終順位：最終ジャン隊列を“初期条件”にして、最終的にはスコアが強い順に寄る想定
+        # ※ここで「最終ジャンと同一」になるのを避けるため、純スコア順を出す
+        note_sections.append("\n【予想最終順位】")
+        note_sections.append(_arrow_format(_score_rank))
 
 except Exception as e:
     note_sections.append("\n【最終ジャン想定隊列】")
     note_sections.append(f"(算出失敗: {e})")
+    note_sections.append("\n【予想最終順位】")
+    note_sections.append("(算出失敗)")
 
 note_sections.append("")  # 空行
 
