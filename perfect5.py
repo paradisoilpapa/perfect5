@@ -3481,114 +3481,107 @@ except Exception:
     pass
 
 # =========================================================
-# ★ 最終ジャン想定隊列 ＋ 予想最終順位（矢印形式）
-#    ・事前入力は増やさない（line_inputs と _weighted_rows を使う）
-#    ・ラインを壊さない（ラインの“塊”は維持）
-#    ・追い抜き「制限」は入れない（スコア反映は自由）
+# ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
+# ★ 予想最終順位（最終隊列×スコアを平均値係数でノックアウト）
+#    ※ 事前入力は増やさず、既存の all_lines / line_fr_map / _weighted_rows を使う
 # =========================================================
+
+def _digits_of_line(ln):
+    s = "".join(ch for ch in str(ln) if ch.isdigit())
+    return list(s)
+
+def _line_fr_val_local(ln):
+    # 既存の _line_key / line_fr_map を前提
+    try:
+        return float(line_fr_map.get(_line_key(ln), 0.0) or 0.0)
+    except Exception:
+        return 0.0
+
+def _initial_queue_by_line_fr(lines):
+    # ラインFRの大きい順にラインを並べ、先頭から digits を繋ぐ（重複車番は除外）
+    if not lines:
+        return []
+    ordered = sorted(list(lines), key=_line_fr_val_local, reverse=True)
+
+    q, seen = [], set()
+    for ln in ordered:
+        for ch in _digits_of_line(ln):
+            if ch not in seen:
+                q.append(ch)
+                seen.add(ch)
+    return q
 
 def _arrow_format(seq):
     return "先頭 → " + " → ".join([str(x) for x in seq]) + " → 最後方"
 
-def _digits_only(s):
-    return "".join(ch for ch in str(s) if ch.isdigit())
-
-def _parse_lines_from_line_inputs(line_inputs):
-    # line_inputs: ["516", "27", "34"] みたいな想定（全角スペース等は上流で分割されてる前提）
-    out = []
-    for x in (line_inputs or []):
-        d = _digits_only(x)
-        if d:
-            out.append(d)
-    return out
-
-def _score_map_from_weighted_rows(weighted_rows):
-    # car_no: "2" など / score: float
-    m = {}
-    for r in (weighted_rows or []):
-        c = str(r.get("car_no", "")).strip()
-        if c.isdigit():
-            m[c] = float(r.get("score", 0.0) or 0.0)
-    return m
-
-def _finaljump_queue_keep_lines(lines, score_map):
+def _knockout_finish_from_queue(init_queue, score_map, avg, k=2.2):
     """
-    lines: ["516","27","34"] のようなライン配列
-    score_map: {"2":0.028..., ...}
+    init_queue: 先頭→最後方の想定隊列（list[str]）
+    score_map : {car_no(str): score(float)}  ※スコアは carFR×印着内率
+    avg      : 平均値（あなたが算出してる平均値）
+    k        : 位置ペナルティの強さ
 
-    方針：
-    1) ライン（塊）同士の並び替え：そのラインのスコア合計が高いほど前へ
-    2) ライン内の並び替え：その車のスコアが高いほど前へ（同点は元順）
-    3) 7車に揃ってない等の欠けがあれば、残り車を最後尾にスコア順で補完（重複なし）
+    手順：
+      1) score_adj = avg * score
+      2) 位置ペナルティ = (avg**2) * k * pos_norm   （avgが効くように二乗）
+      3) effective = score_adj - 位置ペナルティ
+      4) 最後方からノックアウト（effectiveが低い車から後ろに確定）
     """
-    # (A) ライン内をスコアで並べ替え（元順をタイブレークにする）
-    line_lists = []
-    for ln in (lines or []):
-        cars = [c for c in list(_digits_only(ln)) if c.isdigit()]
-        seen = set()
-        cars = [c for c in cars if not (c in seen or seen.add(c))]  # 重複除去（元順維持）
-        cars_sorted = sorted(
-            cars,
-            key=lambda c: (-(score_map.get(c, 0.0)), cars.index(c))
-        )
-        line_lists.append(cars_sorted)
+    cars = [str(c) for c in (init_queue or []) if str(c).isdigit()]
+    if not cars:
+        # フォールバック：スコア順
+        return sorted(list(score_map.keys()), key=lambda c: score_map.get(c, -1), reverse=True)
 
-    # (B) ライン（塊）を合計スコアで並べ替え（元のライン順をタイブレークに）
-    def line_sum(idx):
-        return sum(score_map.get(c, 0.0) for c in line_lists[idx])
+    n = len(cars)
+    pos = {c: i for i, c in enumerate(cars)}  # 0が先頭
+    remaining = set(cars)
+    finish_back_to_front = []
 
-    line_order = sorted(
-        range(len(line_lists)),
-        key=lambda i: (-(line_sum(i)), i)
-    )
+    for _ in range(n):  # 後ろから1人ずつ確定
+        def pos_norm(c):
+            return (pos.get(c, n - 1) / (n - 1)) if n > 1 else 0.0
 
-    # (C) 連結して最終ジャン隊列に
-    out = []
-    for i in line_order:
-        for c in line_lists[i]:
-            if c not in out:
-                out.append(c)
+        def effective(c):
+            sc = float(score_map.get(c, 0.0) or 0.0)
+            score_adj = float(avg) * sc
+            penalty = (float(avg) ** 2) * float(k) * pos_norm(c)
+            return score_adj - penalty
 
-    # (D) 欠け車があれば補完（最後尾にスコア順）
-    #    7車想定だけど、念のためスコアに出てくる車番を拾う
-    all_from_scores = [c for c in score_map.keys() if c.isdigit()]
-    for c in sorted(all_from_scores, key=lambda x: -score_map.get(x, 0.0)):
-        if c not in out:
-            out.append(c)
+        loser = min(list(remaining), key=effective)  # effectiveが低い＝後ろに沈む
+        finish_back_to_front.append(loser)
+        remaining.remove(loser)
 
-    return out
+    # 仕上げ：前→後 にする
+    finish_front_to_back = list(reversed(finish_back_to_front))
+    return finish_front_to_back
+
 
 # === 出力 ===
 try:
     if _weighted_rows:
-        # スコア順（強い順）：予想最終順位用
-        _score_rank = [str(r["car_no"]) for r in sorted(_weighted_rows, key=lambda x: x["final_rank"])]
+        # スコア順位データを {車番(str): score(float)} にする
+        _score_map = {str(r["car_no"]): float(r["score"]) for r in _weighted_rows}
 
-        # ライン（既存 line_inputs から）
-        _line_inputs = globals().get("line_inputs", [])
-        _lines = _parse_lines_from_line_inputs(_line_inputs)
+        # 平均値（あなたが直前で算出して note_sections に出してる _avg を使う）
+        avg = float(_avg) if ("_avg" in globals()) else 0.0
 
-        # スコアmap
-        _smap = _score_map_from_weighted_rows(_weighted_rows)
-
-        # 最終ジャン想定（ラインを壊さずスコア反映）
-        _finaljump_queue = _finaljump_queue_keep_lines(_lines, _smap)
+        # 1) 最終ジャン想定隊列：ラインFRの大きい順で隊列化
+        _finaljump_queue = _initial_queue_by_line_fr(all_lines)
 
         note_sections.append("\n【最終ジャン想定隊列】")
         note_sections.append(_arrow_format(_finaljump_queue))
 
-        # 予想最終順位：最終ジャン隊列を“初期条件”にして、最終的にはスコアが強い順に寄る想定
-        # ※ここで「最終ジャンと同一」になるのを避けるため、純スコア順を出す
-        note_sections.append("\n【予想最終順位】")
-        note_sections.append(_arrow_format(_score_rank))
+        # 2) 予想最終順位：最終隊列×スコアを avg 係数でノックアウト
+        _finish = _knockout_finish_from_queue(_finaljump_queue, _score_map, avg, k=2.2)
 
-except Exception as e:
-    note_sections.append("\n【最終ジャン想定隊列】")
-    note_sections.append(f"(算出失敗: {e})")
-    note_sections.append("\n【予想最終順位】")
-    note_sections.append("(算出失敗)")
+        note_sections.append("\n【予想最終順位】")
+        note_sections.append(_arrow_format(_finish))
+
+except Exception:
+    pass
 
 note_sections.append("")  # 空行
+
 
 
 # === ＜短評＞（コンパクト） ===
