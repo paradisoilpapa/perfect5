@@ -3483,12 +3483,11 @@ except Exception:
 # =========================================================
 # ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
 # ★ 予想最終順位（最終隊列×スコアを平均値係数でノックアウト）
-#    ※ 事前入力は増やさず、既存の all_lines / line_fr_map / _weighted_rows を使う
+#    ※ 事前入力は増やさず、既存の all_lines / line_fr_map / _weighted_rows / _avg を使う
 # =========================================================
 
 def _digits_of_line(ln):
-    s = "".join(ch for ch in str(ln) if ch.isdigit())
-    return list(s)
+    return [ch for ch in str(ln) if ch.isdigit()]
 
 def _line_fr_val_local(ln):
     # 既存の _line_key / line_fr_map を前提
@@ -3498,7 +3497,9 @@ def _line_fr_val_local(ln):
         return 0.0
 
 def _initial_queue_by_line_fr(lines):
-    # ラインFRの大きい順にラインを並べ、先頭から digits を繋ぐ（重複車番は除外）
+    """
+    ラインFRの大きい順にラインを並べ、先頭から車番を繋ぐ（重複除外）
+    """
     if not lines:
         return []
     ordered = sorted(list(lines), key=_line_fr_val_local, reverse=True)
@@ -3512,44 +3513,42 @@ def _initial_queue_by_line_fr(lines):
     return q
 
 def _arrow_format(seq):
-    return "先頭 → " + " → ".join([str(x) for x in seq]) + " → 最後方"
+    return "先頭 → " + " → ".join([str(x) for x in (seq or [])]) + " → 最後方"
 
 def _knockout_finish_from_queue(init_queue, score_map, avg, k=0.25):
     """
-    avgで正規化してから、位置ペナルティと殴り合いさせる版
+    最終隊列(位置)を土台に、スコアを avg で正規化してノックアウトで順位化する
     effective = (score / avg) - k * pos_norm
+    ※ effective が低い車から「後ろ確定」していく
     """
     cars = [str(c) for c in (init_queue or []) if str(c).isdigit()]
     if not cars:
+        # 隊列が取れないときはスコア降順
         return sorted(list(score_map.keys()), key=lambda c: score_map.get(c, -1), reverse=True)
 
     n = len(cars)
     pos = {c: i for i, c in enumerate(cars)}  # 0が先頭
-    remaining = set(cars)
-    finish_back_to_front = []
 
-    avg = float(avg) if avg and avg > 1e-12 else 1.0  # ゼロ割回避
+    # avg 0回避
+    avg = float(avg) if avg and avg > 1e-12 else 1.0
 
     def pos_norm(c):
         return (pos.get(c, n - 1) / (n - 1)) if n > 1 else 0.0
 
     def effective(c):
         sc = float(score_map.get(c, 0.0) or 0.0)
-        sc_norm = sc / avg                 # ★ここが肝：平均値で正規化
-        penalty = float(k) * pos_norm(c)   # ★ペナルティは純粋に位置だけ
+        sc_norm = sc / avg               # ★平均値で正規化（レースレベル補正）
+        penalty = float(k) * pos_norm(c) # ★位置ペナルティ
         return sc_norm - penalty
 
+    remaining = set(cars)
+    back_to_front = []
     for _ in range(n):
-        loser = min(list(remaining), key=effective)  # effective低い＝後ろに確定
-        finish_back_to_front.append(loser)
+        loser = min(remaining, key=effective)  # effectiveが最小＝後ろ確定
+        back_to_front.append(loser)
         remaining.remove(loser)
 
-    return list(reversed(finish_back_to_front))
-
-
-# 出力側（kだけ弱めに）
-_finish = _knockout_finish_from_queue(_finaljump_queue, _score_map, avg, k=0.25)
- finish_front_to_back
+    return list(reversed(back_to_front))
 
 
 # === 出力 ===
@@ -3558,17 +3557,17 @@ try:
         # スコア順位データを {車番(str): score(float)} にする
         _score_map = {str(r["car_no"]): float(r["score"]) for r in _weighted_rows}
 
-        # 平均値（あなたが直前で算出して note_sections に出してる _avg を使う）
-        avg = float(_avg) if ("_avg" in globals()) else 0.0
+        # 平均値（直前で算出している _avg を使用）
+        avg = float(_avg) if ("_avg" in globals() and _avg is not None) else 0.0
 
-        # 1) 最終ジャン想定隊列：ラインFRの大きい順で隊列化
+        # 1) 最終ジャン想定隊列：ラインFRの大きい順
         _finaljump_queue = _initial_queue_by_line_fr(all_lines)
 
         note_sections.append("\n【最終ジャン想定隊列】")
         note_sections.append(_arrow_format(_finaljump_queue))
 
         # 2) 予想最終順位：最終隊列×スコアを avg 係数でノックアウト
-        _finish = _knockout_finish_from_queue(_finaljump_queue, _score_map, avg, k=2.2)
+        _finish = _knockout_finish_from_queue(_finaljump_queue, _score_map, avg, k=0.25)
 
         note_sections.append("\n【予想最終順位】")
         note_sections.append(_arrow_format(_finish))
@@ -3577,6 +3576,7 @@ except Exception:
     pass
 
 note_sections.append("")  # 空行
+
 
 
 
