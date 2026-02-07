@@ -1783,6 +1783,50 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+import re
+from typing import List
+
+def parse_line_str(line_str: str) -> List[List[int]]:
+    s = (line_str or "").strip()
+    if not s:
+        return []
+    s = s.replace("　", " ")
+    groups = [g for g in s.split(" ") if g]
+    lines = []
+    for g in groups:
+        nums = [int(ch) for ch in re.findall(r"\d", g)]
+        if nums:
+            lines.append(nums)
+    return lines
+
+def initial_queue_from_lines(lines: List[List[int]]) -> List[int]:
+    q = []
+    used = set()
+    for group in lines:
+        for n in group:
+            if n not in used:
+                q.append(n)
+                used.add(n)
+    return q
+
+def estimate_finaljump_queue(initial_queue: List[int], score_rank: List[int], k: float = 2.2) -> List[int]:
+    if not score_rank:
+        return []
+    if not initial_queue:
+        return score_rank[:]
+    pos = {n: i for i, n in enumerate(initial_queue)}
+    nmax = max(len(score_rank), 1)
+    power = {n: (nmax - i) for i, n in enumerate(score_rank)}  # 1位が最大
+    def key(n: int) -> float:
+        p0 = pos.get(n, 10_000)
+        pw = power.get(n, 0)
+        return p0 - k * pw
+    return sorted(score_rank, key=key)
+
+def arrow_format(order: List[int]) -> str:
+    return " → ".join(str(n) for n in order)
+
+
 HEN_DEC_PLACES = 1
 EPS = 1e-12
 
@@ -3355,9 +3399,10 @@ if hdr:
 
 # === ライン ===
 line_inputs = globals().get("line_inputs", [])
+_lines = []
 if isinstance(line_inputs, list) and any(str(x).strip() for x in line_inputs):
-    note_sections.append("ライン　" + "　".join([x for x in line_inputs if str(x).strip()]))
-
+    _lines = [str(x).strip() for x in line_inputs if str(x).strip()]
+    note_sections.append("ライン　" + "　".join(_lines))
 
 note_sections.append("")  # 空行
 
@@ -3377,7 +3422,40 @@ for ln in all_lines:
         continue
     note_sections.append(f"　　　その他ライン {_free_fmt_nums(ln)}：想定FR={_line_fr_val(ln):.3f}")
 
+# === 最終ジャン想定隊列（※この時点ではスコア順位が未確定なら出さない） ===
+# ここでは「ライン→初手隊列」を準備だけしておく
+def _initial_queue_from_lines(lines):
+    q = []
+    for ln in (lines or []):
+        s = "".join(ch for ch in str(ln) if ch.isdigit())
+        for ch in s:
+            if ch not in q:
+                q.append(ch)
+    return q
+
+def _arrow_format(cars):
+    return "先頭 → " + " → ".join(map(str, cars)) + " → 最後方"
+
+def _estimate_finaljump_queue(init_queue, score_rank, k=2.2):
+    init_pos = {c: i for i, c in enumerate(init_queue)}
+    rank_pos = {c: i for i, c in enumerate(score_rank)}  # 0が最強
+
+    def _key(c):
+        return init_pos.get(c, 999) - k * (len(score_rank) - rank_pos.get(c, len(score_rank)))
+
+    all_cars = []
+    for c in init_queue:
+        if c not in all_cars:
+            all_cars.append(c)
+    for c in score_rank:
+        if c not in all_cars:
+            all_cars.append(c)
+    return sorted(all_cars, key=_key)
+
+_init_queue = _initial_queue_from_lines(_lines)
+
 # === carFR順位（表示） ===
+
 try:
     import re, statistics
     _scores_for_rank = {int(k): float(v) for k, v in (globals().get("scores", {}) or {}).items() if str(k).isdigit()}
@@ -3398,6 +3476,109 @@ try:
                 f"(スコア={r['score']:.6f})"
             )
 
+import re
+
+def parse_line_str(line_str: str):
+    """
+    "146　72　35" / "146 72 35" / "1 46 72 35" みたいなのを
+    ["146","72","35"] に正規化して返す
+    """
+    if not line_str:
+        return []
+    s = str(line_str).strip()
+    s = s.replace("　", " ")  # 全角スペース→半角
+    parts = [p for p in re.split(r"\s+", s) if p]
+    # 数字以外は除去（念のため）
+    out = []
+    for p in parts:
+        p2 = re.sub(r"\D", "", p)
+        if p2:
+            out.append(p2)
+    return out
+
+def initial_queue_from_lines(lines):
+    """
+    ["146","72","35"] -> ["1","4","6","7","2","3","5"]
+    ライン順＝初手隊列（前→後ろ）としてフラット化
+    """
+    q = []
+    seen = set()
+    for ln in lines:
+        for ch in str(ln):
+            if ch.isdigit() and ch not in seen:
+                q.append(ch)
+                seen.add(ch)
+    return q
+
+def estimate_finaljump_queue(init_queue, score_rank, k=2.2):
+    """
+    既存の「初手隊列」と「スコア順位(強い順)」から、
+    “強いほど前に来やすい” だけを入れた簡易推定。
+
+    - 初手の並びをベースに、スコア上位ほど前方バイアス
+    - ただし大崩れしないように “前に詰める” だけ（安定）
+    """
+    if not init_queue:
+        return list(score_rank) if score_rank else []
+    init = [str(x) for x in init_queue if str(x).isdigit()]
+    sr = [str(x) for x in score_rank if str(x).isdigit()]
+
+    # スコア順位の強さ（小さいほど強い）
+    n = max(len(init), 1)
+    rank_pos = {car: i for i, car in enumerate(sr)}  # 0が最強
+    def strength(car):
+        # srに無い車は弱め扱い（後ろ寄り）
+        i = rank_pos.get(car, n)
+        return (n - i) / n  # 1.0に近いほど強い
+
+    # “前にいるほど得” + “強いほど得” の合成で並び替え（安定に前詰め）
+    # ここで k が強さの効き（2.2 はあなたの案を踏襲）
+    scored = []
+    for idx, car in enumerate(init):
+        front_bonus = (n - idx) / n
+        val = front_bonus + k * strength(car)
+        scored.append((val, idx, car))
+
+    # valが高いほど前へ。ただし同点なら元の前後を保つ
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    return [car for _, _, car in scored]
+
+def arrow_format(seq):
+    return "先頭 → " + " → ".join([str(x) for x in seq]) + " → 最後方"
+
+    
+# =========================================================
+# ★ 最終ジャン想定隊列 ＋ 予想最終順位（矢印形式）を追記
+#    ※ 事前入力は増やさず、既存の「ライン文字列」と「スコア順位」を使う
+# =========================================================
+
+# 1) スコア順位（強い順の車番リスト）を作る
+_score_rank = [str(r["car_no"]) for r in sorted(_weighted_rows, key=lambda x: x["final_rank"])]
+
+# 2) ライン文字列を作る（既存の line_inputs をそのまま使う）
+line_inputs = globals().get("line_inputs", [])
+line_str = " ".join([str(x).strip() for x in line_inputs if str(x).strip()])  # ←これが正解
+
+try:
+    _lines = parse_line_str(line_str)
+    _init_queue = initial_queue_from_lines(_lines)
+
+    _finaljump_queue = estimate_finaljump_queue(_init_queue, _score_rank, k=2.2)
+
+    note_sections.append("\n【最終ジャン想定隊列】")
+    note_sections.append(arrow_format(_finaljump_queue))
+
+    # あなたの要望：最終順位はコピペしやすい矢印形式
+    note_sections.append("\n【予想最終順位（隊列ベース）】")
+    note_sections.append(arrow_format(_finaljump_queue))
+
+    # 参考（不要なら削除OK）
+    note_sections.append("\n【参考：スコア順位（矢印）】")
+    note_sections.append(arrow_format(_score_rank))
+
+except Exception as e:
+    note_sections.append("\n【最終ジャン想定隊列】")
+    note_sections.append(f"(算出失敗: {e})")
 
 
 except Exception:
