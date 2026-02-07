@@ -3476,7 +3476,6 @@ try:
                 f"(スコア={r['score']:.6f})"
             )
 
-import re
 
 def parse_line_str(line_str: str):
     """
