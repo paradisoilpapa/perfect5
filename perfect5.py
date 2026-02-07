@@ -3514,22 +3514,13 @@ def _initial_queue_by_line_fr(lines):
 def _arrow_format(seq):
     return "先頭 → " + " → ".join([str(x) for x in seq]) + " → 最後方"
 
-def _knockout_finish_from_queue(init_queue, score_map, avg, k=2.2):
+def _knockout_finish_from_queue(init_queue, score_map, avg, k=0.25):
     """
-    init_queue: 先頭→最後方の想定隊列（list[str]）
-    score_map : {car_no(str): score(float)}  ※スコアは carFR×印着内率
-    avg      : 平均値（あなたが算出してる平均値）
-    k        : 位置ペナルティの強さ
-
-    手順：
-      1) score_adj = avg * score
-      2) 位置ペナルティ = (avg**2) * k * pos_norm   （avgが効くように二乗）
-      3) effective = score_adj - 位置ペナルティ
-      4) 最後方からノックアウト（effectiveが低い車から後ろに確定）
+    avgで正規化してから、位置ペナルティと殴り合いさせる版
+    effective = (score / avg) - k * pos_norm
     """
     cars = [str(c) for c in (init_queue or []) if str(c).isdigit()]
     if not cars:
-        # フォールバック：スコア順
         return sorted(list(score_map.keys()), key=lambda c: score_map.get(c, -1), reverse=True)
 
     n = len(cars)
@@ -3537,23 +3528,28 @@ def _knockout_finish_from_queue(init_queue, score_map, avg, k=2.2):
     remaining = set(cars)
     finish_back_to_front = []
 
-    for _ in range(n):  # 後ろから1人ずつ確定
-        def pos_norm(c):
-            return (pos.get(c, n - 1) / (n - 1)) if n > 1 else 0.0
+    avg = float(avg) if avg and avg > 1e-12 else 1.0  # ゼロ割回避
 
-        def effective(c):
-            sc = float(score_map.get(c, 0.0) or 0.0)
-            score_adj = float(avg) * sc
-            penalty = (float(avg) ** 2) * float(k) * pos_norm(c)
-            return score_adj - penalty
+    def pos_norm(c):
+        return (pos.get(c, n - 1) / (n - 1)) if n > 1 else 0.0
 
-        loser = min(list(remaining), key=effective)  # effectiveが低い＝後ろに沈む
+    def effective(c):
+        sc = float(score_map.get(c, 0.0) or 0.0)
+        sc_norm = sc / avg                 # ★ここが肝：平均値で正規化
+        penalty = float(k) * pos_norm(c)   # ★ペナルティは純粋に位置だけ
+        return sc_norm - penalty
+
+    for _ in range(n):
+        loser = min(list(remaining), key=effective)  # effective低い＝後ろに確定
         finish_back_to_front.append(loser)
         remaining.remove(loser)
 
-    # 仕上げ：前→後 にする
-    finish_front_to_back = list(reversed(finish_back_to_front))
-    return finish_front_to_back
+    return list(reversed(finish_back_to_front))
+
+
+# 出力側（kだけ弱めに）
+_finish = _knockout_finish_from_queue(_finaljump_queue, _score_map, avg, k=0.25)
+ finish_front_to_back
 
 
 # === 出力 ===
