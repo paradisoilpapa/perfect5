@@ -3683,7 +3683,9 @@ note_sections.append("")  # 空行
 # === ＜短評＞（コンパクト） ===
 try:
     lines_out = ["\n＜短評＞"]
-    lines_out.append(f"・レースFR={FRv:.3f}［{_band3_fr(FRv)}］")
+    raceFR = float(globals().get("race_FR") or globals().get("race_fr") or globals().get("RACE_FR") or globals().get("race_fr_value") or 0.0)
+note_sections.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
+
     if axis_line:
         lines_out.append(
             f"・軸ラインFR={axis_line_fr:.3f}（取り分≈{(share_pct or 0.0):.1f}%：軸={axis_id}／ライン={_free_fmt_nums(axis_line)}）"
