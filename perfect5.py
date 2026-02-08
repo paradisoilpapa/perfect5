@@ -3550,6 +3550,50 @@ def _knockout_finish_from_queue(init_queue, score_map, avg, k=0.25):
 
     return list(reversed(back_to_front))
 
+# =========================================================
+# ★ 6パターン：最終ジャン想定隊列 & 予想最終順位（統合なし）
+# =========================================================
+
+_PATTERNS = [
+    ("順流→渦→逆流", ("S", "V", "R")),
+    ("順流→逆流→渦", ("S", "R", "V")),
+    ("渦→順流→逆流", ("V", "S", "R")),
+    ("渦→逆流→順流", ("V", "R", "S")),
+    ("逆流→順流→渦", ("R", "S", "V")),
+    ("逆流→渦→順流", ("R", "V", "S")),
+]
+
+def _pick_svr_lines_by_fr(lines):
+    """
+    ラインFRの大きい順に並べた上位3ラインを S,V,R として使う
+    """
+    if not lines:
+        return ("", "", "")
+    ordered = sorted(list(lines), key=_line_fr_val_local, reverse=True)
+    s = str(ordered[0]) if len(ordered) > 0 else ""
+    v = str(ordered[1]) if len(ordered) > 1 else ""
+    r = str(ordered[2]) if len(ordered) > 2 else ""
+    return (s, v, r)
+
+def _queue_for_pattern(lines, svr_order):
+    """
+    svr_order: ("S","V","R") の並びで最終ジャン隊列を作る（重複除外）
+    """
+    s_ln, v_ln, r_ln = _pick_svr_lines_by_fr(lines)
+    tag_to_line = {"S": s_ln, "V": v_ln, "R": r_ln}
+
+    q, seen = [], set()
+    for tag in svr_order:
+        ln = tag_to_line.get(tag, "")
+        if not ln:
+            continue
+        for ch in _digits_of_line(ln):
+            if ch not in seen:
+                q.append(ch)
+                seen.add(ch)
+    return q, {"S": s_ln, "V": v_ln, "R": r_ln}
+
+
 
 # === 出力 ===
 try:
@@ -3561,13 +3605,22 @@ try:
         avg = float(_avg) if ("_avg" in globals() and _avg is not None) else 0.0
 
         # 1) 最終ジャン想定隊列：ラインFRの大きい順
-        _finaljump_queue = _initial_queue_by_line_fr(all_lines)
+               # 平均値（直前で算出している _avg を使用）
+        avg = float(_avg) if ("_avg" in globals() and _avg is not None) else 0.0
 
-        note_sections.append("\n【最終ジャン想定隊列】")
-        note_sections.append(_arrow_format(_finaljump_queue))
+        # 6パターン出力
+        for _pname, _svr in _PATTERNS:
+            _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
 
-        # 2) 予想最終順位：最終隊列×スコアを avg 係数でノックアウト
-        _finish = _knockout_finish_from_queue(_finaljump_queue, _score_map, avg, k=0.25)
+            note_sections.append(f"\n【最終ジャン想定隊列（{_pname}）】")
+            note_sections.append(f"S/V/Rライン: { _used }")
+            note_sections.append(_arrow_format(_finaljump_queue))
+
+            _finish = _knockout_finish_from_queue(_finaljump_queue, _score_map, avg, k=0.25)
+
+            note_sections.append("\n【予想最終順位】")
+            note_sections.append(_arrow_format(_finish))
+
 
         note_sections.append("\n【予想最終順位】")
         note_sections.append(_arrow_format(_finish))
