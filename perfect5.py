@@ -3562,9 +3562,14 @@ def _knockout_finish_from_queue(
         base_pen = float(k_eff) * pn
 
         # ★追い越しコスト（後ろほど“前に出るコスト”が増える）
+        # これで「スコアだけのワープ」を抑えつつ、能力差が大きい“まくり”は残る
         overtake_pen = 0.12 * (pn ** 2)  # 0.08〜0.18で調整
 
         return ability + boost - base_pen - overtake_pen
+
+    # ★ここが必須：この1行が無いと finish_order が None になって全部（なし）になる
+    return sorted(cars, key=effective, reverse=True)
+
 
 
 
