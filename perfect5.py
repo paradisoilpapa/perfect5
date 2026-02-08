@@ -3515,45 +3515,62 @@ def _initial_queue_by_line_fr(lines):
 def _arrow_format(seq):
     return "先頭 → " + " → ".join([str(x) for x in (seq or [])]) + " → 最後方"
 
-def _knockout_finish_from_queue(init_queue, score_map, avg, k=0.25, head_boost=0.0):
+import math
+
+def _knockout_finish_from_queue(init_queue, score_map, avg,
+                                k=0.25, head_boost=0.0,
+                                auto_k=True, k_min=0.03, k_max=0.25,
+                                score_weight=1.0):
     """
-    最終隊列(位置)を土台に、スコアを avg で正規化してノックアウトで順位化する
-    effective = (score / avg) + head_boost*(1-pos_norm) - k * pos_norm
-    ※ effective が低い車から「後ろ確定」していく
+    最終隊列(位置)を土台に、能力（score/avg）を主にして順位化する。
+    位置ペナルティ k は「スコア散らばり」で自動調整して、
+    微差のときに“位置だけで順位が飛ぶ”のを抑える。
+
+    effective = score_weight*(score/avg) + head_boost*(1-pos_norm) - k_eff*pos_norm
     """
     cars = [str(c) for c in (init_queue or []) if str(c).isdigit()]
     if not cars:
-        # 隊列が取れないときはスコア降順
         return sorted(list(score_map.keys()), key=lambda c: score_map.get(c, -1), reverse=True)
 
     n = len(cars)
     pos = {c: i for i, c in enumerate(cars)}  # 0が先頭
 
-    # avg 0回避
     avg = float(avg) if avg and avg > 1e-12 else 1.0
 
     def pos_norm(c):
         return (pos.get(c, n - 1) / (n - 1)) if n > 1 else 0.0
 
-    def effective(c):
+    # 能力（正規化スコア）
+    sc_norm = {}
+    for c in cars:
         sc = float(score_map.get(c, 0.0) or 0.0)
-        sc_norm = sc / avg               # ★平均値で正規化（レースレベル補正）
+        sc_norm[c] = sc / avg
+
+    # 位置係数を自動調整（ここが本丸）
+    k_eff = float(k)
+    if auto_k:
+        vals = list(sc_norm.values())
+        m = sum(vals) / max(len(vals), 1)
+        var = sum((v - m) ** 2 for v in vals) / max(len(vals), 1)
+        sd = math.sqrt(var)
+
+        # sd が小さい（能力が拮抗）ほど k_eff を小さくして「位置で飛ぶ」を抑える
+        # 0.15 はまずの安定値（必要なら 0.25 に上げるとさらに位置が弱まる）
+        k_eff = float(k) * (sd / (sd + 0.15))
+
+        # 暴れ防止
+        k_eff = max(float(k_min), min(float(k_max), k_eff))
+
+    def effective(c):
         pn = pos_norm(c)
-        penalty = float(k) * pn          # ★位置ペナルティ（後ろほど不利）
+        ability = float(score_weight) * float(sc_norm.get(c, 0.0))
+        boost = float(head_boost) * (1.0 - pn)   # 逃げ残り用
+        penalty = float(k_eff) * pn              # 後ろ不利（ただし自動調整済み）
+        return ability + boost - penalty
 
-        # ★先頭ボーナス（逃げ残り）…前ほど効く（先頭=最大）
-        boost = float(head_boost) * (1.0 - pn)
+    # ノックアウト（逐次除外）と実質同じ結果になるので、素直にソートで返す
+    return sorted(cars, key=effective, reverse=True)
 
-        return sc_norm + boost - penalty
-
-    remaining = set(cars)
-    back_to_front = []
-    for _ in range(n):
-        loser = min(remaining, key=effective)  # effectiveが最小＝後ろ確定
-        back_to_front.append(loser)
-        remaining.remove(loser)
-
-    return list(reversed(back_to_front))
 
 
 # =========================================================
