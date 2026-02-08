@@ -3416,20 +3416,10 @@ for ln in all_lines:
     if ln == _FR_line or ln == _VTX_line or ln == _U_line:
         continue
     note_sections.append(f"　　　その他ライン {_free_fmt_nums(ln)}：想定FR={_line_fr_val(ln):.3f}")
-
 # === carFR順位（表示） ===
 try:
-    import re, statistics
-    _scores_for_rank = {int(k): float(v) for k, v in (globals().get("scores", {}) or {}).items() if str(k).isdigit()}
-    _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(all_lines, _scores_for_rank, line_fr_map)
-
-    _vals = [float(x) for x in re.findall(r'\((\d+\.\d+)\)', _carfr_txt)]
-    _avg = statistics.mean(_vals) if _vals else 0.0
-    note_sections.append(f"\n平均値 {_avg:.5f}")
-
-# === carFR順位（表示） ===
-try:
-    import re, statistics
+    import re
+    import statistics
 
     _scores_for_rank = {
         int(k): float(v)
@@ -3451,12 +3441,11 @@ try:
     if _weighted_rows:
         note_sections.append("\n【carFR×印着内率スコア順位】")
         for r in _weighted_rows:
-            note_sections.append(
-                f"{r['final_rank']}位：{r['car_no']} (スコア={r['score']:.6f})"
-            )
+            note_sections.append(f"{r['final_rank']}位：{r['car_no']} (スコア={r['score']:.6f})")
 
 except Exception:
     pass
+
 
 
     
