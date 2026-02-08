@@ -3683,15 +3683,44 @@ note_sections.append("")  # 空行
 # === ＜短評＞（コンパクト） ===
 try:
     lines_out = ["\n＜短評＞"]
-    raceFR = float(globals().get("race_FR") or globals().get("race_fr") or globals().get("RACE_FR") or globals().get("race_fr_value") or 0.0)
-note_sections.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
+
+    # レースFR（外部に無いなら line_fr_map から定義）
+    try:
+        raceFR = float(
+            globals().get("race_FR")
+            or globals().get("race_fr")
+            or globals().get("RACE_FR")
+            or globals().get("race_fr_value")
+            or 0.0
+        )
+    except Exception:
+        raceFR = 0.0
+
+    if raceFR <= 0.0:
+        _total = sum(line_fr_map.values()) if isinstance(line_fr_map, dict) else 0.0
+        ps = [
+            (v / _total)
+            for v in (line_fr_map.values() if isinstance(line_fr_map, dict) else [])
+            if _total > 0 and v > 0
+        ]
+        max_share = max(ps) if ps else 0.0
+        raceFR = max(0.0, min(1.0, 1.0 - max_share))
+
+    lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
 
     if axis_line:
         lines_out.append(
             f"・軸ラインFR={axis_line_fr:.3f}（取り分≈{(share_pct or 0.0):.1f}%：軸={axis_id}／ライン={_free_fmt_nums(axis_line)}）"
         )
+
     lines_out.append(f"・VTX={VTXv:.3f}［{_band3_vtx(VTXv)}］")
     lines_out.append(f"・U={Uv:.3f}［{_band3_u(Uv)}］")
+
+    note_sections.extend(lines_out)
+
+except Exception:
+    pass
+
 
     dbg = _flow.get("dbg", {})
     if isinstance(dbg, dict) and dbg:
