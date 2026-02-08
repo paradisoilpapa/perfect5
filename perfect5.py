@@ -3427,6 +3427,22 @@ try:
     _avg = statistics.mean(_vals) if _vals else 0.0
     note_sections.append(f"\n平均値 {_avg:.5f}")
 
+    def _rank_with_flow_bias(ordered_ids, base_score_map, main_line, k_main=0.20):
+    """
+    ordered_ids: いまの予想並び（例：carFR順位の並び）
+    base_score_map: 車番->基礎スコア（例：carFR×印着内率のscore）
+    main_line: 順流/渦/逆流の対象ライン（list[int]）
+    k_main: ライン押上げ係数（0.15〜0.30くらいで十分）
+    """
+    main_set = set(int(x) for x in (main_line or []))
+    def key(cid):
+        cid = int(cid)
+        base = float(base_score_map.get(cid, 0.0))
+        bump = (k_main * abs(base) + k_main) if cid in main_set else 0.0
+        return base + bump
+    return sorted([int(x) for x in ordered_ids], key=key, reverse=True)
+
+
     _weighted_rows = compute_weighted_rank_from_carfr_text(_carfr_txt)
     if _weighted_rows:
         note_sections.append("\n【carFR×印着内率スコア順位】")
