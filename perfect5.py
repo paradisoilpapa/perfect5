@@ -3549,22 +3549,24 @@ def _knockout_finish_from_queue(
         k_eff = float(k) * (sd / (sd + 0.15))
         k_eff = max(float(k_min), min(float(k_max), k_eff))
 
-    def effective(c):
-    pn = pos_norm(c)
-    ability = float(score_weight) * float(sc_norm.get(c, 0.0))
-    boost = float(head_boost) * (1.0 - pn)
+        def effective(c):
+        pn = pos_norm(c)
 
-    # 位置ペナルティ（通常）
-    base_pen = float(k_eff) * pn
+        # 能力（正規化スコア）
+        ability = float(score_weight) * float(sc_norm.get(c, 0.0))
 
-    # ★追い越しコスト（後ろほど“前へ出るには余分に必要”）
-    # pn が大きい＝後ろ。二乗で効かせると「最後方ワープ」を抑えやすい
-    overtake_pen = 0.12 * (pn ** 2)   # 0.08〜0.18で調整
+        # 逃げ残り（先頭ほど少し有利）
+        boost = float(head_boost) * (1.0 - pn)
 
-    return ability + boost - base_pen - overtake_pen
- ability + boost - penalty
+        # 位置ペナルティ（通常）
+        base_pen = float(k_eff) * pn
 
-    return sorted(cars, key=effective, reverse=True)
+        # ★追い越しコスト（後ろほど“前に出るコスト”が増える）
+        # これで「スコアだけのワープ」を抑えつつ、能力差が大きい“まくり”は残る
+        overtake_pen = 0.12 * (pn ** 2)  # 0.08〜0.18で調整
+
+        return ability + boost - base_pen - overtake_pen
+
 
 # =========================================================
 # ★ 6パターン：最終ジャン想定隊列 & 予想最終順位（統合なし）
