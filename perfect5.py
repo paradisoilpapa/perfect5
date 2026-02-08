@@ -3549,7 +3549,7 @@ def _knockout_finish_from_queue(
         k_eff = float(k) * (sd / (sd + 0.15))
         k_eff = max(float(k_min), min(float(k_max), k_eff))
 
-        def effective(c):
+    def effective(c):
         pn = pos_norm(c)
 
         # 能力（正規化スコア）
@@ -3562,10 +3562,10 @@ def _knockout_finish_from_queue(
         base_pen = float(k_eff) * pn
 
         # ★追い越しコスト（後ろほど“前に出るコスト”が増える）
-        # これで「スコアだけのワープ」を抑えつつ、能力差が大きい“まくり”は残る
         overtake_pen = 0.12 * (pn ** 2)  # 0.08〜0.18で調整
 
         return ability + boost - base_pen - overtake_pen
+
 
 
 # =========================================================
