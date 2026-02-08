@@ -3150,6 +3150,11 @@ def infer_eval_with_share(fr_v: float, vtx_v: float, u_v: float, share_pct: floa
     return "互角"
 
 # --- carFR順位が未定義でも動かすための安全ガード ---
+# ============================================================
+# /T369｜FREE-ONLY 出力一括ブロック（0.000連発対策パッチ入り）
+# ============================================================
+
+# ---------- 0) carFR順位（存在しない場合だけ定義） ----------
 if "compute_carFR_ranking" not in globals():
     def compute_carFR_ranking(lines, hensa_map, line_fr_map):
         try:
@@ -3157,21 +3162,60 @@ if "compute_carFR_ranking" not in globals():
             hensa_map = {int(k): float(v) for k, v in (hensa_map or {}).items() if str(k).isdigit()}
             car_ids = sorted({int(c) for ln in lines for c in (ln or [])}) or sorted(hensa_map.keys())
             car_fr = {cid: 0.0 for cid in car_ids}
+
             for ln in lines:
                 key = "".join(map(str, ln or []))
                 lfr = float((line_fr_map or {}).get(key, 0.0) or 0.0)
-                if not ln: continue
+                if not ln:
+                    continue
+
                 hs = [float(hensa_map.get(int(c), 0.0)) for c in ln]
                 s = sum(hs)
-                w = ([1.0/len(ln)]*len(ln)) if s <= 0.0 else [h/s for h in hs]
+                w = ([1.0 / len(ln)] * len(ln)) if s <= 0.0 else [h / s for h in hs]
+
                 for c, wj in zip(ln, w):
                     car_fr[int(c)] = car_fr.get(int(c), 0.0) + lfr * wj
+
             def _hs(c): return float(hensa_map.get(int(c), 0.0))
-            ordered_pairs = sorted(car_fr.items(), key=lambda kv: (kv[1], _hs(kv[0]), -int(kv[0])), reverse=True)
-            text = "\n".join(f"{i}位：{cid} ({v:.4f})" for i,(cid,v) in enumerate(ordered_pairs,1)) if ordered_pairs else "—"
+            ordered_pairs = sorted(
+                car_fr.items(),
+                key=lambda kv: (kv[1], _hs(kv[0]), -int(kv[0])),
+                reverse=True
+            )
+            text = "\n".join(f"{i}位：{cid} ({v:.4f})" for i, (cid, v) in enumerate(ordered_pairs, 1)) if ordered_pairs else "—"
             return text, ordered_pairs, car_fr
         except Exception:
             return "—", [], {}
+
+# ---------- 0.5) line_fr_map を安全に作る（0.000連発対策） ----------
+def _build_line_fr_map(lines, scores_map, FRv):
+    """
+    - 通常：FRv>0 かつ line_sums合計>0 のとき、FRvを各ラインへ配分
+    - フォールバック：FRv==0 または合計==0 のとき、等配分（合計1.0）
+      → 0.000連発を防ぐ（ガールズ/欠損/薄いスコアで有効）
+    """
+    lines = [list(map(int, ln)) for ln in (lines or []) if ln]
+    scores_map = {int(k): float(v) for k, v in (scores_map or {}).items() if str(k).isdigit()}
+    FRv = float(FRv or 0.0)
+
+    m = {}
+    if not lines:
+        return m
+
+    line_sums = [(ln, sum(scores_map.get(int(x), 0.0) for x in ln)) for ln in lines]
+    total = sum(s for _, s in line_sums)
+
+    if FRv > 0.0 and total > 0.0:
+        for ln, s in line_sums:
+            m["".join(map(str, ln))] = FRv * (s / total)
+    else:
+        # ★ ここが“0.000連発”の止血：等配分
+        n = len(lines)
+        eq = 1.0 / n if n > 0 else 0.0
+        for ln, _ in line_sums:
+            m["".join(map(str, ln))] = eq
+
+    return m
 
 # ---------- 1) FRで車番を並べる（carFR順位で買い目を固定） ----------
 def trio_free_completion(scores, marks_any, flow_ctx=None):
@@ -3185,18 +3229,13 @@ def trio_free_completion(scores, marks_any, flow_ctx=None):
         return ("—", None, None)
 
     flow_ctx = dict(flow_ctx or {})
-    FRv   = float(flow_ctx.get("FR", 0.0) or 0.0)
+    FRv = float(flow_ctx.get("FR", 0.0) or 0.0)
     lines = [list(map(int, ln)) for ln in (flow_ctx.get("lines") or [])]
 
-    # 表示と整合を取るためのラインFR推定
-    line_fr_map = {}
-    if lines:
-        line_sums = [(ln, sum(hens.get(x, 0.0) for x in ln)) for ln in lines]
-        tot = sum(s for _, s in line_sums) or 1.0
-        for ln, s in line_sums:
-            line_fr_map["".join(map(str, ln))] = FRv * (s / tot) if FRv > 0.0 else 0.0
+    # ★ 表示と整合を取るためのラインFR推定（0.000対策入り）
+    line_fr_map = _build_line_fr_map(lines, hens, FRv)
 
-    # carFR順位（存在する compute_carFR_ranking を優先）
+    # carFR順位
     _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
     if not _carfr_rank or len(_carfr_rank) < 3:
         return ("—", None, None)
@@ -3207,14 +3246,14 @@ def trio_free_completion(scores, marks_any, flow_ctx=None):
     if len(opps) < 2:
         return ("—", None, None)
 
-    mid = "".join(map(str, opps))          # 例: 2345（順位順のまま）
+    mid = "".join(map(str, opps))
     trio_text = f"{axis}-{mid}-{mid}"
     axis_car_fr = (_carfr_map or {}).get(axis, None)
     return (trio_text, axis, axis_car_fr)
 
 # === 想定FRをラインごとに作り、買目テキストを確定（他の出力は維持） ===
 def generate_tesla_bets(flow, lines_str, marks_any, scores):
-    flow   = dict(flow or {})
+    flow = dict(flow or {})
     scores = {int(k): float(v) for k, v in (scores or {}).items() if str(k).isdigit()}
 
     # 印正規化（表示用）
@@ -3225,13 +3264,8 @@ def generate_tesla_bets(flow, lines_str, marks_any, scores):
     Uv   = float(flow.get("U", 0.0) or 0.0)
     lines = [list(map(int, ln)) for ln in (flow.get("lines") or [])]
 
-    # 表示用ラインFR（従来どおり）
-    line_fr_map = {}
-    if FRv > 0.0 and lines:
-        line_sums = [(ln, sum(scores.get(x, 0.0) for x in ln)) for ln in lines]
-        total = sum(s for _, s in line_sums) or 1.0
-        for ln, s in line_sums:
-            line_fr_map["".join(map(str, ln))] = FRv * (s / total)
+    # ★ 表示用ラインFR（0.000対策入り）
+    line_fr_map = _build_line_fr_map(lines, scores, FRv)
 
     FR_line  = flow.get("FR_line")
     VTX_line = flow.get("VTX_line")
@@ -3283,9 +3317,7 @@ def _safe_generate(flow, lines_str, marks, scores):
     except Exception as e:
         return {"note": f"⚠ generate_tesla_betsエラー: {type(e).__name__}: {e}"}
 
-# ===================== /T369｜FREE-ONLY 出力一括ブロック（レイアウト改） =====================
-
-# ---------- 4) 出力本体 ----------
+# ===================== 4) 出力本体 =====================
 _flow = _safe_flow(globals().get("lines_str", ""), globals().get("marks", {}), globals().get("scores", {}))
 _bets = _safe_generate(_flow, globals().get("lines_str", ""), globals().get("marks", {}), globals().get("scores", {}))
 
@@ -3297,51 +3329,10 @@ def _free_fmt_nums(arr):
         return "".join(str(x) for x in arr) if arr else "—"
     return "—"
 
-def _free_fmt_hens(ts_map: dict, ids) -> str:
-    ids = list(ids or [])
-    ts_map = ts_map or {}
-    lines = []
-    for n in ids:
-        v = ts_map.get(n, ts_map.get(str(n), "—"))
-        lines.append(f"{n}: {float(v):.1f}" if isinstance(v, (int, float)) else f"{n}: —")
-    return "\n".join(lines)
-
-def _free_fmt_marks_line(raw_marks: dict, used_ids: list) -> tuple[str, str]:
-    used_ids = [int(x) for x in (used_ids or [])]
-    def _free_norm_marks(marks_any):
-        marks_any = dict(marks_any or {})
-        if not marks_any:
-            return {}
-        if all(isinstance(v, int) for v in marks_any.values()):
-            out = {}
-            for k, v in marks_any.items():
-                try:
-                    out[int(v)] = str(k)
-                except Exception:
-                    pass
-            return out
-        out = {}
-        for k, v in marks_any.items():
-            try:
-                out[int(k)] = str(v)
-            except Exception:
-                pass
-        return out
-    marks = _free_norm_marks(raw_marks)
-    prio = ["◎", "〇", "▲", "△", "×", "α"]
-    parts = []
-    for s in prio:
-        ids = [cid for cid, sym in marks.items() if sym == s]
-        ids_sorted = sorted(ids, key=lambda c: (used_ids.index(c) if c in used_ids else 10**9, c))
-        parts.extend([f"{s}{cid}" for cid in ids_sorted])
-    marks_str = " ".join(parts)
-    un = [cid for cid in used_ids if cid not in marks]
-    no_str = ("を除く未指名：" + " ".join(map(str, un))) if un else ""
-    return marks_str, no_str
-
 # 旧ゴミ掃除
 def _free_kill_old(s: str) -> bool:
-    if not isinstance(s, str): return False
+    if not isinstance(s, str):
+        return False
     t = s.strip()
     return (
         t.startswith("DBG:") or
@@ -3352,7 +3343,7 @@ def _free_kill_old(s: str) -> bool:
     )
 note_sections = [s for s in note_sections if not _free_kill_old(s)]
 
-# 事前に各数値を揃える（見出し直後で使用）
+# 事前に各数値を揃える
 FRv         = float(_bets.get("FRv", 0.0) or 0.0)
 VTXv        = float(_bets.get("VTXv", 0.0) or 0.0)
 Uv          = float(_bets.get("Uv", 0.0) or 0.0)
@@ -3375,10 +3366,10 @@ if venue or race_no:
     note_sections.append(f"{venue}{_rn}")
 
 # === 展開評価（判定＋軸ラインFR） ===
-def infer_eval_with_share(fr_v: float, vtx_v: float, u_v: float, share_pct: float | None) -> str:
+def infer_eval_with_share(fr_v: float, vtx_v: float, u_v: float, share_pct):
     fr_low, fr_high = 0.40, 0.60
     vtx_strong, u_strong = 0.60, 0.65
-    share_lo, share_hi = 25.0, 33.0  # %
+    share_lo, share_hi = 25.0, 33.0
     if (fr_v > fr_high) and (vtx_v <= vtx_strong) and (u_v <= u_strong) and (share_pct is not None and share_pct >= share_hi):
         return "優位"
     if (fr_v < fr_low) or ((vtx_v > vtx_strong) and (u_v > u_strong)) or (share_pct is not None and share_pct <= share_lo):
@@ -3386,9 +3377,7 @@ def infer_eval_with_share(fr_v: float, vtx_v: float, u_v: float, share_pct: floa
     return "互角"
 
 note_sections.append(f"展開評価：{infer_eval_with_share(FRv, VTXv, Uv, share_pct)}")
-
-
-note_sections.append("")  # 空行
+note_sections.append("")
 
 # === 時刻・クラス ===
 race_time  = str(globals().get("race_time", "") or "")
@@ -3399,12 +3388,11 @@ if hdr:
 
 # === ライン ===
 line_inputs = globals().get("line_inputs", [])
-_lines = []
 if isinstance(line_inputs, list) and any(str(x).strip() for x in line_inputs):
     _lines = [str(x).strip() for x in line_inputs if str(x).strip()]
     note_sections.append("ライン　" + "　".join(_lines))
 
-note_sections.append("")  # 空行
+note_sections.append("")
 
 # === ライン想定FR（順流/渦/逆流 + その他） ===
 _FR_line  = _bets.get("FR_line", _flow.get("FR_line"))
@@ -3422,63 +3410,24 @@ for ln in all_lines:
         continue
     note_sections.append(f"　　　その他ライン {_free_fmt_nums(ln)}：想定FR={_line_fr_val(ln):.3f}")
 
-# === 最終ジャン想定隊列（※この時点ではスコア順位が未確定なら出さない） ===
-# ここでは「ライン→初手隊列」を準備だけしておく
-def _initial_queue_from_lines(lines):
-    q = []
-    for ln in (lines or []):
-        s = "".join(ch for ch in str(ln) if ch.isdigit())
-        for ch in s:
-            if ch not in q:
-                q.append(ch)
-    return q
-
-def _arrow_format(cars):
-    return "先頭 → " + " → ".join(map(str, cars)) + " → 最後方"
-
-def _estimate_finaljump_queue(init_queue, score_rank, k=2.2):
-    init_pos = {c: i for i, c in enumerate(init_queue)}
-    rank_pos = {c: i for i, c in enumerate(score_rank)}  # 0が最強
-
-    def _key(c):
-        return init_pos.get(c, 999) - k * (len(score_rank) - rank_pos.get(c, len(score_rank)))
-
-    all_cars = []
-    for c in init_queue:
-        if c not in all_cars:
-            all_cars.append(c)
-    for c in score_rank:
-        if c not in all_cars:
-            all_cars.append(c)
-    return sorted(all_cars, key=_key)
-
-_init_queue = _initial_queue_from_lines(all_lines)
-
-
 # === carFR順位（表示） ===
-
 try:
     import re, statistics
     _scores_for_rank = {int(k): float(v) for k, v in (globals().get("scores", {}) or {}).items() if str(k).isdigit()}
     _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(all_lines, _scores_for_rank, line_fr_map)
 
-    # 平均値を出して追記
     _vals = [float(x) for x in re.findall(r'\((\d+\.\d+)\)', _carfr_txt)]
     _avg = statistics.mean(_vals) if _vals else 0.0
     note_sections.append(f"\n平均値 {_avg:.5f}")
 
-    # FR×印着内率スコアによる最終順位を追記
     _weighted_rows = compute_weighted_rank_from_carfr_text(_carfr_txt)
     if _weighted_rows:
         note_sections.append("\n【carFR×印着内率スコア順位】")
         for r in _weighted_rows:
-            note_sections.append(
-                f"{r['final_rank']}位：{r['car_no']} "
-                f"(スコア={r['score']:.6f})"
-            )
-
+            note_sections.append(f"{r['final_rank']}位：{r['car_no']} (スコア={r['score']:.6f})")
 except Exception:
     pass
+
 
 # =========================================================
 # ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
