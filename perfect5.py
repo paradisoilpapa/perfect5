@@ -3458,7 +3458,7 @@ def _rank_with_flow_bias(ordered_ids, base_score_map, main_line, k_main=0.20):
             note_sections.append(f"{r['final_rank']}位：{r['car_no']} (スコア={r['score']:.6f})")
 except Exception:
     pass
-    pass
+    
 
 
 # =========================================================
