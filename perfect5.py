@@ -3427,6 +3427,10 @@ try:
     _avg = statistics.mean(_vals) if _vals else 0.0
     note_sections.append(f"\n平均値 {_avg:.5f}")
 
+except Exception:
+    pass
+
+
 def _rank_with_flow_bias(ordered_ids, base_score_map, main_line, k_main=0.20):
     """
     ordered_ids: いまの予想並び（例：carFR順位の並び）
