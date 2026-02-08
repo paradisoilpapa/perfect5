@@ -3515,10 +3515,10 @@ def _initial_queue_by_line_fr(lines):
 def _arrow_format(seq):
     return "先頭 → " + " → ".join([str(x) for x in (seq or [])]) + " → 最後方"
 
-def _knockout_finish_from_queue(init_queue, score_map, avg, k=0.25):
+def _knockout_finish_from_queue(init_queue, score_map, avg, k=0.25, head_boost=0.0):
     """
     最終隊列(位置)を土台に、スコアを avg で正規化してノックアウトで順位化する
-    effective = (score / avg) - k * pos_norm
+    effective = (score / avg) + head_boost*(1-pos_norm) - k * pos_norm
     ※ effective が低い車から「後ろ確定」していく
     """
     cars = [str(c) for c in (init_queue or []) if str(c).isdigit()]
@@ -3538,8 +3538,13 @@ def _knockout_finish_from_queue(init_queue, score_map, avg, k=0.25):
     def effective(c):
         sc = float(score_map.get(c, 0.0) or 0.0)
         sc_norm = sc / avg               # ★平均値で正規化（レースレベル補正）
-        penalty = float(k) * pos_norm(c) # ★位置ペナルティ
-        return sc_norm - penalty
+        pn = pos_norm(c)
+        penalty = float(k) * pn          # ★位置ペナルティ（後ろほど不利）
+
+        # ★先頭ボーナス（逃げ残り）…前ほど効く（先頭=最大）
+        boost = float(head_boost) * (1.0 - pn)
+
+        return sc_norm + boost - penalty
 
     remaining = set(cars)
     back_to_front = []
@@ -3549,6 +3554,7 @@ def _knockout_finish_from_queue(init_queue, score_map, avg, k=0.25):
         remaining.remove(loser)
 
     return list(reversed(back_to_front))
+
 
 # =========================================================
 # ★ 6パターン：最終ジャン想定隊列 & 予想最終順位（統合なし）
@@ -3615,6 +3621,24 @@ try:
             note_sections.append(f"\n【最終ジャン想定隊列（{_pname}）】")
             note_sections.append(f"S/V/Rライン: { _used }")
             note_sections.append(_arrow_format(_finaljump_queue))
+
+
+            # 逃げ残りモード（逆流が先頭の2パターンだけ）
+_escape_patterns = ("逆流→順流→渦", "逆流→渦→順流")
+
+# 簡易トリガ（短評の条件が取れない場合でも動くように「押上げ強」だけでも可）
+# もしレースFR/Uを変数で持ってるならここを厳密化してOK
+is_escape_mode = (_pname in _escape_patterns)
+
+# head_boost はまず 0.20 を推奨（0.15/0.20/0.25で後で調整）
+hb = 0.20 if is_escape_mode else 0.00
+
+_finish = _knockout_finish_from_queue(_finaljump_queue, _score_map, avg, k=0.25, head_boost=hb)
+
+
+
+            
+            
 
             _finish = _knockout_finish_from_queue(_finaljump_queue, _score_map, avg, k=0.25)
 
