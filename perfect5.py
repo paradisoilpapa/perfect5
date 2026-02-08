@@ -3176,12 +3176,11 @@ if "compute_carFR_ranking" not in globals():
         except Exception:
             return "—", [], {}
 
-# ---------- 0.5) line_fr_map を安全に作る（0.000連発対策） ----------
 def _build_line_fr_map(lines, scores_map, FRv):
     """
-    - 通常：FRv>0 かつ line_sums合計>0 のとき、FRvを各ラインへ配分
-    - フォールバック：FRv==0 または合計==0 のとき、等配分（合計1.0）
-      → 0.000連発を防ぐ（ガールズ/欠損/薄いスコアで有効）
+    目的：
+    - line_fr_map は「ラインの強さ配分」を持つ辞書にする（合計=FRv が無い時は合計=1.0）
+    - FRv==0 の時に等配分(0.25固定)にしない（単騎が総取りで崩壊するため）
     """
     lines = [list(map(int, ln)) for ln in (lines or []) if ln]
     scores_map = {int(k): float(v) for k, v in (scores_map or {}).items() if str(k).isdigit()}
@@ -3191,20 +3190,29 @@ def _build_line_fr_map(lines, scores_map, FRv):
     if not lines:
         return m
 
+    # ライン強さ（スコア合計）
     line_sums = [(ln, sum(scores_map.get(int(x), 0.0) for x in ln)) for ln in lines]
     total = sum(s for _, s in line_sums)
 
-    if FRv > 0.0 and total > 0.0:
-        for ln, s in line_sums:
-            m["".join(map(str, ln))] = FRv * (s / total)
-    else:
-        # ★ ここが“0.000連発”の止血：等配分
+    # total がゼロなら最後の保険だけ等配分（ここ以外で等配分しない）
+    if total <= 0.0:
         n = len(lines)
         eq = 1.0 / n if n > 0 else 0.0
         for ln, _ in line_sums:
             m["".join(map(str, ln))] = eq
+        return m
+
+    if FRv > 0.0:
+        # 合計=FRv（レースFRが取れる場合）
+        for ln, s in line_sums:
+            m["".join(map(str, ln))] = FRv * (s / total)
+    else:
+        # 合計=1.0（レースFRが取れない場合でも崩壊しない）
+        for ln, s in line_sums:
+            m["".join(map(str, ln))] = (s / total)
 
     return m
+
 
 # ---------- 1) FRで車番を並べる（carFR順位で買い目を固定） ----------
 def trio_free_completion(scores, marks_any, flow_ctx=None):
@@ -3353,7 +3361,9 @@ def _line_key(ln):
 
 axis_line = next((ln for ln in all_lines if isinstance(axis_id, int) and axis_id in ln), [])
 axis_line_fr = float(line_fr_map.get(_line_key(axis_line), 0.0) or 0.0)
-share_pct = (axis_line_fr / FRv * 100.0) if (FRv > 0 and axis_line) else None
+_total_fr = sum(line_fr_map.values()) if isinstance(line_fr_map, dict) else 0.0
+share_pct = (axis_line_fr / _total_fr * 100.0) if (_total_fr > 0 and axis_line) else None
+
 
 # === 見出し（レース名） ===
 venue   = str(globals().get("track") or globals().get("place") or "").strip()
