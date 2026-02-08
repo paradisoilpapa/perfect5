@@ -3588,33 +3588,48 @@ _PATTERNS = [
 
 def _pick_svr_lines_by_fr(lines):
     """
-    ラインFRの大きい順に並べた上位3ラインを S,V,R として使う
+    ラインFRの大きい順に並べた上位を S,V とし、残り全部を R として保持する（複数可）
+    戻り値: (S_line, V_line, R_lines_list)
     """
     if not lines:
-        return ("", "", "")
+        return ("", "", [])
     ordered = sorted(list(lines), key=_line_fr_val_local, reverse=True)
+
     s = str(ordered[0]) if len(ordered) > 0 else ""
     v = str(ordered[1]) if len(ordered) > 1 else ""
-    r = str(ordered[2]) if len(ordered) > 2 else ""
-    return (s, v, r)
+    r_list = [str(x) for x in ordered[2:]] if len(ordered) > 2 else []
+    return (s, v, r_list)
 
 def _queue_for_pattern(lines, svr_order):
     """
     svr_order: ("S","V","R") の並びで最終ジャン隊列を作る（重複除外）
+    ※ R は複数ラインをFR順に全部つなぐ
     """
-    s_ln, v_ln, r_ln = _pick_svr_lines_by_fr(lines)
-    tag_to_line = {"S": s_ln, "V": v_ln, "R": r_ln}
+    s_ln, v_ln, r_list = _pick_svr_lines_by_fr(lines)
 
     q, seen = [], set()
-    for tag in svr_order:
-        ln = tag_to_line.get(tag, "")
+
+    def _add_line(ln):
+        nonlocal q, seen
         if not ln:
-            continue
+            return
         for ch in _digits_of_line(ln):
             if ch not in seen:
                 q.append(ch)
                 seen.add(ch)
-    return q, {"S": s_ln, "V": v_ln, "R": r_ln}
+
+    for tag in svr_order:
+        if tag == "S":
+            _add_line(s_ln)
+        elif tag == "V":
+            _add_line(v_ln)
+        elif tag == "R":
+            for ln in (r_list or []):
+                _add_line(ln)
+
+    used = {"S": s_ln, "V": v_ln, "R": r_list}
+    return q, used
+
 
 
 
