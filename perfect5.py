@@ -3427,37 +3427,102 @@ try:
     _avg = statistics.mean(_vals) if _vals else 0.0
     note_sections.append(f"\n平均値 {_avg:.5f}")
 
-except Exception:
-    pass
+# =========================================================
+# ★ 一括置換：順流/渦/逆流を「本当に」反映する着順予想ブロック（壊れない版）
+# ★ 置換範囲：あなたが今ぶっ壊してる
+#     「単独except → def _rank_with_flow_bias → _weighted_rows出力 → except」
+#   の“塊”を、下のブロック1つに丸ごと置換して貼り付け。
+# =========================================================
 
-
+# ---- 0) 予想並べ替えヘルパ（トップレベルで定義。tryの外） ----
 def _rank_with_flow_bias(ordered_ids, base_score_map, main_line, k_main=0.20):
     """
-    ordered_ids: いまの予想並び（例：carFR順位の並び）
-    base_score_map: 車番->基礎スコア（例：carFR×印着内率のscore）
-    main_line: 順流/渦/逆流の対象ライン（list[int]）
-    k_main: ライン押上げ係数（0.15〜0.30くらいで十分）
+    ordered_ids: いまの予想並び（例：carFR×印着内率の順位）
+    base_score_map: 車番->基礎スコア（例：r["score"]）
+    main_line: 順流/渦/逆流の対象ライン（list[int] または '526' 等）
     """
-    main_set = set(int(x) for x in (main_line or []))
+    # main_line を list[int] に正規化
+    ml = []
+    if isinstance(main_line, (list, tuple)):
+        for x in main_line:
+            try:
+                ml.append(int(x))
+            except Exception:
+                pass
+    else:
+        s = "".join(ch for ch in str(main_line or "") if ch.isdigit())
+        ml = [int(ch) for ch in s] if s else []
+
+    main_set = set(ml)
 
     def key(cid):
         cid = int(cid)
         base = float(base_score_map.get(cid, 0.0))
-        bump = (k_main * abs(base) + k_main) if cid in main_set else 0.0
+        bump = (float(k_main) * abs(base) + float(k_main)) if cid in main_set else 0.0
         return base + bump
 
     return sorted([int(x) for x in ordered_ids], key=key, reverse=True)
 
+def _fmt_pred_with_ties(order_ids, base_map, eps=0.0006, max_n=7):
+    """
+    あなたの '3.7' 表記っぽく、近いスコアは '.' で束ねる
+    """
+    order_ids = [int(x) for x in (order_ids or [])]
+    if not order_ids:
+        return "—"
 
+    out = []
+    for i, cid in enumerate(order_ids[:max_n]):
+        if i == 0:
+            out.append(str(cid))
+            continue
 
+        prev = int(order_ids[i - 1])
+        if abs(float(base_map.get(prev, 0.0)) - float(base_map.get(cid, 0.0))) <= float(eps):
+            # 直前にドットが無ければ付ける
+            if out:
+                out[-1] = out[-1] + "." + str(cid)
+            else:
+                out.append(str(cid))
+        else:
+            out.append(str(cid))
 
+    return " → ".join(out)
+
+# ---- 1) carFR×印着内率スコア順位の出力（try/exceptは必ずペア） ----
+try:
     _weighted_rows = compute_weighted_rank_from_carfr_text(_carfr_txt)
+
     if _weighted_rows:
         note_sections.append("\n【carFR×印着内率スコア順位】")
         for r in _weighted_rows:
             note_sections.append(f"{r['final_rank']}位：{r['car_no']} (スコア={r['score']:.6f})")
+
+        # ---- 2) ここから順流/渦/逆流メイン着順予想（“ラインを反映”して並べ替え） ----
+        ordered_ids = [int(r["car_no"]) for r in _weighted_rows]
+        base_map = {int(r["car_no"]): float(r["score"]) for r in _weighted_rows}
+
+        FR_line  = _bets.get("FR_line")  or _flow.get("FR_line")  or []
+        VTX_line = _bets.get("VTX_line") or _flow.get("VTX_line") or []
+        U_line   = _bets.get("U_line")   or _flow.get("U_line")   or []
+
+        # 並べ替え（メインラインを上げる）
+        ord_FR  = _rank_with_flow_bias(ordered_ids, base_map, FR_line,  k_main=0.22)
+        ord_VTX = _rank_with_flow_bias(ordered_ids, base_map, VTX_line, k_main=0.22)
+        ord_U   = _rank_with_flow_bias(ordered_ids, base_map, U_line,   k_main=0.22)
+
+        note_sections.append("\n【順流メイン着順予想】")
+        note_sections.append(_fmt_pred_with_ties(ord_FR, base_map))
+
+        note_sections.append("\n【渦メイン着順予想】")
+        note_sections.append(_fmt_pred_with_ties(ord_VTX, base_map))
+
+        note_sections.append("\n【逆流メイン着順予想】")
+        note_sections.append(_fmt_pred_with_ties(ord_U, base_map))
+
 except Exception:
     pass
+
     
 
 
