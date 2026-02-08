@@ -3622,9 +3622,6 @@ try:
             note_sections.append(_arrow_format(_finish))
 
 
-        note_sections.append("\n【予想最終順位】")
-        note_sections.append(_arrow_format(_finish))
-
 except Exception:
     pass
 
