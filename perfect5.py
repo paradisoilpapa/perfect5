@@ -3463,41 +3463,60 @@ except Exception:
 #    ※ 事前入力は増やさず、既存の all_lines / line_fr_map / _weighted_rows / _avg を使う
 # =========================================================
 
+import math
+
+def _line_key_local(ln) -> str:
+    """
+    line_fr_map のキー（例 '526'）に合わせる
+    ln が list[int] / str どちらでもOK
+    """
+    if ln is None:
+        return ""
+    if isinstance(ln, (list, tuple)):
+        return "".join(str(int(x)) for x in ln if str(x).isdigit())
+    s = "".join(ch for ch in str(ln) if ch.isdigit())
+    return s
+
 def _digits_of_line(ln):
+    """
+    ラインから車番の並びを取り出す（順序維持）
+    ln が list[int] / str どちらでもOK
+    """
+    if ln is None:
+        return []
+    if isinstance(ln, (list, tuple)):
+        out = []
+        for x in ln:
+            try:
+                xi = int(x)
+                if 1 <= xi <= 9:
+                    out.append(str(xi))
+            except Exception:
+                pass
+        return out
     return [ch for ch in str(ln) if ch.isdigit()]
 
 def _line_fr_val_local(ln):
-    # 既存の _line_key / line_fr_map を前提
+    # 既存の line_fr_map を前提（キーは '526' など）
     try:
-        return float(line_fr_map.get(_line_key(ln), 0.0) or 0.0)
+        return float((line_fr_map or {}).get(_line_key_local(ln), 0.0) or 0.0)
     except Exception:
         return 0.0
-
-def _initial_queue_by_line_fr(lines):
-    """
-    ラインFRの大きい順にラインを並べ、先頭から車番を繋ぐ（重複除外）
-    """
-    if not lines:
-        return []
-    ordered = sorted(list(lines), key=_line_fr_val_local, reverse=True)
-
-    q, seen = [], set()
-    for ln in ordered:
-        for ch in _digits_of_line(ln):
-            if ch not in seen:
-                q.append(ch)
-                seen.add(ch)
-    return q
 
 def _arrow_format(seq):
     return "先頭 → " + " → ".join([str(x) for x in (seq or [])]) + " → 最後方"
 
-import math
-
-def _knockout_finish_from_queue(init_queue, score_map, avg,
-                                k=0.25, head_boost=0.0,
-                                auto_k=True, k_min=0.03, k_max=0.25,
-                                score_weight=1.0):
+def _knockout_finish_from_queue(
+    init_queue,
+    score_map,
+    avg,
+    k=0.25,
+    head_boost=0.0,
+    auto_k=True,
+    k_min=0.03,
+    k_max=0.25,
+    score_weight=1.0
+):
     """
     最終隊列(位置)を土台に、能力（score/avg）を主にして順位化する。
     位置ペナルティ k は「スコア散らばり」で自動調整して、
@@ -3507,12 +3526,13 @@ def _knockout_finish_from_queue(init_queue, score_map, avg,
     """
     cars = [str(c) for c in (init_queue or []) if str(c).isdigit()]
     if not cars:
-        return sorted(list(score_map.keys()), key=lambda c: score_map.get(c, -1), reverse=True)
+        # queue が空ならスコア順
+        return sorted(list(score_map.keys()), key=lambda c: float(score_map.get(c, -1e9)), reverse=True)
 
     n = len(cars)
     pos = {c: i for i, c in enumerate(cars)}  # 0が先頭
 
-    avg = float(avg) if avg and avg > 1e-12 else 1.0
+    avg = float(avg) if (avg is not None and float(avg) > 1e-12) else 1.0
 
     def pos_norm(c):
         return (pos.get(c, n - 1) / (n - 1)) if n > 1 else 0.0
@@ -3532,10 +3552,7 @@ def _knockout_finish_from_queue(init_queue, score_map, avg,
         sd = math.sqrt(var)
 
         # sd が小さい（能力が拮抗）ほど k_eff を小さくして「位置で飛ぶ」を抑える
-        # 0.15 はまずの安定値（必要なら 0.25 に上げるとさらに位置が弱まる）
         k_eff = float(k) * (sd / (sd + 0.15))
-
-        # 暴れ防止
         k_eff = max(float(k_min), min(float(k_max), k_eff))
 
     def effective(c):
@@ -3545,10 +3562,7 @@ def _knockout_finish_from_queue(init_queue, score_map, avg,
         penalty = float(k_eff) * pn              # 後ろ不利（ただし自動調整済み）
         return ability + boost - penalty
 
-    # ノックアウト（逐次除外）と実質同じ結果になるので、素直にソートで返す
     return sorted(cars, key=effective, reverse=True)
-
-
 
 # =========================================================
 # ★ 6パターン：最終ジャン想定隊列 & 予想最終順位（統合なし）
@@ -3570,11 +3584,13 @@ def _pick_svr_lines_by_fr(lines):
     """
     if not lines:
         return ("", "", [])
+
     ordered = sorted(list(lines), key=_line_fr_val_local, reverse=True)
 
-    s = str(ordered[0]) if len(ordered) > 0 else ""
-    v = str(ordered[1]) if len(ordered) > 1 else ""
-    r_list = [str(x) for x in ordered[2:]] if len(ordered) > 2 else []
+    s = ordered[0] if len(ordered) > 0 else ""
+    v = ordered[1] if len(ordered) > 1 else ""
+    r_list = ordered[2:] if len(ordered) > 2 else []
+
     return (s, v, r_list)
 
 def _queue_for_pattern(lines, svr_order):
@@ -3601,14 +3617,13 @@ def _queue_for_pattern(lines, svr_order):
         elif tag == "V":
             _add_line(v_ln)
         elif tag == "R":
-            for ln in (r_list or []):
+            # Rは複数ライン：ここでもFR順でつなぐ
+            r_ordered = sorted(list(r_list or []), key=_line_fr_val_local, reverse=True)
+            for ln in r_ordered:
                 _add_line(ln)
 
-    used = {"S": s_ln, "V": v_ln, "R": r_list}
+    used = {"S": _line_key_local(s_ln), "V": _line_key_local(v_ln), "R": [_line_key_local(x) for x in (r_list or [])]}
     return q, used
-
-
-
 
 # === 出力（表示は3本だけ） ===
 try:
@@ -3625,7 +3640,6 @@ try:
         # デバッグ：6パターン詳細も出すなら True
         SHOW_DEBUG_6PATTERNS = False
 
-        # --- 6パターン計算（表示はしない） ---
         outs = []
         for _pname, _svr in _PATTERNS:
             _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
@@ -3649,7 +3663,6 @@ try:
                 "used_lines": _used,
             })
 
-            # デバッグ時だけ6パターンの詳細表示
             if SHOW_DEBUG_6PATTERNS:
                 note_sections.append(f"\n【最終ジャン想定隊列（{_pname}）】")
                 note_sections.append(f"S/V/Rライン: {_used}")
@@ -3657,9 +3670,8 @@ try:
                 note_sections.append("\n【予想最終順位】")
                 note_sections.append(_arrow_format(_finish))
 
-        # --- ここから「3本だけ表示」用の整形関数 ---
         def _pair_by_main(_outs):
-            by = {o["pattern"]: o["finish_order"] for o in _outs}
+            by = {o["pattern"]: o["finish_order"] for o in (_outs or [])}
             return {
                 "順流メイン": (by.get("順流→渦→逆流", []), by.get("順流→逆流→渦", [])),
                 "渦メイン":   (by.get("渦→順流→逆流", []), by.get("渦→逆流→順流", [])),
@@ -3697,6 +3709,7 @@ except Exception:
     pass
 
 note_sections.append("")  # 空行
+
 
 
 
