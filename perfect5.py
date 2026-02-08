@@ -3610,46 +3610,38 @@ try:
         # 平均値（直前で算出している _avg を使用）
         avg = float(_avg) if ("_avg" in globals() and _avg is not None) else 0.0
 
-        # 1) 最終ジャン想定隊列：ラインFRの大きい順
-               # 平均値（直前で算出している _avg を使用）
-        avg = float(_avg) if ("_avg" in globals() and _avg is not None) else 0.0
+        # 逃げ残りモード（逆流が先頭の2パターンだけ）
+        _escape_patterns = ("逆流→順流→渦", "逆流→渦→順流")
 
         # 6パターン出力
         for _pname, _svr in _PATTERNS:
             _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
 
             note_sections.append(f"\n【最終ジャン想定隊列（{_pname}）】")
-            note_sections.append(f"S/V/Rライン: { _used }")
+            note_sections.append(f"S/V/Rライン: {_used}")
             note_sections.append(_arrow_format(_finaljump_queue))
 
+            # 逆流先頭パターンだけ「先頭ボーナス」をON
+            is_escape_mode = (_pname in _escape_patterns)
+            hb = 0.20 if is_escape_mode else 0.00  # まずは0.20（0.15/0.25で調整）
 
-            # 逃げ残りモード（逆流が先頭の2パターンだけ）
-_escape_patterns = ("逆流→順流→渦", "逆流→渦→順流")
-
-# 簡易トリガ（短評の条件が取れない場合でも動くように「押上げ強」だけでも可）
-# もしレースFR/Uを変数で持ってるならここを厳密化してOK
-is_escape_mode = (_pname in _escape_patterns)
-
-# head_boost はまず 0.20 を推奨（0.15/0.20/0.25で後で調整）
-hb = 0.20 if is_escape_mode else 0.00
-
-_finish = _knockout_finish_from_queue(_finaljump_queue, _score_map, avg, k=0.25, head_boost=hb)
-
-
-
-            
-            
-
-            _finish = _knockout_finish_from_queue(_finaljump_queue, _score_map, avg, k=0.25)
+            # ★ここが最終順位計算（ノックアウト＋avg正規化＋位置ペナルティ＋先頭ボーナス）
+            _finish = _knockout_finish_from_queue(
+                _finaljump_queue,
+                _score_map,
+                avg,
+                k=0.25,
+                head_boost=hb
+            )
 
             note_sections.append("\n【予想最終順位】")
             note_sections.append(_arrow_format(_finish))
-
 
 except Exception:
     pass
 
 note_sections.append("")  # 空行
+
 
 
 
