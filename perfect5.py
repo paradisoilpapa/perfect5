@@ -2251,11 +2251,26 @@ def compute_flow_indicators(lines_str, marks, scores):
     parts = [_t369_norm(p) for p in str(lines_str).split() if _t369_norm(p)]
     lines = [[int(ch) for ch in p if ch.isdigit()] for p in parts if any(ch.isdigit() for ch in p)]
     if not lines:
-        return {
-            "VTX": 0.0, "FR": 0.0, "U": 0.0,
-            "note": "【流れ未循環】ラインなし → ケン",
-            "waves": {}, "vtx_bid": "", "lines": [], "dbg": {}
-        }
+    def members_of(bid: str) -> list[int]:
+        return list(bucket_to_members.get(bid, []) or [])
+
+    FR_line  = members_of(b_star)
+    VTX_line = members_of(VTX_bid)
+    U_line   = members_of(b_none)
+
+    return {
+        "VTX": VTX,
+        "FR": FR,
+        "U": U,
+        "note": note,
+        "waves": waves,
+        "vtx_bid": VTX_bid,
+        "lines": lines,
+        "dbg": dbg,
+        "FR_line": FR_line,
+        "VTX_line": VTX_line,
+        "U_line": U_line,
+    }
 
     buckets = _t369_buckets(lines)
     bucket_to_members = {buckets[ln[0]]: ln for ln in lines}
@@ -2303,18 +2318,25 @@ def compute_flow_indicators(lines_str, marks, scores):
             return 0.0
         return math.cos(waves[bi]["phi"] - waves[bj]["phi"])
 
-    # --- ◎（順流）と 無（逆流）の決定 ---
-    b_star = bucket_of(star_id)
-    if not b_star:
-        try:
-            b_star = max(
-                bucket_to_members.keys(),
-                key=lambda bid: _t369_safe_mean(
-                    [scores.get(n, 50.0) for n in bucket_to_members[bid]], 50.0
-                )
-            )
-        except Exception:
-            b_star = ""
+    # --- ライン強さ（= 想定FR順位の元）で順流/逆流を固定 ---
+    def line_strength(bid: str) -> float:
+        mem = bucket_to_members.get(bid, [])
+        # sum を推奨：あなたの _build_line_fr_map と順位が一致しやすい
+        return float(sum(scores.get(n, 50.0) for n in mem))
+
+    all_buckets = list(bucket_to_members.keys())
+    if not all_buckets:
+        return {
+            "VTX": 0.0, "FR": 0.0, "U": 0.0,
+            "note": "【流れ未循環】ラインなし → ケン",
+            "waves": {}, "vtx_bid": "", "lines": [], "dbg": {}
+        }
+
+    # 順流＝強さ最大 / 逆流＝強さ最小（同値はbidで安定化）
+    b_star = max(all_buckets, key=lambda bid: (line_strength(bid), bid))
+    cand_buckets = [bid for bid in all_buckets if bid != b_star]
+    b_none = min(cand_buckets, key=lambda bid: (line_strength(bid), bid)) if cand_buckets else ""
+
 
     all_buckets = list(bucket_to_members.keys())
     cand_buckets = [bid for bid in all_buckets if bid != b_star]
@@ -3267,23 +3289,31 @@ def generate_tesla_bets(flow, lines_str, marks_any, scores):
     # ★ 表示用ラインFR（0.000対策入り）
     line_fr_map = _build_line_fr_map(lines, scores, FRv)
 
-    FR_line  = flow.get("FR_line")
-    VTX_line = flow.get("VTX_line")
-    U_line   = flow.get("U_line")
+    # --- 順流/渦/逆流ライン（flow から優先。空なら“ライン強さ”で補完）---
+    FR_line  = flow.get("FR_line")  or []
+    VTX_line = flow.get("VTX_line") or []
+    U_line   = flow.get("U_line")   or []
 
-    if (FR_line is None or FR_line == []) and lines:
-        star_id = next((cid for cid, m in marks.items() if m == "◎"), None)
-        FR_line = next((ln for ln in lines if isinstance(star_id, int) and star_id in ln), lines[0])
+    def _strength(ln) -> float:
+        try:
+            return float(sum(scores.get(int(x), 0.0) for x in (ln or [])))
+        except Exception:
+            return -1e9
 
-    if (VTX_line is None or VTX_line == []) and lines:
-        def _key_of(ln): return line_fr_map.get("".join(map(str, ln)), 0.0)
+    def _tie_key(ln) -> str:
+        return "".join(map(str, ln or []))
+
+    # どうしても空なら、強さ最大＝順流、強さ最小＝逆流、残り最大＝渦（◎は使わない）
+    if (not FR_line) and lines:
+        FR_line = max(lines, key=lambda ln: (_strength(ln), _tie_key(ln)))
+
+    if (not U_line) and lines:
         others = [ln for ln in lines if ln != FR_line]
-        VTX_line = max(others, key=_key_of) if others else (FR_line or [])
+        U_line = min(others, key=lambda ln: (_strength(ln), _tie_key(ln))) if others else []
 
-    if (U_line is None or U_line == []) and lines:
-        def _key_of(ln): return line_fr_map.get("".join(map(str, ln)), 0.0)
-        others = [ln for ln in lines if ln not in (FR_line, VTX_line)]
-        U_line = min(others, key=_key_of) if others else (VTX_line or FR_line or [])
+    if (not VTX_line) and lines:
+        others = [ln for ln in lines if ln not in (FR_line, U_line)]
+        VTX_line = max(others, key=lambda ln: (_strength(ln), _tie_key(ln))) if others else []
 
     # ★買い目は carFR順位フォーマットをそのまま採用
     trio_text, axis_id, axis_fr = trio_free_completion(scores, marks, flow_ctx=flow)
