@@ -3435,12 +3435,16 @@ try:
     k_main: ライン押上げ係数（0.15〜0.30くらいで十分）
     """
     main_set = set(int(x) for x in (main_line or []))
+
     def key(cid):
         cid = int(cid)
         base = float(base_score_map.get(cid, 0.0))
         bump = (k_main * abs(base) + k_main) if cid in main_set else 0.0
         return base + bump
+
     return sorted([int(x) for x in ordered_ids], key=key, reverse=True)
+
+
 
 
     _weighted_rows = compute_weighted_rank_from_carfr_text(_carfr_txt)
