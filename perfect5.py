@@ -3427,7 +3427,7 @@ try:
     _avg = statistics.mean(_vals) if _vals else 0.0
     note_sections.append(f"\n平均値 {_avg:.5f}")
 
-    def _rank_with_flow_bias(ordered_ids, base_score_map, main_line, k_main=0.20):
+def _rank_with_flow_bias(ordered_ids, base_score_map, main_line, k_main=0.20):
     """
     ordered_ids: いまの予想並び（例：carFR順位の並び）
     base_score_map: 車番->基礎スコア（例：carFR×印着内率のscore）
@@ -3453,6 +3453,7 @@ try:
         for r in _weighted_rows:
             note_sections.append(f"{r['final_rank']}位：{r['car_no']} (スコア={r['score']:.6f})")
 except Exception:
+    pass
     pass
 
 
