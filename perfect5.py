@@ -3527,10 +3527,20 @@ for k, v in (globals().get("scores", {}) or {}).items():
     note_sections.append(f"\n平均値 {_avg:.5f}")
 
     _weighted_rows = compute_weighted_rank_from_carfr_text(_carfr_txt)
-    if _weighted_rows:
-        note_sections.append("\n【carFR×印着内率スコア順位】")
-        for r in _weighted_rows:
-            note_sections.append(f"{r['final_rank']}位：{r['car_no']} (スコア={r['score']:.6f})")
+
+# --- 表示欠落を防ぐ保険：active_cars を必ず全員出す ---
+if _weighted_rows:
+    present = {int(r["car_no"]) for r in _weighted_rows}
+    for no in active_cars:
+        ino = int(no)
+        if ino not in present:
+            _weighted_rows.append({"final_rank": 999, "car_no": ino, "score": float(_scores_for_rank.get(ino, 0.0))})
+
+    # スコア順に並べ直して順位を振り直す
+    _weighted_rows = sorted(_weighted_rows, key=lambda r: float(r["score"]), reverse=True)
+    for i, r in enumerate(_weighted_rows, 1):
+        r["final_rank"] = i
+
 
 except Exception:
     pass
