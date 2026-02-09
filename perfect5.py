@@ -8,6 +8,12 @@ from statistics import mean, pstdev
 from itertools import combinations
 from datetime import datetime, date, time, timedelta, timezone
 
+def _digits_of_line(ln):
+    # "571" / 571 / "5-7-1" / "5 7 1" みたいなの全部を数字配列にする
+    s = "".join(ch for ch in str(ln) if ch.isdigit())
+    return [int(ch) for ch in s] if s else []
+
+
 
 # ==============================
 # ページ設定
