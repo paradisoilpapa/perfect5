@@ -3807,6 +3807,59 @@ def _get_line_fr(ln):
                     pass
     return 0.0
 
+# --- ライン入力（"571" / 571 / [5,7,1] / ["5","7","1"] / "5-7-1" 等）を必ずキー化する ---
+def _line_key(ln):
+    if ln is None:
+        return ""
+    if isinstance(ln, (list, tuple, set)):
+        s = "".join(str(x) for x in ln if str(x).isdigit())
+        return s
+    s = "".join(ch for ch in str(ln) if ch.isdigit())
+    return s
+
+def _infer_line_zone(ln):
+    k = _line_key(ln)
+
+    for key in ("line_zone_map", "line_type_map", "line_class_map", "line_role_map"):
+        m = globals().get(key)
+        if isinstance(m, dict):
+            z = m.get(k) or m.get(str(k))
+            if z in ("順流", "渦", "逆流"):
+                return z
+
+    flow = globals().get("flow_line") or globals().get("main_flow_line") or globals().get("jyunryu_line")
+    rev  = globals().get("reverse_line") or globals().get("gyakuryu_line")
+    vort = globals().get("vortex_line") or globals().get("uzu_line") or globals().get("candidate_vortex_line")
+
+    if flow is not None and _line_key(flow) == k:
+        return "順流"
+    if rev is not None and _line_key(rev) == k:
+        return "逆流"
+    if vort is not None and _line_key(vort) == k:
+        return "渦"
+
+    for key in ("vortex_lines", "uzu_lines", "candidate_vortex_lines"):
+        xs = globals().get(key)
+        if isinstance(xs, (list, tuple, set)):
+            if any(_line_key(x) == k for x in xs):
+                return "渦"
+
+    return "順流"
+
+def _get_line_fr(ln):
+    k = _line_key(ln)
+    for key in ("line_fr_map", "lineFR_map", "line_fr", "lineFR"):
+        m = globals().get(key)
+        if isinstance(m, dict):
+            v = m.get(k) or m.get(str(k))
+            if v is not None:
+                try:
+                    return float(v)
+                except Exception:
+                    pass
+    return 0.0
+
+
 # パターンに従って「ライン順」を決め、最終ジャン隊列を作る
 if "_queue_for_pattern" not in globals():
     def _queue_for_pattern(all_lines, svr_order):
