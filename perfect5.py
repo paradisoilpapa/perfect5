@@ -1679,12 +1679,6 @@ p2only_map = {n: max(0.0, float(p2_eff.get(n, 0.0)) - float(p1_eff_safe.get(n, 0
 zt = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
 zt_map = {n: float(zt[i]) for i, n in enumerate(active_cars)} if active_cars else {}
 
-# === ★Form 偏差値化（anchor_scoreより前に必ず置く！） ===
-# すでに上で Form = 0.7*p1_eff + 0.3*p2_eff を作ってある前提
-# t_score_from_finite はこのファイル内に定義済みである前提
-form_list = [Form[n] for n in active_cars]
-form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
-form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
 
 # === [PATCH-1] ENV/FORM をレース内で z 化し、目標SDを掛ける（anchor_score の前に置く） ===
 SD_FORM = 0.28   # Balanced 既定
@@ -1941,10 +1935,6 @@ def coerce_score_map(d, n_cars: int) -> dict[int, float]:
 
 
 
-# ★Form の偏差値化（t_score_from_finite 定義の直後）
-form_list = [Form[n] for n in active_cars]
-form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
-form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
 
 
 
