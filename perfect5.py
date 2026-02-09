@@ -3326,6 +3326,7 @@ def _build_line_fr_map(lines, scores_map, FRv,
 
 
 
+
 # ---------- 1) FRで車番を並べる（carFR順位で買い目を固定） ----------
 def trio_free_completion(scores, marks_any, flow_ctx=None):
     """
