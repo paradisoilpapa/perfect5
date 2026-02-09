@@ -1357,7 +1357,8 @@ for no in active_cars:
 
     # 環境・個人補正（既存）
     wind     = _wind_func(eff_wind_dir, float(eff_wind_speed or 0.0), role, float(prof_escape[no]))
-    bank_b   = bank_character_bonus(bank_angle, straight_length, prof_escape[no], prof_sashi[no])
+    bank_b   = bank_character_bonus(bank_angle, straight_length, bank_length, prof_escape[no], prof_sashi[no])
+
     length_b = bank_length_adjust(bank_length, prof_oikomi[no])
     indiv    = extra_bonus.get(no, 0.0)
     stab     = stability_score(no)  # 安定度
