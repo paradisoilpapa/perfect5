@@ -3509,18 +3509,25 @@ def _knockout_finish_from_queue(
     auto_k=True,
     k_min=0.03,
     k_max=0.25,
-    score_weight=1.0
+    score_weight=1.0,
+    # --- 追加：平均値按分の位置点 ---
+    pos_lambda=0.08,          # 位置点の効き（まずは0.08推奨）
+    pos_mode="harmonic",      # "harmonic"=1/pos（先頭偏重になりすぎない）
+    # --- 追加：癖の矯正（微量） ---
+    singleton_set=None,       # 単騎車番set
+    tail3_set=None,           # 3車ラインの3番手車番set
+    tail3_bonus=0.02,         # 3番手救済（条件付きで加点）
+    singleton_head_pen=0.02   # 単騎が隊列先頭でワープしがちな時の減点（条件付き）
 ):
     """
     最終隊列(位置)を土台に、能力（score/avg）を主にして順位化する。
     位置ペナルティ k は「スコア散らばり」で自動調整して、
     微差のときに“位置だけで順位が飛ぶ”のを抑える。
 
-    effective = score_weight*(score/avg) + head_boost*(1-pos_norm) - k_eff*pos_norm
+    effective = ability + boost - base_pen - overtake_pen + pos_point(+微補正)
     """
     cars = [str(c) for c in (init_queue or []) if str(c).isdigit()]
     if not cars:
-        # queue が空ならスコア順
         return sorted(list(score_map.keys()), key=lambda c: float(score_map.get(c, -1e9)), reverse=True)
 
     n = len(cars)
@@ -3537,20 +3544,37 @@ def _knockout_finish_from_queue(
         sc = float(score_map.get(c, 0.0) or 0.0)
         sc_norm[c] = sc / avg
 
-    # 位置係数を自動調整（ここが本丸）
+    # スコア上位判定（3番手救済の条件に使う）
+    score_sorted = sorted(cars, key=lambda c: float(sc_norm.get(c, 0.0)), reverse=True)
+    top2 = set(score_sorted[:2])
+    top4 = set(score_sorted[:4])
+
+    # 位置係数を自動調整
     k_eff = float(k)
     if auto_k:
         vals = list(sc_norm.values())
         m = sum(vals) / max(len(vals), 1)
         var = sum((v - m) ** 2 for v in vals) / max(len(vals), 1)
         sd = math.sqrt(var)
-
-        # sd が小さい（能力が拮抗）ほど k_eff を小さくして「位置で飛ぶ」を抑える
         k_eff = float(k) * (sd / (sd + 0.15))
         k_eff = max(float(k_min), min(float(k_max), k_eff))
 
+    # --- 追加：平均値を先頭〜末尾へ按分した「位置点」 ---
+    # 平均値を総量にすると、正規化スコア(sc/avg)の世界では「重みw」そのものが位置点になる。
+    # sum(w)=1 なので、pos_lambda が位置点の総効き。
+    if pos_mode == "harmonic":
+        raw = [1.0 / (i + 1) for i in range(n)]              # 1,1/2,1/3,...
+    else:
+        raw = [float(n - i) for i in range(n)]               # 等差（先頭が強くなりやすいので非推奨）
+    sraw = sum(raw) if sum(raw) > 1e-12 else 1.0
+    w_by_pos = [r / sraw for r in raw]                       # index0=先頭
+
+    singleton_set = singleton_set or set()
+    tail3_set = tail3_set or set()
+
     def effective(c):
         pn = pos_norm(c)
+        i = pos.get(c, n - 1)
 
         # 能力（正規化スコア）
         ability = float(score_weight) * float(sc_norm.get(c, 0.0))
@@ -3558,16 +3582,27 @@ def _knockout_finish_from_queue(
         # 逃げ残り（先頭ほど少し有利）
         boost = float(head_boost) * (1.0 - pn)
 
-        # 位置ペナルティ（通常）
+        # 位置ペナルティ
         base_pen = float(k_eff) * pn
 
-        # ★追い越しコスト（後ろほど“前に出るコスト”が増える）
-        # これで「スコアだけのワープ」を抑えつつ、能力差が大きい“まくり”は残る
-        overtake_pen = 0.12 * (pn ** 2)  # 0.08〜0.18で調整
+        # 追い越しコスト（後ろほど“前に出るコスト”）
+        overtake_pen = 0.12 * (pn ** 2)
 
-        return ability + boost - base_pen - overtake_pen
+        # ★位置点（平均値按分）
+        pos_point = float(pos_lambda) * float(w_by_pos[i])
 
-    # ★ここが必須：この1行が無いと finish_order が None になって全部（なし）になる
+        # ★癖①：単騎が「位置だけで」1位になりがち → 隊列先頭かつスコア上位でない時だけ軽く抑える
+        single_pen = 0.0
+        if (c in singleton_set) and (i == 0) and (c not in top2):
+            single_pen = float(singleton_head_pen)
+
+        # ★癖②：3車ライン3番手が3着に出ない → スコア上位(4位以内)なら小さく救済
+        tail_bonus = 0.0
+        if (c in tail3_set) and (c in top4):
+            tail_bonus = float(tail3_bonus)
+
+        return ability + boost - base_pen - overtake_pen + pos_point - single_pen + tail_bonus
+
     return sorted(cars, key=effective, reverse=True)
 
 
@@ -3649,21 +3684,48 @@ try:
         # デバッグ：6パターン詳細も出すなら True
         SHOW_DEBUG_6PATTERNS = False
 
-        outs = []
-        for _pname, _svr in _PATTERNS:
-            _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
 
-            # 逆流先頭パターンだけ「先頭ボーナス」をON
-            is_escape_mode = (_pname in _escape_patterns)
-            hb = 0.20 if is_escape_mode else 0.00
 
-            _finish = _knockout_finish_from_queue(
-                _finaljump_queue,
-                _score_map,
-                avg,
-                k=0.25,
-                head_boost=hb
-            )
+       # --- 追加：単騎と3車3番手を事前抽出（all_linesから） ---
+_singletons = set()
+_tail3 = set()
+for ln in (all_lines or []):
+    ds = _digits_of_line(ln)
+    if len(ds) == 1:
+        _singletons.add(str(ds[0]))
+    elif len(ds) == 3:
+        _tail3.add(str(ds[2]))
+
+outs = []
+for _pname, _svr in _PATTERNS:
+    _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
+
+    # 逆流先頭パターンだけ「先頭ボーナス」をON
+    is_escape_mode = (_pname in _escape_patterns)
+    hb = 0.20 if is_escape_mode else 0.00
+
+    _finish = _knockout_finish_from_queue(
+        _finaljump_queue,
+        _score_map,
+        avg,
+        k=0.25,
+        head_boost=hb,
+        pos_lambda=0.08,        # まずはこれで
+        pos_mode="harmonic",    # 先頭偏重を抑える
+        singleton_set=_singletons,
+        tail3_set=_tail3,
+        tail3_bonus=0.02,
+        singleton_head_pen=0.02
+    )
+
+    outs.append({
+        "pattern": _pname,
+        "jan_queue": _finaljump_queue,
+        "finish_order": _finish,
+        "used_lines": _used,
+    })
+
+
 
             outs.append({
                 "pattern": _pname,
