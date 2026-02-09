@@ -3741,105 +3741,127 @@ except Exception as e:
 # =========================================================
 # ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
 # ★ 予想最終順位（最終隊列×スコアを平均値係数でノックアウト）
-#    ※ ここで使う avg は「FR平均」ではなく「score平均（avg_score）」に統一
+#    ※ _weighted_rows が無くても動くようにする
 # =========================================================
 
 try:
-    if _weighted_rows:
+    # --- 1) KO用 score_map を必ず作る ---
+    _score_map = None
+
+    # A: 既存（あれば最優先）
+    if ("_weighted_rows" in globals()) and _weighted_rows:
         _score_map = {str(r["car_no"]): float(r["score"]) for r in _weighted_rows}
 
-        # ★ここが肝：avg は _avg(FR平均)を使わず、score_map の平均を使う
-        _sv = [float(v) for v in _score_map.values() if float(v) > 0.0]
-        avg = (sum(_sv) / len(_sv)) if _sv else 1.0
+    # B: anchor_score 優先の根本スコア（今回ここが0連発しがち）
+    if not _score_map:
+        if ("_scores_for_rank" in globals()) and _scores_for_rank:
+            _score_map = {str(k): float(v) for k, v in _scores_for_rank.items()}
 
-        _escape_patterns = ("逆流→順流→渦", "逆流→渦→順流")
-        SHOW_DEBUG_6PATTERNS = False
+    # C: フォールバック（carFR×印着内率のマップがあるなら使う）
+    # これを入れると「anchor_scoreが0だらけでも展開予想が出る」ようになる
+    if not _score_map:
+        if ("_carfr_map" in globals()) and _carfr_map:
+            _score_map = {str(k): float(v) for k, v in _carfr_map.items()}
 
-        # 単騎 / 3車3番手
-        _singletons = set()
-        _tail3 = set()
-        for ln in (all_lines or []):
-            ds = _digits_of_line(ln)
-            if len(ds) == 1:
-                _singletons.add(str(ds[0]))
-            elif len(ds) == 3:
-                _tail3.add(str(ds[2]))
+    # D: 最終手段：active_cars を全部0で置く（表示だけは出す）
+    if not _score_map:
+        _score_map = {str(n): 0.0 for n in (active_cars or []) if str(n).isdigit()}
 
-        outs = []
-        for _pname, _svr in _PATTERNS:
-            _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
+    # avgは score_map から作る（FR平均は絶対に使わない）
+    _sv = [float(v) for v in _score_map.values() if float(v) > 0.0]
+    avg = (sum(_sv) / len(_sv)) if _sv else 1.0
 
-            hb = 0.20 if (_pname in _escape_patterns) else 0.00
+    # --- 2) 6パターン隊列の予想を必ず出す ---
+    _escape_patterns = ("逆流→順流→渦", "逆流→渦→順流")
+    SHOW_DEBUG_6PATTERNS = False
 
-            _finish = _knockout_finish_from_queue(
-                _finaljump_queue,
-                _score_map,
-                avg,                 # ← score平均を分母にする
-                k=0.25,
-                head_boost=hb,
-                pos_lambda=0.08,
-                pos_mode="harmonic",
-                singleton_set=_singletons,
-                tail3_set=_tail3,
-                tail3_bonus=0.02,
-                singleton_head_pen=0.02
-            )
+    # 単騎 / 3車3番手
+    _singletons = set()
+    _tail3 = set()
+    for ln in (all_lines or []):
+        ds = _digits_of_line(ln)
+        if len(ds) == 1:
+            _singletons.add(str(ds[0]))
+        elif len(ds) == 3:
+            _tail3.add(str(ds[2]))
 
-            outs.append({
-                "pattern": _pname,
-                "jan_queue": _finaljump_queue,
-                "finish_order": _finish,
-                "used_lines": _used,
-            })
+    outs = []
+    for _pname, _svr in _PATTERNS:
+        _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
+        hb = 0.20 if (_pname in _escape_patterns) else 0.00
 
-            if SHOW_DEBUG_6PATTERNS:
-                note_sections.append(f"\n【最終ジャン想定隊列（{_pname}）】")
-                note_sections.append(f"S/V/Rライン: {_used}")
-                note_sections.append(_arrow_format(_finaljump_queue))
-                note_sections.append("\n【予想最終順位】")
-                note_sections.append(_arrow_format(_finish))
+        _finish = _knockout_finish_from_queue(
+            _finaljump_queue,
+            _score_map,
+            avg,
+            k=0.25,
+            head_boost=hb,
+            pos_lambda=0.08,
+            pos_mode="harmonic",
+            singleton_set=_singletons,
+            tail3_set=_tail3,
+            tail3_bonus=0.02,
+            singleton_head_pen=0.02
+        )
 
-        def _pair_by_main(_outs):
-            by = {o["pattern"]: o["finish_order"] for o in (_outs or [])}
-            return {
-                "順流メイン": (by.get("順流→渦→逆流", []), by.get("順流→逆流→渦", [])),
-                "渦メイン":   (by.get("渦→順流→逆流", []), by.get("渦→逆流→順流", [])),
-                "逆流メイン": (by.get("逆流→順流→渦", []), by.get("逆流→渦→順流", [])),
-            }
+        outs.append({
+            "pattern": _pname,
+            "jan_queue": _finaljump_queue,
+            "finish_order": _finish,
+            "used_lines": _used,
+        })
 
-        def _slot_set(a, b, idx):
-            s = set()
-            if a and idx < len(a): s.add(str(a[idx]))
-            if b and idx < len(b): s.add(str(b[idx]))
-            return sorted(list(s), key=lambda x: int(x) if x.isdigit() else 999)
+        if SHOW_DEBUG_6PATTERNS:
+            note_sections.append(f"\n【最終ジャン想定隊列（{_pname}）】")
+            note_sections.append(f"S/V/Rライン: {_used}")
+            note_sections.append(_arrow_format(_finaljump_queue))
+            note_sections.append("\n【予想最終順位】")
+            note_sections.append(_arrow_format(_finish))
 
-        def fmt_main_prediction(a, b):
-            if not a and not b:
-                return "（なし）"
-            n = max(len(a), len(b), 7)
-            parts = []
-            for i in range(n):
-                ss = _slot_set(a, b, i)
-                parts.append(".".join(ss) if ss else "")
-            return " → ".join([p for p in parts if p])
+    def _pair_by_main(_outs):
+        by = {o["pattern"]: o["finish_order"] for o in (_outs or [])}
+        return {
+            "順流メイン": (by.get("順流→渦→逆流", []), by.get("順流→逆流→渦", [])),
+            "渦メイン":   (by.get("渦→順流→逆流", []), by.get("渦→逆流→順流", [])),
+            "逆流メイン": (by.get("逆流→順流→渦", []), by.get("逆流→渦→順流", [])),
+        }
 
-        pairs = _pair_by_main(outs)
+    def _slot_set(a, b, idx):
+        s = set()
+        if a and idx < len(a): s.add(str(a[idx]))
+        if b and idx < len(b): s.add(str(b[idx]))
+        return sorted(list(s), key=lambda x: int(x) if x.isdigit() else 999)
 
-        note_sections.append("\n【順流メイン着順予想】")
-        note_sections.append(fmt_main_prediction(*pairs["順流メイン"]))
+    def fmt_main_prediction(a, b):
+        if not a and not b:
+            return "（なし）"
+        n = max(len(a), len(b), 7)
+        parts = []
+        for i in range(n):
+            ss = _slot_set(a, b, i)
+            parts.append(".".join(ss) if ss else "")
+        return " → ".join([p for p in parts if p])
 
-        note_sections.append("\n【渦メイン着順予想】")
-        note_sections.append(fmt_main_prediction(*pairs["渦メイン"]))
+    pairs = _pair_by_main(outs)
 
-        note_sections.append("\n【逆流メイン着順予想】")
-        note_sections.append(fmt_main_prediction(*pairs["逆流メイン"]))
+    note_sections.append("\n【順流メイン着順予想】")
+    note_sections.append(fmt_main_prediction(*pairs["順流メイン"]))
 
-except Exception:
-    pass
+    note_sections.append("\n【渦メイン着順予想】")
+    note_sections.append(fmt_main_prediction(*pairs["渦メイン"]))
+
+    note_sections.append("\n【逆流メイン着順予想】")
+    note_sections.append(fmt_main_prediction(*pairs["逆流メイン"]))
+
+except Exception as e:
+    # 黙殺しない（ここ超重要）
+    try:
+        note_sections.append(f"\n[KO ERROR] {type(e).__name__}: {e}")
+        st.exception(e)
+    except Exception:
+        print(e)
 
 note_sections.append("")
-
-
 
 
 
