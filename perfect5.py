@@ -3509,11 +3509,12 @@ try:
         _scores_for_rank = {int(n): float(anchor_score(int(n))) for n in active_cars}
     else:
         # フォールバック（従来通り）
-        _scores_for_rank = {
-            int(k): float(v)
-            for k, v in (globals().get("scores", {}) or {}).items()
-            if str(k).isdigit()
-        }
+        _scores_for_rank = {}
+for k, v in (globals().get("scores", {}) or {}).items():
+    ks = str(k).strip()
+    if ks.isdigit():
+        _scores_for_rank[int(ks)] = float(v)
+
 
     _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(
         all_lines,
