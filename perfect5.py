@@ -3662,7 +3662,11 @@ try:
                 continue
 
 # ==== hens正規化 & rate取得（先に定義してから使う） ====
+
 def _norm_int_float_map(d):
+    """
+    hens のキーが '1' / 1 どっちでも来る想定で、必ず int -> float に正規化する
+    """
     out = {}
     for k, v in (d or {}).items():
         try:
@@ -3672,7 +3676,33 @@ def _norm_int_float_map(d):
     return out
 
 def _get_rate(d, no, default=0.0):
-    ...
+    """
+    d のキーが int / str どちらでも拾えるようにして rate を返す
+    """
+    try:
+        ino = int(no)
+    except Exception:
+        return float(default)
+
+    if not d:
+        return float(default)
+
+    # まず int で引く
+    if ino in d:
+        try:
+            return float(d[ino])
+        except Exception:
+            return float(default)
+
+    # 次に str でも引いてみる（念のため）
+    sk = str(ino)
+    if sk in d:
+        try:
+            return float(d[sk])
+        except Exception:
+            return float(default)
+
+    return float(default)
 
     try:
         ino = int(no)
