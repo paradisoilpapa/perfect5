@@ -1085,8 +1085,7 @@ line_def, car_to_group = build_line_maps(lines)
 active_cars = sorted({c for lst in lines for c in lst}) if lines else list(range(1, n_cars+1))
 
 # ←←← ここに入れる
-import re, unicodedata
-def input_float_text(label: str, key: str, placeholder: str = "") -> float | None:
+def input_float_text(label: str, key: str, placeholder: str = ""):
     s = st.text_input(label, value=st.session_state.get(key, ""), key=key, placeholder=placeholder)
     ss = unicodedata.normalize("NFKC", str(s)).replace(",", "").strip()
     if ss == "":
@@ -1095,6 +1094,7 @@ def input_float_text(label: str, key: str, placeholder: str = "") -> float | Non
         st.warning(f"{label} は数値で入力してください（入力値: {s}）")
         return None
     return float(ss)
+
 # →→→ ここまで
 
 st.subheader("個人データ（直近4か月：回数）")
