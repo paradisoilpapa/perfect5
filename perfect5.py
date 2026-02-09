@@ -1407,8 +1407,9 @@ def _favorable_styles(bank_str: str) -> set[str]:
 
 # ❸ 役割の日本語化（lineの並びから）
 def _role_jp(no: int, line_def: dict) -> str:
-    r = role_in_line(no, line_def)  # 'head'/'second'/'thirdplus'/'single'
-    return {"head":"先頭","second":"番手","thirdplus":"三番手","single":"先頭"}.get(r, "先頭")
+    r = role_in_line(no, line_def)
+    return {"head":"先頭","second":"番手","thirdplus":"三番手","single":"単騎"}.get(r, "単騎")
+
 
 # ❹ 入力の“逃/捲/差/マ”から、その選手の実脚質を決定（同点時はライン位置でブレない決め方）
 def _dominant_style(no: int) -> str:
@@ -1692,7 +1693,13 @@ line_sb_enable = bool(globals().get("line_sb_enable", (race_class != "ガール�
 def _pos_idx(no:int) -> int:
     g = car_to_group.get(no, None)
     if g is None or g not in line_def:
-        return 0
+        return 4  # ←単騎/不明は最後方扱い（POS_BONUS[4] を食わせる）
+    grp = line_def[g]
+    try:
+        return max(0, int(grp.index(no)))
+    except Exception:
+        return 4
+
     grp = line_def[g]
     try:
         return max(0, int(grp.index(no)))
@@ -3201,12 +3208,18 @@ if "compute_carFR_ranking" not in globals():
         except Exception:
             return "—", [], {}
 
-def _build_line_fr_map(lines, scores_map, FRv):
+def _build_line_fr_map(lines, scores_map, FRv,
+                       SINGLETON_FR_SCALE=0.70,
+                       MIN_LINE_SHARE=0.00,
+                       MAX_SINGLETON_SHARE=0.45):
     """
     目的：
     - line_fr_map は「ラインの強さ配分」を持つ辞書にする（合計=FRv が無い時は合計=1.0）
     - FRv==0 の時に等配分(0.25固定)にしない（単騎が総取りで崩壊するため）
+    - ★単騎ライン(1車)がFRを総取りしがちな問題を抑える（SINGLETON_FR_SCALE）
+    - ★単騎の最大取り分を上限で縛る（MAX_SINGLETON_SHARE）
     """
+
     lines = [list(map(int, ln)) for ln in (lines or []) if ln]
     scores_map = {int(k): float(v) for k, v in (scores_map or {}).items() if str(k).isdigit()}
     FRv = float(FRv or 0.0)
@@ -3215,8 +3228,14 @@ def _build_line_fr_map(lines, scores_map, FRv):
     if not lines:
         return m
 
-    # ライン強さ（スコア合計）
-    line_sums = [(ln, sum(scores_map.get(int(x), 0.0) for x in ln)) for ln in lines]
+    # ライン強さ（スコア合計）※単騎は減衰
+    line_sums = []
+    for ln in lines:
+        s = sum(scores_map.get(int(x), 0.0) for x in ln)
+        if len(ln) == 1:
+            s *= float(SINGLETON_FR_SCALE)
+        line_sums.append((ln, s))
+
     total = sum(s for _, s in line_sums)
 
     # total がゼロなら最後の保険だけ等配分（ここ以外で等配分しない）
@@ -3227,16 +3246,55 @@ def _build_line_fr_map(lines, scores_map, FRv):
             m["".join(map(str, ln))] = eq
         return m
 
-    if FRv > 0.0:
-        # 合計=FRv（レースFRが取れる場合）
-        for ln, s in line_sums:
-            m["".join(map(str, ln))] = FRv * (s / total)
-    else:
-        # 合計=1.0（レースFRが取れない場合でも崩壊しない）
-        for ln, s in line_sums:
-            m["".join(map(str, ln))] = (s / total)
+    # まず通常配分（合計=FRv or 1.0）
+    sum_target = FRv if FRv > 0.0 else 1.0
+    raw = {}
+    for ln, s in line_sums:
+        key = "".join(map(str, ln))
+        raw[key] = sum_target * (s / total)
 
+    # ★単騎の取り分に上限（MAX_SINGLETON_SHARE）をかける
+    # 例：ライン 6 だけが強くても「45%まで」に制限して暴走を止める
+    single_keys = [k for k, ln in zip(raw.keys(), lines) if len(ln) == 1]
+    if single_keys and 0.0 < float(MAX_SINGLETON_SHARE) < 1.0:
+        cap = sum_target * float(MAX_SINGLETON_SHARE)
+
+        # 超過分を回収して、非単騎へ再配分
+        excess = 0.0
+        for k in single_keys:
+            if raw.get(k, 0.0) > cap:
+                excess += (raw[k] - cap)
+                raw[k] = cap
+
+        if excess > 0.0:
+            # 非単騎側の合計で按分して戻す
+            non_single_keys = [k for k, ln in zip(raw.keys(), lines) if len(ln) >= 2]
+            denom = sum(raw.get(k, 0.0) for k in non_single_keys)
+            if denom > 1e-12:
+                for k in non_single_keys:
+                    raw[k] += excess * (raw[k] / denom)
+            else:
+                # 非単騎が無い（全員単騎）なら均等に戻す
+                n = len(raw)
+                if n > 0:
+                    add = excess / n
+                    for k in raw:
+                        raw[k] += add
+
+    # 下限（必要なら）
+    if float(MIN_LINE_SHARE) > 0.0:
+        for k in raw:
+            raw[k] = max(float(MIN_LINE_SHARE), float(raw[k]))
+
+        # 合計を再正規化
+        s = sum(raw.values())
+        if s > 1e-12:
+            for k in raw:
+                raw[k] = sum_target * (raw[k] / s)
+
+    m.update(raw)
     return m
+
 
 
 # ---------- 1) FRで車番を並べる（carFR順位で買い目を固定） ----------
