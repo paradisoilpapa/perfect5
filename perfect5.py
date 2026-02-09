@@ -3661,7 +3661,7 @@ try:
             except Exception:
                 continue
 
-            # ==== hens正規化 & rate取得（先に定義してから使う） ====
+# ==== hens正規化 & rate取得（先に定義してから使う） ====
 def _norm_int_float_map(d):
     out = {}
     for k, v in (d or {}).items():
@@ -3688,56 +3688,74 @@ def _get_rate(d, no, default=0.0):
             return default
     return default
 
-# ★ここで hens を必ず intキー化（「特定車だけ0」の主因）
-hens = _norm_int_float_map(hens)
 
-_vals = [v for v in hens.values() if v is not None]
-hens_default = float(np.mean(_vals)) if len(_vals) else 0.0
+# --- carFR順位（表示） ---
+try:
+    import re
+    import statistics
 
+    _scores_for_rank = {}
 
-# ==== 表示欠落を防ぐ保険：active_cars を必ず全員出す ====
-if _weighted_rows:
-    try:
-        present = {int(r.get("car_no")) for r in _weighted_rows if str(r.get("car_no", "")).isdigit()}
-    except Exception:
+    # 1) 優先：anchor_score（active_cars 全員ぶん）
+    if ("anchor_score" in globals()) and callable(globals().get("anchor_score")):
+        for n in (active_cars or []):
+            try:
+                nn = int(n)
+            except Exception:
+                continue
+            try:
+                _scores_for_rank[nn] = max(0.0, float(anchor_score(nn)))
+            except Exception:
+                _scores_for_rank[nn] = 0.0
+
+    # 2) フォールバック：従来の scores
+    if not _scores_for_rank:
+        for k, v in (globals().get("scores", {}) or {}).items():
+            ks = str(k).strip()
+            if ks.isdigit():
+                try:
+                    _scores_for_rank[int(ks)] = max(0.0, float(v))
+                except Exception:
+                    _scores_for_rank[int(ks)] = 0.0
+
+    _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(
+        all_lines,
+        _scores_for_rank,
+        line_fr_map
+    )
+
+    _vals = [float(x) for x in re.findall(r"\((\d+\.\d+)\)", _carfr_txt)]
+    _avg = statistics.mean(_vals) if _vals else 0.0
+    note_sections.append(f"\n平均値 {_avg:.5f}")
+
+    _weighted_rows = compute_weighted_rank_from_carfr_text(_carfr_txt)
+
+    # --- 表示欠落を防ぐ保険：active_cars を必ず全員出す ---
+    if _weighted_rows:
         present = set()
-
-    for no in (active_cars or []):
         try:
-            ino = int(no)
+            present = {int(r.get("car_no")) for r in _weighted_rows
+                       if str(r.get("car_no", "")).isdigit()}
         except Exception:
-            continue
+            present = set()
 
-        if ino not in present:
-            # ★ _scores_for_rank を使うと「元が0なら永遠に0」
-            # ★ hens欠損でも平均を食わせる形に寄せる（最低限の救済）
-            rate = _get_rate(hens, ino, default=hens_default)
+        # ★ここで hens を必ず intキー化（「特定車だけ0」の主因）
+        hens = _norm_int_float_map(hens)
 
-            _weighted_rows.append({
-                "final_rank": 999,
-                "car_no": ino,
-                "score": float(rate),  # ← ここは“0回避の救済”。本来はrow生成側で carFR×rate を作る
-            })
+        _vals = [v for v in hens.values() if v is not None]
+        hens_default = float(np.mean(_vals)) if len(_vals) else 0.0
 
+        for no in (active_cars or []):
+            try:
+                ino = int(no)
+            except Exception:
+                continue
 
-# ★ここ：carFR×印着内率の rows を並べ替える直前で正規化
-hens = _norm_int_float_map(hens)
-
-_vals = [v for v in hens.values() if v is not None]
-hens_default = float(np.mean(_vals)) if len(_vals) else 0.0
-
-        
-        # スコア順に並べ直して順位を振り直す
-        _weighted_rows = sorted(_weighted_rows, key=lambda r: float(r.get("score", 0.0) or 0.0), reverse=True)
-        for i, r in enumerate(_weighted_rows, 1):
-            r["final_rank"] = i
-
-        note_sections.append("\n【carFR×印着内率スコア順位】")
-        for r in _weighted_rows:
-            note_sections.append(f"{r['final_rank']}位：{r['car_no']} (スコア={float(r['score']):.6f})")
-
-except Exception:
-    pass
+            # ここから先は、あなたの「欠落補完ロジック」を続けてOK
+            # 例：rate = _get_rate(hens, ino, hens_default)
+            # ...
+except Exception as e:
+    st.exception(e)  # Streamlitならこれが一番楽（無ければ print(e) でもOK）
 
 
 
