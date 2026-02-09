@@ -3352,85 +3352,81 @@ def _build_line_fr_map(lines, scores_map, FRv,
 
 
 # ---------- 1) FRで車番を並べる（carFR順位で買い目を固定） ----------
-def trio_free_completion(scores, marks_any, flow_ctx=None):
+def trio_free_completion(scores, marks_any, flow_ctx=None, debug_lines=None):
     """
     買い目：carFR順位の1位を軸、2〜5位を相手（順位順のまま）
       → 三連複：1位-2345位-2345位
     戻り値: (trio_text, axis_id, axis_car_fr)
+    debug_lines: list[str] を渡したらそこにDBGをappendする（note_sections直書きはしない）
     """
-    hens = {int(k): float(v) for k, v in (scores or {}).items() if str(k).isdigit()}
+    # 1) hens（印着内率）を intキーで統一
+    hens = {}
+    for k, v in (scores or {}).items():
+        try:
+            ik = int(k)
+            hens[ik] = float(v)
+        except Exception:
+            pass
     if not hens:
         return ("—", None, None)
 
+    # 2) flow 取得
     flow_ctx = dict(flow_ctx or {})
     FRv = float(flow_ctx.get("FR", 0.0) or 0.0)
-    lines = [list(map(int, ln)) for ln in (flow_ctx.get("lines") or [])]
-
-    # ★ 表示と整合を取るためのラインFR推定（0.000対策入り）
-    line_fr_map = _build_line_fr_map(lines, hens, FRv)
-
-   # carFR順位
-_carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
-
-# 例：スコア計算ループ内
-carfr = float((_carfr_map or {}).get(ino, 0.0) or 0.0)
-rate  = float(_get_rate(hens, ino, default=0.0))  # ここは現状のままでOK（調査用）
-score = carfr * rate
-
-if ino == 4:
-    note_sections.append(f"\n[DBG carFR×印着内率] no=4 carfr={carfr} rate={rate} score={score}")
-    note_sections.append(f"[DBG] hens_has_int4={ (hens is not None and 4 in hens) } hens_has_str4={ (hens is not None and '4' in hens) }")
-    note_sections.append(f"[DBG] carfr_has_4={ (_carfr_map is not None and 4 in _carfr_map) } active_has_4={ (active_cars is not None and 4 in [int(x) for x in active_cars if str(x).isdigit()]) }")
-
-
-def _norm_int_map(d, cast=float):
-    out = {}
-    for k, v in (d or {}).items():
+    lines = []
+    for ln in (flow_ctx.get("lines") or []):
         try:
-            ik = int(k)
-            out[ik] = cast(v)
+            lines.append(list(map(int, ln)))
         except Exception:
             pass
-    return out
 
-def _get_num(d, no, default=0.0):
-    """キー型ゆれ（int/str）を両対応で吸収"""
-    try:
-        ino = int(no)
-    except Exception:
-        return default
-    for k in (ino, str(ino)):
-        if d is not None and k in d:
-            try:
-                return float(d[k])
-            except Exception:
-                return default
-    # intキーのdictの場合
-    if d is not None and ino in d:
+    # 3) 表示と整合を取るラインFR推定（0.000対策入り）
+    line_fr_map = _build_line_fr_map(lines, hens, FRv)
+
+    # 4) carFR順位（ここが本体）
+    _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
+
+    # 5) carFRマップを intキーに統一（strキー混入を吸収）
+    carfr_map_i = {}
+    for k, v in (_carfr_map or {}).items():
         try:
-            return float(d[ino])
+            carfr_map_i[int(k)] = float(v)
         except Exception:
-            return default
-    return default
+            pass
 
-# ★ここが本丸：hens と carfr のキー型を統一
-hens = _norm_int_map(hens, cast=float)
-_carfr_map = _norm_int_map(_carfr_map, cast=float)
+    # 6) ランクが取れないなら終了
+    if not _carfr_rank or len(_carfr_rank) < 3:
+        return ("—", None, None)
 
-if not _carfr_rank or len(_carfr_rank) < 3:
-    return ("—", None, None)
+    ordered_ids = []
+    for cid, _ in _carfr_rank:
+        try:
+            ordered_ids.append(int(cid))
+        except Exception:
+            pass
 
-ordered_ids = [int(cid) for (cid, _) in _carfr_rank]
-axis = ordered_ids[0]
-opps = [c for c in ordered_ids[1:] if c != axis][:4]
-if len(opps) < 2:
-    return ("—", None, None)
+    if len(ordered_ids) < 3:
+        return ("—", None, None)
 
-mid = "".join(map(str, opps))
-trio_text = f"{axis}-{mid}-{mid}"
+    axis = ordered_ids[0]
+    opps = [c for c in ordered_ids[1:] if c != axis][:4]
+    if len(opps) < 2:
+        return ("—", None, None)
 
-axis_car_fr = _get_num(_carfr_map, axis, default=None)
-return (trio_text, axis, axis_car_fr)
+    mid = "".join(map(str, opps))
+    trio_text = f"{axis}-{mid}-{mid}"
+    axis_car_fr = carfr_map_i.get(axis, None)
+
+    # 7) 必要ならDBG（4が0の原因切り分け用）
+    if isinstance(debug_lines, list):
+        no = 4
+        carfr = float(carfr_map_i.get(no, 0.0) or 0.0)
+        rate  = float(hens.get(no, 0.0) or 0.0)
+        debug_lines.append(f"[DBG trio_free_completion] no=4 carfr={carfr} rate={rate} score={carfr*rate}")
+        debug_lines.append(f"[DBG] hens_has_4={no in hens} carfr_has_4={no in carfr_map_i} ordered_has_4={no in ordered_ids}")
+
+    return (trio_text, axis, axis_car_fr)
+
 
 
 
