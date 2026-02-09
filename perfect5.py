@@ -3536,21 +3536,29 @@ try:
     import statistics
 
     # 1) ランキングに使うスコア（anchor_score優先）
-    if "anchor_score" in globals():
-        _scores_for_rank = {}
-        for n in active_cars:
-            nn = int(n)
+  # ★ここを差し替え：globals()["scores"] ではなく “根本スコア(anchor_score)” を優先して使う
+_scores_for_rank = {}
+
+# 1) 優先：anchor_score（active_cars 全員ぶん）
+if "anchor_score" in globals() and callable(globals().get("anchor_score")):
+    for n in active_cars:
+        nn = int(n)
+        try:
+            _scores_for_rank[nn] = max(0.0, float(anchor_score(nn)))
+        except Exception:
+            _scores_for_rank[nn] = 0.0
+
+# 2) フォールバック：従来の scores（anchor_score が無い/壊れている/空の時だけ補完）
+if not _scores_for_rank:
+    for k, v in (globals().get("scores", {}) or {}).items():
+        ks = str(k).strip()
+        if ks.isdigit():
             try:
-                _scores_for_rank[nn] = float(anchor_score(nn))
+                _scores_for_rank[int(ks)] = max(0.0, float(v))
             except Exception:
-                _scores_for_rank[nn] = 0.0
-    else:
-        # フォールバック（従来globals()["scores"]）
-        _scores_for_rank = {}
-        for k, v in (globals().get("scores", {}) or {}).items():
-            ks = str(k).strip()
-            if ks.isdigit():
-                _scores_for_rank[int(ks)] = float(v)
+                _scores_for_rank[int(ks)] = 0.0
+
+
 
     # 2) 欠損・None・NaN を「平均との差し替え」で埋める（4が落ちる対策）
     _tmp_vals = []
