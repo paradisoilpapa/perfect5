@@ -3684,48 +3684,37 @@ try:
         # デバッグ：6パターン詳細も出すなら True
         SHOW_DEBUG_6PATTERNS = False
 
+        # --- 追加：単騎と3車3番手を事前抽出（all_linesから） ---
+        _singletons = set()
+        _tail3 = set()
+        for ln in (all_lines or []):
+            ds = _digits_of_line(ln)
+            if len(ds) == 1:
+                _singletons.add(str(ds[0]))
+            elif len(ds) == 3:
+                _tail3.add(str(ds[2]))
 
+        outs = []
+        for _pname, _svr in _PATTERNS:
+            _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
 
-       # --- 追加：単騎と3車3番手を事前抽出（all_linesから） ---
-_singletons = set()
-_tail3 = set()
-for ln in (all_lines or []):
-    ds = _digits_of_line(ln)
-    if len(ds) == 1:
-        _singletons.add(str(ds[0]))
-    elif len(ds) == 3:
-        _tail3.add(str(ds[2]))
+            # 逆流先頭パターンだけ「先頭ボーナス」をON
+            is_escape_mode = (_pname in _escape_patterns)
+            hb = 0.20 if is_escape_mode else 0.00
 
-outs = []
-for _pname, _svr in _PATTERNS:
-    _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
-
-    # 逆流先頭パターンだけ「先頭ボーナス」をON
-    is_escape_mode = (_pname in _escape_patterns)
-    hb = 0.20 if is_escape_mode else 0.00
-
-    _finish = _knockout_finish_from_queue(
-        _finaljump_queue,
-        _score_map,
-        avg,
-        k=0.25,
-        head_boost=hb,
-        pos_lambda=0.08,        # まずはこれで
-        pos_mode="harmonic",    # 先頭偏重を抑える
-        singleton_set=_singletons,
-        tail3_set=_tail3,
-        tail3_bonus=0.02,
-        singleton_head_pen=0.02
-    )
-
-    outs.append({
-        "pattern": _pname,
-        "jan_queue": _finaljump_queue,
-        "finish_order": _finish,
-        "used_lines": _used,
-    })
-
-
+            _finish = _knockout_finish_from_queue(
+                _finaljump_queue,
+                _score_map,
+                avg,
+                k=0.25,
+                head_boost=hb,
+                pos_lambda=0.08,        # まずはこれで
+                pos_mode="harmonic",    # 先頭偏重を抑える
+                singleton_set=_singletons,
+                tail3_set=_tail3,
+                tail3_bonus=0.02,
+                singleton_head_pen=0.02
+            )
 
             outs.append({
                 "pattern": _pname,
@@ -3780,6 +3769,7 @@ except Exception:
     pass
 
 note_sections.append("")  # 空行
+
 
 
 
