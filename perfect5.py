@@ -8,6 +8,124 @@ from statistics import mean, pstdev
 from itertools import combinations
 from datetime import datetime, date, time, timedelta, timezone
 
+# ==============================
+# 偏差値T（車番→T）自動検出ユーティリティ
+# ==============================
+def _extract_car_t_map_from_obj(obj):
+    """
+    obj から「車番→偏差値T(dict)」を取り出す。
+    - dict: {1: 52.3, "4": 47.1, ...}
+    - Series: indexが車番
+    - 1列DataFrame: indexが車番
+    """
+    if obj is None:
+        return None
+
+    # dict
+    if isinstance(obj, dict) and obj:
+        out = {}
+        for k, v in obj.items():
+            ks = "".join(ch for ch in str(k) if ch.isdigit())
+            if not ks:
+                continue
+            try:
+                out[ks] = 50.0 if v is None else float(v)
+            except Exception:
+                continue
+        return out if out else None
+
+    # pandas Series
+    if isinstance(obj, pd.Series) and not obj.empty:
+        out = {}
+        for k, v in obj.to_dict().items():
+            ks = "".join(ch for ch in str(k) if ch.isdigit())
+            if not ks:
+                continue
+            try:
+                out[ks] = 50.0 if v is None else float(v)
+            except Exception:
+                continue
+        return out if out else None
+
+    # pandas DataFrame（1列だけ偏差値が入ってる想定）
+    if isinstance(obj, pd.DataFrame) and (not obj.empty):
+        if obj.shape[1] >= 1:
+            s = obj.iloc[:, 0]
+            return _extract_car_t_map_from_obj(s)
+
+    return None
+
+
+def _looks_like_t_map(tmap, active_cars=None):
+    if not isinstance(tmap, dict) or not tmap:
+        return False
+
+    keys = [k for k in tmap.keys() if str(k).isdigit()]
+    if len(keys) < 4:
+        return False
+
+    vals = []
+    for k in keys:
+        try:
+            vals.append(float(tmap[k]))
+        except Exception:
+            pass
+
+    if len(vals) < 4:
+        return False
+
+    in_range = [v for v in vals if 10.0 <= v <= 90.0]
+    if len(in_range) / len(vals) < 0.8:
+        return False
+
+    m = sum(in_range) / len(in_range)
+    if not (25.0 <= m <= 75.0):
+        return False
+
+    if active_cars:
+        ac = [str(x) for x in active_cars if str(x).isdigit()]
+        if ac:
+            hit = sum(1 for x in ac if x in tmap)
+            if hit / len(ac) < 0.6:
+                return False
+
+    return True
+
+
+def _pick_hensachi_source_from_globals(g, active_cars=None):
+    """
+    globals() から偏差値Tソースを自動選別して (tmap, name, score) を返す
+    """
+    best = None
+    best_name = None
+    best_score = -1.0
+
+    for name, obj in g.items():
+        if name.startswith("__"):
+            continue
+        tmap = _extract_car_t_map_from_obj(obj)
+        if not tmap:
+            continue
+        if not _looks_like_t_map(tmap, active_cars=active_cars):
+            continue
+
+        ac = [str(x) for x in (active_cars or []) if str(x).isdigit()]
+        hit = sum(1 for x in ac if x in tmap) if ac else len(tmap)
+        coverage = (hit / len(ac)) if ac else 0.5
+
+        vals = [float(v) for v in tmap.values() if isinstance(v, (int, float))]
+        uniq = len(set(round(v, 2) for v in vals)) / max(1, len(vals))
+
+        score = coverage * 0.7 + uniq * 0.3
+
+        if score > best_score:
+            best_score = score
+            best = tmap
+            best_name = name
+
+    return best, best_name, best_score
+
+
 # =========================================================
 # 必須：グローバル共通部品（参照より先に必ず定義）
 # =========================================================
@@ -3849,42 +3967,41 @@ if "_knockout_finish_from_queue" not in globals():
         avg,
         k=0.25,
         head_boost=0.0,
-        pos_lambda=0.12,          # ←位置影響を少し強める（差が出やすい）
+        pos_lambda=0.12,
         pos_mode="harmonic",
         singleton_set=None,
         tail3_set=None,
         tail3_bonus=0.02,
         singleton_head_pen=0.02
     ):
+        # キューは数字だけ（"4" とか）
         q = [str(x) for x in (finaljump_queue or []) if str(x).isdigit()]
-        cars_in_map = set(str(x) for x in score_map.keys())
 
-        # キューに居ない車も「最後方扱い」で入れる（←4が消える問題を潰す）
-        # これで「隊列に出てこないから低すぎる」を防げる
-        seen = set()
+        # score_map は "車番文字列"→T を想定
+        cars_in_map = sorted({str(x) for x in score_map.keys() if str(x).isdigit()}, key=lambda x: int(x))
+        if not cars_in_map:
+            raise ValueError("偏差値T map が空です（車番キーが取れていません）")
+
+        # キューに居ない車も最後尾扱いで必ず採用（4が消える問題を潰す）
         first_pos = {}
-
         for i, c in enumerate(q):
             if c not in first_pos:
                 first_pos[c] = i
-                seen.add(c)
 
-        # キューにいない車は最後尾に追加
         tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
-        for c in sorted(list(cars_in_map), key=lambda x: int(x)):
+        for c in cars_in_map:
             if c not in first_pos:
                 first_pos[c] = tail_pos
 
         singleton_set = set(str(x) for x in (singleton_set or set()))
         tail3_set = set(str(x) for x in (tail3_set or set()))
-        avg = float(avg) if (avg and float(avg) != 0.0) else 50.0
+        avg = float(avg) if (avg is not None) else 50.0
 
         scored = []
         for c, i in first_pos.items():
-            base = float(score_map.get(str(c), 50.0))
+            base = float(score_map.get(c, 50.0))
 
-            # 偏差値Tは「平均との差」で使う（←これが最重要：4が高Tなら上がる）
-            # 例：T=55, avg=47.1 なら +7.9
+            # 偏差値Tは「平均との差」で効かせる（4がT高いなら上がる）
             dev = (base - avg)
 
             # 位置係数（前ほど有利）
@@ -3903,26 +4020,16 @@ if "_knockout_finish_from_queue" not in globals():
             if c in tail3_set:
                 bonus += float(tail3_bonus)
 
-            # final：偏差値差(dev)を主役に、位置係数で調整
             final = (dev * (1.0 + k) * pos_factor) + bonus
-
-            scored.append((c, final, i, base))
+            scored.append((c, final, i))
 
         scored.sort(key=lambda t: (t[1], -t[2]), reverse=True)
-        return [c for c, _, _, _ in scored]
+        return [c for c, _, _ in scored]
 
-# ----------------- ここから本体（偏差値T固定） -----------------
-try:
-    all_lines = globals().get("all_lines") or []
-
-    # 1) 偏差値ソースを自動検出する（dict / pd.Series / 1列DataFrame 対応）
+# ---------------------------------------------------------
+# 偏差値Tソース自動検出（dict / pd.Series / 1列DataFrame 対応）
+# ---------------------------------------------------------
 def _extract_car_t_map_from_obj(obj):
-    """
-    obj から「車番→偏差値T(dict)」を取り出す。
-    - dict: {1: 52.3, "4": 47.1, ...}
-    - Series: indexが車番
-    - 1列DataFrame: indexが車番
-    """
     if obj is None:
         return None
 
@@ -3940,7 +4047,7 @@ def _extract_car_t_map_from_obj(obj):
         return out if out else None
 
     # pandas Series
-    if isinstance(obj, pd.Series) and not obj.empty:
+    if isinstance(obj, pd.Series) and (not obj.empty):
         out = {}
         for k, v in obj.to_dict().items():
             ks = "".join(ch for ch in str(k) if ch.isdigit())
@@ -3952,28 +4059,19 @@ def _extract_car_t_map_from_obj(obj):
                 continue
         return out if out else None
 
-    # pandas DataFrame（1列だけ偏差値が入ってる想定）
+    # pandas DataFrame（1列に寄せる）
     if isinstance(obj, pd.DataFrame) and (not obj.empty):
-        # 1列に寄せる
-        if obj.shape[1] >= 1:
-            s = obj.iloc[:, 0]
-            return _extract_car_t_map_from_obj(s)
+        s = obj.iloc[:, 0]
+        return _extract_car_t_map_from_obj(s)
 
     return None
 
-
 def _looks_like_t_map(tmap, active_cars=None):
-    """
-    偏差値Tっぽさ判定：
-    - keyが数字文字列
-    - 値が 20〜80 あたり中心
-    - active_cars があれば、その大半が含まれる
-    """
     if not isinstance(tmap, dict) or not tmap:
         return False
 
     keys = [k for k in tmap.keys() if str(k).isdigit()]
-    if len(keys) < 4:  # 少なすぎるものは除外
+    if len(keys) < 4:
         return False
 
     vals = []
@@ -3982,16 +4080,13 @@ def _looks_like_t_map(tmap, active_cars=None):
             vals.append(float(tmap[k]))
         except Exception:
             pass
-
     if len(vals) < 4:
         return False
 
-    # だいたい偏差値レンジか
     in_range = [v for v in vals if 10.0 <= v <= 90.0]
     if len(in_range) / len(vals) < 0.8:
         return False
 
-    # 平均が偏差値らしいか（極端に小さい/大きいの排除）
     m = sum(in_range) / len(in_range)
     if not (25.0 <= m <= 75.0):
         return False
@@ -4005,70 +4100,58 @@ def _looks_like_t_map(tmap, active_cars=None):
 
     return True
 
+def _pick_best_hensachi_from_globals(g, active_cars):
+    best = None
+    best_name = None
+    best_score = -1.0
 
-# --- globals() から最もそれっぽいものを探す ---
-active_cars = globals().get("active_cars") or []
-best = None
-best_name = None
-best_score = -1.0
-
-for name, obj in globals().items():
-    # よくあるゴミを除外
-    if name.startswith("__"):
-        continue
-
-    tmap = _extract_car_t_map_from_obj(obj)
-    if not tmap:
-        continue
-
-    if not _looks_like_t_map(tmap, active_cars=active_cars):
-        continue
-
-    # スコアリング：active_cars にどれだけ合うか優先
-    ac = [str(x) for x in active_cars if str(x).isdigit()]
-    hit = sum(1 for x in ac if x in tmap) if ac else len(tmap)
-    coverage = (hit / len(ac)) if ac else 0.5
-
-    # 値の分散っぽさ（単調な50だらけは弱く）
-    vals = [float(v) for v in tmap.values() if isinstance(v, (int, float, float))]
-    uniq = len(set(round(v, 2) for v in vals)) / max(1, len(vals))
-
-    score = coverage * 0.7 + uniq * 0.3
-
-    if score > best_score:
-        best_score = score
-        best = tmap
-        best_name = name
-
-_tsrc = best
-if _tsrc is None:
-    raise NameError("偏差値Tソースが自動検出できません。偏差値を作っている変数（dict/Series/DF）が存在するか確認してください。")
-
-# 2) score_map は「車番→T」。キーは文字列統一
-_score_map = dict(_tsrc)
-
-# 3) avg は平均偏差値
-avg = sum(_score_map.values()) / len(_score_map)
-
-# ※確認したい時だけ：どの変数を拾ったか出す（普段はコメントアウト推奨）
-# note_sections.append(f"\n[DEV_PICKED] {best_name} (score={best_score:.3f})")
-
-
-    # 2) score_map は「車番→T」。キーは文字列統一（"4" で取れるように）
-    _score_map = {}
-    for k, v in _tsrc.items():
-        ks = "".join(ch for ch in str(k) if ch.isdigit())
-        if not ks:
+    ac = [str(x) for x in (active_cars or []) if str(x).isdigit()]
+    for name, obj in g.items():
+        if name.startswith("__"):
             continue
-        _score_map[ks] = 50.0 if v is None else float(v)
+        # 明らかに関係ない巨大オブジェクトも避ける
+        if name in ("st", "pd", "np", "math", "json", "requests", "re", "unicodedata"):
+            continue
 
+        tmap = _extract_car_t_map_from_obj(obj)
+        if not tmap:
+            continue
+        if not _looks_like_t_map(tmap, active_cars=ac):
+            continue
+
+        hit = sum(1 for x in ac if x in tmap) if ac else len(tmap)
+        coverage = (hit / len(ac)) if ac else 0.5
+
+        vals = [float(v) for v in tmap.values()]
+        uniq = len(set(round(v, 2) for v in vals)) / max(1, len(vals))
+
+        score = coverage * 0.7 + uniq * 0.3
+        if score > best_score:
+            best_score = score
+            best = tmap
+            best_name = name
+
+    return best, best_name, best_score
+
+# ----------------- ここから本体（偏差値T固定） -----------------
+try:
+    all_lines = globals().get("all_lines") or []
+    active_cars = globals().get("active_cars") or []
+
+    # 1) 偏差値Tソースを自動検出（無いなら落とす）
+    _tsrc, _picked_name, _picked_score = _pick_best_hensachi_from_globals(globals(), active_cars=active_cars)
+    if _tsrc is None:
+        raise NameError("偏差値Tソースが自動検出できません。偏差値を作っている変数（dict/Series/DF）が存在するか確認してください。")
+
+    # 2) score_map は「車番文字列→T」
+    _score_map = dict(_tsrc)
     if not _score_map:
-        raise ValueError("偏差値Tのdictはあるが、車番キーを抽出できません（keyが車番になっているか確認）")
+        raise ValueError("偏差値T map が空です（検出はしたが中身がありません）")
 
-    # 3) avg は「平均偏差値」
+    # 3) avg は平均偏差値
     avg = sum(_score_map.values()) / len(_score_map)
 
-    # 4) 単騎 / 3車3番手（line入力から推定）
+    # 4) 単騎 / 3車3番手
     _singletons = set()
     _tail3 = set()
     for ln in all_lines:
@@ -4085,23 +4168,23 @@ avg = sum(_score_map.values()) / len(_score_map)
     for _pname, _svr in _PATTERNS:
         _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
 
-        # 逆流系だけ差を出す（あなたの希望）
         hb = 0.35 if (_pname in _escape_patterns) else 0.10
+        kk = 0.30 if (_pname in _escape_patterns) else 0.25
+        pl = 0.12 if (_pname in _escape_patterns) else 0.10
 
         _finish = _knockout_finish_from_queue(
             _finaljump_queue,
             _score_map,
             avg,
-            k=0.30 if (_pname in _escape_patterns) else 0.25,
+            k=kk,
             head_boost=hb,
-            pos_lambda=0.12 if (_pname in _escape_patterns) else 0.10,
+            pos_lambda=pl,
             pos_mode="harmonic",
             singleton_set=_singletons,
             tail3_set=_tail3,
             tail3_bonus=0.02,
             singleton_head_pen=0.02
         )
-
         outs.append({"pattern": _pname, "finish_order": _finish})
 
     def _pair_by_main(_outs):
