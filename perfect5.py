@@ -3437,7 +3437,9 @@ return (trio_text, axis, axis_car_fr)
 # === 想定FRをラインごとに作り、買目テキストを確定（他の出力は維持） ===
 def generate_tesla_bets(flow, lines_str, marks_any, scores):
     flow = dict(flow or {})
-    scores = {int(k): float(v) for k, v in (scores or {}).items() if str(k).isdigit()}
+
+    # scores は「印着内率」を渡している前提で、ここで intキーに確定する
+    hens_i = {int(k): float(v) for k, v in (scores or {}).items() if str(k).isdigit()}
 
     # 印正規化（表示用）
     marks = _free_norm_marks(marks_any)
@@ -3447,8 +3449,8 @@ def generate_tesla_bets(flow, lines_str, marks_any, scores):
     Uv   = float(flow.get("U", 0.0) or 0.0)
     lines = [list(map(int, ln)) for ln in (flow.get("lines") or [])]
 
-    # ★ 表示用ラインFR（0.000対策入り）
-    line_fr_map = _build_line_fr_map(lines, scores, FRv)
+    # ★ 表示用ラインFR（0.000対策入り）→ 第2引数は必ず hens_i
+    line_fr_map = _build_line_fr_map(lines, hens_i, FRv)
 
     # --- 順流/渦/逆流ライン（flow から優先。空なら“ライン強さ”で補完）---
     FR_line  = flow.get("FR_line")  or []
@@ -3457,14 +3459,13 @@ def generate_tesla_bets(flow, lines_str, marks_any, scores):
 
     def _strength(ln) -> float:
         try:
-            return float(sum(scores.get(int(x), 0.0) for x in (ln or [])))
+            return float(sum(hens_i.get(int(x), 0.0) for x in (ln or [])))
         except Exception:
             return -1e9
 
     def _tie_key(ln) -> str:
         return "".join(map(str, ln or []))
 
-    # どうしても空なら、強さ最大＝順流、強さ最小＝逆流、残り最大＝渦（◎は使わない）
     if (not FR_line) and lines:
         FR_line = max(lines, key=lambda ln: (_strength(ln), _tie_key(ln)))
 
@@ -3477,7 +3478,9 @@ def generate_tesla_bets(flow, lines_str, marks_any, scores):
         VTX_line = max(others, key=lambda ln: (_strength(ln), _tie_key(ln))) if others else []
 
     # ★買い目は carFR順位フォーマットをそのまま採用
-    trio_text, axis_id, axis_fr = trio_free_completion(scores, marks, flow_ctx=flow)
+    # trio_free_completion() 側が「印着内率」を scores として受け取る前提なら hens_i を渡す
+    trio_text, axis_id, axis_fr = trio_free_completion(hens_i, marks, flow_ctx=flow)
+
     note_lines = ["【買い目】", f"三連複：{trio_text}" if trio_text not in (None, "—") else "三連複：—"]
 
     return {
@@ -3492,6 +3495,7 @@ def generate_tesla_bets(flow, lines_str, marks_any, scores):
         "line_fr_map": line_fr_map,
         "note": "\n".join(note_lines),
     }
+
 
 # ---------- 3) 安全ラッパ ----------
 def _safe_flow(lines_str, marks, scores):
