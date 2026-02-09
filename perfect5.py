@@ -3656,6 +3656,39 @@ try:
                     "score": float(_scores_for_rank.get(ino, 0.0) or 0.0),
                 })
 
+def _norm_int_float_map(d):
+    out = {}
+    for k, v in (d or {}).items():
+        try:
+            out[int(k)] = float(v)
+        except Exception:
+            pass
+    return out
+
+def _get_rate(d, no, default=0.0):
+    try:
+        ino = int(no)
+    except Exception:
+        return default
+    if d is None:
+        return default
+    if ino in d:
+        return float(d[ino])
+    sk = str(ino)
+    if sk in d:
+        try:
+            return float(d[sk])
+        except Exception:
+            return default
+    return default
+
+# ★ここ：carFR×印着内率の rows を並べ替える直前で正規化
+hens = _norm_int_float_map(hens)
+
+_vals = [v for v in hens.values() if v is not None]
+hens_default = float(np.mean(_vals)) if len(_vals) else 0.0
+
+        
         # スコア順に並べ直して順位を振り直す
         _weighted_rows = sorted(_weighted_rows, key=lambda r: float(r.get("score", 0.0) or 0.0), reverse=True)
         for i, r in enumerate(_weighted_rows, 1):
