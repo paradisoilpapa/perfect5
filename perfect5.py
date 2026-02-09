@@ -1819,16 +1819,7 @@ df_sorted_wo = pd.DataFrame({
 velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
                      df_sorted_wo["合計_SBなし"].round(3).tolist()))
 
-# ==============================
-# ★ レース内T偏差値 → 印 → 買い目 → note出力（2車系対応＋会場個性浸透版）
-# ==============================
-import math
-import numpy as np
-import pandas as pd
-import streamlit as st
 
-import re
-from typing import List
 
 def parse_line_str(line_str: str) -> List[List[int]]:
     s = (line_str or "").strip()
@@ -2180,12 +2171,6 @@ if "α" not in result_marks:
         reasons[alpha_pick] = reasons.get(alpha_pick, "α（フォールバック：禁止条件全滅→最弱を採用）")
 
 
-# -*- coding: utf-8 -*-
-import streamlit as st
-import numpy as np
-import pandas as pd
-import math
-from statistics import mean, pstdev
 
 
 # =========================
