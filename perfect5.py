@@ -3441,16 +3441,21 @@ for ln in all_lines:
     if ln == _FR_line or ln == _VTX_line or ln == _U_line:
         continue
     note_sections.append(f"　　　その他ライン {_free_fmt_nums(ln)}：想定FR={_line_fr_val(ln):.3f}")
-# === carFR順位（表示） ===
+# --- carFR順位（表示） ---
 try:
     import re
     import statistics
 
-    _scores_for_rank = {
-        int(k): float(v)
-        for k, v in (globals().get("scores", {}) or {}).items()
-        if str(k).isdigit()
-    }
+    # ★ここを差し替え：globals()["scores"] ではなく “根本スコア” を使う
+    if "anchor_score" in globals():
+        _scores_for_rank = {int(n): float(anchor_score(int(n))) for n in active_cars}
+    else:
+        # フォールバック（従来通り）
+        _scores_for_rank = {
+            int(k): float(v)
+            for k, v in (globals().get("scores", {}) or {}).items()
+            if str(k).isdigit()
+        }
 
     _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(
         all_lines,
@@ -3470,6 +3475,7 @@ try:
 
 except Exception:
     pass
+
 
 
 
