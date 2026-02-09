@@ -3544,12 +3544,9 @@ try:
         for i, r in enumerate(_weighted_rows, 1):
             r["final_rank"] = i
 
-        note_sections.append("\n【carFR×印着内率スコア順位】")
-        for r in _weighted_rows:
-            note_sections.append(f"{r['final_rank']}位：{r['car_no']} (スコア={r['score']:.6f})")
-
 except Exception:
     pass
+
 
 
 
