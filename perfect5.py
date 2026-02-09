@@ -3535,87 +3535,41 @@ try:
     import re
     import statistics
 
-    # 1) ランキングに使うスコア（anchor_score優先）
-  # ★ここを差し替え：globals()["scores"] ではなく “根本スコア(anchor_score)” を優先して使う
-_scores_for_rank = {}
+    # ★ここを差し替え：globals()["scores"] ではなく “根本スコア(anchor_score)” を優先して使う
+    _scores_for_rank = {}
 
-# 1) 優先：anchor_score（active_cars 全員ぶん）
-if "anchor_score" in globals() and callable(globals().get("anchor_score")):
-    for n in active_cars:
-        nn = int(n)
-        try:
-            _scores_for_rank[nn] = max(0.0, float(anchor_score(nn)))
-        except Exception:
-            _scores_for_rank[nn] = 0.0
-
-# 2) フォールバック：従来の scores（anchor_score が無い/壊れている/空の時だけ補完）
-if not _scores_for_rank:
-    for k, v in (globals().get("scores", {}) or {}).items():
-        ks = str(k).strip()
-        if ks.isdigit():
-            try:
-                _scores_for_rank[int(ks)] = max(0.0, float(v))
-            except Exception:
-                _scores_for_rank[int(ks)] = 0.0
-
-
-
-    # 2) 欠損・None・NaN を「平均との差し替え」で埋める（4が落ちる対策）
-    _tmp_vals = []
-    for n in active_cars:
-        nn = int(n)
-        v = _scores_for_rank.get(nn, None)
-        try:
-            vf = float(v)
-            if vf == vf:  # NaN除外
-                _tmp_vals.append(vf)
-        except Exception:
-            pass
-    _fill = (sum(_tmp_vals) / len(_tmp_vals)) if _tmp_vals else 0.0
-
-    for n in active_cars:
-        nn = int(n)
-        v = _scores_for_rank.get(nn, None)
-        ok = True
-        try:
-            vf = float(v)
-            if vf != vf:  # NaN
-                ok = False
-        except Exception:
-            ok = False
-        if not ok:
-            _scores_for_rank[nn] = float(_fill)
-
-    # 3) DEBUG（必要なら True に）
-    SHOW_DEBUG_ANCHOR = False
-    if SHOW_DEBUG_ANCHOR and ("anchor_score" in globals()):
-        tmp = []
+    # 1) 優先：anchor_score（active_cars 全員ぶん）
+    if "anchor_score" in globals() and callable(globals().get("anchor_score")):
         for n in active_cars:
             nn = int(n)
             try:
-                vv = float(anchor_score(nn))
+                _scores_for_rank[nn] = max(0.0, float(anchor_score(nn)))
             except Exception:
-                vv = None
-            tmp.append((nn, vv))
-        note_sections.append("\n[DEBUG] anchor_score:")
-        note_sections.append(str(tmp))
-        note_sections.append(f"[DEBUG] fill={_fill}")
+                _scores_for_rank[nn] = 0.0
 
-    # 4) carFR順位 本体
+    # 2) フォールバック：従来の scores（anchor_score が無い/空の時だけ補完）
+    if not _scores_for_rank:
+        for k, v in (globals().get("scores", {}) or {}).items():
+            ks = str(k).strip()
+            if ks.isdigit():
+                try:
+                    _scores_for_rank[int(ks)] = max(0.0, float(v))
+                except Exception:
+                    _scores_for_rank[int(ks)] = 0.0
+
     _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(
         all_lines,
         _scores_for_rank,
         line_fr_map
     )
 
-    # 平均値（carFRテキストから）
     _vals = [float(x) for x in re.findall(r"\((\d+\.\d+)\)", _carfr_txt)]
     _avg = statistics.mean(_vals) if _vals else 0.0
     note_sections.append(f"\n平均値 {_avg:.5f}")
 
     _weighted_rows = compute_weighted_rank_from_carfr_text(_carfr_txt)
 
-    # 5) 表示欠落防止：active_cars を必ず全員出す（4が消える対策）
+    # --- 表示欠落を防ぐ保険：active_cars を必ず全員出す ---
     if _weighted_rows:
         present = {int(r["car_no"]) for r in _weighted_rows}
         for no in active_cars:
@@ -3632,14 +3586,13 @@ if not _scores_for_rank:
         for i, r in enumerate(_weighted_rows, 1):
             r["final_rank"] = i
 
-        # 表示
         note_sections.append("\n【carFR×印着内率スコア順位】")
         for r in _weighted_rows:
             note_sections.append(f"{r['final_rank']}位：{r['car_no']} (スコア={r['score']:.6f})")
 
 except Exception:
     pass
-pass
+
 
 
 
