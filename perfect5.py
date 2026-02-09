@@ -3604,7 +3604,53 @@ for ln in all_lines:
         continue
     note_sections.append(f"　　　その他ライン {_free_fmt_nums(ln)}：想定FR={_line_fr_val(ln):.3f}")
 
+# =========================================================
+# hens正規化 & rate取得（※ try の外に置く！）
+# =========================================================
+
+def _norm_int_float_map(d):
+    """
+    hens のキーが '1' / 1 どっちでも来る想定で、必ず int -> float に正規化する
+    """
+    out = {}
+    for k, v in (d or {}).items():
+        try:
+            out[int(k)] = float(v)
+        except Exception:
+            pass
+    return out
+
+def _get_rate(d, no, default=0.0):
+    """
+    d のキーが int / str どちらでも拾えるようにして rate を返す
+    """
+    try:
+        ino = int(no)
+    except Exception:
+        return float(default)
+
+    if not d:
+        return float(default)
+
+    if ino in d:
+        try:
+            return float(d[ino])
+        except Exception:
+            return float(default)
+
+    sk = str(ino)
+    if sk in d:
+        try:
+            return float(d[sk])
+        except Exception:
+            return float(default)
+
+    return float(default)
+
+
+# =========================================================
 # --- carFR順位（表示） ---
+# =========================================================
 try:
     import re
     import statistics
@@ -3619,7 +3665,6 @@ try:
                 nn = int(n)
             except Exception:
                 continue
-
             try:
                 _scores_for_rank[nn] = max(0.0, float(anchor_score(nn)))
             except Exception:
@@ -3651,145 +3696,47 @@ try:
     if _weighted_rows:
         present = set()
         try:
-            present = {int(r.get("car_no")) for r in _weighted_rows if str(r.get("car_no", "")).isdigit()}
-        except Exception:
-            present = set()
-
-        for no in (active_cars or []):
-            try:
-                ino = int(no)
-            except Exception:
-                continue
-
-# ==== hens正規化 & rate取得（先に定義してから使う） ====
-
-def _norm_int_float_map(d):
-    """
-    hens のキーが '1' / 1 どっちでも来る想定で、必ず int -> float に正規化する
-    """
-    out = {}
-    for k, v in (d or {}).items():
-        try:
-            out[int(k)] = float(v)
-        except Exception:
-            pass
-    return out
-
-def _get_rate(d, no, default=0.0):
-    """
-    d のキーが int / str どちらでも拾えるようにして rate を返す
-    """
-    try:
-        ino = int(no)
-    except Exception:
-        return float(default)
-
-    if not d:
-        return float(default)
-
-    # まず int で引く
-    if ino in d:
-        try:
-            return float(d[ino])
-        except Exception:
-            return float(default)
-
-    # 次に str でも引いてみる（念のため）
-    sk = str(ino)
-    if sk in d:
-        try:
-            return float(d[sk])
-        except Exception:
-            return float(default)
-
-    return float(default)
-
-    try:
-        ino = int(no)
-    except Exception:
-        return default
-    if d is None:
-        return default
-    if ino in d:
-        return float(d[ino])
-    sk = str(ino)
-    if sk in d:
-        try:
-            return float(d[sk])
-        except Exception:
-            return default
-    return default
-
-
-# --- carFR順位（表示） ---
-try:
-    import re
-    import statistics
-
-    _scores_for_rank = {}
-
-    # 1) 優先：anchor_score（active_cars 全員ぶん）
-    if ("anchor_score" in globals()) and callable(globals().get("anchor_score")):
-        for n in (active_cars or []):
-            try:
-                nn = int(n)
-            except Exception:
-                continue
-            try:
-                _scores_for_rank[nn] = max(0.0, float(anchor_score(nn)))
-            except Exception:
-                _scores_for_rank[nn] = 0.0
-
-    # 2) フォールバック：従来の scores
-    if not _scores_for_rank:
-        for k, v in (globals().get("scores", {}) or {}).items():
-            ks = str(k).strip()
-            if ks.isdigit():
-                try:
-                    _scores_for_rank[int(ks)] = max(0.0, float(v))
-                except Exception:
-                    _scores_for_rank[int(ks)] = 0.0
-
-    _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(
-        all_lines,
-        _scores_for_rank,
-        line_fr_map
-    )
-
-    _vals = [float(x) for x in re.findall(r"\((\d+\.\d+)\)", _carfr_txt)]
-    _avg = statistics.mean(_vals) if _vals else 0.0
-    note_sections.append(f"\n平均値 {_avg:.5f}")
-
-    _weighted_rows = compute_weighted_rank_from_carfr_text(_carfr_txt)
-
-    # --- 表示欠落を防ぐ保険：active_cars を必ず全員出す ---
-    if _weighted_rows:
-        present = set()
-        try:
             present = {int(r.get("car_no")) for r in _weighted_rows
                        if str(r.get("car_no", "")).isdigit()}
         except Exception:
             present = set()
 
         # ★ここで hens を必ず intキー化（「特定車だけ0」の主因）
-        hens = _norm_int_float_map(hens)
+        hens = _norm_int_float_map(globals().get("hens", {}))
 
-        _vals = [v for v in hens.values() if v is not None]
-        hens_default = float(np.mean(_vals)) if len(_vals) else 0.0
+        _hens_vals = [v for v in hens.values() if v is not None]
+        hens_default = float(np.mean(_hens_vals)) if len(_hens_vals) else 0.0
 
+        # 欠落分を追加（最低限必要な列だけ、既存の行構造に合わせる）
         for no in (active_cars or []):
             try:
                 ino = int(no)
             except Exception:
                 continue
 
-            # ここから先は、あなたの「欠落補完ロジック」を続けてOK
-            # 例：rate = _get_rate(hens, ino, hens_default)
-            # ...
+            if ino in present:
+                continue
+
+            # 例：hens（着内率等）を補完したいならここで拾う
+            rate = _get_rate(hens, ino, hens_default)
+
+            # 既存の _weighted_rows の列名に合わせて追加してくれ
+            # ここは「あなたの compute_weighted_rank_from_carfr_text の戻り列」に依存するので、
+            # 最低限壊れないように汎用キーで入れる（後で列名に合わせて調整可）
+            _weighted_rows.append({
+                "car_no": ino,
+                "score": float(_scores_for_rank.get(ino, 0.0)),
+                "hens": float(rate),
+            })
+
+            present.add(ino)
+
 except Exception as e:
-    st.exception(e)  # Streamlitならこれが一番楽（無ければ print(e) でもOK）
-
-
+    # Streamlitならこれが見やすい
+    try:
+        st.exception(e)
+    except Exception:
+        print(e)
 
 
 
