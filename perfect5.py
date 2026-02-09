@@ -3372,6 +3372,17 @@ def trio_free_completion(scores, marks_any, flow_ctx=None):
    # carFR順位
 _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
 
+# 例：スコア計算ループ内
+carfr = float((_carfr_map or {}).get(ino, 0.0) or 0.0)
+rate  = float(_get_rate(hens, ino, default=0.0))  # ここは現状のままでOK（調査用）
+score = carfr * rate
+
+if ino == 4:
+    note_sections.append(f"\n[DBG carFR×印着内率] no=4 carfr={carfr} rate={rate} score={score}")
+    note_sections.append(f"[DBG] hens_has_int4={ (hens is not None and 4 in hens) } hens_has_str4={ (hens is not None and '4' in hens) }")
+    note_sections.append(f"[DBG] carfr_has_4={ (_carfr_map is not None and 4 in _carfr_map) } active_has_4={ (active_cars is not None and 4 in [int(x) for x in active_cars if str(x).isdigit()]) }")
+
+
 def _norm_int_map(d, cast=float):
     out = {}
     for k, v in (d or {}).items():
