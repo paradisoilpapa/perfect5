@@ -1231,15 +1231,37 @@ for no in active_cars:
              finish_bonus(no))
     extra_bonus[no] = clamp(total, -0.10, +0.10)
 
-# ===== 会場個性を“個人スコア”に浸透：bank系補正を差し替え =====
-def bank_character_bonus(bank_angle, straight_length, prof_escape, prof_sashi):
+# ===== 会場個性を“個人スコア”に浸透：bank系補正（差し替え案） =====
+
+def bank_character_bonus(bank_angle, straight_length, bank_length, prof_escape, prof_sashi):
+    # 型ゆれ対策（Noneや文字列でも落ちにくく）
+    pe = float(prof_escape or 0.0)
+    ps = float(prof_sashi  or 0.0)
+
+    # venue_z_terms の引数に bank_length が必要ならここで渡す
     zL, zTH, dC = venue_z_terms(straight_length, bank_angle, bank_length)
+
+    # 会場の「素性」ベース（ここで一旦クリップ）
     base = clamp(0.06*zTH - 0.05*zL - 0.03*dC, -0.08, +0.08)
-    return round(base*float(prof_escape) - 0.5*base*float(prof_sashi), 3)
+
+    # 個人浸透：逃げはプラス寄与、差しはマイナス寄与（強すぎるなら 0.5 を調整）
+    out = base * pe - 0.5 * base * ps
+
+    # 最後に丸める（途中で丸めるとブレが増える）
+    return round(out, 3)
+
 
 def bank_length_adjust(bank_length, prof_oikomi):
-    dC = (+0.4 if bank_length>=480 else 0.0 if bank_length>=380 else -0.4)
-    return round(0.03*(-dC)*float(prof_oikomi), 3)
+    po = float(prof_oikomi or 0.0)
+    L = float(bank_length or 0.0)
+
+    # 周長カテゴリ（ここは現状のままでOK）
+    dC = (+0.4 if L >= 480 else 0.0 if L >= 380 else -0.4)
+
+    # 追い込みは「長い(=+0.4)ほど不利」なら -dC、逆なら +dC にする
+    out = 0.03 * (-dC) * po
+    return round(out, 3)
+
 
 # --- 安定度（着順分布）をT本体に入れるための重み（強化版） ---
 STAB_W_IN3  = 0.18   # 3着内の寄与
@@ -1635,10 +1657,11 @@ else:
         v_final = {}
 
 # --- 純SBなしランキング（KOまで／格上げ前）
-df_sorted_pure = pd.DataFrame({
-    "車番": list(v_final.keys()),
-    "合計_SBなし": [round(float(v_final[c]), 6) for c in v_final.keys()]
-}).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
+df_sorted_pure = (pd.DataFrame({
+    "車番": sorted([int(k) for k in v_final.keys()]),
+    "合計_SBなし": [round(float(v_final[int(c)]), 6) for c in sorted([int(k) for k in v_final.keys()])]
+}).sort_values("合計_SBなし", ascending=False).reset_index(drop=True))
+
 
 # ===== 印用（既存の安全弁を維持） =====
 FINISH_WEIGHT   = globals().get("FINISH_WEIGHT", 6.0)
@@ -1674,14 +1697,19 @@ SD_FORM = 0.28   # Balanced 既定
 SD_ENV  = 0.20
 
 # ENV = v_final（風・会場・周回疲労・個人補正・安定度 等を含む“Form以外”）
-_env_arr = np.array([float(v_final.get(n, np.nan)) for n in active_cars], dtype=float)
+# ENV = v_final を int キー前提に揃える
+_env_arr = np.array([float(v_final.get(int(n), np.nan)) for n in active_cars], dtype=float)
+
 _mask = np.isfinite(_env_arr)
 if int(_mask.sum()) >= 2:
-    mu_env = float(np.mean(_env_arr[_mask])); sd_env = float(np.std(_env_arr[_mask]))
+    mu_env = float(np.mean(_env_arr[_mask]))
+    sd_env = float(np.std(_env_arr[_mask]))
 else:
     mu_env, sd_env = 0.0, 1.0
-_den = (sd_env if sd_env > 1e-12 else 1.0)
-ENV_Z = {int(n): (float(v_final.get(n, mu_env)) - mu_env) / _den for n in active_cars}
+
+_den = sd_env if sd_env > 1e-12 else 1.0
+ENV_Z = {int(n): (float(v_final.get(int(n), mu_env)) - mu_env) / _den for n in active_cars}
+
 
 # FORM = form_T_map（T=50, SD=10）→ z 化
 FORM_Z = {int(n): (float(form_T_map.get(n, 50.0)) - 50.0) / 10.0 for n in active_cars}
@@ -1690,21 +1718,17 @@ FORM_Z = {int(n): (float(form_T_map.get(n, 50.0)) - 50.0) / 10.0 for n in active
 # --- ここで必ず定義してから使う（NameError防止） ---
 line_sb_enable = bool(globals().get("line_sb_enable", (race_class != "ガールズ")))
 
-def _pos_idx(no:int) -> int:
-    g = car_to_group.get(no, None)
+def _pos_idx(no: int) -> int:
+    g = car_to_group.get(no)
     if g is None or g not in line_def:
-        return 4  # ←単騎/不明は最後方扱い（POS_BONUS[4] を食わせる）
-    grp = line_def[g]
-    try:
-        return max(0, int(grp.index(no)))
-    except Exception:
-        return 4
+        return 4  # 単騎/不明は最後方（POS_BONUS[4]）
 
-    grp = line_def[g]
+    grp = line_def[g]  # 例: [5,2,6] みたいな並び
     try:
-        return max(0, int(grp.index(no)))
-    except Exception:
-        return 0
+        return max(0, grp.index(no))
+    except ValueError:
+        return 4  # グループに居ないなら最後方扱い
+
 
 bonus_init, _ = compute_lineSB_bonus(
     line_def, S, B,
