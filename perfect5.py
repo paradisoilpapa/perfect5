@@ -3372,12 +3372,39 @@ def trio_free_completion(scores, marks_any, flow_ctx=None):
    # carFR順位
 _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
 
-# ★[FIX] _carfr_map のキー型ゆれ（"4" vs 4）をここで統一
-_carfr_map = {
-    int(k): float(v)
-    for k, v in (_carfr_map or {}).items()
-    if str(k).isdigit()
-}
+def _norm_int_map(d, cast=float):
+    out = {}
+    for k, v in (d or {}).items():
+        try:
+            ik = int(k)
+            out[ik] = cast(v)
+        except Exception:
+            pass
+    return out
+
+def _get_num(d, no, default=0.0):
+    """キー型ゆれ（int/str）を両対応で吸収"""
+    try:
+        ino = int(no)
+    except Exception:
+        return default
+    for k in (ino, str(ino)):
+        if d is not None and k in d:
+            try:
+                return float(d[k])
+            except Exception:
+                return default
+    # intキーのdictの場合
+    if d is not None and ino in d:
+        try:
+            return float(d[ino])
+        except Exception:
+            return default
+    return default
+
+# ★ここが本丸：hens と carfr のキー型を統一
+hens = _norm_int_map(hens, cast=float)
+_carfr_map = _norm_int_map(_carfr_map, cast=float)
 
 if not _carfr_rank or len(_carfr_rank) < 3:
     return ("—", None, None)
@@ -3390,8 +3417,10 @@ if len(opps) < 2:
 
 mid = "".join(map(str, opps))
 trio_text = f"{axis}-{mid}-{mid}"
-axis_car_fr = (_carfr_map or {}).get(axis, None)
+
+axis_car_fr = _get_num(_carfr_map, axis, default=None)
 return (trio_text, axis, axis_car_fr)
+
 
 
 # === 想定FRをラインごとに作り、買目テキストを確定（他の出力は維持） ===
