@@ -3605,31 +3605,35 @@ for ln in all_lines:
     note_sections.append(f"　　　その他ライン {_free_fmt_nums(ln)}：想定FR={_line_fr_val(ln):.3f}")
 
 # =========================================================
-# hens正規化 & rate取得（※ try の外に置く！）
+# hens正規化 & rate取得（※ try の外に置く！）  ※重複定義は1個に統一
 # =========================================================
 
+import re
+
 def _norm_int_float_map(d):
-    """
-    hens のキーが '1' / 1 どっちでも来る想定で、必ず int -> float に正規化する
-    """
+    """hens のキーが '1' / 1 どっちでも来る想定で、必ず int -> float に正規化する"""
     out = {}
     for k, v in (d or {}).items():
         try:
-            out[int(k)] = float(v)
+            # " 1" / "1番" / "１" みたいな混入も吸収（数字だけ拾う）
+            m = re.search(r"\d+", str(k))
+            if not m:
+                continue
+            out[int(m.group(0))] = float(v)
         except Exception:
             pass
     return out
 
 def _get_rate(d, no, default=0.0):
-    """
-    d のキーが int / str どちらでも拾えるようにして rate を返す
-    """
-    try:
-        ino = int(no)
-    except Exception:
-        return float(default)
-
+    """d のキーが int / str / 混入文字でも拾えるようにして rate を返す"""
     if not d:
+        return float(default)
+    try:
+        m = re.search(r"\d+", str(no))
+        if not m:
+            return float(default)
+        ino = int(m.group(0))
+    except Exception:
         return float(default)
 
     if ino in d:
@@ -3648,44 +3652,12 @@ def _get_rate(d, no, default=0.0):
     return float(default)
 
 
-# ==== hens正規化 & rate取得（try の外！） ====
-def _norm_int_float_map(d):
-    out = {}
-    for k, v in (d or {}).items():
-        try:
-            out[int(k)] = float(v)
-        except Exception:
-            pass
-    return out
+# =========================================================
+# --- carFR順位（表示） + 平均の分離（FR平均 / score平均） ---
+#   ★重要：CR/KOで使う平均は「score平均（avg_score）」に統一
+# =========================================================
 
-def _get_rate(d, no, default=0.0):
-    try:
-        ino = int(no)
-    except Exception:
-        return float(default)
-
-    if not d:
-        return float(default)
-
-    if ino in d:
-        try:
-            return float(d[ino])
-        except Exception:
-            return float(default)
-
-    sk = str(ino)
-    if sk in d:
-        try:
-            return float(d[sk])
-        except Exception:
-            return float(default)
-
-    return float(default)
-
-
-# --- carFR順位（表示） ---
 try:
-    import re
     import statistics
 
     _scores_for_rank = {}
@@ -3712,15 +3684,32 @@ try:
                 except Exception:
                     _scores_for_rank[int(ks)] = 0.0
 
+    # carFR ranking
     _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(
         all_lines,
         _scores_for_rank,
         line_fr_map
     )
 
-    _vals = [float(x) for x in re.findall(r"\((\d+\.\d+)\)", _carfr_txt)]
-    _avg = statistics.mean(_vals) if _vals else 0.0
-    note_sections.append(f"\n平均値 {_avg:.5f}")
+    # ---- (A) 表示用：FR平均（従来の「平均値 0.14287」系） ----
+    # ここは「レースFR」や「ラインFR」の平均を出したいなら、あなたの既存算出ロジック側で作るのが筋。
+    # ただしこのブロック内では触らず、既に上流で _avg がFR平均として作られている前提ならそれを表示。
+    avg_fr = None
+    if ("_avg" in globals()) and (_avg is not None):
+        try:
+            avg_fr = float(_avg)
+        except Exception:
+            avg_fr = None
+
+    if avg_fr is not None:
+        note_sections.append(f"\n平均値 {avg_fr:.5f}")
+
+    # ---- (B) CR/KO用：score平均（必ずスコア群から作る） ----
+    _score_vals = [float(v) for v in _scores_for_rank.values() if float(v) > 0.0]
+    avg_score = (sum(_score_vals) / len(_score_vals)) if _score_vals else 1.0
+
+    # デバッグ（必要なら残す）
+    # note_sections.append(f"\n[DBG] avg_fr={avg_fr} avg_score={avg_score:.6f}")
 
     # ★スコア出力（active_cars全員）
     pairs = []
@@ -3734,7 +3723,9 @@ try:
     pairs.sort(key=lambda x: (-x[1], x[0]))
     note_sections.append("\n【根本スコア（anchor_score優先）】")
     for i, (nn, sc) in enumerate(pairs, 1):
-        note_sections.append(f"{i}位：{nn}（score={sc:.6f}）")
+        # CRもここで見たいなら出せる（score/avg_score）
+        cr = (float(sc) / float(avg_score)) if float(avg_score) > 1e-12 else 0.0
+        note_sections.append(f"{i}位：{nn}（score={sc:.6f} / CR={cr:.3f}）")
 
     # 既存表示も残す
     note_sections.append("\n【carFR×印着内率スコア順位】")
@@ -3747,195 +3738,19 @@ except Exception as e:
         print(e)
 
 
-
-
-
-    
-
-
 # =========================================================
 # ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
 # ★ 予想最終順位（最終隊列×スコアを平均値係数でノックアウト）
-#    ※ 事前入力は増やさず、既存の all_lines / line_fr_map / _weighted_rows / _avg を使う
+#    ※ ここで使う avg は「FR平均」ではなく「score平均（avg_score）」に統一
 # =========================================================
 
-import math
-
-# ---------- 小ヘルパ ----------
-def _line_key_local(ln) -> str:
-    if ln is None:
-        return ""
-    if isinstance(ln, (list, tuple)):
-        return "".join(str(int(x)) for x in ln if str(x).isdigit())
-    return "".join(ch for ch in str(ln) if ch.isdigit())
-
-def _digits_of_line(ln):
-    if ln is None:
-        return []
-    if isinstance(ln, (list, tuple)):
-        out = []
-        for x in ln:
-            try:
-                xi = int(x)
-                if 1 <= xi <= 9:
-                    out.append(str(xi))
-            except Exception:
-                pass
-        return out
-    return [ch for ch in str(ln) if ch.isdigit()]
-
-def _line_fr_val_local(ln):
-    try:
-        return float((line_fr_map or {}).get(_line_key_local(ln), 0.0) or 0.0)
-    except Exception:
-        return 0.0
-
-def _arrow_format(seq):
-    return "先頭 → " + " → ".join([str(x) for x in (seq or [])]) + " → 最後方"
-
-
-# ---------- KO（隊列→最終順位） ----------
-def _knockout_finish_from_queue(
-    init_queue,
-    score_map,
-    avg,
-    k=0.25,
-    head_boost=0.0,
-    auto_k=True,
-    k_min=0.03,
-    k_max=0.25,
-    score_weight=1.0,
-    pos_lambda=0.08,
-    pos_mode="harmonic",
-    singleton_set=None,
-    tail3_set=None,
-    tail3_bonus=0.02,
-    singleton_head_pen=0.02
-):
-    cars = [str(c) for c in (init_queue or []) if str(c).isdigit()]
-    if not cars:
-        return sorted(list(score_map.keys()), key=lambda c: float(score_map.get(c, -1e9)), reverse=True)
-
-    n = len(cars)
-    pos = {c: i for i, c in enumerate(cars)}  # 0が先頭
-    avg = float(avg) if (avg is not None and float(avg) > 1e-12) else 1.0
-
-    def pos_norm(c):
-        return (pos.get(c, n - 1) / (n - 1)) if n > 1 else 0.0
-
-    # 能力（正規化スコア）
-    sc_norm = {}
-    for c in cars:
-        sc = float(score_map.get(c, 0.0) or 0.0)
-        sc_norm[c] = sc / avg
-
-    score_sorted = sorted(cars, key=lambda c: float(sc_norm.get(c, 0.0)), reverse=True)
-    top2 = set(score_sorted[:2])
-    top4 = set(score_sorted[:4])
-
-    # k自動
-    k_eff = float(k)
-    if auto_k:
-        vals = list(sc_norm.values())
-        m = sum(vals) / max(len(vals), 1)
-        var = sum((v - m) ** 2 for v in vals) / max(len(vals), 1)
-        sd = math.sqrt(var)
-        k_eff = float(k) * (sd / (sd + 0.15))
-        k_eff = max(float(k_min), min(float(k_max), k_eff))
-
-    # 位置点（平均値按分）
-    if pos_mode == "harmonic":
-        raw = [1.0 / (i + 1) for i in range(n)]          # 1, 1/2, 1/3...
-    else:
-        raw = [float(n - i) for i in range(n)]           # 先頭偏重（非推奨）
-    sraw = sum(raw) if sum(raw) > 1e-12 else 1.0
-    w_by_pos = [r / sraw for r in raw]                   # index0=先頭
-
-    singleton_set = singleton_set or set()
-    tail3_set = tail3_set or set()
-
-    def effective(c):
-        pn = pos_norm(c)
-        i  = pos.get(c, n - 1)
-
-        ability = float(score_weight) * float(sc_norm.get(c, 0.0))
-        boost   = float(head_boost) * (1.0 - pn)
-        base_pen = float(k_eff) * pn
-        overtake_pen = 0.12 * (pn ** 2)
-
-        pos_point = float(pos_lambda) * float(w_by_pos[i])
-
-        # 単騎ワープ抑制：単騎かつ先頭、かつスコア上位(2位以内)じゃない場合だけ抑える
-        single_pen = 0.0
-        if (c in singleton_set) and (i == 0) and (c not in top2):
-            single_pen = float(singleton_head_pen)
-
-        # 3車3番手救済：スコア上位(4位以内)なら微量加点
-        tail_bonus = 0.0
-        if (c in tail3_set) and (c in top4):
-            tail_bonus = float(tail3_bonus)
-
-        return ability + boost - base_pen - overtake_pen + pos_point - single_pen + tail_bonus
-
-    return sorted(cars, key=effective, reverse=True)
-
-
-# ---------- 6パターン隊列 ----------
-_PATTERNS = [
-    ("順流→渦→逆流", ("S", "V", "R")),
-    ("順流→逆流→渦", ("S", "R", "V")),
-    ("渦→順流→逆流", ("V", "S", "R")),
-    ("渦→逆流→順流", ("V", "R", "S")),
-    ("逆流→順流→渦", ("R", "S", "V")),
-    ("逆流→渦→順流", ("R", "V", "S")),
-]
-
-def _pick_svr_lines_by_fr(lines):
-    if not lines:
-        return ("", "", [])
-    ordered = sorted(list(lines), key=_line_fr_val_local, reverse=True)
-    s = ordered[0] if len(ordered) > 0 else ""
-    v = ordered[1] if len(ordered) > 1 else ""
-    r_list = ordered[2:] if len(ordered) > 2 else []
-    return (s, v, r_list)
-
-def _queue_for_pattern(lines, svr_order):
-    s_ln, v_ln, r_list = _pick_svr_lines_by_fr(lines)
-
-    q, seen = [], set()
-
-    def _add_line(ln):
-        nonlocal q, seen
-        if not ln:
-            return
-        for ch in _digits_of_line(ln):
-            if ch not in seen:
-                q.append(ch)
-                seen.add(ch)
-
-    for tag in svr_order:
-        if tag == "S":
-            _add_line(s_ln)
-        elif tag == "V":
-            _add_line(v_ln)
-        elif tag == "R":
-            r_ordered = sorted(list(r_list or []), key=_line_fr_val_local, reverse=True)
-            for ln in r_ordered:
-                _add_line(ln)
-
-    used = {
-        "S": _line_key_local(s_ln),
-        "V": _line_key_local(v_ln),
-        "R": [_line_key_local(x) for x in (r_list or [])],
-    }
-    return q, used
-
-
-# ---------- 実行部（ここだけ try/except） ----------
 try:
     if _weighted_rows:
         _score_map = {str(r["car_no"]): float(r["score"]) for r in _weighted_rows}
-        avg = float(_avg) if ("_avg" in globals() and _avg is not None) else 0.0
+
+        # ★ここが肝：avg は _avg(FR平均)を使わず、score_map の平均を使う
+        _sv = [float(v) for v in _score_map.values() if float(v) > 0.0]
+        avg = (sum(_sv) / len(_sv)) if _sv else 1.0
 
         _escape_patterns = ("逆流→順流→渦", "逆流→渦→順流")
         SHOW_DEBUG_6PATTERNS = False
@@ -3959,7 +3774,7 @@ try:
             _finish = _knockout_finish_from_queue(
                 _finaljump_queue,
                 _score_map,
-                avg,
+                avg,                 # ← score平均を分母にする
                 k=0.25,
                 head_boost=hb,
                 pos_lambda=0.08,
@@ -4023,6 +3838,7 @@ except Exception:
     pass
 
 note_sections.append("")
+
 
 
 
