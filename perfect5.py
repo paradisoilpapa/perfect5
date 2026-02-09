@@ -3731,11 +3731,12 @@ except Exception as e:
 
 # =========================================================
 # ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
-# ★ 予想最終順位（最終隊列×スコアを平均値係数でノックアウト）
-#    ※ _weighted_rows が無くても動くようにする（NameError防止込み）
+# ★ 予想最終順位（最終隊列×偏差値Tでノックアウト）
+#    ※ 偏差値が無いときは落とす（他スコアにフォールバックしない）
+#    ※ 根本スコア/着内率スコアの出力は一切しない
 # =========================================================
 
-# --- 0) 依存が無いと落ちるので、最低限の“生やし”を先にやる ---
+# --- 0) 依存が無いと落ちるので、最低限の“生やし” ---
 if "note_sections" not in globals() or note_sections is None:
     note_sections = []
 
@@ -3759,67 +3760,19 @@ if "_PATTERNS" not in globals() or not _PATTERNS:
         ("逆流→渦→順流", ["逆流", "渦", "順流"]),
     ]
 
-# ラインが「順流/渦/逆流」のどれかを返す（既存の変数があれば拾う）
-def _infer_line_zone(ln):
-    s = "".join(ch for ch in str(ln) if ch.isdigit())
-
-    # 1) いちばんありがちな辞書名を総当たりで拾う
-    for key in ("line_zone_map", "line_type_map", "line_class_map", "line_role_map"):
-        m = globals().get(key)
-        if isinstance(m, dict):
-            z = m.get(ln) or m.get(s) or m.get(str(ln))
-            if z in ("順流", "渦", "逆流"):
-                return z
-
-    # 2) 個別変数（順流ライン/逆流ライン/渦候補）っぽいのを拾う
-    flow = globals().get("flow_line") or globals().get("main_flow_line") or globals().get("jyunryu_line")
-    rev  = globals().get("reverse_line") or globals().get("gyakuryu_line")
-    vort = globals().get("vortex_line") or globals().get("uzu_line") or globals().get("candidate_vortex_line")
-
-    if flow is not None and "".join(ch for ch in str(flow) if ch.isdigit()) == s:
-        return "順流"
-    if rev is not None and "".join(ch for ch in str(rev) if ch.isdigit()) == s:
-        return "逆流"
-    if vort is not None and "".join(ch for ch in str(vort) if ch.isdigit()) == s:
-        return "渦"
-
-    # 3) 候補が複数リストの可能性
-    for key in ("vortex_lines", "uzu_lines", "candidate_vortex_lines"):
-        xs = globals().get(key)
-        if isinstance(xs, (list, tuple, set)):
-            if any("".join(ch for ch in str(x) if ch.isdigit()) == s for x in xs):
-                return "渦"
-
-    # 最後：分からなければ順流扱い（落とさないため）
-    return "順流"
-
-# ラインFR辞書を拾う（あれば使う・無ければ0扱い）
-def _get_line_fr(ln):
-    s = "".join(ch for ch in str(ln) if ch.isdigit())
-    for key in ("line_fr_map", "lineFR_map", "line_fr", "lineFR"):
-        m = globals().get(key)
-        if isinstance(m, dict):
-            v = m.get(ln) or m.get(s) or m.get(str(ln))
-            if v is not None:
-                try:
-                    return float(v)
-                except Exception:
-                    pass
-    return 0.0
-
-# --- ライン入力（"571" / 571 / [5,7,1] / ["5","7","1"] / "5-7-1" 等）を必ずキー化する ---
+# --- ライン入力を必ずキー化（listでもdict参照できるように） ---
 def _line_key(ln):
     if ln is None:
         return ""
     if isinstance(ln, (list, tuple, set)):
-        s = "".join(str(x) for x in ln if str(x).isdigit())
-        return s
-    s = "".join(ch for ch in str(ln) if ch.isdigit())
-    return s
+        return "".join(str(x) for x in ln if str(x).isdigit())
+    return "".join(ch for ch in str(ln) if ch.isdigit())
 
+# ラインが「順流/渦/逆流」のどれかを返す（既存の変数があれば拾う）
 def _infer_line_zone(ln):
     k = _line_key(ln)
 
+    # 1) 辞書候補
     for key in ("line_zone_map", "line_type_map", "line_class_map", "line_role_map"):
         m = globals().get(key)
         if isinstance(m, dict):
@@ -3827,6 +3780,7 @@ def _infer_line_zone(ln):
             if z in ("順流", "渦", "逆流"):
                 return z
 
+    # 2) 単体変数候補
     flow = globals().get("flow_line") or globals().get("main_flow_line") or globals().get("jyunryu_line")
     rev  = globals().get("reverse_line") or globals().get("gyakuryu_line")
     vort = globals().get("vortex_line") or globals().get("uzu_line") or globals().get("candidate_vortex_line")
@@ -3838,6 +3792,7 @@ def _infer_line_zone(ln):
     if vort is not None and _line_key(vort) == k:
         return "渦"
 
+    # 3) 候補リスト
     for key in ("vortex_lines", "uzu_lines", "candidate_vortex_lines"):
         xs = globals().get(key)
         if isinstance(xs, (list, tuple, set)):
@@ -3846,6 +3801,7 @@ def _infer_line_zone(ln):
 
     return "順流"
 
+# ラインFR辞書を拾う（あれば使う・無ければ0）
 def _get_line_fr(ln):
     k = _line_key(ln)
     for key in ("line_fr_map", "lineFR_map", "line_fr", "lineFR"):
@@ -3859,12 +3815,10 @@ def _get_line_fr(ln):
                     pass
     return 0.0
 
-
 # パターンに従って「ライン順」を決め、最終ジャン隊列を作る
 if "_queue_for_pattern" not in globals():
     def _queue_for_pattern(all_lines, svr_order):
         lines = list(all_lines or [])
-        # ゾーン→ライン群
         bucket = {"順流": [], "渦": [], "逆流": []}
         for ln in lines:
             z = _infer_line_zone(ln)
@@ -3873,7 +3827,6 @@ if "_queue_for_pattern" not in globals():
         used = []
         queue = []
 
-        # 指定順に、各ゾーン内はFR降順で並べる
         for z in (svr_order or ["順流", "渦", "逆流"]):
             xs = bucket.get(z, [])
             xs = sorted(xs, key=lambda x: _get_line_fr(x), reverse=True)
@@ -3881,7 +3834,6 @@ if "_queue_for_pattern" not in globals():
                 used.append(ln)
                 queue.extend(_digits_of_line(ln))
 
-        # 万一ぜんぶ空なら、digitsだけでも拾う
         if not queue:
             for ln in lines:
                 used.append(ln)
@@ -3889,7 +3841,7 @@ if "_queue_for_pattern" not in globals():
 
         return queue, used
 
-# “ノックアウト”で着順を作る（無いと死ぬので、ここで必ず定義）
+# “ノックアウト”で着順を作る（偏差値TでKO）
 if "_knockout_finish_from_queue" not in globals():
     def _knockout_finish_from_queue(
         finaljump_queue,
@@ -3897,35 +3849,43 @@ if "_knockout_finish_from_queue" not in globals():
         avg,
         k=0.25,
         head_boost=0.0,
-        pos_lambda=0.08,
+        pos_lambda=0.12,          # ←位置影響を少し強める（差が出やすい）
         pos_mode="harmonic",
         singleton_set=None,
         tail3_set=None,
         tail3_bonus=0.02,
         singleton_head_pen=0.02
     ):
-        q = [str(x) for x in (finaljump_queue or [])]
-        if not q:
-            # どうにもならない時は score_map の降順
-            items = [(str(c), float(score_map.get(str(c), 0.0))) for c in score_map.keys()]
-            items.sort(key=lambda t: t[1], reverse=True)
-            return [c for c, _ in items]
+        q = [str(x) for x in (finaljump_queue or []) if str(x).isdigit()]
+        cars_in_map = set(str(x) for x in score_map.keys())
 
-        singleton_set = set(str(x) for x in (singleton_set or set()))
-        tail3_set = set(str(x) for x in (tail3_set or set()))
-        avg = float(avg) if (avg and float(avg) != 0.0) else 1.0
-
-        # 同じ車番がキューに複数回出るのはあり得るので、位置は最前のみを使う
+        # キューに居ない車も「最後方扱い」で入れる（←4が消える問題を潰す）
+        # これで「隊列に出てこないから低すぎる」を防げる
+        seen = set()
         first_pos = {}
+
         for i, c in enumerate(q):
             if c not in first_pos:
                 first_pos[c] = i
+                seen.add(c)
+
+        # キューにいない車は最後尾に追加
+        tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
+        for c in sorted(list(cars_in_map), key=lambda x: int(x)):
+            if c not in first_pos:
+                first_pos[c] = tail_pos
+
+        singleton_set = set(str(x) for x in (singleton_set or set()))
+        tail3_set = set(str(x) for x in (tail3_set or set()))
+        avg = float(avg) if (avg and float(avg) != 0.0) else 50.0
 
         scored = []
         for c, i in first_pos.items():
-            base = float(score_map.get(str(c), 0.0))
-            # 正規化（avg基準）
-            norm = (base / avg) if avg else base
+            base = float(score_map.get(str(c), 50.0))
+
+            # 偏差値Tは「平均との差」で使う（←これが最重要：4が高Tなら上がる）
+            # 例：T=55, avg=47.1 なら +7.9
+            dev = (base - avg)
 
             # 位置係数（前ほど有利）
             if pos_mode == "harmonic":
@@ -3937,31 +3897,25 @@ if "_knockout_finish_from_queue" not in globals():
             if i == 0 and head_boost:
                 bonus += float(head_boost)
 
-            # 単騎は頭になりにくい（軽いペナ）
             if i == 0 and c in singleton_set:
                 bonus -= float(singleton_head_pen)
 
-            # 3車ラインの3番手は“残り目”として少し加点（あなたの設計意図を尊重）
             if c in tail3_set:
                 bonus += float(tail3_bonus)
 
-            final = norm * (1.0 + k) * pos_factor + bonus
+            # final：偏差値差(dev)を主役に、位置係数で調整
+            final = (dev * (1.0 + k) * pos_factor) + bonus
 
-            # tie-break: 位置が前のほう優先
-            scored.append((c, final, i))
+            scored.append((c, final, i, base))
 
         scored.sort(key=lambda t: (t[1], -t[2]), reverse=True)
-        return [c for c, _, _ in scored]
+        return [c for c, _, _, _ in scored]
 
-# ----------------- ここから “あなたが貼ってた本体” を安全化 -----------------
+# ----------------- ここから本体（偏差値T固定） -----------------
 try:
-    # =========================================================
-    # ★ KO用 score_map / avg を必ず作る（平均偏差値で統一）
-    # =========================================================
-    _score_map = None
-    avg = None
+    all_lines = globals().get("all_lines") or []
 
-    # 0) 最優先：偏差値（レース内T）を採用（あれば必ずこれ）
+    # 1) 偏差値ソースを必ず拾う（拾えなければエラーにする）
     _tsrc = None
     for _cand in ("t_value_by_car", "dev_by_car", "hensachi_map", "_t_map", "_hensachi_map"):
         _v = globals().get(_cand)
@@ -3969,72 +3923,50 @@ try:
             _tsrc = _v
             break
 
-    if _tsrc is not None:
-        # None は平均(50)扱い（=有利不利なし）
-        _score_map = {str(k): (50.0 if v is None else float(v)) for k, v in _tsrc.items()}
-        _tv = [float(v) for v in _score_map.values()]
-        avg = (sum(_tv) / len(_tv)) if _tv else 50.0
+    if _tsrc is None:
+        raise NameError("偏差値Tのdictが見つかりません（t_value_by_car/dev_by_car/hensachi_map/_t_map/_hensachi_map を確認）")
 
-    # A) 既存 weighted_rows（次点）
-    if _score_map is None:
-        if ("_weighted_rows" in globals()) and _weighted_rows:
-            _score_map = {str(r["car_no"]): float(r["score"]) for r in _weighted_rows}
-            _sv = [float(v) for v in _score_map.values() if float(v) != 0.0]
-            avg = (sum(_sv) / len(_sv)) if _sv else 1.0
+    # 2) score_map は「車番→T」。キーは文字列統一（"4" で取れるように）
+    _score_map = {}
+    for k, v in _tsrc.items():
+        ks = "".join(ch for ch in str(k) if ch.isdigit())
+        if not ks:
+            continue
+        _score_map[ks] = 50.0 if v is None else float(v)
 
-    # B) anchor_score由来（次点）
-    if _score_map is None:
-        if ("_scores_for_rank" in globals()) and _scores_for_rank:
-            _score_map = {str(k): float(v) for k, v in _scores_for_rank.items()}
-            _sv = [float(v) for v in _score_map.values() if float(v) != 0.0]
-            avg = (sum(_sv) / len(_sv)) if _sv else 1.0
+    if not _score_map:
+        raise ValueError("偏差値Tのdictはあるが、車番キーを抽出できません（keyが車番になっているか確認）")
 
-    # C) carFR×印着内率（次点）
-    if _score_map is None:
-        if ("_carfr_map" in globals()) and _carfr_map:
-            _score_map = {str(k): float(v) for k, v in _carfr_map.items()}
-            _sv = [float(v) for v in _score_map.values() if float(v) != 0.0]
-            avg = (sum(_sv) / len(_sv)) if _sv else 1.0
+    # 3) avg は「平均偏差値」
+    avg = sum(_score_map.values()) / len(_score_map)
 
-    # D) 最終手段：全員平均偏差値50（KO動作を保証）
-    if _score_map is None:
-        _score_map = {str(n): 50.0 for n in (active_cars or []) if str(n).isdigit()}
-        avg = 50.0
-
-    # =========================================================
-    # ★ 6パターン隊列の予想を必ず出す
-    # =========================================================
-    _escape_patterns = ("逆流→順流→渦", "逆流→渦→順流")
-    SHOW_DEBUG_6PATTERNS = False
-
-    
-
-
-# ----------------- ここまで -----------------
-
-
-    # 単騎 / 3車3番手
+    # 4) 単騎 / 3車3番手（line入力から推定）
     _singletons = set()
     _tail3 = set()
-    for ln in (globals().get("all_lines") or []):
+    for ln in all_lines:
         ds = _digits_of_line(ln)
         if len(ds) == 1:
             _singletons.add(str(ds[0]))
         elif len(ds) == 3:
             _tail3.add(str(ds[2]))
 
+    # 5) 6パターンKO
+    _escape_patterns = ("逆流→順流→渦", "逆流→渦→順流")
+
     outs = []
     for _pname, _svr in _PATTERNS:
-        _finaljump_queue, _used = _queue_for_pattern(globals().get("all_lines"), _svr)
-        hb = 0.20 if (_pname in _escape_patterns) else 0.00
+        _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
+
+        # 逆流系だけ差を出す（あなたの希望）
+        hb = 0.35 if (_pname in _escape_patterns) else 0.10
 
         _finish = _knockout_finish_from_queue(
             _finaljump_queue,
             _score_map,
             avg,
-            k=0.25,
+            k=0.30 if (_pname in _escape_patterns) else 0.25,
             head_boost=hb,
-            pos_lambda=0.08,
+            pos_lambda=0.12 if (_pname in _escape_patterns) else 0.10,
             pos_mode="harmonic",
             singleton_set=_singletons,
             tail3_set=_tail3,
@@ -4042,19 +3974,7 @@ try:
             singleton_head_pen=0.02
         )
 
-        outs.append({
-            "pattern": _pname,
-            "jan_queue": _finaljump_queue,
-            "finish_order": _finish,
-            "used_lines": _used,
-        })
-
-        if SHOW_DEBUG_6PATTERNS:
-            note_sections.append(f"\n【最終ジャン想定隊列（{_pname}）】")
-            note_sections.append(f"S/V/Rライン: {_used}")
-            note_sections.append(_arrow_format(_finaljump_queue))
-            note_sections.append("\n【予想最終順位】")
-            note_sections.append(_arrow_format(_finish))
+        outs.append({"pattern": _pname, "finish_order": _finish})
 
     def _pair_by_main(_outs):
         by = {o["pattern"]: o["finish_order"] for o in (_outs or [])}
@@ -4082,6 +4002,9 @@ try:
 
     pairs = _pair_by_main(outs)
 
+    # ★ 出力は「平均偏差値」と「着順予想」だけ
+    note_sections.append(f"\n平均偏差値 {avg:.5f}")
+
     note_sections.append("\n【順流メイン着順予想】")
     note_sections.append(fmt_main_prediction(*pairs["順流メイン"]))
 
@@ -4092,7 +4015,6 @@ try:
     note_sections.append(fmt_main_prediction(*pairs["逆流メイン"]))
 
 except Exception as e:
-    # 黙殺しない（ここ超重要）
     try:
         note_sections.append(f"\n[KO ERROR] {type(e).__name__}: {e}")
         st.exception(e)
@@ -4100,8 +4022,6 @@ except Exception as e:
         print(e)
 
 note_sections.append("")
-
-
 
 
 
