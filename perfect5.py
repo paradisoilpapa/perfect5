@@ -3214,14 +3214,36 @@ def _build_line_fr_map(lines, scores_map, FRv,
                        MAX_SINGLETON_SHARE=0.45):
     """
     目的：
-    - line_fr_map は「ラインの強さ配分」を持つ辞書にする（合計=FRv が無い時は合計=1.0）
+    - line_fr_map は「ラインの強さ配分」辞書にする
+      - FRv>0 なら合計=FRv
+      - FRv<=0 なら合計=1.0
     - FRv==0 の時に等配分(0.25固定)にしない（単騎が総取りで崩壊するため）
     - ★単騎ライン(1車)がFRを総取りしがちな問題を抑える（SINGLETON_FR_SCALE）
     - ★単騎の最大取り分を上限で縛る（MAX_SINGLETON_SHARE）
+    - ★ライン入力の型ブレ（"24", 24, [2,4], [24] など）を吸収して必ず桁分解する
     """
 
-    lines = [list(map(int, ln)) for ln in (lines or []) if ln]
-    scores_map = {int(k): float(v) for k, v in (scores_map or {}).items() if str(k).isdigit()}
+    def _normalize_lines(_lines):
+        """
+        入力 lines を必ず [[2,4],[5,7,1]...] の形にする
+        - "24" / 24 / [24] / [2,4] どれでもOK
+        """
+        out = []
+        for ln in (_lines or []):
+            if ln is None:
+                continue
+
+            # まず文字列化して数字だけ抜く（"24"→"24", 24→"24", [24]→"24", [2,4]→"24"）
+            s = "".join(ch for ch in str(ln) if ch.isdigit())
+            if not s:
+                continue
+
+            # 桁分解（"24"→[2,4]）
+            out.append([int(ch) for ch in s])
+        return out
+
+    lines = _normalize_lines(lines)
+    scores_map = {int(k): float(v) for k, v in (scores_map or {}).items() if str(k).strip().isdigit()}
     FRv = float(FRv or 0.0)
 
     m = {}
@@ -3238,7 +3260,7 @@ def _build_line_fr_map(lines, scores_map, FRv,
 
     total = sum(s for _, s in line_sums)
 
-    # total がゼロなら最後の保険だけ等配分（ここ以外で等配分しない）
+    # total がゼロなら最後の保険だけ等配分
     if total <= 0.0:
         n = len(lines)
         eq = 1.0 / n if n > 0 else 0.0
@@ -3253,33 +3275,39 @@ def _build_line_fr_map(lines, scores_map, FRv,
         key = "".join(map(str, ln))
         raw[key] = sum_target * (s / total)
 
-    # ★単騎の取り分に上限（MAX_SINGLETON_SHARE）をかける
-    # 例：ライン 6 だけが強くても「45%まで」に制限して暴走を止める
-    single_keys = [k for k, ln in zip(raw.keys(), lines) if len(ln) == 1]
+    # ★単騎の取り分に上限（MAX_SINGLETON_SHARE）
+    single_keys = []
+    non_single_keys = []
+    for ln in lines:
+        k = "".join(map(str, ln))
+        if len(ln) == 1:
+            single_keys.append(k)
+        else:
+            non_single_keys.append(k)
+
     if single_keys and 0.0 < float(MAX_SINGLETON_SHARE) < 1.0:
         cap = sum_target * float(MAX_SINGLETON_SHARE)
 
-        # 超過分を回収して、非単騎へ再配分
         excess = 0.0
         for k in single_keys:
-            if raw.get(k, 0.0) > cap:
-                excess += (raw[k] - cap)
+            v = float(raw.get(k, 0.0))
+            if v > cap:
+                excess += (v - cap)
                 raw[k] = cap
 
-        if excess > 0.0:
-            # 非単騎側の合計で按分して戻す
-            non_single_keys = [k for k, ln in zip(raw.keys(), lines) if len(ln) >= 2]
-            denom = sum(raw.get(k, 0.0) for k in non_single_keys)
+        if excess > 1e-12:
+            denom = sum(float(raw.get(k, 0.0)) for k in non_single_keys)
             if denom > 1e-12:
+                # 非単騎へ比例配分で戻す
                 for k in non_single_keys:
-                    raw[k] += excess * (raw[k] / denom)
+                    raw[k] = float(raw.get(k, 0.0)) + excess * (float(raw.get(k, 0.0)) / denom)
             else:
-                # 非単騎が無い（全員単騎）なら均等に戻す
+                # 全員単騎など：均等に戻す
                 n = len(raw)
                 if n > 0:
                     add = excess / n
                     for k in raw:
-                        raw[k] += add
+                        raw[k] = float(raw.get(k, 0.0)) + add
 
     # 下限（必要なら）
     if float(MIN_LINE_SHARE) > 0.0:
@@ -3287,13 +3315,14 @@ def _build_line_fr_map(lines, scores_map, FRv,
             raw[k] = max(float(MIN_LINE_SHARE), float(raw[k]))
 
         # 合計を再正規化
-        s = sum(raw.values())
+        s = sum(float(v) for v in raw.values())
         if s > 1e-12:
             for k in raw:
-                raw[k] = sum_target * (raw[k] / s)
+                raw[k] = sum_target * (float(raw[k]) / s)
 
     m.update(raw)
     return m
+
 
 
 
