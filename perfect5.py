@@ -1135,26 +1135,51 @@ def n0_by_n(n):
     if n<=29: return 5
     return 3
 
-# ここは従来通りでOK
-p1_eff, p2_eff = {}, {}
-for no in active_cars:
-    n = x1[no]+x2[no]+x3[no]+x_out[no]
-    p1_prior, p2_prior = prior_by_class(race_class, style)
-    n0 = n0_by_n(n)
-    if n==0:
-        p1_eff[no], p2_eff[no] = p1_prior, p2_prior
-    else:
-        p1_eff[no] = clamp((x1[no] + n0*p1_prior)/(n+n0), 0.0, 0.40)
-        p2_eff[no] = clamp((x2[no] + n0*p2_prior)/(n+n0), 0.0, 0.50)
+# === 1〜3着＋着外を “ちゃんと” Form に反映する版（ここだけ置換） ===
+p1_eff, p2_eff, p3_eff, pout_eff = {}, {}, {}, {}
 
-# ←ここはFormだけ作る（偏差値化はまだしない）
-Form = {no: 0.7*p1_eff[no] + 0.3*p2_eff[no] for no in active_cars}
+for no in active_cars:
+    n = x1[no] + x2[no] + x3[no] + x_out[no]
+
+    # 既存：クラス×脚質の prior（あなたの関数をそのまま使う）
+    p1_prior, p2_prior = prior_by_class(race_class, style)
+
+    # 追加：3着＆着外の prior（まずは固定で安全運用）
+    p3_prior   = 0.10
+    pout_prior = 0.55
+
+    n0 = n0_by_n(n)
+
+    if n == 0:
+        p1_eff[no], p2_eff[no] = p1_prior, p2_prior
+        p3_eff[no]             = p3_prior
+        pout_eff[no]           = pout_prior
+    else:
+        p1_eff[no]  = clamp((x1[no]    + n0*p1_prior ) / (n + n0), 0.0, 0.40)
+        p2_eff[no]  = clamp((x2[no]    + n0*p2_prior ) / (n + n0), 0.0, 0.50)
+        p3_eff[no]  = clamp((x3[no]    + n0*p3_prior ) / (n + n0), 0.0, 0.55)
+        pout_eff[no]= clamp((x_out[no] + n0*pout_prior) / (n + n0), 0.0, 0.95)
+
+    # 合計が暴れない安全弁（1-3着を優先して整える）
+    s123 = p1_eff[no] + p2_eff[no] + p3_eff[no]
+    if s123 > 0.95:
+        scale = 0.95 / s123
+        p1_eff[no] *= scale
+        p2_eff[no] *= scale
+        p3_eff[no] *= scale
+
+    pout_eff[no] = clamp(1.0 - (p1_eff[no] + p2_eff[no] + p3_eff[no]), 0.0, 0.95)
+
+# ★Form：1〜3着を評価、着外は減点（ここが効く）
+Form = {
+    no: (3.0*p1_eff[no] + 2.0*p2_eff[no] + 1.0*p3_eff[no] - 1.2*pout_eff[no])
+    for no in active_cars
+}
 
 # === Form 偏差値化（平均50, SD10）
 form_list = [Form[n] for n in active_cars]
 form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
 form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
-
 
 
 # --- 脚質プロフィール（会場適性：得意会場平均基準のstyleを掛ける）
