@@ -3499,50 +3499,110 @@ for ln in all_lines:
     if ln == _FR_line or ln == _VTX_line or ln == _U_line:
         continue
     note_sections.append(f"　　　その他ライン {_free_fmt_nums(ln)}：想定FR={_line_fr_val(ln):.3f}")
+
 # --- carFR順位（表示） ---
 try:
+    import re
     import statistics
 
-    # 1) スコア元（anchor_score優先）
+    # 1) ランキングに使うスコア（anchor_score優先）
     if "anchor_score" in globals():
-        _scores_for_rank = {int(n): float(anchor_score(int(n))) for n in active_cars}
+        _scores_for_rank = {}
+        for n in active_cars:
+            nn = int(n)
+            try:
+                _scores_for_rank[nn] = float(anchor_score(nn))
+            except Exception:
+                _scores_for_rank[nn] = 0.0
     else:
+        # フォールバック（従来globals()["scores"]）
         _scores_for_rank = {}
         for k, v in (globals().get("scores", {}) or {}).items():
             ks = str(k).strip()
             if ks.isdigit():
                 _scores_for_rank[int(ks)] = float(v)
 
-    # 2) carFR計算
+    # 2) 欠損・None・NaN を「平均との差し替え」で埋める（4が落ちる対策）
+    _tmp_vals = []
+    for n in active_cars:
+        nn = int(n)
+        v = _scores_for_rank.get(nn, None)
+        try:
+            vf = float(v)
+            if vf == vf:  # NaN除外
+                _tmp_vals.append(vf)
+        except Exception:
+            pass
+    _fill = (sum(_tmp_vals) / len(_tmp_vals)) if _tmp_vals else 0.0
+
+    for n in active_cars:
+        nn = int(n)
+        v = _scores_for_rank.get(nn, None)
+        ok = True
+        try:
+            vf = float(v)
+            if vf != vf:  # NaN
+                ok = False
+        except Exception:
+            ok = False
+        if not ok:
+            _scores_for_rank[nn] = float(_fill)
+
+    # 3) DEBUG（必要なら True に）
+    SHOW_DEBUG_ANCHOR = False
+    if SHOW_DEBUG_ANCHOR and ("anchor_score" in globals()):
+        tmp = []
+        for n in active_cars:
+            nn = int(n)
+            try:
+                vv = float(anchor_score(nn))
+            except Exception:
+                vv = None
+            tmp.append((nn, vv))
+        note_sections.append("\n[DEBUG] anchor_score:")
+        note_sections.append(str(tmp))
+        note_sections.append(f"[DEBUG] fill={_fill}")
+
+    # 4) carFR順位 本体
     _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(
         all_lines,
         _scores_for_rank,
         line_fr_map
     )
 
-    # 3) 平均値：テキスト解析をやめて、mapの値から算出
-    _vals = [float(v) for v in (_carfr_map or {}).values()]
+    # 平均値（carFRテキストから）
+    _vals = [float(x) for x in re.findall(r"\((\d+\.\d+)\)", _carfr_txt)]
     _avg = statistics.mean(_vals) if _vals else 0.0
     note_sections.append(f"\n平均値 {_avg:.5f}")
 
-    # 4) 表示：_carfr_map から必ず全員出す（欠落しない）
-    if _carfr_map:
-        rows = [{"car_no": int(k), "score": float(v)} for k, v in _carfr_map.items()]
-    else:
-        # 最悪の保険：carFRが空なら根本スコアを出す
-        rows = [{"car_no": int(no), "score": float(_scores_for_rank.get(int(no), 0.0))} for no in active_cars]
+    _weighted_rows = compute_weighted_rank_from_carfr_text(_carfr_txt)
 
-    rows = sorted(rows, key=lambda r: r["score"], reverse=True)
+    # 5) 表示欠落防止：active_cars を必ず全員出す（4が消える対策）
+    if _weighted_rows:
+        present = {int(r["car_no"]) for r in _weighted_rows}
+        for no in active_cars:
+            ino = int(no)
+            if ino not in present:
+                _weighted_rows.append({
+                    "final_rank": 999,
+                    "car_no": ino,
+                    "score": float(_scores_for_rank.get(ino, 0.0))
+                })
 
-    note_sections.append("\n【carFR×印着内率スコア順位】")
-    for i, r in enumerate(rows, 1):
-        note_sections.append(f"{i}位：{r['car_no']} (スコア={r['score']:.6f})")
+        # スコア順に並べ直して順位を振り直す
+        _weighted_rows = sorted(_weighted_rows, key=lambda r: float(r["score"]), reverse=True)
+        for i, r in enumerate(_weighted_rows, 1):
+            r["final_rank"] = i
 
-    # 後段（隊列ノックアウト）が使うならここで _weighted_rows を作っておく
-    _weighted_rows = [{"final_rank": i, "car_no": r["car_no"], "score": r["score"]} for i, r in enumerate(rows, 1)]
+        # 表示
+        note_sections.append("\n【carFR×印着内率スコア順位】")
+        for r in _weighted_rows:
+            note_sections.append(f"{r['final_rank']}位：{r['car_no']} (スコア={r['score']:.6f})")
 
 except Exception:
     pass
+pass
+
 
 
 
