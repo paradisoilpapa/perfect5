@@ -3548,23 +3548,15 @@ except Exception:
 
 import math
 
+# ---------- 小ヘルパ ----------
 def _line_key_local(ln) -> str:
-    """
-    line_fr_map のキー（例 '526'）に合わせる
-    ln が list[int] / str どちらでもOK
-    """
     if ln is None:
         return ""
     if isinstance(ln, (list, tuple)):
         return "".join(str(int(x)) for x in ln if str(x).isdigit())
-    s = "".join(ch for ch in str(ln) if ch.isdigit())
-    return s
+    return "".join(ch for ch in str(ln) if ch.isdigit())
 
 def _digits_of_line(ln):
-    """
-    ラインから車番の並びを取り出す（順序維持）
-    ln が list[int] / str どちらでもOK
-    """
     if ln is None:
         return []
     if isinstance(ln, (list, tuple)):
@@ -3580,7 +3572,6 @@ def _digits_of_line(ln):
     return [ch for ch in str(ln) if ch.isdigit()]
 
 def _line_fr_val_local(ln):
-    # 既存の line_fr_map を前提（キーは '526' など）
     try:
         return float((line_fr_map or {}).get(_line_key_local(ln), 0.0) or 0.0)
     except Exception:
@@ -3589,6 +3580,8 @@ def _line_fr_val_local(ln):
 def _arrow_format(seq):
     return "先頭 → " + " → ".join([str(x) for x in (seq or [])]) + " → 最後方"
 
+
+# ---------- KO（隊列→最終順位） ----------
 def _knockout_finish_from_queue(
     init_queue,
     score_map,
@@ -3599,29 +3592,19 @@ def _knockout_finish_from_queue(
     k_min=0.03,
     k_max=0.25,
     score_weight=1.0,
-    # --- 追加：平均値按分の位置点 ---
-    pos_lambda=0.08,          # 位置点の効き（まずは0.08推奨）
-    pos_mode="harmonic",      # "harmonic"=1/pos（先頭偏重になりすぎない）
-    # --- 追加：癖の矯正（微量） ---
-    singleton_set=None,       # 単騎車番set
-    tail3_set=None,           # 3車ラインの3番手車番set
-    tail3_bonus=0.02,         # 3番手救済（条件付きで加点）
-    singleton_head_pen=0.02   # 単騎が隊列先頭でワープしがちな時の減点（条件付き）
+    pos_lambda=0.08,
+    pos_mode="harmonic",
+    singleton_set=None,
+    tail3_set=None,
+    tail3_bonus=0.02,
+    singleton_head_pen=0.02
 ):
-    """
-    最終隊列(位置)を土台に、能力（score/avg）を主にして順位化する。
-    位置ペナルティ k は「スコア散らばり」で自動調整して、
-    微差のときに“位置だけで順位が飛ぶ”のを抑える。
-
-    effective = ability + boost - base_pen - overtake_pen + pos_point(+微補正)
-    """
     cars = [str(c) for c in (init_queue or []) if str(c).isdigit()]
     if not cars:
         return sorted(list(score_map.keys()), key=lambda c: float(score_map.get(c, -1e9)), reverse=True)
 
     n = len(cars)
     pos = {c: i for i, c in enumerate(cars)}  # 0が先頭
-
     avg = float(avg) if (avg is not None and float(avg) > 1e-12) else 1.0
 
     def pos_norm(c):
@@ -3633,12 +3616,11 @@ def _knockout_finish_from_queue(
         sc = float(score_map.get(c, 0.0) or 0.0)
         sc_norm[c] = sc / avg
 
-    # スコア上位判定（3番手救済の条件に使う）
     score_sorted = sorted(cars, key=lambda c: float(sc_norm.get(c, 0.0)), reverse=True)
     top2 = set(score_sorted[:2])
     top4 = set(score_sorted[:4])
 
-    # 位置係数を自動調整
+    # k自動
     k_eff = float(k)
     if auto_k:
         vals = list(sc_norm.values())
@@ -3648,44 +3630,34 @@ def _knockout_finish_from_queue(
         k_eff = float(k) * (sd / (sd + 0.15))
         k_eff = max(float(k_min), min(float(k_max), k_eff))
 
-    # --- 追加：平均値を先頭〜末尾へ按分した「位置点」 ---
-    # 平均値を総量にすると、正規化スコア(sc/avg)の世界では「重みw」そのものが位置点になる。
-    # sum(w)=1 なので、pos_lambda が位置点の総効き。
+    # 位置点（平均値按分）
     if pos_mode == "harmonic":
-        raw = [1.0 / (i + 1) for i in range(n)]              # 1,1/2,1/3,...
+        raw = [1.0 / (i + 1) for i in range(n)]          # 1, 1/2, 1/3...
     else:
-        raw = [float(n - i) for i in range(n)]               # 等差（先頭が強くなりやすいので非推奨）
+        raw = [float(n - i) for i in range(n)]           # 先頭偏重（非推奨）
     sraw = sum(raw) if sum(raw) > 1e-12 else 1.0
-    w_by_pos = [r / sraw for r in raw]                       # index0=先頭
+    w_by_pos = [r / sraw for r in raw]                   # index0=先頭
 
     singleton_set = singleton_set or set()
     tail3_set = tail3_set or set()
 
     def effective(c):
         pn = pos_norm(c)
-        i = pos.get(c, n - 1)
+        i  = pos.get(c, n - 1)
 
-        # 能力（正規化スコア）
         ability = float(score_weight) * float(sc_norm.get(c, 0.0))
-
-        # 逃げ残り（先頭ほど少し有利）
-        boost = float(head_boost) * (1.0 - pn)
-
-        # 位置ペナルティ
+        boost   = float(head_boost) * (1.0 - pn)
         base_pen = float(k_eff) * pn
-
-        # 追い越しコスト（後ろほど“前に出るコスト”）
         overtake_pen = 0.12 * (pn ** 2)
 
-        # ★位置点（平均値按分）
         pos_point = float(pos_lambda) * float(w_by_pos[i])
 
-        # ★癖①：単騎が「位置だけで」1位になりがち → 隊列先頭かつスコア上位でない時だけ軽く抑える
+        # 単騎ワープ抑制：単騎かつ先頭、かつスコア上位(2位以内)じゃない場合だけ抑える
         single_pen = 0.0
         if (c in singleton_set) and (i == 0) and (c not in top2):
             single_pen = float(singleton_head_pen)
 
-        # ★癖②：3車ライン3番手が3着に出ない → スコア上位(4位以内)なら小さく救済
+        # 3車3番手救済：スコア上位(4位以内)なら微量加点
         tail_bonus = 0.0
         if (c in tail3_set) and (c in top4):
             tail_bonus = float(tail3_bonus)
@@ -3695,12 +3667,7 @@ def _knockout_finish_from_queue(
     return sorted(cars, key=effective, reverse=True)
 
 
-
-
-# =========================================================
-# ★ 6パターン：最終ジャン想定隊列 & 予想最終順位（統合なし）
-# =========================================================
-
+# ---------- 6パターン隊列 ----------
 _PATTERNS = [
     ("順流→渦→逆流", ("S", "V", "R")),
     ("順流→逆流→渦", ("S", "R", "V")),
@@ -3711,26 +3678,15 @@ _PATTERNS = [
 ]
 
 def _pick_svr_lines_by_fr(lines):
-    """
-    ラインFRの大きい順に並べた上位を S,V とし、残り全部を R として保持する（複数可）
-    戻り値: (S_line, V_line, R_lines_list)
-    """
     if not lines:
         return ("", "", [])
-
     ordered = sorted(list(lines), key=_line_fr_val_local, reverse=True)
-
     s = ordered[0] if len(ordered) > 0 else ""
     v = ordered[1] if len(ordered) > 1 else ""
     r_list = ordered[2:] if len(ordered) > 2 else []
-
     return (s, v, r_list)
 
 def _queue_for_pattern(lines, svr_order):
-    """
-    svr_order: ("S","V","R") の並びで最終ジャン隊列を作る（重複除外）
-    ※ R は複数ラインをFR順に全部つなぐ
-    """
     s_ln, v_ln, r_list = _pick_svr_lines_by_fr(lines)
 
     q, seen = [], set()
@@ -3750,30 +3706,28 @@ def _queue_for_pattern(lines, svr_order):
         elif tag == "V":
             _add_line(v_ln)
         elif tag == "R":
-            # Rは複数ライン：ここでもFR順でつなぐ
             r_ordered = sorted(list(r_list or []), key=_line_fr_val_local, reverse=True)
             for ln in r_ordered:
                 _add_line(ln)
 
-    used = {"S": _line_key_local(s_ln), "V": _line_key_local(v_ln), "R": [_line_key_local(x) for x in (r_list or [])]}
+    used = {
+        "S": _line_key_local(s_ln),
+        "V": _line_key_local(v_ln),
+        "R": [_line_key_local(x) for x in (r_list or [])],
+    }
     return q, used
 
-# === 出力（表示は3本だけ） ===
+
+# ---------- 実行部（ここだけ try/except） ----------
 try:
     if _weighted_rows:
-        # スコア順位データを {車番(str): score(float)} にする
         _score_map = {str(r["car_no"]): float(r["score"]) for r in _weighted_rows}
-
-        # 平均値（直前で算出している _avg を使用）
         avg = float(_avg) if ("_avg" in globals() and _avg is not None) else 0.0
 
-        # 逃げ残りモード（逆流が先頭の2パターンだけ）
         _escape_patterns = ("逆流→順流→渦", "逆流→渦→順流")
-
-        # デバッグ：6パターン詳細も出すなら True
         SHOW_DEBUG_6PATTERNS = False
 
-        # --- 追加：単騎と3車3番手を事前抽出（all_linesから） ---
+        # 単騎 / 3車3番手
         _singletons = set()
         _tail3 = set()
         for ln in (all_lines or []):
@@ -3787,9 +3741,7 @@ try:
         for _pname, _svr in _PATTERNS:
             _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
 
-            # 逆流先頭パターンだけ「先頭ボーナス」をON
-            is_escape_mode = (_pname in _escape_patterns)
-            hb = 0.20 if is_escape_mode else 0.00
+            hb = 0.20 if (_pname in _escape_patterns) else 0.00
 
             _finish = _knockout_finish_from_queue(
                 _finaljump_queue,
@@ -3797,8 +3749,8 @@ try:
                 avg,
                 k=0.25,
                 head_boost=hb,
-                pos_lambda=0.08,        # まずはこれで
-                pos_mode="harmonic",    # 先頭偏重を抑える
+                pos_lambda=0.08,
+                pos_mode="harmonic",
                 singleton_set=_singletons,
                 tail3_set=_tail3,
                 tail3_bonus=0.02,
@@ -3857,8 +3809,7 @@ try:
 except Exception:
     pass
 
-note_sections.append("")  # 空行
-
+note_sections.append("")
 
 
 
