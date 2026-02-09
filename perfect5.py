@@ -3369,21 +3369,30 @@ def trio_free_completion(scores, marks_any, flow_ctx=None):
     # ★ 表示と整合を取るためのラインFR推定（0.000対策入り）
     line_fr_map = _build_line_fr_map(lines, hens, FRv)
 
-    # carFR順位
-    _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
-    if not _carfr_rank or len(_carfr_rank) < 3:
-        return ("—", None, None)
+   # carFR順位
+_carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
 
-    ordered_ids = [int(cid) for (cid, _) in _carfr_rank]
-    axis = ordered_ids[0]
-    opps = [c for c in ordered_ids[1:] if c != axis][:4]
-    if len(opps) < 2:
-        return ("—", None, None)
+# ★[FIX] _carfr_map のキー型ゆれ（"4" vs 4）をここで統一
+_carfr_map = {
+    int(k): float(v)
+    for k, v in (_carfr_map or {}).items()
+    if str(k).isdigit()
+}
 
-    mid = "".join(map(str, opps))
-    trio_text = f"{axis}-{mid}-{mid}"
-    axis_car_fr = (_carfr_map or {}).get(axis, None)
-    return (trio_text, axis, axis_car_fr)
+if not _carfr_rank or len(_carfr_rank) < 3:
+    return ("—", None, None)
+
+ordered_ids = [int(cid) for (cid, _) in _carfr_rank]
+axis = ordered_ids[0]
+opps = [c for c in ordered_ids[1:] if c != axis][:4]
+if len(opps) < 2:
+    return ("—", None, None)
+
+mid = "".join(map(str, opps))
+trio_text = f"{axis}-{mid}-{mid}"
+axis_car_fr = (_carfr_map or {}).get(axis, None)
+return (trio_text, axis, axis_car_fr)
+
 
 # === 想定FRをラインごとに作り、買目テキストを確定（他の出力は維持） ===
 def generate_tesla_bets(flow, lines_str, marks_any, scores):
