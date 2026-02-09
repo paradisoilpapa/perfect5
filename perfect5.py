@@ -3672,6 +3672,8 @@ def _norm_int_float_map(d):
     return out
 
 def _get_rate(d, no, default=0.0):
+    ...
+
     try:
         ino = int(no)
     except Exception:
