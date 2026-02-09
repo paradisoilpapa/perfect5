@@ -1,12 +1,13 @@
-    # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
-import numpy as np   # ← ここ！NumPy を np にする
+import numpy as np
 import unicodedata, re
 import math, json, requests
 from statistics import mean, pstdev
 from itertools import combinations
 from datetime import datetime, date, time, timedelta, timezone
+
 
 # ==============================
 # ページ設定
