@@ -3649,13 +3649,7 @@ try:
             except Exception:
                 continue
 
-            if ino not in present:
-                _weighted_rows.append({
-                    "final_rank": 999,
-                    "car_no": ino,
-                    "score": float(_scores_for_rank.get(ino, 0.0) or 0.0),
-                })
-
+            # ==== hens正規化 & rate取得（先に定義してから使う） ====
 def _norm_int_float_map(d):
     out = {}
     for k, v in (d or {}).items():
@@ -3681,6 +3675,38 @@ def _get_rate(d, no, default=0.0):
         except Exception:
             return default
     return default
+
+# ★ここで hens を必ず intキー化（「特定車だけ0」の主因）
+hens = _norm_int_float_map(hens)
+
+_vals = [v for v in hens.values() if v is not None]
+hens_default = float(np.mean(_vals)) if len(_vals) else 0.0
+
+
+# ==== 表示欠落を防ぐ保険：active_cars を必ず全員出す ====
+if _weighted_rows:
+    try:
+        present = {int(r.get("car_no")) for r in _weighted_rows if str(r.get("car_no", "")).isdigit()}
+    except Exception:
+        present = set()
+
+    for no in (active_cars or []):
+        try:
+            ino = int(no)
+        except Exception:
+            continue
+
+        if ino not in present:
+            # ★ _scores_for_rank を使うと「元が0なら永遠に0」
+            # ★ hens欠損でも平均を食わせる形に寄せる（最低限の救済）
+            rate = _get_rate(hens, ino, default=hens_default)
+
+            _weighted_rows.append({
+                "final_rank": 999,
+                "car_no": ino,
+                "score": float(rate),  # ← ここは“0回避の救済”。本来はrow生成側で carFR×rate を作る
+            })
+
 
 # ★ここ：carFR×印着内率の rows を並べ替える直前で正規化
 hens = _norm_int_float_map(hens)
