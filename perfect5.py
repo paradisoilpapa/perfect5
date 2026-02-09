@@ -763,10 +763,12 @@ def _zone_from_p(p: float):
 
 
 def apply_anchor_line_bonus(score_raw: dict[int, float],
-                            line_of: dict[int, int],
+                            line_of: dict[int, str],   # ★ int→str に直す
                             role_map: dict[int, str],
                             anchor: int,
                             tenkai: str) -> dict[int, float]:
+
+
     a_line = line_of.get(anchor, None)
     is_on = (tenkai in LINE_BONUS_ON_TENKAI) and (a_line is not None)
     score_adj: dict[int, float] = {}
