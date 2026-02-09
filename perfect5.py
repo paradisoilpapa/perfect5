@@ -3915,16 +3915,144 @@ if "_knockout_finish_from_queue" not in globals():
 try:
     all_lines = globals().get("all_lines") or []
 
-    # 1) 偏差値ソースを必ず拾う（拾えなければエラーにする）
-    _tsrc = None
-    for _cand in ("t_value_by_car", "dev_by_car", "hensachi_map", "_t_map", "_hensachi_map"):
-        _v = globals().get(_cand)
-        if isinstance(_v, dict) and _v:
-            _tsrc = _v
-            break
+    # 1) 偏差値ソースを自動検出する（dict / pd.Series / 1列DataFrame 対応）
+def _extract_car_t_map_from_obj(obj):
+    """
+    obj から「車番→偏差値T(dict)」を取り出す。
+    - dict: {1: 52.3, "4": 47.1, ...}
+    - Series: indexが車番
+    - 1列DataFrame: indexが車番
+    """
+    if obj is None:
+        return None
 
-    if _tsrc is None:
-        raise NameError("偏差値Tのdictが見つかりません（t_value_by_car/dev_by_car/hensachi_map/_t_map/_hensachi_map を確認）")
+    # dict
+    if isinstance(obj, dict) and obj:
+        out = {}
+        for k, v in obj.items():
+            ks = "".join(ch for ch in str(k) if ch.isdigit())
+            if not ks:
+                continue
+            try:
+                out[ks] = 50.0 if v is None else float(v)
+            except Exception:
+                continue
+        return out if out else None
+
+    # pandas Series
+    if isinstance(obj, pd.Series) and not obj.empty:
+        out = {}
+        for k, v in obj.to_dict().items():
+            ks = "".join(ch for ch in str(k) if ch.isdigit())
+            if not ks:
+                continue
+            try:
+                out[ks] = 50.0 if v is None else float(v)
+            except Exception:
+                continue
+        return out if out else None
+
+    # pandas DataFrame（1列だけ偏差値が入ってる想定）
+    if isinstance(obj, pd.DataFrame) and (not obj.empty):
+        # 1列に寄せる
+        if obj.shape[1] >= 1:
+            s = obj.iloc[:, 0]
+            return _extract_car_t_map_from_obj(s)
+
+    return None
+
+
+def _looks_like_t_map(tmap, active_cars=None):
+    """
+    偏差値Tっぽさ判定：
+    - keyが数字文字列
+    - 値が 20〜80 あたり中心
+    - active_cars があれば、その大半が含まれる
+    """
+    if not isinstance(tmap, dict) or not tmap:
+        return False
+
+    keys = [k for k in tmap.keys() if str(k).isdigit()]
+    if len(keys) < 4:  # 少なすぎるものは除外
+        return False
+
+    vals = []
+    for k in keys:
+        try:
+            vals.append(float(tmap[k]))
+        except Exception:
+            pass
+
+    if len(vals) < 4:
+        return False
+
+    # だいたい偏差値レンジか
+    in_range = [v for v in vals if 10.0 <= v <= 90.0]
+    if len(in_range) / len(vals) < 0.8:
+        return False
+
+    # 平均が偏差値らしいか（極端に小さい/大きいの排除）
+    m = sum(in_range) / len(in_range)
+    if not (25.0 <= m <= 75.0):
+        return False
+
+    if active_cars:
+        ac = [str(x) for x in active_cars if str(x).isdigit()]
+        if ac:
+            hit = sum(1 for x in ac if x in tmap)
+            if hit / len(ac) < 0.6:
+                return False
+
+    return True
+
+
+# --- globals() から最もそれっぽいものを探す ---
+active_cars = globals().get("active_cars") or []
+best = None
+best_name = None
+best_score = -1.0
+
+for name, obj in globals().items():
+    # よくあるゴミを除外
+    if name.startswith("__"):
+        continue
+
+    tmap = _extract_car_t_map_from_obj(obj)
+    if not tmap:
+        continue
+
+    if not _looks_like_t_map(tmap, active_cars=active_cars):
+        continue
+
+    # スコアリング：active_cars にどれだけ合うか優先
+    ac = [str(x) for x in active_cars if str(x).isdigit()]
+    hit = sum(1 for x in ac if x in tmap) if ac else len(tmap)
+    coverage = (hit / len(ac)) if ac else 0.5
+
+    # 値の分散っぽさ（単調な50だらけは弱く）
+    vals = [float(v) for v in tmap.values() if isinstance(v, (int, float, float))]
+    uniq = len(set(round(v, 2) for v in vals)) / max(1, len(vals))
+
+    score = coverage * 0.7 + uniq * 0.3
+
+    if score > best_score:
+        best_score = score
+        best = tmap
+        best_name = name
+
+_tsrc = best
+if _tsrc is None:
+    raise NameError("偏差値Tソースが自動検出できません。偏差値を作っている変数（dict/Series/DF）が存在するか確認してください。")
+
+# 2) score_map は「車番→T」。キーは文字列統一
+_score_map = dict(_tsrc)
+
+# 3) avg は平均偏差値
+avg = sum(_score_map.values()) / len(_score_map)
+
+# ※確認したい時だけ：どの変数を拾ったか出す（普段はコメントアウト推奨）
+# note_sections.append(f"\n[DEV_PICKED] {best_name} (score={best_score:.3f})")
+
 
     # 2) score_map は「車番→T」。キーは文字列統一（"4" で取れるように）
     _score_map = {}
