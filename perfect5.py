@@ -3955,59 +3955,63 @@ if "_knockout_finish_from_queue" not in globals():
 
 # ----------------- ここから “あなたが貼ってた本体” を安全化 -----------------
 try:
-    # --- 1) KO用 score_map / avg を必ず作る（平均偏差値で統一） ---
-_score_map = None
-avg = None
+    # =========================================================
+    # ★ KO用 score_map / avg を必ず作る（平均偏差値で統一）
+    # =========================================================
+    _score_map = None
+    avg = None
 
-# 0) 最優先：偏差値（レース内T）を採用
-# ここは「車番→偏差値T」が入っている dict の変数名に合わせてください
-# 例：t_value_by_car / dev_by_car / hensachi_map など
-_tsrc = None
-for _cand in ("t_value_by_car", "dev_by_car", "hensachi_map", "_t_map", "_hensachi_map"):
-    if _cand in globals() and isinstance(globals().get(_cand), dict) and globals().get(_cand):
-        _tsrc = globals().get(_cand)
-        break
+    # 0) 最優先：偏差値（レース内T）を採用（あれば必ずこれ）
+    _tsrc = None
+    for _cand in ("t_value_by_car", "dev_by_car", "hensachi_map", "_t_map", "_hensachi_map"):
+        _v = globals().get(_cand)
+        if isinstance(_v, dict) and _v:
+            _tsrc = _v
+            break
 
-if _tsrc:
-    # None は平均(50)扱いにする（“有利でも不利でもない”）
-    _score_map = {str(k): float(v) if v is not None else 50.0 for k, v in _tsrc.items()}
-    _tv = [float(v) for v in _score_map.values() if isinstance(v, (int, float))]
-    avg = (sum(_tv) / len(_tv)) if _tv else 50.0
+    if _tsrc is not None:
+        # None は平均(50)扱い（=有利不利なし）
+        _score_map = {str(k): (50.0 if v is None else float(v)) for k, v in _tsrc.items()}
+        _tv = [float(v) for v in _score_map.values()]
+        avg = (sum(_tv) / len(_tv)) if _tv else 50.0
 
-# A) 既存（weighted_rows）があるなら次点で使う（ただしavgは偏差値に寄せたいので注意）
-if _score_map is None:
-    if ("_weighted_rows" in globals()) and _weighted_rows:
-        _score_map = {str(r["car_no"]): float(r["score"]) for r in _weighted_rows}
-        _sv = [float(v) for v in _score_map.values() if float(v) != 0.0]
-        avg = (sum(_sv) / len(_sv)) if _sv else 1.0
+    # A) 既存 weighted_rows（次点）
+    if _score_map is None:
+        if ("_weighted_rows" in globals()) and _weighted_rows:
+            _score_map = {str(r["car_no"]): float(r["score"]) for r in _weighted_rows}
+            _sv = [float(v) for v in _score_map.values() if float(v) != 0.0]
+            avg = (sum(_sv) / len(_sv)) if _sv else 1.0
 
-# B) anchor_score由来
-if _score_map is None:
-    if ("_scores_for_rank" in globals()) and _scores_for_rank:
-        _score_map = {str(k): float(v) for k, v in _scores_for_rank.items()}
-        _sv = [float(v) for v in _score_map.values() if float(v) != 0.0]
-        avg = (sum(_sv) / len(_sv)) if _sv else 1.0
+    # B) anchor_score由来（次点）
+    if _score_map is None:
+        if ("_scores_for_rank" in globals()) and _scores_for_rank:
+            _score_map = {str(k): float(v) for k, v in _scores_for_rank.items()}
+            _sv = [float(v) for v in _score_map.values() if float(v) != 0.0]
+            avg = (sum(_sv) / len(_sv)) if _sv else 1.0
 
-# C) carFR×印着内率
-if _score_map is None:
-    if ("_carfr_map" in globals()) and _carfr_map:
-        _score_map = {str(k): float(v) for k, v in _carfr_map.items()}
-        _sv = [float(v) for v in _score_map.values() if float(v) != 0.0]
-        avg = (sum(_sv) / len(_sv)) if _sv else 1.0
+    # C) carFR×印着内率（次点）
+    if _score_map is None:
+        if ("_carfr_map" in globals()) and _carfr_map:
+            _score_map = {str(k): float(v) for k, v in _carfr_map.items()}
+            _sv = [float(v) for v in _score_map.values() if float(v) != 0.0]
+            avg = (sum(_sv) / len(_sv)) if _sv else 1.0
 
-# D) 最終手段：全員平均偏差値50（表示・KO動作だけ保証）
-if _score_map is None:
-    _score_map = {str(n): 50.0 for n in (active_cars or []) if str(n).isdigit()}
-    avg = 50.0
+    # D) 最終手段：全員平均偏差値50（KO動作を保証）
+    if _score_map is None:
+        _score_map = {str(n): 50.0 for n in (active_cars or []) if str(n).isdigit()}
+        avg = 50.0
 
-
-    # avgは score_map から作る（FR平均は使わない）
-    _sv = [float(v) for v in _score_map.values() if float(v) > 0.0]
-    avg = (sum(_sv) / len(_sv)) if _sv else 1.0
-
-    # --- 2) 6パターン隊列の予想を必ず出す ---
+    # =========================================================
+    # ★ 6パターン隊列の予想を必ず出す
+    # =========================================================
     _escape_patterns = ("逆流→順流→渦", "逆流→渦→順流")
     SHOW_DEBUG_6PATTERNS = False
+
+    
+
+
+# ----------------- ここまで -----------------
+
 
     # 単騎 / 3車3番手
     _singletons = set()
