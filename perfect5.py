@@ -1237,33 +1237,23 @@ for no in active_cars:
 # ===== 会場個性を“個人スコア”に浸透：bank系補正（差し替え案） =====
 
 def bank_character_bonus(bank_angle, straight_length, bank_length, prof_escape, prof_sashi):
-    # 型ゆれ対策（Noneや文字列でも落ちにくく）
     pe = float(prof_escape or 0.0)
     ps = float(prof_sashi  or 0.0)
 
-    # venue_z_terms の引数に bank_length が必要ならここで渡す
     zL, zTH, dC = venue_z_terms(straight_length, bank_angle, bank_length)
 
-    # 会場の「素性」ベース（ここで一旦クリップ）
     base = clamp(0.06*zTH - 0.05*zL - 0.03*dC, -0.08, +0.08)
-
-    # 個人浸透：逃げはプラス寄与、差しはマイナス寄与（強すぎるなら 0.5 を調整）
-    out = base * pe - 0.5 * base * ps
-
-    # 最後に丸める（途中で丸めるとブレが増える）
+    out  = base * pe - 0.5 * base * ps
     return round(out, 3)
-
 
 def bank_length_adjust(bank_length, prof_oikomi):
     po = float(prof_oikomi or 0.0)
-    L = float(bank_length or 0.0)
-
-    # 周長カテゴリ（ここは現状のままでOK）
+    L  = float(bank_length or 0.0)
     dC = (+0.4 if L >= 480 else 0.0 if L >= 380 else -0.4)
 
-    # 追い込みは「長い(=+0.4)ほど不利」なら -dC、逆なら +dC にする
     out = 0.03 * (-dC) * po
     return round(out, 3)
+
 
 
 # --- 安定度（着順分布）をT本体に入れるための重み（強化版） ---
