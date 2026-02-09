@@ -8,10 +8,17 @@ from statistics import mean, pstdev
 from itertools import combinations
 from datetime import datetime, date, time, timedelta, timezone
 
+# =========================================================
+# 必須：グローバル共通部品（参照より先に必ず定義）
+# =========================================================
+
 def _digits_of_line(ln):
-    # "571" / 571 / "5-7-1" / "5 7 1" みたいなの全部を数字配列にする
     s = "".join(ch for ch in str(ln) if ch.isdigit())
     return [int(ch) for ch in s] if s else []
+
+# _PATTERNS をどこかで for で回しているなら、最低限ここで存在させる
+_PATTERNS = []   # ← まず NameError を止めるための保険（本来は下で登録する）
+
 
 
 
