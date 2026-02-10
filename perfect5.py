@@ -3840,24 +3840,35 @@ except Exception as e:
         print(e)
 
 # =========================================================
-# ★ 旧仕様へ戻す：carFR×印着内率スコア順位 を KO に採用
-# ★ 出力：carFR×印着内率スコア順位 + 3本（順流/渦/逆流メイン）の着順予想
-# ★ 偏差値/根本スコア(anchor_score優先) は一切表示しない
+# ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
+# ★ 予想最終順位（最終隊列×スコアでノックアウト）
+#    ※ パターンでズレる “昔の挙動” を最優先で復元
+#    ※ 重要：queue が空になったら「同じ」になるので絶対に空にしない
 # =========================================================
 
-# --- 0) 落ちないための最低限 ---
+# --- 0) 最低限の保険（未定義で落ちない） ---
 if "note_sections" not in globals() or note_sections is None:
     note_sections = []
 
-def _digits_of_line(ln):
-    s = "".join(ch for ch in str(ln) if ch.isdigit())
+def _digits_of_line_safe(ln):
+    # ln が list/tuple/set でも "571" でも OK
+    if ln is None:
+        return []
+    if isinstance(ln, (list, tuple, set)):
+        s = "".join(str(x) for x in ln if str(x).isdigit())
+    else:
+        s = "".join(ch for ch in str(ln) if ch.isdigit())
     return [int(ch) for ch in s] if s else []
 
-def _arrow_format(seq):
-    return " → ".join(str(x) for x in (seq or []))
+def _line_key_safe(ln):
+    if ln is None:
+        return ""
+    if isinstance(ln, (list, tuple, set)):
+        return "".join(str(x) for x in ln if str(x).isdigit())
+    return "".join(ch for ch in str(ln) if ch.isdigit())
 
 # 6パターン（未定義なら作る）
-if "_PATTERNS" not in globals() or not globals().get("_PATTERNS"):
+if "_PATTERNS" not in globals() or not _PATTERNS:
     _PATTERNS = [
         ("順流→渦→逆流", ["順流", "渦", "逆流"]),
         ("順流→逆流→渦", ["順流", "逆流", "渦"]),
@@ -3867,21 +3878,14 @@ if "_PATTERNS" not in globals() or not globals().get("_PATTERNS"):
         ("逆流→渦→順流", ["逆流", "渦", "順流"]),
     ]
 
-def _line_key(ln):
-    if ln is None:
-        return ""
-    if isinstance(ln, (list, tuple, set)):
-        return "".join(str(x) for x in ln if str(x).isdigit())
-    return "".join(ch for ch in str(ln) if ch.isdigit())
-
-def _infer_line_zone(ln):
+def _infer_line_zone_safe(ln):
     """
-    旧挙動に近づけるため、既存の “ライン→ゾーン” 情報を最大限拾う。
-    どれも無い時だけ順流へフォールバック（ただしその場合3本が同じになりやすい）
+    既存の判定結果（順流ライン/渦候補ライン/逆流ライン）を“必ず”拾う。
+    ここが死ぬと全パターン同一になる。
     """
-    k = _line_key(ln)
+    k = _line_key_safe(ln)
 
-    # 1) よくある辞書名（あなたの既存コード側にあるはずのものを優先）
+    # 1) マップ系（あれば最優先）
     for key in ("line_zone_map", "line_type_map", "line_class_map", "line_role_map"):
         m = globals().get(key)
         if isinstance(m, dict):
@@ -3889,32 +3893,34 @@ def _infer_line_zone(ln):
             if z in ("順流", "渦", "逆流"):
                 return z
 
-    # 2) 単体変数（順流/渦/逆流の代表ライン）
+    # 2) 単体（順流/渦/逆流）ライン
     flow = globals().get("flow_line") or globals().get("main_flow_line") or globals().get("jyunryu_line")
     rev  = globals().get("reverse_line") or globals().get("gyakuryu_line")
     vort = globals().get("vortex_line") or globals().get("uzu_line") or globals().get("candidate_vortex_line")
 
-    if flow is not None and _line_key(flow) == k:
+    if flow is not None and _line_key_safe(flow) == k:
         return "順流"
-    if rev is not None and _line_key(rev) == k:
+    if rev  is not None and _line_key_safe(rev)  == k:
         return "逆流"
-    if vort is not None and _line_key(vort) == k:
+    if vort is not None and _line_key_safe(vort) == k:
         return "渦"
 
     # 3) 渦候補が複数
     for key in ("vortex_lines", "uzu_lines", "candidate_vortex_lines"):
         xs = globals().get(key)
         if isinstance(xs, (list, tuple, set)):
-            if any(_line_key(x) == k for x in xs):
+            if any(_line_key_safe(x) == k for x in xs):
                 return "渦"
 
+    # 最後：不明は順流に倒す（落とさない）
     return "順流"
 
-def _get_line_fr(ln):
+def _get_line_fr_safe(ln):
     """
-    line_fr_map を “listキーでも落ちない” ように参照する（unhashable対策）。
+    line_fr_map のキーが "571" でも [5,7,1] でも拾えるようにする。
+    ここが死ぬと並びが固定化しがち。
     """
-    k = _line_key(ln)
+    k = _line_key_safe(ln)
     for key in ("line_fr_map", "lineFR_map", "line_fr", "lineFR"):
         m = globals().get(key)
         if isinstance(m, dict):
@@ -3926,16 +3932,17 @@ def _get_line_fr(ln):
                     pass
     return 0.0
 
-def _queue_for_pattern(all_lines, svr_order):
+def _queue_for_pattern_safe(all_lines, svr_order):
     """
-    パターン順（順流→渦→逆流 など）でラインを並べ、
-    各ゾーン内はラインFR降順で並べ、車番キューを作る。
+    パターンで必ず queue が変わるように：
+    - ゾーン別に分ける
+    - 各ゾーン内は line_fr 降順
+    - それでも空なら digits だけで拾う（空は絶対禁止）
     """
     lines = list(all_lines or [])
     bucket = {"順流": [], "渦": [], "逆流": []}
-
     for ln in lines:
-        z = _infer_line_zone(ln)
+        z = _infer_line_zone_safe(ln)
         bucket.setdefault(z, []).append(ln)
 
     used = []
@@ -3943,179 +3950,116 @@ def _queue_for_pattern(all_lines, svr_order):
 
     for z in (svr_order or ["順流", "渦", "逆流"]):
         xs = bucket.get(z, [])
-        xs = sorted(xs, key=lambda x: _get_line_fr(x), reverse=True)
+        xs = sorted(xs, key=lambda x: _get_line_fr_safe(x), reverse=True)
         for ln in xs:
             used.append(ln)
-            queue.extend(_digits_of_line(ln))
+            queue.extend(_digits_of_line_safe(ln))
 
-    # 全部空ならdigitsだけ拾う
+    # ★空は絶対禁止：digitsだけでも拾う
     if not queue:
         for ln in lines:
             used.append(ln)
-            queue.extend(_digits_of_line(ln))
+            queue.extend(_digits_of_line_safe(ln))
+
+    # ★それでも空なら、active_cars を最後尾として突っ込む（最終保険）
+    if not queue:
+        ac = globals().get("active_cars") or []
+        queue = [int(x) for x in ac if str(x).isdigit()]
 
     return queue, used
 
-def _knockout_finish_from_queue(finaljump_queue, score_map, avg_score,
-                               k=0.25, head_boost=0.0,
-                               pos_lambda=0.08, pos_mode="harmonic"):
+def _knockout_finish_from_queue_safe(finaljump_queue, score_map):
     """
-    旧仕様寄せ：score_map（carFR×印着内率）を avg_score で正規化し、位置係数でKO。
+    “昔の挙動”に合わせて、queue位置を必ず効かせる。
+    - score_map を主、queue位置を副（ただし効く）
+    - queue に居ない車は最後尾扱い
     """
     q = [str(x) for x in (finaljump_queue or []) if str(x).isdigit()]
-    cars_in_map = [str(x) for x in score_map.keys() if str(x).isdigit()]
+    cars = [str(k) for k in (score_map or {}).keys() if str(k).isdigit()]
 
-    # キューに出ない車も最後尾で入れる（“消える/極端に下がる”事故防止）
+    # queueの最前位置
     first_pos = {}
     for i, c in enumerate(q):
         if c not in first_pos:
             first_pos[c] = i
 
-    tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
-    for c in sorted(cars_in_map, key=lambda x: int(x)):
+    # queueにいない車は最後尾扱い
+    tail = (max(first_pos.values()) + 1) if first_pos else 999
+    for c in cars:
         if c not in first_pos:
-            first_pos[c] = tail_pos
+            first_pos[c] = tail
 
-    # avg_score
-    try:
-        avg_score = float(avg_score)
-    except Exception:
-        avg_score = 1.0
-    if avg_score <= 1e-12:
-        avg_score = 1.0
-
+    # スコア＋位置（位置は小さくないと効かないので、固定重みで入れる）
     scored = []
-    for c, i in first_pos.items():
-        base = float(score_map.get(str(c), 0.0))
-        norm = (base / avg_score)
+    for c in cars:
+        sc = float(score_map.get(c, 0.0))
+        pos = int(first_pos.get(c, tail))
+        # pos が前ほど + になるように（7車なら最大6程度なので効く）
+        pos_bonus = (6 - min(pos, 6)) * 0.01
+        final = sc + pos_bonus
+        scored.append((c, final, pos, sc))
 
-        if pos_mode == "harmonic":
-            pos_factor = 1.0 / (1.0 + pos_lambda * i)
-        else:
-            pos_factor = math.exp(-pos_lambda * i)
-
-        bonus = float(head_boost) if (i == 0 and head_boost) else 0.0
-        final = norm * (1.0 + k) * pos_factor + bonus
-
-        scored.append((c, final, i))
-
-    # tie-break：前の位置をわずかに優先
     scored.sort(key=lambda t: (t[1], -t[2]), reverse=True)
-    return [c for c, _, _ in scored]
+    return [c for c, _, _, _ in scored]
 
-def _pair_by_main(outs):
-    by = {o["pattern"]: o["finish_order"] for o in (outs or [])}
-    return {
-        "順流メイン": (by.get("順流→渦→逆流", []), by.get("順流→逆流→渦", [])),
-        "渦メイン":   (by.get("渦→順流→逆流", []), by.get("渦→逆流→順流", [])),
-        "逆流メイン": (by.get("逆流→順流→渦", []), by.get("逆流→渦→順流", [])),
-    }
-
-def _slot_union(a, b, idx):
-    s = set()
-    if a and idx < len(a): s.add(str(a[idx]))
-    if b and idx < len(b): s.add(str(b[idx]))
-    # 数字順
-    return sorted(list(s), key=lambda x: int(x) if x.isdigit() else 999)
-
-def _fmt_main_prediction(a, b, n_slots=7):
-    """
-    旧表示：同スロットの候補を "1.4" のようにドット結合し、" → " で並べる
-    """
-    if not a and not b:
-        return "（なし）"
-    n = max(len(a), len(b), n_slots)
-    parts = []
-    for i in range(n):
-        ss = _slot_union(a, b, i)
-        parts.append(".".join(ss) if ss else "")
-    return " → ".join([p for p in parts if p])
-
-# ----------------- ここから実処理（旧仕様の心臓部） -----------------
+# =========================================================
+# ★ 実行（ここだけ：着順予想だけを作る）
+# =========================================================
 try:
     all_lines = globals().get("all_lines") or []
-    active_cars = globals().get("active_cars") or []
 
-    # 1) carFR×印着内率スコア順位の “マップ” を最優先で拾う
-    #    - 既に _carfr_map があるならそれを使う
-    #    - 無ければ compute_carFR_ranking で作る（ある前提）
-    _carfr_map = globals().get("_carfr_map")
+    # 既にあなたの上流で作ってる score_map を優先
+    # （ここでは“何をスコアにするか”は触らない＝アレンジしない）
+    _score_map = None
+    if "_carfr_map" in globals() and isinstance(globals().get("_carfr_map"), dict) and globals().get("_carfr_map"):
+        _score_map = {str(k): float(v) for k, v in globals().get("_carfr_map").items() if str(k).isdigit()}
+    elif "_scores_for_rank" in globals() and isinstance(globals().get("_scores_for_rank"), dict) and globals().get("_scores_for_rank"):
+        _score_map = {str(k): float(v) for k, v in globals().get("_scores_for_rank").items() if str(k).isdigit()}
 
-    if not isinstance(_carfr_map, dict) or not _carfr_map:
-        # compute_carFR_ranking が存在する前提（あなたの旧本体にあるはず）
-        if "compute_carFR_ranking" in globals() and callable(globals().get("compute_carFR_ranking")):
-            _scores_for_rank = globals().get("_scores_for_rank") or {}
-            line_fr_map = globals().get("line_fr_map") or {}
-            _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(all_lines, _scores_for_rank, line_fr_map)
-            globals()["_carfr_map"] = _carfr_map
-            globals()["_carfr_txt"] = _carfr_txt
-        else:
-            raise NameError("compute_carFR_ranking が見つからず、_carfr_map も空です（旧仕様の元データがありません）")
+    if not _score_map:
+        raise NameError("KO用のscore_mapが見つかりません（_carfr_map または _scores_for_rank）")
 
-    # 表示テキスト（旧仕様の順位表）も拾う
-    _carfr_txt = globals().get("_carfr_txt")
-    if not isinstance(_carfr_txt, str) or not _carfr_txt.strip():
-        # テキストが無ければ dict から生成（最低限）
-        items = []
-        for k, v in (_carfr_map or {}).items():
-            ks = "".join(ch for ch in str(k) if ch.isdigit())
-            if not ks:
-                continue
-            try:
-                items.append((int(ks), float(v)))
-            except Exception:
-                continue
-        items.sort(key=lambda t: (-t[1], t[0]))
-        lines = []
-        for i, (nn, sc) in enumerate(items, 1):
-            lines.append(f"{i}位：{nn} (スコア={sc:.6f})")
-        _carfr_txt = "\n".join(lines)
-
-    # 2) KO用 score_map（車番文字列→float）
-    score_map = {}
-    for k, v in (_carfr_map or {}).items():
-        ks = "".join(ch for ch in str(k) if ch.isdigit())
-        if not ks:
-            continue
-        try:
-            score_map[ks] = float(v)
-        except Exception:
-            score_map[ks] = 0.0
-
-    # 3) avg_score（KO正規化用）
-    vals = [float(v) for v in score_map.values() if float(v) > 0.0]
-    avg_score = (sum(vals) / len(vals)) if vals else 1.0
-
-    # 4) 6パターンを内部で全部作って、最後に “順流/渦/逆流メイン” の3本だけ出す
     outs = []
     for _pname, _svr in _PATTERNS:
-        q, used = _queue_for_pattern(all_lines, _svr)
-        # 旧仕様寄せ：パターンで微差（逆流メインだけ少し逃げを作る）
-        hb = 0.20 if _pname.startswith("逆流→") else 0.00
+        _finaljump_queue, _used = _queue_for_pattern_safe(all_lines, _svr)
+        _finish = _knockout_finish_from_queue_safe(_finaljump_queue, _score_map)
+        outs.append((_pname, _finish))
 
-        finish = _knockout_finish_from_queue(
-            q, score_map, avg_score,
-            k=0.25,
-            head_boost=hb,
-            pos_lambda=0.08,
-            pos_mode="harmonic"
-        )
-        outs.append({"pattern": _pname, "finish_order": finish})
+    # 2本まとめ（昔の表記：slotごとに2パターンを合体）
+    def _pair_by_main(outs):
+        by = {n: f for n, f in outs}
+        return {
+            "順流メイン": (by.get("順流→渦→逆流", []), by.get("順流→逆流→渦", [])),
+            "渦メイン":   (by.get("渦→順流→逆流", []), by.get("渦→逆流→順流", [])),
+            "逆流メイン": (by.get("逆流→順流→渦", []), by.get("逆流→渦→順流", [])),
+        }
+
+    def _slot_set(a, b, idx):
+        s = set()
+        if a and idx < len(a): s.add(str(a[idx]))
+        if b and idx < len(b): s.add(str(b[idx]))
+        return sorted(list(s), key=lambda x: int(x) if x.isdigit() else 999)
+
+    def fmt_main_prediction(a, b):
+        if not a and not b:
+            return "（なし）"
+        n = max(len(a), len(b), 7)
+        parts = []
+        for i in range(n):
+            ss = _slot_set(a, b, i)
+            parts.append(".".join(ss) if ss else "")
+        return " → ".join([p for p in parts if p])
 
     pairs = _pair_by_main(outs)
 
-    # 旧仕様の表示：carFR×印着内率スコア順位 → 3本の着順予想
-    note_sections.append("\n【carFR×印着内率スコア順位】")
-    note_sections.append(_carfr_txt)
-
     note_sections.append("\n【順流メイン着順予想】")
-    note_sections.append(_fmt_main_prediction(*pairs["順流メイン"], n_slots=7))
+    note_sections.append(fmt_main_prediction(*pairs["順流メイン"]))
 
     note_sections.append("\n【渦メイン着順予想】")
-    note_sections.append(_fmt_main_prediction(*pairs["渦メイン"], n_slots=7))
+    note_sections.append(fmt_main_prediction(*pairs["渦メイン"]))
 
     note_sections.append("\n【逆流メイン着順予想】")
-    note_sections.append(_fmt_main_prediction(*pairs["逆流メイン"], n_slots=7))
+    note_sections.append(fmt_main_prediction(*pairs["逆流メイン"]))
 
 except Exception as e:
     try:
@@ -4123,8 +4067,6 @@ except Exception as e:
         st.exception(e)
     except Exception:
         print(e)
-
-note_sections.append("")
 
 
 
