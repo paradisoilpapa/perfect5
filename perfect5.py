@@ -1760,12 +1760,14 @@ def make_trio_formation_final(riders: list[Rider], bank_str: str) -> str:
 mu = float(df["合計_SBなし_raw"].mean()) if not df.empty else 0.0
 df["合計_SBなし"] = mu + 1.0 * (df["合計_SBなし_raw"] - mu)
 
+# --- SBなし(母集団) を df から「全車ぶん必ず」作る（None防止） ---
+sb_map = {int(r["車番"]): float(r["合計_SBなし"]) for _, r in df.iterrows()}
+
 # === [PATCH-A] 安定度をENVから分離し、各柱をレース内z化（SD固定） ===
 SD_FORM = 0.28
 SD_ENV  = 0.20
 SD_STAB = 0.12
 SD_L200 = float(globals().get("SD_L200", 0.22))  # ← 追加。まず0.22〜0.30で様子見
-
 
 # 安定度（raw）と、ENVのベース（= 合計_SBなし_raw から安定度だけ除いたもの）
 STAB_RAW = {int(df.loc[i, "車番"]): float(df.loc[i, "安定度"]) for i in df.index}
@@ -1807,14 +1809,16 @@ else:
 _den_l2 = (sd_l2 if sd_l2 > 1e-12 else 1.0)
 L200_Z = {int(n): (float(L200_RAW.get(n, mu_l2)) - mu_l2) / _den_l2 for n in active_cars}
 
-
 # ===== KO方式（印に混ぜず：展開・ケンで利用） =====
-v_wo = {int(k): float(v) for k, v in zip(df["車番"].astype(int), df["合計_SBなし"].astype(float))}
+# v_wo は「SBなし(母集団)」そのもの。df由来で欠けない map を使う
+v_wo = dict(sb_map)
+
 _is_girls = (race_class == "ガールズ")
 head_scale = KO_HEADCOUNT_SCALE.get(int(n_cars), 1.0)
 ko_scale_raw = (KO_GIRLS_SCALE if _is_girls else 1.0) * head_scale
 KO_SCALE_MAX = 0.45
 ko_scale = min(ko_scale_raw, KO_SCALE_MAX)
+
 
 if ko_scale > 0.0 and line_def and len(line_def) >= 1:
     ko_order = _ko_order(v_wo, line_def, S, B,
