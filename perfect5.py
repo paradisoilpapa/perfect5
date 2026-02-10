@@ -3337,31 +3337,15 @@ if "_build_car_fr_and_line_fr_map" not in globals():
                 continue
             line_fr_map[tuple(cars)] = sum(car_fr.get(c, 0.0) for c in cars) / max(len(cars), 1)
 
-        try:
-            for ln in lines:
-                if not ln:
-                    continue
-                key = "".join(map(str, ln))
-                lfr = float((line_fr_map or {}).get(key, 0.0) or 0.0)
-
-                hs = [float(hensa_map.get(int(c), 0.0)) for c in ln]
-                s = sum(hs)
-                w = ([1.0 / len(ln)] * len(ln)) if s <= 0.0 else [h / s for h in hs]
-
-                for c, wj in zip(ln, w):
-                    car_fr[int(c)] = car_fr.get(int(c), 0.0) + lfr * wj
-
-            return car_ids, car_fr, line_fr_map
-
-        except Exception:
-            return car_ids, car_fr, line_fr_map
-
-
+try:
+    for ln in lines:
+        if not ln:
+            continue
 
         key = "".join(map(str, ln))
         lfr = float((line_fr_map or {}).get(key, 0.0) or 0.0)
 
-        # --- ln を使って car_fr を配分する（あなたの意図どおり） ---
+        # --- ln を使って car_fr を配分する ---
         hs = [float(hensa_map.get(int(c), 0.0)) for c in ln]
         s = sum(hs)
         w = ([1.0 / len(ln)] * len(ln)) if s <= 0.0 else [h / s for h in hs]
@@ -3369,7 +3353,7 @@ if "_build_car_fr_and_line_fr_map" not in globals():
         for c, wj in zip(ln, w):
             cid = int(c)
             car_fr[cid] = car_fr.get(cid, 0.0) + lfr * wj
-        # ----------------------------------------------------------
+        # ------------------------------------
 
     def _hs(c):
         return float(hensa_map.get(int(c), 0.0))
@@ -3389,6 +3373,7 @@ if "_build_car_fr_and_line_fr_map" not in globals():
 
 except Exception:
     return "—", [], {}
+
 
 def _build_line_fr_map(lines, scores_map, FRv,
                        SINGLETON_FR_SCALE=0.70,
