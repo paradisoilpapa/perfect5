@@ -8,6 +8,39 @@ from statistics import mean, pstdev
 from itertools import combinations
 from datetime import datetime, date, time, timedelta, timezone
 
+def _grep_self(pattern: str, path: str = __file__, context: int = 2):
+    """
+    grep -n の代わり：このファイル(path)を読み、patternを含む行番号を出す
+    context: 前後に何行表示するか
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except Exception:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+
+    hits = []
+    for i, line in enumerate(lines, 1):
+        if pattern in line:
+            hits.append(i)
+
+    if not hits:
+        print(f"[SELF-GREP] not found: {pattern!r} in {path}")
+        return []
+
+    print(f"[SELF-GREP] found {len(hits)} hit(s): {hits}  pattern={pattern!r}")
+    for ln in hits:
+        s = max(1, ln - context)
+        e = min(len(lines), ln + context)
+        print("-----")
+        for j in range(s, e + 1):
+            mark = ">>" if j == ln else "  "
+            print(f"{mark}{j:5d}: {lines[j-1].rstrip()}")
+    return hits
+
+
+
 # ==============================
 # 偏差値T（車番→T）自動検出ユーティリティ
 # ==============================
@@ -1186,6 +1219,20 @@ def fatigue_extra(eff_laps: int, day_label: str, n_cars: int, race_class: str) -
 st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き：統合版）⭐")
 st.caption(f"風補正モード: {WIND_MODE}（'speed_only'=風速のみ / 'directional'=向きも薄く考慮）")
 
+# ←★ここに貼る（1回だけ走らせる）
+if "_DID_SELF_GREP" not in st.session_state:
+    st.session_state["_DID_SELF_GREP"] = True
+    _grep_self("KO使用スコア", __file__, context=6)
+    _grep_self("KO使用スコア（降順）", __file__, context=6)
+    _grep_self("ko_text", __file__, context=6)
+# →★ここまで
+
+st.subheader("レース番号（直前にサクッと変更）")
+
+
+
+
+
 st.subheader("レース番号（直前にサクッと変更）")
 if "race_no_main" not in st.session_state:
     st.session_state["race_no_main"] = 1
@@ -1489,7 +1536,8 @@ for no in active_cars:
 
     # 環境・個人補正（既存）
     wind     = _wind_func(eff_wind_dir, float(eff_wind_speed or 0.0), role, float(prof_escape[no]))
-    bank_b   = bank_character_bonus(bank_angle, straight_length, bank_length, prof_escape[no], prof_sashi[no])
+    bank_b = bank_character_bonus(bank_angle, straight_length, prof_escape[no], prof_sashi[no], bank_length)
+
 
     length_b = bank_length_adjust(bank_length, prof_oikomi[no])
     indiv    = extra_bonus.get(no, 0.0)
@@ -3418,6 +3466,46 @@ if "_build_line_fr_map" not in globals():
 
         raw = {"".join(map(str, ln)): sum_target * (s / total) for ln, s in line_sums}
         return raw
+
+if "_build_ko_rank_text" not in globals():
+    def _build_ko_rank_text(lines, hensa_map, line_fr_map):
+        norm_lines = []
+        for ln in (lines or []):
+            s = "".join(ch for ch in str(ln) if ch.isdigit())
+            if not s:
+                continue
+            norm_lines.append([int(ch) for ch in s])
+
+        hm = {int(k): float(v) for k, v in (hensa_map or {}).items() if str(k).strip().isdigit()}
+
+        car_ids = sorted({c for ln in norm_lines for c in ln}) or sorted(hm.keys())
+        car_fr = {cid: 0.0 for cid in car_ids}
+
+        for ln in norm_lines:
+            if not ln:
+                continue
+            key = "".join(map(str, ln))
+            lfr = float((line_fr_map or {}).get(key, 0.0) or 0.0)
+
+            hs = [float(hm.get(int(c), 0.0)) for c in ln]
+            s = sum(hs)
+            w = ([1.0 / len(ln)] * len(ln)) if s <= 0.0 else [h / s for h in hs]
+
+            for c, wj in zip(ln, w):
+                cid = int(c)
+                car_fr[cid] = car_fr.get(cid, 0.0) + lfr * wj
+
+        def _hs(c):
+            return float(hm.get(int(c), 0.0))
+
+        ordered_pairs = sorted(
+            car_fr.items(),
+            key=lambda kv: (kv[1], _hs(kv[0]), -int(kv[0])),
+            reverse=True
+        )
+
+        text = " / ".join(f"{cid}:{v:.4f}" for cid, v in ordered_pairs) if ordered_pairs else "—"
+        return text, ordered_pairs, car_fr
 
 
 # ============================================================
