@@ -3338,11 +3338,11 @@ if "_build_car_fr_and_line_fr_map" not in globals():
             line_fr_map[tuple(cars)] = sum(car_fr.get(c, 0.0) for c in cars) / max(len(cars), 1)
 
         try:
-    # lines / hensa_map / line_fr_map / car_ids / car_fr がここより前で用意されている前提
-
-    for ln in lines:
-        if not ln:
-            continue
+            # lines / hensa_map / line_fr_map / car_ids / car_fr がここより前で用意されている前提
+        
+            for ln in lines:
+                if not ln:
+                    continue
 
         key = "".join(map(str, ln))
         lfr = float((line_fr_map or {}).get(key, 0.0) or 0.0)
