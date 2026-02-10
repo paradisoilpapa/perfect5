@@ -3842,39 +3842,25 @@ except Exception as e:
 
 
 # =========================================================
-# ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
-# ★ 予想最終順位（最終隊列×偏差値Tでノックアウト）
-#    - 偏差値Tが無い場合は KO を中断してエラー表示（フォールバック禁止）
-#    - 「平均偏差値」は表示しない
-#    - 「根本スコア」「carFR×印着内率スコア順位」は出力しない（このブロックでは一切appendしない）
-#    - 表記は 6パターン内部生成 → 3メイン（各2パターン合成）で表示
+# ★ 偏差値Tでノックアウト（順流/渦/逆流メインの3本だけ表示）
+#    - 根本スコア/着内率スコアの出力は一切しない
+#    - 偏差値Tが取れない場合はエラー表示（落とす）
 # =========================================================
 
-# --- 0) 最低限の“生やし” ---
+# ---------- 0) 最低限の依存 “生やし” ----------
 if "note_sections" not in globals() or note_sections is None:
     note_sections = []
 
-if "_digits_of_line" not in globals():
-    def _digits_of_line(ln):
-        s = "".join(ch for ch in str(ln) if ch.isdigit())
-        return [int(ch) for ch in s] if s else []
+import math
+import pandas as pd
 
-if "_arrow_format" not in globals():
-    def _arrow_format(seq):
-        return " → ".join(str(x) for x in (seq or []))
+def _digits_of_line(ln):
+    s = "".join(ch for ch in str(ln) if ch.isdigit())
+    return [int(ch) for ch in s] if s else []
 
-# 6パターン定義（未定義なら必ず作る）
-if "_PATTERNS" not in globals() or not _PATTERNS:
-    _PATTERNS = [
-        ("順流→渦→逆流", ["順流", "渦", "逆流"]),
-        ("順流→逆流→渦", ["順流", "逆流", "渦"]),
-        ("渦→順流→逆流", ["渦", "順流", "逆流"]),
-        ("渦→逆流→順流", ["渦", "逆流", "順流"]),
-        ("逆流→順流→渦", ["逆流", "順流", "渦"]),
-        ("逆流→渦→順流", ["逆流", "渦", "順流"]),
-    ]
+def _arrow_format(seq):
+    return " → ".join(str(x) for x in (seq or []))
 
-# --- ライン入力を必ずキー化（listでもdict参照できるように） ---
 def _line_key(ln):
     if ln is None:
         return ""
@@ -3882,46 +3868,62 @@ def _line_key(ln):
         return "".join(str(x) for x in ln if str(x).isdigit())
     return "".join(ch for ch in str(ln) if ch.isdigit())
 
-# ラインが「順流/渦/逆流」のどれかを返す（既存の変数があれば拾う）
+# 6パターン
+_PATTERNS = [
+    ("順流→渦→逆流", ["順流", "渦", "逆流"]),
+    ("順流→逆流→渦", ["順流", "逆流", "渦"]),
+    ("渦→順流→逆流", ["渦", "順流", "逆流"]),
+    ("渦→逆流→順流", ["渦", "逆流", "順流"]),
+    ("逆流→順流→渦", ["逆流", "順流", "渦"]),
+    ("逆流→渦→順流", ["逆流", "渦", "順流"]),
+]
+
+# line_zone_map / line_fr_map は globals / session_state のどちらでも拾う
+def _gget(name, default=None):
+    if name in globals():
+        return globals().get(name)
+    try:
+        if hasattr(st, "session_state") and (name in st.session_state):
+            return st.session_state.get(name)
+    except Exception:
+        pass
+    return default
+
 def _infer_line_zone(ln):
     k = _line_key(ln)
 
-    # 1) 辞書候補
+    # 1) まず辞書（line_zone_map系）を拾う
     for key in ("line_zone_map", "line_type_map", "line_class_map", "line_role_map"):
-        m = globals().get(key)
+        m = _gget(key)
         if isinstance(m, dict):
-            z = m.get(k) or m.get(str(k)) or m.get(ln) or m.get(str(ln))
+            z = m.get(k) or m.get(str(k))
             if z in ("順流", "渦", "逆流"):
                 return z
 
-    # 2) 単体変数候補
-    flow = globals().get("flow_line") or globals().get("main_flow_line") or globals().get("jyunryu_line")
-    rev  = globals().get("reverse_line") or globals().get("gyakuryu_line")
-    vort = globals().get("vortex_line") or globals().get("uzu_line") or globals().get("candidate_vortex_line")
+    # 2) 単体変数（flow_line / reverse_line / vortex_lines）から推測
+    flow = _gget("flow_line") or _gget("main_flow_line") or _gget("jyunryu_line")
+    rev  = _gget("reverse_line") or _gget("gyakuryu_line")
+    vort1 = _gget("vortex_line") or _gget("uzu_line") or _gget("candidate_vortex_line")
+    vlist = _gget("vortex_lines") or _gget("uzu_lines") or _gget("candidate_vortex_lines")
 
     if flow is not None and _line_key(flow) == k:
         return "順流"
     if rev is not None and _line_key(rev) == k:
         return "逆流"
-    if vort is not None and _line_key(vort) == k:
+    if vort1 is not None and _line_key(vort1) == k:
+        return "渦"
+    if isinstance(vlist, (list, tuple, set)) and any(_line_key(x) == k for x in vlist):
         return "渦"
 
-    # 3) 候補リスト
-    for key in ("vortex_lines", "uzu_lines", "candidate_vortex_lines"):
-        xs = globals().get(key)
-        if isinstance(xs, (list, tuple, set)):
-            if any(_line_key(x) == k for x in xs):
-                return "渦"
-
+    # 最後：分からなければ順流扱い（落とさない）
     return "順流"
 
-# ラインFR辞書を拾う（あれば使う・無ければ0）
 def _get_line_fr(ln):
     k = _line_key(ln)
     for key in ("line_fr_map", "lineFR_map", "line_fr", "lineFR"):
-        m = globals().get(key)
+        m = _gget(key)
         if isinstance(m, dict):
-            v = m.get(k) or m.get(str(k)) or m.get(ln) or m.get(str(ln))
+            v = m.get(k) or m.get(str(k))
             if v is not None:
                 try:
                     return float(v)
@@ -3929,43 +3931,31 @@ def _get_line_fr(ln):
                     pass
     return 0.0
 
-# パターンに従って「ライン順」を決め、最終ジャン隊列を作る
-if "_queue_for_pattern" not in globals():
-    def _queue_for_pattern(all_lines, svr_order):
-        lines = list(all_lines or [])
-        bucket = {"順流": [], "渦": [], "逆流": []}
+def _queue_for_pattern(all_lines, svr_order):
+    lines = list(all_lines or [])
+    bucket = {"順流": [], "渦": [], "逆流": []}
+    for ln in lines:
+        bucket.setdefault(_infer_line_zone(ln), []).append(ln)
+
+    used = []
+    queue = []
+    for z in (svr_order or ["順流", "渦", "逆流"]):
+        xs = bucket.get(z, [])
+        xs = sorted(xs, key=lambda x: _get_line_fr(x), reverse=True)
+        for ln in xs:
+            used.append(_line_key(ln))
+            queue.extend(_digits_of_line(ln))
+
+    # ぜんぶ空の保険
+    if not queue:
         for ln in lines:
-            z = _infer_line_zone(ln)
-            bucket.setdefault(z, []).append(ln)
+            used.append(_line_key(ln))
+            queue.extend(_digits_of_line(ln))
 
-        used = []
-        queue = []
+    return queue, used
 
-        for z in (svr_order or ["順流", "渦", "逆流"]):
-            xs = bucket.get(z, [])
-            xs = sorted(xs, key=lambda x: _get_line_fr(x), reverse=True)
-            for ln in xs:
-                used.append(ln)
-                queue.extend(_digits_of_line(ln))
-
-        if not queue:
-            for ln in lines:
-                used.append(ln)
-                queue.extend(_digits_of_line(ln))
-
-        return queue, used
-
-# --- 偏差値Tソースの自動検出（dict / pd.Series / 1列DataFrame） ---
+# ---------- 1) 偏差値Tを「車番→T」dictとして必ず取得 ----------
 def _extract_car_t_map_from_obj(obj):
-    """
-    obj から「車番→偏差値T(dict: keyは数字文字列)」を取り出す。
-    - dict: {1: 52.3, "4": 47.1, ...}
-    - Series: indexが車番
-    - 1列DataFrame: indexが車番
-    """
-    if obj is None:
-        return None
-
     # dict
     if isinstance(obj, dict) and obj:
         out = {}
@@ -3979,40 +3969,58 @@ def _extract_car_t_map_from_obj(obj):
                 continue
         return out if out else None
 
-    # pandas Series
+    # Series
     if isinstance(obj, pd.Series) and (not obj.empty):
-        out = {}
-        for k, v in obj.to_dict().items():
-            ks = "".join(ch for ch in str(k) if ch.isdigit())
-            if not ks:
-                continue
-            try:
-                out[ks] = 50.0 if v is None else float(v)
-            except Exception:
-                continue
-        return out if out else None
+        return _extract_car_t_map_from_obj(obj.to_dict())
 
-    # pandas DataFrame（1列想定）
+    # DataFrame
     if isinstance(obj, pd.DataFrame) and (not obj.empty):
+        cols = list(obj.columns)
+
+        # 典型列名候補（あなたの画面：偏差値T(レース内)）
+        cand_cols = [
+            "偏差値T(レース内)", "偏差値T", "偏差値", "T", "t", "race_T", "hensachi_T"
+        ]
+        col_t = None
+        for c in cand_cols:
+            if c in cols:
+                col_t = c
+                break
+
+        # 車番列候補
+        cand_car = ["車", "車番", "car", "car_no", "carNo"]
+        col_car = None
+        for c in cand_car:
+            if c in cols:
+                col_car = c
+                break
+
+        # ケースA：車列＋偏差値列がある
+        if col_car and col_t:
+            out = {}
+            for _, r in obj.iterrows():
+                ks = "".join(ch for ch in str(r[col_car]) if ch.isdigit())
+                if not ks:
+                    continue
+                try:
+                    out[ks] = 50.0 if pd.isna(r[col_t]) else float(r[col_t])
+                except Exception:
+                    continue
+            return out if out else None
+
+        # ケースB：indexが車番、1列目が偏差値
         if obj.shape[1] >= 1:
-            return _extract_car_t_map_from_obj(obj.iloc[:, 0])
+            s = obj.iloc[:, 0]
+            return _extract_car_t_map_from_obj(s)
 
     return None
 
 def _looks_like_t_map(tmap, active_cars=None):
-    """
-    偏差値Tっぽさ判定：
-    - keyが数字文字列
-    - 値が 10〜90中心
-    - active_cars があれば、その過半が含まれる
-    """
     if not isinstance(tmap, dict) or not tmap:
         return False
-
     keys = [k for k in tmap.keys() if str(k).isdigit()]
     if len(keys) < 4:
         return False
-
     vals = []
     for k in keys:
         try:
@@ -4021,247 +4029,186 @@ def _looks_like_t_map(tmap, active_cars=None):
             pass
     if len(vals) < 4:
         return False
-
     in_range = [v for v in vals if 10.0 <= v <= 90.0]
-    if (len(in_range) / len(vals)) < 0.8:
+    if len(in_range) / len(vals) < 0.8:
         return False
-
     m = sum(in_range) / len(in_range)
     if not (25.0 <= m <= 75.0):
         return False
-
     if active_cars:
         ac = [str(x) for x in active_cars if str(x).isdigit()]
         if ac:
             hit = sum(1 for x in ac if x in tmap)
-            if (hit / len(ac)) < 0.6:
+            if hit / len(ac) < 0.6:
                 return False
-
     return True
 
-def _pick_hensachi_source_from_globals(g, active_cars=None):
-    """
-    globals() を総当たりし、偏差値Tっぽい dict を1つ拾う。
-    戻り値: (tmap, var_name, score)
-    """
-    best = None
-    best_name = None
-    best_score = -1.0
+def _pick_hensachi_map():
+    active_cars = _gget("active_cars") or []
+    # まずは「明示名」優先
+    for nm in ("hensachi_map", "_hensachi_map", "t_value_by_car", "dev_by_car", "_t_map"):
+        obj = _gget(nm)
+        tmap = _extract_car_t_map_from_obj(obj)
+        if tmap and _looks_like_t_map(tmap, active_cars=active_cars):
+            return tmap, nm
 
-    ac = [str(x) for x in (active_cars or []) if str(x).isdigit()]
+    # 次に globals / session_state 全走査
+    best, best_name, best_score = None, None, -1.0
 
-    for name, obj in (g or {}).items():
+    # globals
+    for name, obj in list(globals().items()):
         if name.startswith("__"):
             continue
-
         tmap = _extract_car_t_map_from_obj(obj)
         if not tmap:
             continue
         if not _looks_like_t_map(tmap, active_cars=active_cars):
             continue
-
-        # coverage（active_cars一致）を最優先
+        ac = [str(x) for x in active_cars if str(x).isdigit()]
         hit = sum(1 for x in ac if x in tmap) if ac else len(tmap)
         coverage = (hit / len(ac)) if ac else 0.5
-
-        # 単調(50だらけ)は弱くする
-        vals = []
-        for v in tmap.values():
-            try:
-                vals.append(float(v))
-            except Exception:
-                pass
+        vals = [float(v) for v in tmap.values()]
         uniq = len(set(round(v, 2) for v in vals)) / max(1, len(vals))
-
         score = coverage * 0.7 + uniq * 0.3
-
         if score > best_score:
-            best_score = score
-            best = tmap
-            best_name = name
+            best, best_name, best_score = tmap, name, score
 
-    return best, best_name, best_score
+    # session_state
+    try:
+        for name in list(st.session_state.keys()):
+            obj = st.session_state.get(name)
+            tmap = _extract_car_t_map_from_obj(obj)
+            if not tmap:
+                continue
+            if not _looks_like_t_map(tmap, active_cars=active_cars):
+                continue
+            ac = [str(x) for x in active_cars if str(x).isdigit()]
+            hit = sum(1 for x in ac if x in tmap) if ac else len(tmap)
+            coverage = (hit / len(ac)) if ac else 0.5
+            vals = [float(v) for v in tmap.values()]
+            uniq = len(set(round(v, 2) for v in vals)) / max(1, len(vals))
+            score = coverage * 0.7 + uniq * 0.3
+            if score > best_score:
+                best, best_name, best_score = tmap, f"st.session_state['{name}']", score
+    except Exception:
+        pass
 
-# “ノックアウト”で着順を作る（偏差値T差分×位置でKO）
-if "_knockout_finish_from_queue" not in globals():
-    def _knockout_finish_from_queue(
-        finaljump_queue,
-        score_map,
-        k=0.25,
-        head_boost=0.0,
-        pos_lambda=0.12,
-        pos_mode="harmonic",
-        singleton_set=None,
-        tail3_set=None,
-        tail3_bonus=0.02,
-        singleton_head_pen=0.02,
-    ):
-        # キュー（数字だけ）
-        q = [str(x) for x in (finaljump_queue or []) if str(x).isdigit()]
-        cars_in_map = set(str(x) for x in score_map.keys() if str(x).isdigit())
+    return best, best_name
 
-        # 先頭出現位置（同一車が複数でも最前のみ）
-        first_pos = {}
-        for i, c in enumerate(q):
-            if c not in first_pos:
-                first_pos[c] = i
+# ---------- 2) KO本体 ----------
+def _knockout_finish_from_queue(finaljump_queue, t_map, pos_lambda=0.10, overtake_step=10.0):
+    """
+    仕様（あなたの会話を反映）：
+    - スコアは偏差値Tそのもの（平均との差は使わない：平均50で固定だから）
+    - 追い抜き：後方が前を抜くための“必要差”を overtake_step として段階的に適用
+      → 「単に偏差値が高いだけで頭」になりにくくする
+    - 位置は減衰（前ほど有利）を掛ける（pos_lambda）
+    """
+    q = [str(x) for x in (finaljump_queue or []) if str(x).isdigit()]
 
-        # キューに居ない車も最後尾扱いで入れる（=隊列未登場で消える/低すぎる問題を潰す）
-        tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
-        for c in sorted(list(cars_in_map), key=lambda x: int(x)):
-            if c not in first_pos:
-                first_pos[c] = tail_pos
+    # キューにいない車も最後尾として追加（消え防止）
+    cars = sorted([str(k) for k in t_map.keys() if str(k).isdigit()], key=lambda x: int(x))
+    first_pos = {}
+    for i, c in enumerate(q):
+        if c not in first_pos:
+            first_pos[c] = i
+    tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
+    for c in cars:
+        if c not in first_pos:
+            first_pos[c] = tail_pos
 
-        singleton_set = set(str(x) for x in (singleton_set or set()))
-        tail3_set = set(str(x) for x in (tail3_set or set()))
+    # 初期並び：位置＋Tで仮スコア（ここは素直に）
+    items = []
+    for c, i in first_pos.items():
+        T = float(t_map.get(c, 50.0))
+        pos_factor = 1.0 / (1.0 + pos_lambda * i)
+        base = T * pos_factor
+        items.append([c, base, i, T])
 
-        # 偏差値の平均との差（平均は常に50になりやすいので、ここでは毎回計算はするが“表示しない”）
-        vals = [float(score_map.get(c, 50.0)) for c in cars_in_map] or [50.0]
-        avg_t = sum(vals) / len(vals)
+    # base降順（前が強い）
+    items.sort(key=lambda x: x[1], reverse=True)
 
-        scored = []
-        for c, i in first_pos.items():
-            base = float(score_map.get(str(c), 50.0))
-            dev = (base - avg_t)  # ★偏差値の「高低」が主役
+    # 追い抜き処理（後ろ→前）：必要差 overtake_step を満たしたら入れ替え
+    # これで「後方ラインからの追い抜き」が入る
+    changed = True
+    guard = 0
+    while changed and guard < 50:
+        changed = False
+        guard += 1
+        for j in range(len(items) - 1, 0, -1):
+            back = items[j]
+            front = items[j - 1]
+            # 後ろが前を抜く条件：T差が段階ポイントを超える
+            if (back[3] - front[3]) >= overtake_step:
+                items[j - 1], items[j] = items[j], items[j - 1]
+                changed = True
 
-            if pos_mode == "harmonic":
-                pos_factor = 1.0 / (1.0 + pos_lambda * i)
-            else:
-                pos_factor = math.exp(-pos_lambda * i)
+    return [c for c, _, _, _ in items]
 
-            bonus = 0.0
-            if i == 0 and head_boost:
-                bonus += float(head_boost)
-            if i == 0 and c in singleton_set:
-                bonus -= float(singleton_head_pen)
-            if c in tail3_set:
-                bonus += float(tail3_bonus)
+def _pair_by_main(outs):
+    by = {o["pattern"]: o["finish_order"] for o in (outs or [])}
+    return {
+        "順流メイン": (by.get("順流→渦→逆流", []), by.get("順流→逆流→渦", [])),
+        "渦メイン":   (by.get("渦→順流→逆流", []), by.get("渦→逆流→順流", [])),
+        "逆流メイン": (by.get("逆流→順流→渦", []), by.get("逆流→渦→順流", [])),
+    }
 
-            final = (dev * (1.0 + k) * pos_factor) + bonus
-            scored.append((c, final, i))
+def _slot_set(a, b, idx):
+    s = set()
+    if a and idx < len(a): s.add(str(a[idx]))
+    if b and idx < len(b): s.add(str(b[idx]))
+    return sorted(list(s), key=lambda x: int(x) if x.isdigit() else 999)
 
-        scored.sort(key=lambda t: (t[1], -t[2]), reverse=True)
-        return [c for c, _, _ in scored]
+def _fmt_compact(a, b):
+    # 表記：順流→渦2、逆流2→渦3順流3→…
+    # ＝スロットごとに「(順流メインの該当車)(渦メインの該当車)」ではなく
+    #    “2本の結果を合成して重複を '.' でまとめる”
+    n = max(len(a), len(b), 7)
+    parts = []
+    for i in range(n):
+        ss = _slot_set(a, b, i)
+        parts.append(".".join(ss) if ss else "")
+    return " → ".join([p for p in parts if p])
 
-# --- ここから本体（偏差値T固定 / 平均偏差値は表示しない） ---
+# ---------- 実行 ----------
 try:
-    all_lines = globals().get("all_lines") or []
-    active_cars = globals().get("active_cars") or []
+    all_lines = _gget("all_lines") or []
+    active_cars = _gget("active_cars") or []
 
-    # 1) 偏差値Tソースを自動検出（フォールバック禁止）
-    _tsrc, _picked_name, _picked_score = _pick_hensachi_source_from_globals(globals(), active_cars=active_cars)
-    if _tsrc is None:
-        raise NameError("偏差値Tソースが見つかりません（偏差値Tを作っている dict/Series/DF が globals() に存在するか確認）")
+    t_map, picked_name = _pick_hensachi_map()
+    if not t_map:
+        raise NameError("偏差値Tが取得できません。偏差値テーブルを dict/Series/DF で hensachi_map 等に保存してください。")
 
-    # 2) score_map（"車番文字列" -> T）
-    _score_map = {}
-    for k, v in _tsrc.items():
+    # KO用に key を数字文字列へ正規化
+    _t_map = {}
+    for k, v in t_map.items():
         ks = "".join(ch for ch in str(k) if ch.isdigit())
-        if not ks:
-            continue
-        _score_map[ks] = 50.0 if v is None else float(v)
+        if ks:
+            _t_map[ks] = float(v)
 
-    if not _score_map:
-        raise ValueError("偏差値Tソースは拾えたが、車番キーを抽出できません（keyが車番になっているか確認）")
-
-    # 3) 偏差値順位（表記用）：同率は "=" で束ねる
-    def _fmt_t_rank_line(score_map, active_cars=None):
-        ac = [str(x) for x in (active_cars or []) if str(x).isdigit()]
-        cars = ac if ac else sorted(score_map.keys(), key=lambda x: int(x))
-        pairs = []
-        for c in cars:
-            if c in score_map:
-                pairs.append((c, float(score_map[c])))
-        # 高い順、同値は車番昇順
-        pairs.sort(key=lambda t: (-t[1], int(t[0])))
-
-        groups = []
-        i = 0
-        while i < len(pairs):
-            v = pairs[i][1]
-            same = [pairs[i][0]]
-            j = i + 1
-            while j < len(pairs) and abs(pairs[j][1] - v) < 1e-9:
-                same.append(pairs[j][0])
-                j += 1
-            if len(same) >= 2:
-                groups.append("=".join(same))
-            else:
-                groups.append(same[0])
-            i = j
-        return " > ".join(groups) if groups else "（なし）"
-
-    note_sections.append("\n【偏差値順位（T）】")
-    note_sections.append(_fmt_t_rank_line(_score_map, active_cars=active_cars))
-
-    # 4) 単騎 / 3車3番手（line入力から推定）
-    _singletons = set()
-    _tail3 = set()
-    for ln in (all_lines or []):
-        ds = _digits_of_line(ln)
-        if len(ds) == 1:
-            _singletons.add(str(ds[0]))
-        elif len(ds) == 3:
-            _tail3.add(str(ds[2]))
-
-    # 5) 6パターンを内部生成 → 3メイン（2本ずつ合成）で表示
-    _escape_patterns = ("逆流→順流→渦", "逆流→渦→順流")
-
+    # 単騎 / 3車3番手（必要なら今後拡張するが、現段階では出力に影響させない）
     outs = []
-    for _pname, _svr in _PATTERNS:
-        _finaljump_queue, _used = _queue_for_pattern(all_lines, _svr)
-
-        # 差を出したいならここで調整（必要最小限）
-        hb = 0.35 if (_pname in _escape_patterns) else 0.10
-
-        _finish = _knockout_finish_from_queue(
-            _finaljump_queue,
-            _score_map,
-            k=0.30 if (_pname in _escape_patterns) else 0.25,
-            head_boost=hb,
-            pos_lambda=0.12 if (_pname in _escape_patterns) else 0.10,
-            pos_mode="harmonic",
-            singleton_set=_singletons,
-            tail3_set=_tail3,
-            tail3_bonus=0.02,
-            singleton_head_pen=0.02,
+    for pname, svr in _PATTERNS:
+        q, used = _queue_for_pattern(all_lines, svr)
+        finish = _knockout_finish_from_queue(
+            q,
+            _t_map,
+            pos_lambda=0.10,
+            overtake_step=10.0  # ←あなたの例の「距離ポイント10」に相当
         )
-        outs.append({"pattern": _pname, "finish_order": _finish})
-
-    def _pair_by_main(_outs):
-        by = {o["pattern"]: o["finish_order"] for o in (_outs or [])}
-        return {
-            "順流メイン": (by.get("順流→渦→逆流", []), by.get("順流→逆流→渦", [])),
-            "渦メイン":   (by.get("渦→順流→逆流", []), by.get("渦→逆流→順流", [])),
-            "逆流メイン": (by.get("逆流→順流→渦", []), by.get("逆流→渦→順流", [])),
-        }
-
-    def _slot_set(a, b, idx):
-        s = set()
-        if a and idx < len(a): s.add(str(a[idx]))
-        if b and idx < len(b): s.add(str(b[idx]))
-        return sorted(list(s), key=lambda x: int(x) if x.isdigit() else 999)
-
-    def fmt_main_prediction(a, b):
-        if not a and not b:
-            return "（なし）"
-        n = max(len(a), len(b), 7)
-        parts = []
-        for i in range(n):
-            ss = _slot_set(a, b, i)
-            parts.append(".".join(ss) if ss else "")
-        return " → ".join([p for p in parts if p])
+        outs.append({"pattern": pname, "finish_order": finish})
 
     pairs = _pair_by_main(outs)
 
+    # ★ 表示はこれだけ（根本スコア/着内率スコアは出さない）
     note_sections.append("\n【順流メイン着順予想】")
-    note_sections.append(fmt_main_prediction(*pairs["順流メイン"]))
+    note_sections.append(_fmt_compact(*pairs["順流メイン"]))
 
     note_sections.append("\n【渦メイン着順予想】")
-    note_sections.append(fmt_main_prediction(*pairs["渦メイン"]))
+    note_sections.append(_fmt_compact(*pairs["渦メイン"]))
 
     note_sections.append("\n【逆流メイン着順予想】")
-    note_sections.append(fmt_main_prediction(*pairs["逆流メイン"]))
+    note_sections.append(_fmt_compact(*pairs["逆流メイン"]))
 
 except Exception as e:
     try:
