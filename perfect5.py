@@ -1810,20 +1810,43 @@ _den_l2 = (sd_l2 if sd_l2 > 1e-12 else 1.0)
 L200_Z = {int(n): (float(L200_RAW.get(n, mu_l2)) - mu_l2) / _den_l2 for n in active_cars}
 
 # ===== KO方式（印に混ぜず：展開・ケンで利用） =====
-# v_wo は「SBなし(母集団)」そのもの。df由来で欠けない map を使う
+
+# 1) key 欠損チェック
+missing = [int(n) for n in active_cars if int(n) not in sb_map]
+if missing:
+    st.error(f"SBなし(母集団) が欠損してる車番: {missing} / sb_map.keys={sorted(sb_map.keys())}")
+    # st.stop()  # 欠損が出たら止めたいなら有効化
+
+# 2) 値が None/NaN チェック（←これが「追加」）
+bad = [
+    int(n) for n in active_cars
+    if (int(n) in sb_map) and (
+        sb_map[int(n)] is None or
+        (isinstance(sb_map[int(n)], float) and np.isnan(sb_map[int(n)]))
+    )
+]
+if bad:
+    st.error(f"SBなし(母集団) の値が None/NaN: {bad} / values={[sb_map[int(n)] for n in bad]}")
+    # st.stop()  # None/NaNが出たら止めたいなら有効化
+
+# 3) KO入力に使う母集団
 v_wo = dict(sb_map)
 
+# 4) 以降 KO
 _is_girls = (race_class == "ガールズ")
 head_scale = KO_HEADCOUNT_SCALE.get(int(n_cars), 1.0)
 ko_scale_raw = (KO_GIRLS_SCALE if _is_girls else 1.0) * head_scale
 KO_SCALE_MAX = 0.45
 ko_scale = min(ko_scale_raw, KO_SCALE_MAX)
 
-
 if ko_scale > 0.0 and line_def and len(line_def) >= 1:
     ko_order = _ko_order(v_wo, line_def, S, B,
                          line_factor=line_factor_eff,
                          gap_delta=KO_GAP_DELTA)
+
+
+
+    
     vals = [v_wo[c] for c in v_wo.keys()]
     mu0  = float(np.mean(vals)); sd0 = float(np.std(vals) + 1e-12)
     KO_STEP_SIGMA_LOCAL = max(0.25, KO_STEP_SIGMA * 0.7)
@@ -2247,18 +2270,40 @@ if pool_total > 0.0 and _lines:
 
 
 
+# ==============================
+# 偏差値テーブル（SBなし母集団）＋欠損ガード
+# ==============================
 race_z = (xs_race_t - 50.0) / 10.0
 
+# --- SBなし(母集団) を map として確定（KO入力もここを使う） ---
+# USED_IDS と xs_base_raw は「同じ順番」で対応している前提
+sb_map = {}
+for cid, x in zip(USED_IDS, xs_base_raw):
+    try:
+        if x is None:
+            continue
+        xf = float(x)
+        if not np.isfinite(xf):
+            continue
+        sb_map[int(cid)] = xf
+    except Exception:
+        pass
+
+# --- 欠損チェック（None連発の犯人特定） ---
+missing = [int(n) for n in active_cars if int(n) not in sb_map]
+if missing:
+    st.error(f"SBなし(母集団) が欠損してる車番: {missing} / sb_map.keys={sorted(sb_map.keys())}")
+
+# --- 表（hen_df）を sb_map から作る：Noneは明示的にNoneで残す ---
 hen_df = pd.DataFrame({
     "車": USED_IDS,
-    "SBなし(母集団)": [None if not np.isfinite(x) else float(x) for x in xs_base_raw],
-    "偏差値T(レース内)": [race_t[i] for i in USED_IDS],
-}).sort_values(["偏差値T(レース内)","車"], ascending=[False, True]).reset_index(drop=True)
+    "SBなし(母集団)": [sb_map.get(int(cid), None) for cid in USED_IDS],
+    "偏差値T(レース内)": [race_t[int(cid)] for cid in USED_IDS],
+}).sort_values(["偏差値T(レース内)", "車"], ascending=[False, True]).reset_index(drop=True)
 
 st.markdown("### 偏差値（レース内T＝平均50・SD10｜SBなしと同一母集団）")
 st.caption(f"μ={mu_sb if np.isfinite(mu_sb) else 'nan'} / σ={sd_sb:.6f} / 有効件数k={k_finite}")
 st.dataframe(hen_df, use_container_width=True)
-
 
 # 7) 印（◎〇▲）＝ T↓ → SBなし↓ → 車番↑（βは除外）
 if "select_beta" not in globals():
@@ -2267,7 +2312,7 @@ if "enforce_alpha_eligibility" not in globals():
     def enforce_alpha_eligibility(m): return m
 
 # ===== βラベル付与（単なる順位ラベル） =====
-def assign_beta_label(result_marks: dict[str,int], used_ids: list[int], df_sorted) -> dict[str,int]:
+def assign_beta_label(result_marks: dict[str, int], used_ids: list[int], df_sorted) -> dict[str, int]:
     marks = dict(result_marks)
     # 6車以下は出さない（集計仕様）
     if len(used_ids) <= 6:
@@ -2276,7 +2321,7 @@ def assign_beta_label(result_marks: dict[str,int], used_ids: list[int], df_sorte
     if "β" in marks:
         return marks
     try:
-        last_car = int(df_sorted.loc[len(df_sorted)-1, "車番"])
+        last_car = int(df_sorted.loc[len(df_sorted) - 1, "車番"])
         if last_car not in marks.values():
             marks["β"] = last_car
     except Exception:
