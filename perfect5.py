@@ -3337,32 +3337,44 @@ if "_build_car_fr_and_line_fr_map" not in globals():
                 continue
             line_fr_map[tuple(cars)] = sum(car_fr.get(c, 0.0) for c in cars) / max(len(cars), 1)
 
-        for ln in lines:
-            key = "".join(map(str, ln or []))
-            lfr = float((line_fr_map or {}).get(key, 0.0) or 0.0)
-            if not ln:
-                continue
-            # ここに ln を使って line_fr_map / car_fr を作る処理を書く（あなたの既存処理を残す）
+        try:
+    # lines / hensa_map / line_fr_map / car_ids / car_fr がここより前で用意されている前提
 
-        return car_ids, car_fr, line_fr_map
+    for ln in lines:
+        if not ln:
+            continue
 
-                hs = [float(hensa_map.get(int(c), 0.0)) for c in ln]
-                s = sum(hs)
-                w = ([1.0 / len(ln)] * len(ln)) if s <= 0.0 else [h / s for h in hs]
+        key = "".join(map(str, ln))
+        lfr = float((line_fr_map or {}).get(key, 0.0) or 0.0)
 
-                for c, wj in zip(ln, w):
-                    car_fr[int(c)] = car_fr.get(int(c), 0.0) + lfr * wj
+        # --- ln を使って car_fr を配分する（あなたの意図どおり） ---
+        hs = [float(hensa_map.get(int(c), 0.0)) for c in ln]
+        s = sum(hs)
+        w = ([1.0 / len(ln)] * len(ln)) if s <= 0.0 else [h / s for h in hs]
 
-            def _hs(c): return float(hensa_map.get(int(c), 0.0))
-            ordered_pairs = sorted(
-                car_fr.items(),
-                key=lambda kv: (kv[1], _hs(kv[0]), -int(kv[0])),
-                reverse=True
-            )
-            text = "\n".join(f"{i}位：{cid} ({v:.4f})" for i, (cid, v) in enumerate(ordered_pairs, 1)) if ordered_pairs else "—"
-            return text, ordered_pairs, car_fr
-        except Exception:
-            return "—", [], {}
+        for c, wj in zip(ln, w):
+            cid = int(c)
+            car_fr[cid] = car_fr.get(cid, 0.0) + lfr * wj
+        # ----------------------------------------------------------
+
+    def _hs(c):
+        return float(hensa_map.get(int(c), 0.0))
+
+    ordered_pairs = sorted(
+        car_fr.items(),
+        key=lambda kv: (kv[1], _hs(kv[0]), -int(kv[0])),
+        reverse=True
+    )
+
+    text = "\n".join(
+        f"{i}位：{cid} ({v:.4f})"
+        for i, (cid, v) in enumerate(ordered_pairs, 1)
+    ) if ordered_pairs else "—"
+
+    return text, ordered_pairs, car_fr
+
+except Exception:
+    return "—", [], {}
 
 def _build_line_fr_map(lines, scores_map, FRv,
                        SINGLETON_FR_SCALE=0.70,
