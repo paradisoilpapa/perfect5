@@ -3532,9 +3532,6 @@ def trio_free_completion(scores, marks_any, flow_ctx=None, debug_lines=None):
         except Exception:
             pass
 
-except Exception as e:
-    if isinstance(debug_lines, list):
-        debug_lines.append(f"[DBG carFR] EXC {type(e).__name__}: {e}")
 
 
 
