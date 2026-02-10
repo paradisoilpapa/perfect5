@@ -3497,33 +3497,45 @@ def trio_free_completion(scores, marks_any, flow_ctx=None, debug_lines=None):
     _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
 
     try:
-    dbg_ns = [4, 6]
-    note_sections.append("\n[DBG] carFR/着内率 参照確認（4,6）")
+    dbg_ns = [4, 6]  # ← try の中なので、必ず4スペース(or tab統一)でインデント
 
-    # それっぽい辞書名を拾う（存在するものだけ）
-    _carfr_src = globals().get("_carfr_map") or globals().get("carfr_map") or {}
-    _inrate_src = globals().get("inrate_map") or globals().get("print_inrate_map") or globals().get("mark_inrate_map") or {}
+    # 4) carFR順位（ここが本体）
+    _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
 
-    for nn in dbg_ns:
-        ks = str(nn)
-        ki = int(nn)
+    # 4.5) DBG（4や6が0になる原因の確定）
+    if isinstance(debug_lines, list):
+        for no in dbg_ns:
+            hens_v = hens.get(no, None)
 
-        # 文字/数値 両方で引く（キー不一致を炙り出す）
-        carfr_v = None
-        if isinstance(_carfr_src, dict):
-            carfr_v = _carfr_src.get(ks)
-            if carfr_v is None:
-                carfr_v = _carfr_src.get(ki)
+            carfr_raw_i = None
+            carfr_raw_s = None
+            if isinstance(_carfr_map, dict):
+                carfr_raw_i = _carfr_map.get(no, None)
+                carfr_raw_s = _carfr_map.get(str(no), None)
 
-        inrt_v = None
-        if isinstance(_inrate_src, dict):
-            inrt_v = _inrate_src.get(ks)
-            if inrt_v is None:
-                inrt_v = _inrate_src.get(ki)
+            rank_has = False
+            try:
+                rank_has = any(int(cid) == no for cid, _ in (_carfr_rank or []))
+            except Exception:
+                pass
 
-        note_sections.append(f"car {nn}: carFR={carfr_v} / inrate={inrt_v}")
-except Exception:
-    pass
+            debug_lines.append(
+                f"[DBG carFR] no={no} hens={hens_v} "
+                f"_carfr_map[{no}]={carfr_raw_i} _carfr_map['{no}']={carfr_raw_s} rank_has={rank_has}"
+            )
+
+    # 5) carFRマップを intキーに統一（strキー混入を吸収）
+    carfr_map_i = {}
+    for k, v in (_carfr_map or {}).items():
+        try:
+            carfr_map_i[int(k)] = float(v)
+        except Exception:
+            pass
+
+except Exception as e:
+    if isinstance(debug_lines, list):
+        debug_lines.append(f"[DBG carFR] EXC {type(e).__name__}: {e}")
+
 
 
     # 5) carFRマップを intキーに統一（strキー混入を吸収）
