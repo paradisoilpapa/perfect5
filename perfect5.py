@@ -3322,13 +3322,19 @@ def infer_eval_with_share(fr_v: float, vtx_v: float, u_v: float, share_pct: floa
 # ============================================================
 
 # ---------- 0) carFR順位（存在しない場合だけ定義） ----------
-if "" not in globals():
-    def (lines, hensa_map, line_fr_map):
+if "calc_car_fr" not in globals():
+    def calc_car_fr(lines, hensa_map, line_fr_map):
         try:
             lines = list(lines or [])
             hensa_map = {int(k): float(v) for k, v in (hensa_map or {}).items() if str(k).isdigit()}
             car_ids = sorted({int(c) for ln in lines for c in (ln or [])}) or sorted(hensa_map.keys())
             car_fr = {cid: 0.0 for cid in car_ids}
+
+            # ここから下に続きの処理を書く（今貼ってるのは途中まで）
+            return car_fr
+
+        except Exception:
+            return {}
 
             for ln in lines:
                 key = "".join(map(str, ln or []))
