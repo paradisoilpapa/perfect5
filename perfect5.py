@@ -3496,6 +3496,36 @@ def trio_free_completion(scores, marks_any, flow_ctx=None, debug_lines=None):
     # 4) carFR順位（ここが本体）
     _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
 
+    try:
+    dbg_ns = [4, 6]
+    note_sections.append("\n[DBG] carFR/着内率 参照確認（4,6）")
+
+    # それっぽい辞書名を拾う（存在するものだけ）
+    _carfr_src = globals().get("_carfr_map") or globals().get("carfr_map") or {}
+    _inrate_src = globals().get("inrate_map") or globals().get("print_inrate_map") or globals().get("mark_inrate_map") or {}
+
+    for nn in dbg_ns:
+        ks = str(nn)
+        ki = int(nn)
+
+        # 文字/数値 両方で引く（キー不一致を炙り出す）
+        carfr_v = None
+        if isinstance(_carfr_src, dict):
+            carfr_v = _carfr_src.get(ks)
+            if carfr_v is None:
+                carfr_v = _carfr_src.get(ki)
+
+        inrt_v = None
+        if isinstance(_inrate_src, dict):
+            inrt_v = _inrate_src.get(ks)
+            if inrt_v is None:
+                inrt_v = _inrate_src.get(ki)
+
+        note_sections.append(f"car {nn}: carFR={carfr_v} / inrate={inrt_v}")
+except Exception:
+    pass
+
+
     # 5) carFRマップを intキーに統一（strキー混入を吸収）
     carfr_map_i = {}
     for k, v in (_carfr_map or {}).items():
