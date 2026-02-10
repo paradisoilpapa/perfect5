@@ -4029,7 +4029,7 @@ try:
             scored.sort(key=lambda t: (t[1], -t[2]), reverse=True)
             return [c for c, _, _ in scored]
 
-    # =========================================================
+        # =========================================================
     # ここから実行
     # =========================================================
     all_lines = globals().get("all_lines") or []
@@ -4051,18 +4051,53 @@ try:
             try:
                 finish = _ko(q, score_map, 1.0)
             except TypeError:
-                # 引数が違う既存KOがある場合の保険
                 finish = _ko(q, score_map)
         else:
             finish = _ko(q, score_map)
 
         outs[pname] = finish
 
-   File "/mount/src/perfect5/perfect5.py", line 4062
-  def _slot_union(a, b, idx):
-  ^
-SyntaxError: expected 'except' or 'finally' block
+    # ---------------------------------------------------------
+    # 表示：順流/渦/逆流メインだけ（各メインは2パターン合成）
+    # ---------------------------------------------------------
+    def _slot_union(a, b, idx):
+        s = set()
+        if a and idx < len(a): s.add(str(a[idx]))
+        if b and idx < len(b): s.add(str(b[idx]))
+        return ".".join(sorted(s, key=lambda x: int(x) if x.isdigit() else 999))
 
+    def _fmt_pair(a, b):
+        n = max(len(a or []), len(b or []), 7)
+        parts = []
+        for i in range(n):
+            u = _slot_union(a, b, i)
+            if u:
+                parts.append(u)
+        return " → ".join(parts) if parts else "（なし）"
+
+    # ★チェック用：KOで使った score_map を表示（短く）
+    _sc_pairs = []
+    for k, v in (score_map or {}).items():
+        ks = "".join(ch for ch in str(k) if ch.isdigit())
+        if not ks:
+            continue
+        try:
+            _sc_pairs.append((int(ks), float(v)))
+        except Exception:
+            continue
+
+    _sc_pairs.sort(key=lambda t: (-t[1], t[0]))
+    note_sections.append("\n【KO使用スコア（降順）】")
+    note_sections.append(" / ".join([f"{n}:{sc:.4f}" for n, sc in _sc_pairs]))
+
+    note_sections.append("\n【順流メイン着順予想】")
+    note_sections.append(_fmt_pair(outs.get("順流→渦→逆流", []), outs.get("順流→逆流→渦", [])))
+
+    note_sections.append("\n【渦メイン着順予想】")
+    note_sections.append(_fmt_pair(outs.get("渦→順流→逆流", []), outs.get("渦→逆流→順流", [])))
+
+    note_sections.append("\n【逆流メイン着順予想】")
+    note_sections.append(_fmt_pair(outs.get("逆流→順流→渦", []), outs.get("逆流→渦→順流", [])))
 
 # === ＜短評＞（コンパクト） ===
 try:
