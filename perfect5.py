@@ -3316,179 +3316,116 @@ def infer_eval_with_share(fr_v: float, vtx_v: float, u_v: float, share_pct: floa
         return "混戦"
     return "互角"
 
-# --- carFR順位が未定義でも動かすための安全ガード ---
 # ============================================================
 # /T369｜FREE-ONLY 出力一括ブロック（0.000連発対策パッチ入り）
 # ============================================================
 
-# line 3326 付近：ここを置き換え
-if "_build_car_fr_and_line_fr_map" not in globals():
-    def _build_car_fr_and_line_fr_map(lines, hensa_map):
-        lines = list(lines or [])
-        hensa_map = {int(k): float(v) for k, v in (hensa_map or {}).items() if str(k).isdigit()}
+def _normalize_lines(_lines):
+    """
+    入力 lines を必ず [[2,4],[5,7,1]...] の形にする
+    - "24" / 24 / [24] / [2,4] どれでもOK（数字だけ抜いて桁分解）
+    """
+    out = []
+    for ln in (_lines or []):
+        if ln is None:
+            continue
+        s = "".join(ch for ch in str(ln) if ch.isdigit())
+        if not s:
+            continue
+        out.append([int(ch) for ch in s])
+    return out
 
-        car_ids = sorted({int(c) for ln in lines for c in (ln or []) if str(c).isdigit()}) or sorted(hensa_map.keys())
+
+def _build_ko_rank_text(lines, hensa_map, line_fr_map):
+    """
+    line_fr_map（"571":0.384 など）を使って car_fr を配分し、
+    KO使用スコア（降順）の text / ordered_pairs / car_fr を返す。
+    """
+    try:
+        lines = _normalize_lines(lines)
+        hensa_map = {int(k): float(v) for k, v in (hensa_map or {}).items() if str(k).strip().isdigit()}
+        line_fr_map = {str(k): float(v or 0.0) for k, v in (line_fr_map or {}).items()}
+
+        # 対象車番一覧
+        car_ids = sorted({int(c) for ln in lines for c in ln} | set(hensa_map.keys()))
         car_fr = {cid: 0.0 for cid in car_ids}
 
-        line_fr_map = {}
+        # line_fr_map を car_fr に配分
         for ln in lines:
-            cars = [int(c) for c in (ln or []) if str(c).isdigit()]
-            if not cars:
+            if not ln:
                 continue
-            line_fr_map[tuple(cars)] = sum(car_fr.get(c, 0.0) for c in cars) / max(len(cars), 1)
+            key = "".join(map(str, ln))
+            lfr = float(line_fr_map.get(key, 0.0) or 0.0)
 
-try:
-    for ln in lines:
-        if not ln:
-            continue
+            # 偏差値っぽい重み（ゼロ以下は等配分）
+            hs = [float(hensa_map.get(int(c), 0.0)) for c in ln]
+            s = sum(hs)
+            w = ([1.0 / len(ln)] * len(ln)) if s <= 0.0 else [h / s for h in hs]
 
-        key = "".join(map(str, ln))
-        lfr = float((line_fr_map or {}).get(key, 0.0) or 0.0)
+            for c, wj in zip(ln, w):
+                cid = int(c)
+                car_fr[cid] = car_fr.get(cid, 0.0) + lfr * float(wj)
 
-        # --- ln を使って car_fr を配分する ---
-        hs = [float(hensa_map.get(int(c), 0.0)) for c in ln]
-        s = sum(hs)
-        w = ([1.0 / len(ln)] * len(ln)) if s <= 0.0 else [h / s for h in hs]
+        def _hs(c):
+            return float(hensa_map.get(int(c), 0.0))
 
-        for c, wj in zip(ln, w):
-            cid = int(c)
-            car_fr[cid] = car_fr.get(cid, 0.0) + lfr * wj
-        # ------------------------------------
+        ordered_pairs = sorted(
+            car_fr.items(),
+            key=lambda kv: (kv[1], _hs(kv[0]), -int(kv[0])),
+            reverse=True
+        )
 
-    def _hs(c):
-        return float(hensa_map.get(int(c), 0.0))
+        text = "\n".join(
+            f"{i}位：{cid} ({v:.4f})"
+            for i, (cid, v) in enumerate(ordered_pairs, 1)
+        ) if ordered_pairs else "—"
 
-    ordered_pairs = sorted(
-        car_fr.items(),
-        key=lambda kv: (kv[1], _hs(kv[0]), -int(kv[0])),
-        reverse=True
-    )
+        return text, ordered_pairs, car_fr
 
-    text = "\n".join(
-        f"{i}位：{cid} ({v:.4f})"
-        for i, (cid, v) in enumerate(ordered_pairs, 1)
-    ) if ordered_pairs else "—"
-
-    return text, ordered_pairs, car_fr
-
-except Exception:
-    return "—", [], {}
+    except Exception:
+        return "—", [], {}
 
 
-def _build_line_fr_map(lines, scores_map, FRv,
-                       SINGLETON_FR_SCALE=0.70,
-                       MIN_LINE_SHARE=0.00,
-                       MAX_SINGLETON_SHARE=0.45):
-    """
-    目的：
-    - line_fr_map は「ラインの強さ配分」辞書にする
-      - FRv>0 なら合計=FRv
-      - FRv<=0 なら合計=1.0
-    - FRv==0 の時に等配分(0.25固定)にしない（単騎が総取りで崩壊するため）
-    - ★単騎ライン(1車)がFRを総取りしがちな問題を抑える（SINGLETON_FR_SCALE）
-    - ★単騎の最大取り分を上限で縛る（MAX_SINGLETON_SHARE）
-    - ★ライン入力の型ブレ（"24", 24, [2,4], [24] など）を吸収して必ず桁分解する
-    """
+# --- carFR順位が未定義でも動かすための安全ガード ---
+# line_fr_map を作る関数が未定義なら定義（あなたの下にある _build_line_fr_map を使う前提）
+# ※ もし _build_line_fr_map は既に下で定義済みなら、このガードはあっても害はありません
+if "_build_line_fr_map" not in globals():
+    # 最低限の保険（本体はあなたが貼ってる長い版を下に置いてOK）
+    def _build_line_fr_map(lines, scores_map, FRv,
+                           SINGLETON_FR_SCALE=0.70,
+                           MIN_LINE_SHARE=0.00,
+                           MAX_SINGLETON_SHARE=0.45):
+        lines = _normalize_lines(lines)
+        scores_map = {int(k): float(v) for k, v in (scores_map or {}).items() if str(k).strip().isdigit()}
+        FRv = float(FRv or 0.0)
+        if not lines:
+            return {}
 
-    def _normalize_lines(_lines):
-        """
-        入力 lines を必ず [[2,4],[5,7,1]...] の形にする
-        - "24" / 24 / [24] / [2,4] どれでもOK
-        """
-        out = []
-        for ln in (_lines or []):
-            if ln is None:
-                continue
+        # ライン強さ
+        line_sums = []
+        for ln in lines:
+            s = sum(scores_map.get(int(x), 0.0) for x in ln)
+            if len(ln) == 1:
+                s *= float(SINGLETON_FR_SCALE)
+            line_sums.append((ln, s))
 
-            # まず文字列化して数字だけ抜く（"24"→"24", 24→"24", [24]→"24", [2,4]→"24"）
-            s = "".join(ch for ch in str(ln) if ch.isdigit())
-            if not s:
-                continue
+        total = sum(s for _, s in line_sums)
+        sum_target = FRv if FRv > 0.0 else 1.0
 
-            # 桁分解（"24"→[2,4]）
-            out.append([int(ch) for ch in s])
-        return out
+        if total <= 0.0:
+            eq = 1.0 / len(lines)
+            return {"".join(map(str, ln)): eq for ln, _ in line_sums}
 
-    lines = _normalize_lines(lines)
-    scores_map = {int(k): float(v) for k, v in (scores_map or {}).items() if str(k).strip().isdigit()}
-    FRv = float(FRv or 0.0)
+        raw = {"".join(map(str, ln)): sum_target * (s / total) for ln, s in line_sums}
+        return raw
 
-    m = {}
-    if not lines:
-        return m
 
-    # ライン強さ（スコア合計）※単騎は減衰
-    line_sums = []
-    for ln in lines:
-        s = sum(scores_map.get(int(x), 0.0) for x in ln)
-        if len(ln) == 1:
-            s *= float(SINGLETON_FR_SCALE)
-        line_sums.append((ln, s))
-
-    total = sum(s for _, s in line_sums)
-
-    # total がゼロなら最後の保険だけ等配分
-    if total <= 0.0:
-        n = len(lines)
-        eq = 1.0 / n if n > 0 else 0.0
-        for ln, _ in line_sums:
-            m["".join(map(str, ln))] = eq
-        return m
-
-    # まず通常配分（合計=FRv or 1.0）
-    sum_target = FRv if FRv > 0.0 else 1.0
-    raw = {}
-    for ln, s in line_sums:
-        key = "".join(map(str, ln))
-        raw[key] = sum_target * (s / total)
-
-    # ★単騎の取り分に上限（MAX_SINGLETON_SHARE）
-    single_keys = []
-    non_single_keys = []
-    for ln in lines:
-        k = "".join(map(str, ln))
-        if len(ln) == 1:
-            single_keys.append(k)
-        else:
-            non_single_keys.append(k)
-
-    if single_keys and 0.0 < float(MAX_SINGLETON_SHARE) < 1.0:
-        cap = sum_target * float(MAX_SINGLETON_SHARE)
-
-        excess = 0.0
-        for k in single_keys:
-            v = float(raw.get(k, 0.0))
-            if v > cap:
-                excess += (v - cap)
-                raw[k] = cap
-
-        if excess > 1e-12:
-            denom = sum(float(raw.get(k, 0.0)) for k in non_single_keys)
-            if denom > 1e-12:
-                # 非単騎へ比例配分で戻す
-                for k in non_single_keys:
-                    raw[k] = float(raw.get(k, 0.0)) + excess * (float(raw.get(k, 0.0)) / denom)
-            else:
-                # 全員単騎など：均等に戻す
-                n = len(raw)
-                if n > 0:
-                    add = excess / n
-                    for k in raw:
-                        raw[k] = float(raw.get(k, 0.0)) + add
-
-    # 下限（必要なら）
-    if float(MIN_LINE_SHARE) > 0.0:
-        for k in raw:
-            raw[k] = max(float(MIN_LINE_SHARE), float(raw[k]))
-
-        # 合計を再正規化
-        s = sum(float(v) for v in raw.values())
-        if s > 1e-12:
-            for k in raw:
-                raw[k] = sum_target * (float(raw[k]) / s)
-
-    m.update(raw)
-    return m
+# ============================================================
+# 使い方（ここは “関数の外” でOK：return はしない）
+# ============================================================
+# 例：
+# line_fr_map = _build_line_fr_map(lines, scores_map, FRv, ...)
+# ko_text, ko_pairs, ko_car_fr = _build_ko_rank_text(lines, hensa_map, line_fr_map)
 
 
 
