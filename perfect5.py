@@ -3839,43 +3839,294 @@ except Exception as e:
     except Exception:
         print(e)
 
+# =========================================================
+# ★ 旧仕様へ戻す：carFR×印着内率スコア順位 を KO に採用
+# ★ 出力：carFR×印着内率スコア順位 + 3本（順流/渦/逆流メイン）の着順予想
+# ★ 偏差値/根本スコア(anchor_score優先) は一切表示しない
+# =========================================================
+
+# --- 0) 落ちないための最低限 ---
+if "note_sections" not in globals() or note_sections is None:
+    note_sections = []
+
+def _digits_of_line(ln):
+    s = "".join(ch for ch in str(ln) if ch.isdigit())
+    return [int(ch) for ch in s] if s else []
+
+def _arrow_format(seq):
+    return " → ".join(str(x) for x in (seq or []))
+
+# 6パターン（未定義なら作る）
+if "_PATTERNS" not in globals() or not globals().get("_PATTERNS"):
+    _PATTERNS = [
+        ("順流→渦→逆流", ["順流", "渦", "逆流"]),
+        ("順流→逆流→渦", ["順流", "逆流", "渦"]),
+        ("渦→順流→逆流", ["渦", "順流", "逆流"]),
+        ("渦→逆流→順流", ["渦", "逆流", "順流"]),
+        ("逆流→順流→渦", ["逆流", "順流", "渦"]),
+        ("逆流→渦→順流", ["逆流", "渦", "順流"]),
+    ]
+
+def _line_key(ln):
+    if ln is None:
+        return ""
+    if isinstance(ln, (list, tuple, set)):
+        return "".join(str(x) for x in ln if str(x).isdigit())
+    return "".join(ch for ch in str(ln) if ch.isdigit())
+
+def _infer_line_zone(ln):
+    """
+    旧挙動に近づけるため、既存の “ライン→ゾーン” 情報を最大限拾う。
+    どれも無い時だけ順流へフォールバック（ただしその場合3本が同じになりやすい）
+    """
+    k = _line_key(ln)
+
+    # 1) よくある辞書名（あなたの既存コード側にあるはずのものを優先）
+    for key in ("line_zone_map", "line_type_map", "line_class_map", "line_role_map"):
+        m = globals().get(key)
+        if isinstance(m, dict):
+            z = m.get(k) or m.get(str(k)) or m.get(ln) or m.get(str(ln))
+            if z in ("順流", "渦", "逆流"):
+                return z
+
+    # 2) 単体変数（順流/渦/逆流の代表ライン）
+    flow = globals().get("flow_line") or globals().get("main_flow_line") or globals().get("jyunryu_line")
+    rev  = globals().get("reverse_line") or globals().get("gyakuryu_line")
+    vort = globals().get("vortex_line") or globals().get("uzu_line") or globals().get("candidate_vortex_line")
+
+    if flow is not None and _line_key(flow) == k:
+        return "順流"
+    if rev is not None and _line_key(rev) == k:
+        return "逆流"
+    if vort is not None and _line_key(vort) == k:
+        return "渦"
+
+    # 3) 渦候補が複数
+    for key in ("vortex_lines", "uzu_lines", "candidate_vortex_lines"):
+        xs = globals().get(key)
+        if isinstance(xs, (list, tuple, set)):
+            if any(_line_key(x) == k for x in xs):
+                return "渦"
+
+    return "順流"
+
+def _get_line_fr(ln):
+    """
+    line_fr_map を “listキーでも落ちない” ように参照する（unhashable対策）。
+    """
+    k = _line_key(ln)
+    for key in ("line_fr_map", "lineFR_map", "line_fr", "lineFR"):
+        m = globals().get(key)
+        if isinstance(m, dict):
+            v = m.get(k) or m.get(str(k)) or m.get(ln) or m.get(str(ln))
+            if v is not None:
+                try:
+                    return float(v)
+                except Exception:
+                    pass
+    return 0.0
+
+def _queue_for_pattern(all_lines, svr_order):
+    """
+    パターン順（順流→渦→逆流 など）でラインを並べ、
+    各ゾーン内はラインFR降順で並べ、車番キューを作る。
+    """
+    lines = list(all_lines or [])
+    bucket = {"順流": [], "渦": [], "逆流": []}
+
+    for ln in lines:
+        z = _infer_line_zone(ln)
+        bucket.setdefault(z, []).append(ln)
+
+    used = []
+    queue = []
+
+    for z in (svr_order or ["順流", "渦", "逆流"]):
+        xs = bucket.get(z, [])
+        xs = sorted(xs, key=lambda x: _get_line_fr(x), reverse=True)
+        for ln in xs:
+            used.append(ln)
+            queue.extend(_digits_of_line(ln))
+
+    # 全部空ならdigitsだけ拾う
+    if not queue:
+        for ln in lines:
+            used.append(ln)
+            queue.extend(_digits_of_line(ln))
+
+    return queue, used
+
+def _knockout_finish_from_queue(finaljump_queue, score_map, avg_score,
+                               k=0.25, head_boost=0.0,
+                               pos_lambda=0.08, pos_mode="harmonic"):
+    """
+    旧仕様寄せ：score_map（carFR×印着内率）を avg_score で正規化し、位置係数でKO。
+    """
+    q = [str(x) for x in (finaljump_queue or []) if str(x).isdigit()]
+    cars_in_map = [str(x) for x in score_map.keys() if str(x).isdigit()]
+
+    # キューに出ない車も最後尾で入れる（“消える/極端に下がる”事故防止）
+    first_pos = {}
+    for i, c in enumerate(q):
+        if c not in first_pos:
+            first_pos[c] = i
+
+    tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
+    for c in sorted(cars_in_map, key=lambda x: int(x)):
+        if c not in first_pos:
+            first_pos[c] = tail_pos
+
+    # avg_score
+    try:
+        avg_score = float(avg_score)
+    except Exception:
+        avg_score = 1.0
+    if avg_score <= 1e-12:
+        avg_score = 1.0
+
+    scored = []
+    for c, i in first_pos.items():
+        base = float(score_map.get(str(c), 0.0))
+        norm = (base / avg_score)
+
+        if pos_mode == "harmonic":
+            pos_factor = 1.0 / (1.0 + pos_lambda * i)
+        else:
+            pos_factor = math.exp(-pos_lambda * i)
+
+        bonus = float(head_boost) if (i == 0 and head_boost) else 0.0
+        final = norm * (1.0 + k) * pos_factor + bonus
+
+        scored.append((c, final, i))
+
+    # tie-break：前の位置をわずかに優先
+    scored.sort(key=lambda t: (t[1], -t[2]), reverse=True)
+    return [c for c, _, _ in scored]
+
+def _pair_by_main(outs):
+    by = {o["pattern"]: o["finish_order"] for o in (outs or [])}
+    return {
+        "順流メイン": (by.get("順流→渦→逆流", []), by.get("順流→逆流→渦", [])),
+        "渦メイン":   (by.get("渦→順流→逆流", []), by.get("渦→逆流→順流", [])),
+        "逆流メイン": (by.get("逆流→順流→渦", []), by.get("逆流→渦→順流", [])),
+    }
+
+def _slot_union(a, b, idx):
+    s = set()
+    if a and idx < len(a): s.add(str(a[idx]))
+    if b and idx < len(b): s.add(str(b[idx]))
+    # 数字順
+    return sorted(list(s), key=lambda x: int(x) if x.isdigit() else 999)
+
+def _fmt_main_prediction(a, b, n_slots=7):
+    """
+    旧表示：同スロットの候補を "1.4" のようにドット結合し、" → " で並べる
+    """
+    if not a and not b:
+        return "（なし）"
+    n = max(len(a), len(b), n_slots)
+    parts = []
+    for i in range(n):
+        ss = _slot_union(a, b, i)
+        parts.append(".".join(ss) if ss else "")
+    return " → ".join([p for p in parts if p])
+
+# ----------------- ここから実処理（旧仕様の心臓部） -----------------
+try:
+    all_lines = globals().get("all_lines") or []
+    active_cars = globals().get("active_cars") or []
+
+    # 1) carFR×印着内率スコア順位の “マップ” を最優先で拾う
+    #    - 既に _carfr_map があるならそれを使う
+    #    - 無ければ compute_carFR_ranking で作る（ある前提）
+    _carfr_map = globals().get("_carfr_map")
+
+    if not isinstance(_carfr_map, dict) or not _carfr_map:
+        # compute_carFR_ranking が存在する前提（あなたの旧本体にあるはず）
+        if "compute_carFR_ranking" in globals() and callable(globals().get("compute_carFR_ranking")):
+            _scores_for_rank = globals().get("_scores_for_rank") or {}
+            line_fr_map = globals().get("line_fr_map") or {}
+            _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(all_lines, _scores_for_rank, line_fr_map)
+            globals()["_carfr_map"] = _carfr_map
+            globals()["_carfr_txt"] = _carfr_txt
+        else:
+            raise NameError("compute_carFR_ranking が見つからず、_carfr_map も空です（旧仕様の元データがありません）")
+
+    # 表示テキスト（旧仕様の順位表）も拾う
+    _carfr_txt = globals().get("_carfr_txt")
+    if not isinstance(_carfr_txt, str) or not _carfr_txt.strip():
+        # テキストが無ければ dict から生成（最低限）
+        items = []
+        for k, v in (_carfr_map or {}).items():
+            ks = "".join(ch for ch in str(k) if ch.isdigit())
+            if not ks:
+                continue
+            try:
+                items.append((int(ks), float(v)))
+            except Exception:
+                continue
+        items.sort(key=lambda t: (-t[1], t[0]))
+        lines = []
+        for i, (nn, sc) in enumerate(items, 1):
+            lines.append(f"{i}位：{nn} (スコア={sc:.6f})")
+        _carfr_txt = "\n".join(lines)
+
+    # 2) KO用 score_map（車番文字列→float）
+    score_map = {}
+    for k, v in (_carfr_map or {}).items():
+        ks = "".join(ch for ch in str(k) if ch.isdigit())
+        if not ks:
+            continue
+        try:
+            score_map[ks] = float(v)
+        except Exception:
+            score_map[ks] = 0.0
+
+    # 3) avg_score（KO正規化用）
+    vals = [float(v) for v in score_map.values() if float(v) > 0.0]
+    avg_score = (sum(vals) / len(vals)) if vals else 1.0
+
+    # 4) 6パターンを内部で全部作って、最後に “順流/渦/逆流メイン” の3本だけ出す
+    outs = []
+    for _pname, _svr in _PATTERNS:
+        q, used = _queue_for_pattern(all_lines, _svr)
+        # 旧仕様寄せ：パターンで微差（逆流メインだけ少し逃げを作る）
+        hb = 0.20 if _pname.startswith("逆流→") else 0.00
+
+        finish = _knockout_finish_from_queue(
+            q, score_map, avg_score,
+            k=0.25,
+            head_boost=hb,
+            pos_lambda=0.08,
+            pos_mode="harmonic"
+        )
+        outs.append({"pattern": _pname, "finish_order": finish})
+
+    pairs = _pair_by_main(outs)
+
+    # 旧仕様の表示：carFR×印着内率スコア順位 → 3本の着順予想
+    note_sections.append("\n【carFR×印着内率スコア順位】")
+    note_sections.append(_carfr_txt)
+
+    note_sections.append("\n【順流メイン着順予想】")
+    note_sections.append(_fmt_main_prediction(*pairs["順流メイン"], n_slots=7))
+
+    note_sections.append("\n【渦メイン着順予想】")
+    note_sections.append(_fmt_main_prediction(*pairs["渦メイン"], n_slots=7))
+
+    note_sections.append("\n【逆流メイン着順予想】")
+    note_sections.append(_fmt_main_prediction(*pairs["逆流メイン"], n_slots=7))
+
+except Exception as e:
+    try:
+        note_sections.append(f"\n[KO ERROR] {type(e).__name__}: {e}")
+        st.exception(e)
+    except Exception:
+        print(e)
+
+note_sections.append("")
 
 
-小倉1R
-展開評価：混戦
-ナイター　Ａ級
-ライン　17　3　526　4
-
-【順流】◎ライン 526：想定FR=0.340
-【渦】候補ライン：17：想定FR=0.325
-【逆流】無ライン 3：想定FR=0.158
-　　　その他ライン 4：想定FR=0.176
-
-平均値 0.14287
-
-【carFR×印着内率スコア順位】
-1位：1 (スコア=0.045858)
-2位：4 (スコア=0.041407)
-3位：3 (スコア=0.023602)
-4位：7 (スコア=0.023306)
-5位：5 (スコア=0.018037)
-6位：2 (スコア=0.015821)
-7位：6 (スコア=0.012743)
-
-【順流メイン着順予想】
-1.4 → 1.4 → 5 → 2 → 3.7 → 6 → 3.7
-
-【渦メイン着順予想】
-1 → 4.7 → 4.7 → 3.5 → 2.5 → 2.6 → 3.6
-
-【逆流メイン着順予想】
-4 → 1.3 → 3.5 → 1.7 → 2.5 → 2.6 → 6.7
-
-＜短評＞
-・レースFR=0.660［不利域］
-・軸ラインFR=0.176（取り分≈17.6%：軸=4／ライン=4）
-・VTX=0.785［不利域］
-・U=0.906［不利域］
 
 
 
