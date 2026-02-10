@@ -4059,21 +4059,43 @@ try:
         outs[pname] = finish
 
     # 表示は「順流/渦/逆流メイン」だけ（各メインは2パターンを合成）
-    def _slot_union(a, b, idx):
-        s = set()
-        if a and idx < len(a): s.add(str(a[idx]))
-        if b and idx < len(b): s.add(str(b[idx]))
-        return ".".join(sorted(s, key=lambda x: int(x) if x.isdigit() else 999))
+def _slot_union(a, b, idx):
+    s = set()
+    if a and idx < len(a): s.add(str(a[idx]))
+    if b and idx < len(b): s.add(str(b[idx]))
+    return ".".join(sorted(s, key=lambda x: int(x) if x.isdigit() else 999))
 
-    def _fmt_pair(a, b):
-        n = max(len(a or []), len(b or []), 7)
-        parts = []
-        for i in range(n):
-            u = _slot_union(a, b, i)
-            if u:
-                parts.append(u)
-        return " → ".join(parts) if parts else "（なし）"
+def _fmt_pair(a, b):
+    n = max(len(a or []), len(b or []), 7)
+    parts = []
+    for i in range(n):
+        u = _slot_union(a, b, i)
+        if u:
+            parts.append(u)
+    return " → ".join(parts) if parts else "（なし）"
 
+
+# =========================================================
+# ★ 最終出力（try の中で完結させる）
+# =========================================================
+try:
+    # --- チェック用：KOで使った score_map を表示（短く） ---
+    _sc_pairs = []
+    for k, v in (score_map or {}).items():
+        ks = "".join(ch for ch in str(k) if ch.isdigit())
+        if not ks:
+            continue
+        try:
+            _sc_pairs.append((int(ks), float(v)))
+        except Exception:
+            continue
+
+    _sc_pairs.sort(key=lambda t: (-t[1], t[0]))
+
+    note_sections.append("\n【KO使用スコア（降順）】")
+    note_sections.append(" / ".join([f"{n}:{sc:.4f}" for n, sc in _sc_pairs]))
+
+    # --- 予想出力 ---
     note_sections.append("\n【順流メイン着順予想】")
     note_sections.append(_fmt_pair(outs.get("順流→渦→逆流", []), outs.get("順流→逆流→渦", [])))
 
@@ -4084,7 +4106,7 @@ try:
     note_sections.append(_fmt_pair(outs.get("逆流→順流→渦", []), outs.get("逆流→渦→順流", [])))
 
 except Exception as e:
-    # ここがあるから SyntaxError にならない
+    # ここがあるから SyntaxError にならない（例外は見える化）
     try:
         note_sections.append(f"\n[KO ERROR] {type(e).__name__}: {e}")
         st.exception(e)
