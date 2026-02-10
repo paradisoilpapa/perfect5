@@ -2294,6 +2294,21 @@ missing = [int(n) for n in active_cars if int(n) not in sb_map]
 if missing:
     st.error(f"SBなし(母集団) が欠損してる車番: {missing} / sb_map.keys={sorted(sb_map.keys())}")
 
+# --- デバッグ：USED_IDS と xs_base_raw の対応を可視化 ---
+st.write("DEBUG used_ids:", USED_IDS)
+st.write("DEBUG active_cars:", active_cars)
+st.write("DEBUG len(USED_IDS) / len(xs_base_raw):", len(USED_IDS), len(xs_base_raw))
+
+dbg = []
+for cid, x in zip(USED_IDS, xs_base_raw):
+    dbg.append({"車": int(cid), "xs_base_raw": x, "finite": (x is not None and np.isfinite(float(x)))})
+st.dataframe(pd.DataFrame(dbg), use_container_width=True)
+
+# zipで短くなってる可能性チェック
+if len(xs_base_raw) != len(USED_IDS):
+    st.error("xs_base_raw と USED_IDS の長さが一致していません。zip が途中で切れて欠損になります。")
+
+
 # --- 表（hen_df）を sb_map から作る：Noneは明示的にNoneで残す ---
 hen_df = pd.DataFrame({
     "車": USED_IDS,
