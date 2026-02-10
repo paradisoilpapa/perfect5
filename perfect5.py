@@ -3324,21 +3324,12 @@ def infer_eval_with_share(fr_v: float, vtx_v: float, u_v: float, share_pct: floa
 # line 3326 付近：ここを置き換え
 if "_build_car_fr_and_line_fr_map" not in globals():
     def _build_car_fr_and_line_fr_map(lines, hensa_map):
-        """
-        lines: 例 [[5,7,1],[2,4],[6,3]] みたいな「車番のリストのリスト」
-        hensa_map: {1: 52.1, 2: 49.8, ...} みたいな辞書（車番→値）
-        return: (car_ids, car_fr, line_fr_map)
-        """
         lines = list(lines or [])
         hensa_map = {int(k): float(v) for k, v in (hensa_map or {}).items() if str(k).isdigit()}
 
-        # lines に含まれる車番を集める（無ければ hensa_map から）
         car_ids = sorted({int(c) for ln in lines for c in (ln or []) if str(c).isdigit()}) or sorted(hensa_map.keys())
-
-        # 車ごとのFR（例として 0.0 初期化。あなたのFR算出ロジックが別にあるならここで入れる）
         car_fr = {cid: 0.0 for cid in car_ids}
 
-        # ラインごとのFR（ここも “例” で平均。あなたの定義に合わせて変えてOK）
         line_fr_map = {}
         for ln in lines:
             cars = [int(c) for c in (ln or []) if str(c).isdigit()]
@@ -3347,6 +3338,7 @@ if "_build_car_fr_and_line_fr_map" not in globals():
             line_fr_map[tuple(cars)] = sum(car_fr.get(c, 0.0) for c in cars) / max(len(cars), 1)
 
         return car_ids, car_fr, line_fr_map
+
 
 
             for ln in lines:
