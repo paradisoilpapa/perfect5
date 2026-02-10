@@ -1811,13 +1811,16 @@ L200_Z = {int(n): (float(L200_RAW.get(n, mu_l2)) - mu_l2) / _den_l2 for n in act
 
 # ===== KO方式（印に混ぜず：展開・ケンで利用） =====
 
+# 0) SBなし(母集団) を df から確実に作る（全車）
+sb_map = {int(k): float(v) for k, v in zip(df["車番"].astype(int), df["合計_SBなし"].astype(float))}
+
 # 1) key 欠損チェック
 missing = [int(n) for n in active_cars if int(n) not in sb_map]
 if missing:
     st.error(f"SBなし(母集団) が欠損してる車番: {missing} / sb_map.keys={sorted(sb_map.keys())}")
-    # st.stop()  # 欠損が出たら止めたいなら有効化
+    # st.stop()
 
-# 2) 値が None/NaN チェック（←これが「追加」）
+# 2) 値が None/NaN チェック
 bad = [
     int(n) for n in active_cars
     if (int(n) in sb_map) and (
@@ -1827,9 +1830,9 @@ bad = [
 ]
 if bad:
     st.error(f"SBなし(母集団) の値が None/NaN: {bad} / values={[sb_map[int(n)] for n in bad]}")
-    # st.stop()  # None/NaNが出たら止めたいなら有効化
+    # st.stop()
 
-# 3) KO入力に使う母集団
+# 3) KO入力に使う母集団（全車）
 v_wo = dict(sb_map)
 
 # 4) 以降 KO
@@ -1839,31 +1842,42 @@ ko_scale_raw = (KO_GIRLS_SCALE if _is_girls else 1.0) * head_scale
 KO_SCALE_MAX = 0.45
 ko_scale = min(ko_scale_raw, KO_SCALE_MAX)
 
-if ko_scale > 0.0 and line_def and len(line_def) >= 1:
-    ko_order = _ko_order(v_wo, line_def, S, B,
-                         line_factor=line_factor_eff,
-                         gap_delta=KO_GAP_DELTA)
+if ko_scale > 0.0 and line_def and len(line_def) >= 1 and v_wo:
+    ko_order = _ko_order(
+        v_wo, line_def, S, B,
+        line_factor=line_factor_eff,
+        gap_delta=KO_GAP_DELTA
+    )
 
+    # ★重要：ko_order に入らない車を落とさない（今回のNone連発の根本）
+    ko_order = [int(c) for c in (ko_order or []) if int(c) in v_wo]
+    rest = [c for c in v_wo.keys() if int(c) not in set(ko_order)]
+    rest = sorted(rest, key=lambda c: float(v_wo[int(c)]), reverse=True)
+    ko_order = ko_order + rest  # ← 全車を必ず含める
 
-
-    
-    vals = [v_wo[c] for c in v_wo.keys()]
-    mu0  = float(np.mean(vals)); sd0 = float(np.std(vals) + 1e-12)
+    vals = [float(v_wo[c]) for c in v_wo.keys()]
+    mu0  = float(np.mean(vals))
+    sd0  = float(np.std(vals) + 1e-12)
     KO_STEP_SIGMA_LOCAL = max(0.25, KO_STEP_SIGMA * 0.7)
     step = KO_STEP_SIGMA_LOCAL * sd0
 
-    new_scores = {}
+    # ★new_scores は「全車のベース」から開始して KO で上書き
+    new_scores = dict(v_wo)
+
     for rank, car in enumerate(ko_order, start=1):
         rank_adjust = step * (len(ko_order) - rank)
-        blended = (1.0 - ko_scale) * v_wo[car] + ko_scale * (
+        blended = (1.0 - ko_scale) * float(v_wo[int(car)]) + ko_scale * (
             mu0 + rank_adjust - (len(ko_order)/2.0 - 0.5)*step
         )
-        new_scores[car] = blended
-    v_final = {int(k): float(v) for k, v in new_scores.items()}
+        new_scores[int(car)] = float(blended)
+
+    v_final = dict(new_scores)
+
 else:
+    # KOしない時も「全車保持」
     if v_wo:
-        ko_order = sorted(v_wo.keys(), key=lambda c: v_wo[c], reverse=True)
-        v_final = {int(c): float(v_wo[c]) for c in ko_order}
+        ko_order = sorted(v_wo.keys(), key=lambda c: float(v_wo[c]), reverse=True)
+        v_final = dict(v_wo)
     else:
         ko_order = []
         v_final = {}
