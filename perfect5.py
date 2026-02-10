@@ -3342,13 +3342,20 @@ if "_build_car_fr_and_line_fr_map" not in globals():
                 if not ln:
                     continue
                 key = "".join(map(str, ln))
-                # ↓この下に続き（lfr計算、hs計算、car_fr加算など）
-                # ...
+                lfr = float((line_fr_map or {}).get(key, 0.0) or 0.0)
+
+                hs = [float(hensa_map.get(int(c), 0.0)) for c in ln]
+                s = sum(hs)
+                w = ([1.0 / len(ln)] * len(ln)) if s <= 0.0 else [h / s for h in hs]
+
+                for c, wj in zip(ln, w):
+                    car_fr[int(c)] = car_fr.get(int(c), 0.0) + lfr * wj
 
             return car_ids, car_fr, line_fr_map
 
         except Exception:
             return car_ids, car_fr, line_fr_map
+
 
 
         key = "".join(map(str, ln))
