@@ -663,7 +663,7 @@ def l200_adjust(role: str,
     return round(clamp(base, -float(L200_CAP), float(L200_CAP)), 3)
 
 
-def bank_character_bonus(bank_angle, straight_length, prof_escape, prof_sashi):
+def bank_character_bonus(bank_angle, straight_length, prof_escape, prof_sashi, bank_length=None):
     straight_factor = (float(straight_length)-40.0)/10.0
     angle_factor = (float(bank_angle)-25.0)/5.0
     total = clamp(-0.1*straight_factor + 0.1*angle_factor, -0.05, 0.05)
@@ -912,7 +912,9 @@ def apply_anchor_line_bonus(score_raw: dict[int, float],
     return score_adj
 
 
-def format_rank_all(score_map: dict[int, float], P_floor_val: float | None = None) -> str:
+from typing import Optional, Dict
+
+def format_rank_all(score_map: Dict[int, float], P_floor_val: Optional[float] = None) -> str:
     order = sorted(score_map.keys(), key=lambda k: (-score_map[k], k))
     rows = []
     for i in order:
@@ -921,6 +923,7 @@ def format_rank_all(score_map: dict[int, float], P_floor_val: float | None = Non
         else:
             rows.append(f"{i}" if score_map[i] >= P_floor_val else f"{i}(P未満)")
     return " ".join(rows)
+
 
 
 
@@ -1011,8 +1014,8 @@ def venue_mix(zL, zTH, dC):
 # ==============================
 # ★ 風取得ユーティリティ（未定義ならここで定義：NameError防止）
 # ==============================
-if "make_target_dt_naive" not in globals():
-    def make_target_dt_naive(jst_date, race_slot: str):
+if "fetch_openmeteo_hour" not in globals():
+    def fetch_openmeteo_hour(jst_date, race_slot: str):
         h = SESSION_HOUR.get(race_slot, 11)
         if isinstance(jst_date, datetime):
             jst_date = jst_date.date()
@@ -1115,7 +1118,7 @@ with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expand
             st.sidebar.error(f"{track} の座標が未登録です（VELODROME_MASTER に lat/lon を入れてください）")
         else:
             try:
-                target = make_target_dt_naive(api_date, race_time)
+                target = fetch_openmeteo_hour(api_date, race_time)
                 data = fetch_openmeteo_hour(info_xy["lat"], info_xy["lon"], target)
                 st.session_state["wind_speed"] = round(float(data["speed_ms"]), 2)
                 st.sidebar.success(
@@ -1129,6 +1132,7 @@ with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expand
 straight_length = st.sidebar.number_input("みなし直線(m)", 30.0, 80.0, float(info["straight_length"]), 0.1)
 bank_angle      = st.sidebar.number_input("バンク角(°)", 20.0, 45.0, float(info["bank_angle"]), 0.1)
 bank_length     = st.sidebar.number_input("周長(m)", 300.0, 500.0, float(info["bank_length"]), 0.1)
+st.session_state["bank_length"] = float(bank_length)
 
 base_laps = st.sidebar.number_input("周回（通常4）", 1, 10, 4, 1)
 day_label = st.sidebar.selectbox("開催日", ["初日","2日目","最終日"], 0)
@@ -1367,15 +1371,19 @@ for no in active_cars:
 
 # ===== 会場個性を“個人スコア”に浸透：bank系補正（差し替え案） =====
 
-def bank_character_bonus(bank_angle, straight_length, bank_length, prof_escape, prof_sashi):
+def bank_character_bonus(bank_angle, straight_length, prof_escape, prof_sashi, bank_length=None):
     pe = float(prof_escape or 0.0)
     ps = float(prof_sashi  or 0.0)
 
-    zL, zTH, dC = venue_z_terms(straight_length, bank_angle, bank_length)
+    # bank_lengthが渡っていない場合の扱いを決める（例：0.0扱い or venue既定値）
+    bl = float(bank_length or 0.0)
+
+    zL, zTH, dC = venue_z_terms(straight_length, bank_angle, bl)
 
     base = clamp(0.06*zTH - 0.05*zL - 0.03*dC, -0.08, +0.08)
     out  = base * pe - 0.5 * base * ps
     return round(out, 3)
+
 
 def bank_length_adjust(bank_length, prof_oikomi):
     po = float(prof_oikomi or 0.0)
@@ -1648,12 +1656,16 @@ def _role_priority(bank_str: str) -> dict[str,int]:
     return ({"マーク":3,"番手":2,"三番手":1,"先頭":0} if bank_str=="33"
             else {"番手":3,"マーク":2,"三番手":1,"先頭":0})
 
-def _pick_support(riders: list[Rider], first: Rider, bank_str: str) -> Rider|None:
+from typing import Optional, List
+
+def _pick_support(riders: List["Rider"], first: "Rider", bank_str: str) -> Optional["Rider"]:
     pr = _role_priority(bank_str)
     same = [r for r in riders if r.line_id==first.line_id and r.num!=first.num]
-    if not same: return None
+    if not same:
+        return None
     same.sort(key=lambda r: (pr.get(r.role,0), r.hensa), reverse=True)
     return same[0]
+
 
 # 印（◎→▲→偏差値補完）
 def _read_marks_idmap() -> dict[int,str]:
@@ -3310,8 +3322,8 @@ def infer_eval_with_share(fr_v: float, vtx_v: float, u_v: float, share_pct: floa
 # ============================================================
 
 # ---------- 0) carFR順位（存在しない場合だけ定義） ----------
-if "compute_carFR_ranking" not in globals():
-    def compute_carFR_ranking(lines, hensa_map, line_fr_map):
+if "" not in globals():
+    def (lines, hensa_map, line_fr_map):
         try:
             lines = list(lines or [])
             hensa_map = {int(k): float(v) for k, v in (hensa_map or {}).items() if str(k).isdigit()}
@@ -3494,13 +3506,13 @@ def trio_free_completion(scores, marks_any, flow_ctx=None, debug_lines=None):
     line_fr_map = _build_line_fr_map(lines, hens, FRv)
 
     # 4) carFR順位（ここが本体）
-    _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
+    _carfr_txt, _carfr_rank, _carfr_map = (lines, hens, line_fr_map)
 
     
     dbg_ns = [4, 6]  # ← try の中なので、必ず4スペース(or tab統一)でインデント
 
     # 4) carFR順位（ここが本体）
-    _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
+    _carfr_txt, _carfr_rank, _carfr_map = (lines, hens, line_fr_map)
 
     # 4.5) DBG（4や6が0になる原因の確定）
     if isinstance(debug_lines, list):
@@ -3833,7 +3845,7 @@ try:
                     _scores_for_rank[int(ks)] = 0.0
 
     # carFR ranking
-    _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(
+    _carfr_txt, _carfr_rank, _carfr_map = (
         all_lines,
         _scores_for_rank,
         line_fr_map
