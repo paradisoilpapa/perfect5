@@ -3496,7 +3496,7 @@ def trio_free_completion(scores, marks_any, flow_ctx=None, debug_lines=None):
     # 4) carFR順位（ここが本体）
     _carfr_txt, _carfr_rank, _carfr_map = compute_carFR_ranking(lines, hens, line_fr_map)
 
-    try:
+    
     dbg_ns = [4, 6]  # ← try の中なので、必ず4スペース(or tab統一)でインデント
 
     # 4) carFR順位（ここが本体）
