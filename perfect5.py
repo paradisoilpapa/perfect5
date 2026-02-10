@@ -3843,6 +3843,8 @@ except Exception as e:
 # ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
 # ★ 予想最終順位（最終隊列×スコアでノックアウト）
 #    ※ ここは “1つのtry/except” に固定して SyntaxError を潰す
+#    ※ KO使用スコアを表示
+#    ※ 0スコア（4,6など）を床値で補完して「0固定沈み」を潰す
 # =========================================================
 
 try:
@@ -3873,6 +3875,7 @@ try:
             ("逆流→渦→順流", ["逆流", "渦", "順流"]),
         ]
 
+    # --- listでもstrでも必ず同じキーにする ---
     def _line_key(ln):
         if ln is None:
             return ""
@@ -3880,6 +3883,7 @@ try:
             return "".join(str(x) for x in ln if str(x).isdigit())
         return "".join(ch for ch in str(ln) if ch.isdigit())
 
+    # --- ゾーン判定（既存の変数/辞書があれば拾う） ---
     def _infer_line_zone(ln):
         k = _line_key(ln)
 
@@ -3909,6 +3913,7 @@ try:
 
         return "順流"
 
+    # --- ラインFRを必ず拾う（キー正規化経由） ---
     def _get_line_fr(ln):
         k = _line_key(ln)
         for key in ("line_fr_map", "lineFR_map", "line_fr", "lineFR"):
@@ -3922,6 +3927,7 @@ try:
                         pass
         return 0.0
 
+    # --- パターン順にキュー化 ---
     def _queue_for_pattern(all_lines, svr_order):
         lines = list(all_lines or [])
         bucket = {"順流": [], "渦": [], "逆流": []}
@@ -3944,8 +3950,10 @@ try:
 
         return queue, used
 
-    # KO関数（既存があれば使う）
+    # --- KO（既存があれば使う。無ければ簡易版を使う） ---
     _use_existing_ko = False
+    _ko = None
+
     if "_knockout_finish_from_queue" in globals() and callable(globals().get("_knockout_finish_from_queue")):
         _ko = globals().get("_knockout_finish_from_queue")
         _use_existing_ko = True
@@ -3957,7 +3965,7 @@ try:
                 if c not in first_pos:
                     first_pos[c] = i
             tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
-            for c in [str(k) for k in score_map.keys()]:
+            for c in [str(k) for k in score_map.keys() if str(k).isdigit()]:
                 if c not in first_pos:
                     first_pos[c] = tail_pos
 
@@ -3969,27 +3977,71 @@ try:
             scored.sort(key=lambda t: (t[1], -t[2]), reverse=True)
             return [c for c, _, _ in scored]
 
-    # ---------------- 実行 ----------------
+    # =========================================================
+    # ここから実行（★ここで必ず score_map を生成する）
+    # =========================================================
     all_lines = globals().get("all_lines") or []
     active_cars = globals().get("active_cars") or []
 
-    if isinstance(globals().get("_carfr_map"), dict) and globals().get("_carfr_map"):
-        score_map = {str(k): float(v) for k, v in globals().get("_carfr_map").items()}
+    # 1) KOスコア元を決める（_carfr_map が無い/空でも落とさない）
+    _src = globals().get("_carfr_map")
+    if isinstance(_src, dict) and _src:
+        score_map = {}
+        for k, v in _src.items():
+            ks = "".join(ch for ch in str(k) if ch.isdigit())
+            if not ks:
+                continue
+            try:
+                score_map[ks] = float(v)
+            except Exception:
+                score_map[ks] = 0.0
     else:
-        score_map = {str(n): 0.0 for n in active_cars if str(n).isdigit()}
+        score_map = {}
 
+    # 2) active_cars 全員を必ず入れる（欠損は0）
+    for n in (active_cars or []):
+        ns = str(n)
+        if ns.isdigit() and ns not in score_map:
+            score_map[ns] = 0.0
+
+    # 3) ★0スコア補完：床値で埋める（4/6が0固定沈みを防ぐ）
+    _pos_vals = [float(v) for v in score_map.values() if isinstance(v, (int, float)) and float(v) > 0.0]
+    _floor = min(_pos_vals) if _pos_vals else 1e-6
+    for k in list(score_map.keys()):
+        try:
+            if float(score_map[k]) <= 0.0:
+                score_map[k] = _floor
+        except Exception:
+            score_map[k] = _floor
+
+    # 4) チェック用にスコア表示
+    _sc_pairs = []
+    for k, v in score_map.items():
+        try:
+            _sc_pairs.append((int(k), float(v)))
+        except Exception:
+            pass
+    _sc_pairs.sort(key=lambda t: (-t[1], t[0]))
+    note_sections.append("\n【KO使用スコア（降順）】")
+    note_sections.append(" / ".join([f"{n}:{sc:.4f}" for n, sc in _sc_pairs]))
+
+    # 5) 6パターン内部生成
     outs = {}
     for pname, svr in _PATTERNS:
         q, _used = _queue_for_pattern(all_lines, svr)
+
         if _use_existing_ko:
+            # 既存KOの引数差を吸収
             try:
                 finish = _ko(q, score_map, 1.0)
             except TypeError:
                 finish = _ko(q, score_map)
         else:
             finish = _ko(q, score_map)
+
         outs[pname] = finish
 
+    # 6) 2パターン合成の表示
     def _slot_union(a, b, idx):
         s = set()
         if a and idx < len(a): s.add(str(a[idx]))
@@ -4004,19 +4056,6 @@ try:
             if u:
                 parts.append(u)
         return " → ".join(parts) if parts else "（なし）"
-
-    # チェック用：KOで使ったスコア表示（ここも try を使わない）
-    _sc_pairs = []
-    for k, v in (score_map or {}).items():
-        ks = "".join(ch for ch in str(k) if ch.isdigit())
-        if ks:
-            try:
-                _sc_pairs.append((int(ks), float(v)))
-            except Exception:
-                pass
-    _sc_pairs.sort(key=lambda t: (-t[1], t[0]))
-    note_sections.append("\n【KO使用スコア（降順）】")
-    note_sections.append(" / ".join([f"{n}:{sc:.4f}" for n, sc in _sc_pairs]))
 
     note_sections.append("\n【順流メイン着順予想】")
     note_sections.append(_fmt_pair(outs.get("順流→渦→逆流", []), outs.get("順流→逆流→渦", [])))
@@ -4035,6 +4074,7 @@ except Exception as e:
         print(e)
 
 note_sections.append("")
+
 
 # === ＜短評＞（コンパクト） ===
 try:
