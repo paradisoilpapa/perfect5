@@ -3577,7 +3577,9 @@ try:
 # =========================================================
 # ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
 # ★ 予想最終順位（最終隊列×スコアでノックアウト）
-#    ※ try/except を使わない（上流try未閉鎖でもSyntaxErrorを起こさない）
+#    ※ try/except を使わない（SyntaxError永久回避）
+#    ※ KO使用スコアは縦表示
+#    ※ line_fr_map が空/キー不整合なら再構築（DEBUG出力なし）
 # =========================================================
 
 import math
@@ -3595,6 +3597,7 @@ note_sections = ns
 _lfm = globals().get("line_fr_map", None)
 _need_rebuild = (not isinstance(_lfm, dict)) or (len(_lfm) == 0)
 
+# 空じゃない場合：tuple/list/setキーを "571" 形式に正規化
 if (not _need_rebuild) and isinstance(_lfm, dict):
     _lfm2 = {}
     for k, v in _lfm.items():
@@ -3614,6 +3617,7 @@ if (not _need_rebuild) and isinstance(_lfm, dict):
     if len(_lfm) == 0:
         _need_rebuild = True
 
+# 空なら：KO母集団スコアでライン比率を作り直す
 if _need_rebuild:
     _lines_src = globals().get("all_lines")
     if not isinstance(_lines_src, (list, tuple)) or len(_lines_src) == 0:
@@ -3671,7 +3675,7 @@ if _need_rebuild:
     globals()["line_fr_map"] = _lfm2
     line_fr_map = _lfm2
 
-# --- 依存関数の最低限 ---
+# --- 依存関数（未定義なら生やす） ---
 if "_digits_of_line" not in globals():
     def _digits_of_line(ln):
         s = "".join(ch for ch in str(ln) if ch.isdigit())
@@ -3696,6 +3700,7 @@ def _line_key(ln):
 
 def _infer_line_zone(ln):
     k = _line_key(ln)
+
     for key in ("line_zone_map", "line_type_map", "line_class_map", "line_role_map"):
         m = globals().get(key)
         if isinstance(m, dict):
@@ -3706,17 +3711,20 @@ def _infer_line_zone(ln):
     flow = globals().get("flow_line") or globals().get("main_flow_line") or globals().get("jyunryu_line")
     rev  = globals().get("reverse_line") or globals().get("gyakuryu_line")
     vort = globals().get("vortex_line") or globals().get("uzu_line") or globals().get("candidate_vortex_line")
+
     if flow is not None and _line_key(flow) == k:
         return "順流"
     if rev is not None and _line_key(rev) == k:
         return "逆流"
     if vort is not None and _line_key(vort) == k:
         return "渦"
+
     for key in ("vortex_lines", "uzu_lines", "candidate_vortex_lines"):
         xs = globals().get(key)
         if isinstance(xs, (list, tuple, set)):
             if any(_line_key(x) == k for x in xs):
                 return "渦"
+
     return "順流"
 
 def _get_line_fr(ln):
@@ -3750,6 +3758,9 @@ def _queue_for_pattern(all_lines, svr_order):
             queue.extend(_digits_of_line(ln))
     return queue
 
+# =========================================================
+# ★ スコア母集団：v_final > v_wo > _carfr_map
+# =========================================================
 def _as_int_float_map(m):
     out = {}
     if not isinstance(m, dict):
@@ -3800,6 +3811,9 @@ for k in list(score_map.keys()):
     except Exception:
         score_map[k] = float(_floor)
 
+# =========================================================
+# KO使用スコア表示（縦表示）
+# =========================================================
 _sc_pairs = sorted([(int(k), float(v)) for k, v in score_map.items()],
                    key=lambda t: (-t[1], t[0]))
 
@@ -3810,6 +3824,9 @@ if _sc_pairs:
 else:
     note_sections.append("—")
 
+# =========================================================
+# KO（既存があれば使う。無ければ簡易版）
+# =========================================================
 _use_existing_ko = False
 _ko = None
 if "_knockout_finish_from_queue" in globals() and callable(globals().get("_knockout_finish_from_queue")):
@@ -3836,6 +3853,9 @@ else:
         scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
         return [c for c, _, _ in scored]
 
+# =========================================================
+# 実行：6パターン → 2パターン合成表示
+# =========================================================
 all_lines = globals().get("all_lines") or []
 outs = {}
 for pname, svr in _PATTERNS:
@@ -3874,6 +3894,7 @@ note_sections.append("\n【逆流メイン着順予想】")
 note_sections.append(_fmt_pair(outs.get("逆流→順流→渦", []), outs.get("逆流→渦→順流", [])))
 
 note_sections.append("")
+
 
 
 
