@@ -4189,16 +4189,23 @@ try:
         except Exception:
             score_map[k] = _floor
 
-    # 4) チェック用にスコア表示
+    # 4) チェック用にスコア表示（KO入力の母集団= v_final を優先、無ければ v_wo）
+    _src = v_final if (isinstance(globals().get("v_final"), dict) and v_final) else v_wo
+    
     _sc_pairs = []
-    for k, v in score_map.items():
+    for k, v in (_src or {}).items():
         try:
             _sc_pairs.append((int(k), float(v)))
         except Exception:
-            pass
+            continue
+    
     _sc_pairs.sort(key=lambda t: (-t[1], t[0]))
+    
     note_sections.append("\n【KO使用スコア（降順）】")
-    note_sections.append(" / ".join([f"{n}:{sc:.4f}" for n, sc in _sc_pairs]))
+    note_sections.append(
+        " / ".join(f"{n}:{sc:.4f}" for n, sc in _sc_pairs) if _sc_pairs else "—"
+    )
+
 
     # 5) 6パターン内部生成
     outs = {}
