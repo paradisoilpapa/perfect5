@@ -3565,13 +3565,14 @@ try:
     )
 
     note_sections.append(f"【順流】◎ライン {_fmt(_FR_line)}：想定FR={_lfr(_FR_line):.3f}")
-    note_sections.append(f"【渦】候補ライン：{_fmt(_VORT_line)}：想定FR={_lfr(_VORT_line):.3f}")
-    note_sections.append(f"【逆流】無ライン {_fmt(_REV_line)}：想定FR={_lfr(_REV_line):.3f}")
+note_sections.append(f"【渦】候補ライン：{_fmt(_VORT_line)}：想定FR={_lfr(_VORT_line):.3f}")
+note_sections.append(f"【逆流】無ライン {_fmt(_REV_line)}：想定FR={_lfr(_REV_line):.3f}")
 
-    for ln in (_all_lines_local or []):
-        if ln == _FR_line or ln == _VORT_line or ln == _REV_line:
-            continue
-        note_sections.append(f"　　　その他ライン {_fmt(ln)}：想定FR={_lfr(ln):.3f}")
+for ln in (_all_lines_local or []):
+    if ln == _FR_line or ln == _VORT_line or ln == _REV_line:
+        continue
+    note_sections.append(f"　　　その他ライン {_fmt(ln)}：想定FR={_lfr(ln):.3f}")
+
 
 
 # =========================================================
