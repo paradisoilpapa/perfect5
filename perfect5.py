@@ -4017,17 +4017,21 @@ except Exception as e:
 # =========================================================
 # ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
 # ★ 予想最終順位（最終隊列×スコアでノックアウト）
-#    ※ ここは “1つのtry/except” に固定して SyntaxError を潰す
+#    ※ 1つのtry/exceptに固定（SyntaxError回避）
 #    ※ KO使用スコアを表示
-#    ※ 0スコア（4,6など）を床値で補完して「0固定沈み」を潰す
+#    ※ 0/None/NaN を「床値」で補完（0固定沈み対策）
+#    ※ “母集団（KO入力）” と “予想で使うスコア” を同じに揃える
 # =========================================================
 
 try:
+    import math
+
     # --- 0) note_sections を必ず用意 ---
-    if "note_sections" not in globals() or globals().get("note_sections") is None:
-        note_sections = []
-    else:
-        note_sections = globals().get("note_sections")
+    ns = globals().get("note_sections", None)
+    if not isinstance(ns, list):
+        ns = []
+        globals()["note_sections"] = ns
+    note_sections = ns
 
     # --- 依存関数の最低限（未定義なら生やす） ---
     if "_digits_of_line" not in globals():
@@ -4110,22 +4114,99 @@ try:
             z = _infer_line_zone(ln)
             bucket.setdefault(z, []).append(ln)
 
-        used, queue = [], []
+        queue = []
         for z in (svr_order or ["順流", "渦", "逆流"]):
             xs = bucket.get(z, [])
             xs = sorted(xs, key=lambda x: _get_line_fr(x), reverse=True)
             for ln in xs:
-                used.append(ln)
                 queue.extend(_digits_of_line(ln))
 
         if not queue:
             for ln in lines:
-                used.append(ln)
                 queue.extend(_digits_of_line(ln))
 
-        return queue, used
+        return queue
 
-    # --- KO（既存があれば使う。無ければ簡易版を使う） ---
+    # =========================================================
+    # ★ スコア母集団の選択（ここが最重要）
+    #  - 予想に使う score_map と、表示する KO使用スコア を同じに揃える
+    #  優先：v_final（KO後） > v_wo（KO前SBなし母集団） > _carfr_map（古い経路）
+    # =========================================================
+    def _as_int_float_map(m):
+        out = {}
+        if not isinstance(m, dict):
+            return out
+        for k, v in m.items():
+            try:
+                kk = int(k)
+                vv = float(v)
+                if math.isfinite(vv):
+                    out[kk] = vv
+            except Exception:
+                pass
+        return out
+
+    v_final_map = _as_int_float_map(globals().get("v_final"))
+    v_wo_map    = _as_int_float_map(globals().get("v_wo"))
+
+    # 旧経路（_carfr_map）があるなら保険で拾う（ただし優先度は下）
+    _carfr_map = globals().get("_carfr_map")
+    carfr_map_int = {}
+    if isinstance(_carfr_map, dict):
+        for k, v in _carfr_map.items():
+            try:
+                carfr_map_int[int(k)] = float(v)
+            except Exception:
+                pass
+
+    # 母集団の決定
+    if v_final_map:
+        score_map = dict(v_final_map)
+        _SRC_NAME = "v_final"
+    elif v_wo_map:
+        score_map = dict(v_wo_map)
+        _SRC_NAME = "v_wo"
+    elif carfr_map_int:
+        score_map = dict(carfr_map_int)
+        _SRC_NAME = "_carfr_map"
+    else:
+        score_map = {}
+        _SRC_NAME = "EMPTY"
+
+    # active_cars を必ず入れる（欠損は0）
+    active_cars = [int(x) for x in (globals().get("active_cars") or []) if str(x).isdigit()]
+    for n in active_cars:
+        score_map.setdefault(int(n), 0.0)
+
+    # ★ 0/None/NaN 補完（床値）
+    vals_pos = [float(v) for v in score_map.values() if isinstance(v, (int, float)) and float(v) > 0.0 and math.isfinite(float(v))]
+    if vals_pos:
+        # “最小値そのまま” だと弱すぎる場合があるので 10%タイル寄りにして安定化
+        vals_pos_sorted = sorted(vals_pos)
+        p10 = vals_pos_sorted[max(0, int(len(vals_pos_sorted)*0.10)-1)]
+        _floor = max(p10, min(vals_pos_sorted))
+    else:
+        _floor = 1e-6
+
+    for k in list(score_map.keys()):
+        try:
+            v = float(score_map[k])
+            if (not math.isfinite(v)) or v <= 0.0:
+                score_map[k] = float(_floor)
+        except Exception:
+            score_map[k] = float(_floor)
+
+    # --- デバッグ：母集団と床値（必要ならコメント外す） ---
+    # note_sections.append(f"\n[DEBUG] score_map source={_SRC_NAME} / floor={_floor:.6g} / n={len(score_map)}")
+
+    # 4) チェック用にスコア表示（=いま予想に使う score_map そのもの）
+    _sc_pairs = sorted([(int(k), float(v)) for k, v in score_map.items()], key=lambda t: (-t[1], t[0]))
+    note_sections.append("\n【KO使用スコア（降順）】")
+    note_sections.append(" / ".join(f"{n}:{sc:.4f}" for n, sc in _sc_pairs) if _sc_pairs else "—")
+
+    # =========================================================
+    # KO（既存があれば使う。無ければ簡易版を使う）
+    # =========================================================
     _use_existing_ko = False
     _ko = None
 
@@ -4133,84 +4214,35 @@ try:
         _ko = globals().get("_knockout_finish_from_queue")
         _use_existing_ko = True
     else:
-        def _ko(finaljump_queue, score_map):
-            q = [str(x) for x in (finaljump_queue or []) if str(x).isdigit()]
+        def _ko(finaljump_queue, score_map_int):
+            q = [int(x) for x in (finaljump_queue or []) if str(x).isdigit()]
             first_pos = {}
             for i, c in enumerate(q):
                 if c not in first_pos:
                     first_pos[c] = i
+
             tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
-            for c in [str(k) for k in score_map.keys() if str(k).isdigit()]:
+            for c in score_map_int.keys():
                 if c not in first_pos:
                     first_pos[c] = tail_pos
 
             scored = []
             for c, i in first_pos.items():
-                base = float(score_map.get(c, 0.0))
-                pos_factor = 1.0 / (1.0 + 0.10 * i)
-                scored.append((c, base * pos_factor, i))
-            scored.sort(key=lambda t: (t[1], -t[2]), reverse=True)
+                base = float(score_map_int.get(int(c), 0.0))
+                pos_factor = 1.0 / (1.0 + 0.10 * float(i))
+                scored.append((int(c), base * pos_factor, int(i)))
+
+            scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
             return [c for c, _, _ in scored]
 
     # =========================================================
-    # ここから実行（★ここで必ず score_map を生成する）
+    # 実行：6パターン作って、2パターン合成で表示
     # =========================================================
     all_lines = globals().get("all_lines") or []
-    active_cars = globals().get("active_cars") or []
 
-    # 1) KOスコア元を決める（_carfr_map が無い/空でも落とさない）
-    _src = globals().get("_carfr_map")
-    if isinstance(_src, dict) and _src:
-        score_map = {}
-        for k, v in _src.items():
-            ks = "".join(ch for ch in str(k) if ch.isdigit())
-            if not ks:
-                continue
-            try:
-                score_map[ks] = float(v)
-            except Exception:
-                score_map[ks] = 0.0
-    else:
-        score_map = {}
-
-    # 2) active_cars 全員を必ず入れる（欠損は0）
-    for n in (active_cars or []):
-        ns = str(n)
-        if ns.isdigit() and ns not in score_map:
-            score_map[ns] = 0.0
-
-    # 3) ★0スコア補完：床値で埋める（4/6が0固定沈みを防ぐ）
-    _pos_vals = [float(v) for v in score_map.values() if isinstance(v, (int, float)) and float(v) > 0.0]
-    _floor = min(_pos_vals) if _pos_vals else 1e-6
-    for k in list(score_map.keys()):
-        try:
-            if float(score_map[k]) <= 0.0:
-                score_map[k] = _floor
-        except Exception:
-            score_map[k] = _floor
-
-    # 4) チェック用にスコア表示（KO入力の母集団= v_final を優先、無ければ v_wo）
-    _src = v_final if (isinstance(globals().get("v_final"), dict) and v_final) else v_wo
-    
-    _sc_pairs = []
-    for k, v in (_src or {}).items():
-        try:
-            _sc_pairs.append((int(k), float(v)))
-        except Exception:
-            continue
-    
-    _sc_pairs.sort(key=lambda t: (-t[1], t[0]))
-    
-    note_sections.append("\n【KO使用スコア（降順）】")
-    note_sections.append(
-        " / ".join(f"{n}:{sc:.4f}" for n, sc in _sc_pairs) if _sc_pairs else "—"
-    )
-
-
-    # 5) 6パターン内部生成
     outs = {}
     for pname, svr in _PATTERNS:
-        q, _used = _queue_for_pattern(all_lines, svr)
+        q = _queue_for_pattern(all_lines, svr)
 
         if _use_existing_ko:
             # 既存KOの引数差を吸収
@@ -4221,17 +4253,16 @@ try:
         else:
             finish = _ko(q, score_map)
 
-        outs[pname] = finish
+        outs[pname] = [int(x) for x in (finish or []) if str(x).isdigit()]
 
-    # 6) 2パターン合成の表示
     def _slot_union(a, b, idx):
         s = set()
-        if a and idx < len(a): s.add(str(a[idx]))
-        if b and idx < len(b): s.add(str(b[idx]))
-        return ".".join(sorted(s, key=lambda x: int(x) if x.isdigit() else 999))
+        if a and idx < len(a): s.add(int(a[idx]))
+        if b and idx < len(b): s.add(int(b[idx]))
+        return ".".join(str(x) for x in sorted(s)) if s else ""
 
-    def _fmt_pair(a, b):
-        n = max(len(a or []), len(b or []), 7)
+    def _fmt_pair(a, b, max_n=7):
+        n = min(max(len(a or []), len(b or []), max_n), max_n)
         parts = []
         for i in range(n):
             u = _slot_union(a, b, i)
@@ -4256,6 +4287,7 @@ except Exception as e:
         print(e)
 
 note_sections.append("")
+
 
 
 # === ＜短評＞（コンパクト） ===
