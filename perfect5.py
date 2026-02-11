@@ -4026,17 +4026,26 @@ except Exception as e:
 try:
     import math
 
-    # --- 0) note_sections を必ず用意 ---
+       # --- 0) note_sections を必ず用意 ---
     ns = globals().get("note_sections", None)
     if not isinstance(ns, list):
         ns = []
         globals()["note_sections"] = ns
     note_sections = ns
 
-        # --- DEBUG + 正規化：line_fr_map が tuple/list キーなら "571" キーに統一 ---
+    # =========================================================
+    # DEBUG + 正規化 + 再構築：line_fr_map を必ず "571" キーで持たせる
+    #  - 空ならここで作る（想定FR=0.000連発を止める）
+    #  - tuple/list キーなら "571" に正規化する
+    # =========================================================
     _lfm = globals().get("line_fr_map", None)
-    if isinstance(_lfm, dict):
-        # 1) 現状キーのサンプル確認（1回だけ）
+
+    # 1) まず “空かどうか” を判定（空なら再構築へ）
+    _need_rebuild = (not isinstance(_lfm, dict)) or (len(_lfm) == 0)
+
+    # 2) 空じゃない場合は、キーが tuple/list の可能性があるので正規化して入れ替える
+    if (not _need_rebuild) and isinstance(_lfm, dict):
+        # 1回だけサンプル表示
         if "_DBG_LFM_ONCE" not in st.session_state:
             st.session_state["_DBG_LFM_ONCE"] = True
             try:
@@ -4045,7 +4054,6 @@ try:
             except Exception:
                 pass
 
-        # 2) tuple/list/set キーを "571" に正規化して新辞書へ
         _lfm2 = {}
         for k, v in _lfm.items():
             try:
@@ -4058,6 +4066,80 @@ try:
                 _lfm2[kk] = float(v or 0.0)
             except Exception:
                 continue
+
+        globals()["line_fr_map"] = _lfm2
+        line_fr_map = _lfm2
+        _lfm = _lfm2
+
+        # 正規化した結果が空になったら再構築
+        if len(_lfm) == 0:
+            _need_rebuild = True
+
+    # 3) ★空ならここで再構築（KOの母集団スコアでライン比率を作る）
+    if _need_rebuild:
+        # ライン入力を拾う（all_lines が無ければ lines）
+        _lines_src = globals().get("all_lines")
+        if not isinstance(_lines_src, (list, tuple)) or len(_lines_src) == 0:
+            _lines_src = globals().get("lines")
+        if not isinstance(_lines_src, (list, tuple)):
+            _lines_src = []
+
+        # "571" 等を必ず [5,7,1] に正規化
+        _norm_lines = []
+        for ln in (_lines_src or []):
+            s = "".join(ch for ch in str(ln) if ch.isdigit())
+            if not s:
+                continue
+            _norm_lines.append([int(ch) for ch in s])
+
+        # KOの母集団（v_final→v_wo優先）をスコア元にする
+        _src_scores = None
+        if isinstance(globals().get("v_final", None), dict) and globals().get("v_final"):
+            _src_scores = globals().get("v_final")
+        elif isinstance(globals().get("v_wo", None), dict) and globals().get("v_wo"):
+            _src_scores = globals().get("v_wo")
+        else:
+            _src_scores = {}
+
+        _scores_map = {}
+        for k, v in (_src_scores or {}).items():
+            try:
+                _scores_map[int(k)] = float(v)
+            except Exception:
+                pass
+
+        # 既存の _build_line_fr_map があれば使う（無ければ簡易按分）
+        _blfm = globals().get("_build_line_fr_map")
+        if callable(_blfm):
+            try:
+                _lfm2 = _blfm(_norm_lines, _scores_map, 1.0)
+            except Exception:
+                _lfm2 = {}
+        else:
+            sums = []
+            for ln in _norm_lines:
+                key = "".join(map(str, ln))
+                s = sum(_scores_map.get(int(x), 0.0) for x in ln)
+                sums.append((key, float(s)))
+            total = sum(s for _, s in sums)
+
+            _lfm2 = {}
+            if total > 1e-12:
+                for k, s in sums:
+                    _lfm2[k] = float(s) / total
+            else:
+                n = len(sums)
+                if n > 0:
+                    eq = 1.0 / n
+                    for k, _ in sums:
+                        _lfm2[k] = eq
+
+        globals()["all_lines"] = _norm_lines
+        globals()["line_fr_map"] = _lfm2
+        line_fr_map = _lfm2
+
+        note_sections.append("\n[DEBUG] line_fr_map rebuilt = " + str(line_fr_map))
+
 
         # 3) 上書き（以降の _get_line_fr が全部拾えるようになる）
         if _lfm2:
