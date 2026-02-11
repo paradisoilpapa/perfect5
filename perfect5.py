@@ -931,68 +931,70 @@ def venue_mix(zL, zTH, dC):
 
 
 # ==============================
-# ★ 風取得ユーティリティ（未定義ならここで定義：NameError防止）
+# ★ 風取得ユーティリティ（名前衝突を解消）
 # ==============================
-if "fetch_openmeteo_hour" not in globals():
-    def fetch_openmeteo_hour(jst_date, race_slot: str):
-        h = SESSION_HOUR.get(race_slot, 11)
-        if isinstance(jst_date, datetime):
-            jst_date = jst_date.date()
-        try:
-            y, m, d = jst_date.year, jst_date.month, jst_date.day
-        except Exception:
-            dt = pd.to_datetime(str(jst_date))
-            y, m, d = dt.year, dt.month, dt.day
-        return datetime(y, m, d, h, 0, 0)
 
-if "fetch_openmeteo_hour" not in globals():
-    def fetch_openmeteo_hour(lat, lon, target_dt_naive):
-        import numpy as np
-        d = target_dt_naive.strftime("%Y-%m-%d")
-        base = "https://api.open-meteo.com/v1/forecast"
-        # ★ windspped_unit=ms を全URLで強制（km/h誤解釈で30m/s化を防ぐ）
-        urls = [
-            (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
-             "&hourly=wind_speed_10m,wind_direction_10m"
-             "&timezone=Asia%2FTokyo"
-             "&windspeed_unit=ms"
-             f"&start_date={d}&end_date={d}", True),
-            (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
-             "&hourly=wind_speed_10m"
-             "&timezone=Asia%2FTokyo"
-             "&windspeed_unit=ms"
-             f"&start_date={d}&end_date={d}", False),
-            (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
-             "&hourly=wind_speed_10m,wind_direction_10m"
-             "&timezone=Asia%2FTokyo"
-             "&windspeed_unit=ms"
-             "&past_days=2&forecast_days=2", True),
-            (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
-             "&hourly=wind_speed_10m"
-             "&timezone=Asia%2FTokyo"
-             "&windspeed_unit=ms"
-             "&past_days=2&forecast_days=2", False),
-        ]
-        last_err = None
-        for url, with_dir in urls:
-            try:
-                r = requests.get(url, timeout=15)
-                r.raise_for_status()
-                j = r.json().get("hourly", {})
-                times = [datetime.fromisoformat(t) for t in j.get("time", [])]
-                if not times:
-                    raise RuntimeError("empty hourly times")
-                diffs = [abs((t - target_dt_naive).total_seconds()) for t in times]
-                k = int(np.argmin(diffs))
-                sp = j.get("wind_speed_10m", [])
-                di = j.get("wind_direction_10m", []) if with_dir else []
-                speed = float(sp[k]) if k < len(sp) else float("nan")
-                deg   = (float(di[k]) if with_dir and k < len(di) else None)
-                return {"time": times[k], "speed_ms": speed, "deg": deg, "diff_min": diffs[k]/60.0}
-            except Exception as e:
-                last_err = e
-                continue
-        raise RuntimeError(f"Open-Meteo取得失敗（最後のエラー: {last_err}）")
+# 1) 取得ターゲット時刻を作る（JST基準・tzなしdatetime）
+def build_openmeteo_target_dt(jst_date, race_slot: str):
+    h = SESSION_HOUR.get(race_slot, 11)
+    if isinstance(jst_date, datetime):
+        jst_date = jst_date.date()
+    try:
+        y, m, d = jst_date.year, jst_date.month, jst_date.day
+    except Exception:
+        dt = pd.to_datetime(str(jst_date))
+        y, m, d = dt.year, dt.month, dt.day
+    return datetime(y, m, d, h, 0, 0)
+
+# 2) Open-Meteoから時刻に一番近い時間の風を取る
+def fetch_openmeteo_hour(lat, lon, target_dt_naive):
+    import numpy as np
+    d = target_dt_naive.strftime("%Y-%m-%d")
+    base = "https://api.open-meteo.com/v1/forecast"
+    # ★ windspped_unit=ms を全URLで強制（km/h誤解釈で30m/s化を防ぐ）
+    urls = [
+        (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
+         "&hourly=wind_speed_10m,wind_direction_10m"
+         "&timezone=Asia%2FTokyo"
+         "&windspeed_unit=ms"
+         f"&start_date={d}&end_date={d}", True),
+        (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
+         "&hourly=wind_speed_10m"
+         "&timezone=Asia%2FTokyo"
+         "&windspeed_unit=ms"
+         f"&start_date={d}&end_date={d}", False),
+        (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
+         "&hourly=wind_speed_10m,wind_direction_10m"
+         "&timezone=Asia%2FTokyo"
+         "&windspeed_unit=ms"
+         "&past_days=2&forecast_days=2", True),
+        (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
+         "&hourly=wind_speed_10m"
+         "&timezone=Asia%2FTokyo"
+         "&windspeed_unit=ms"
+         "&past_days=2&forecast_days=2", False),
+    ]
+    last_err = None
+    for url, with_dir in urls:
+        try:
+            r = requests.get(url, timeout=15)
+            r.raise_for_status()
+            j = r.json().get("hourly", {})
+            times = [datetime.fromisoformat(t) for t in j.get("time", [])]
+            if not times:
+                raise RuntimeError("empty hourly times")
+            diffs = [abs((t - target_dt_naive).total_seconds()) for t in times]
+            k = int(np.argmin(diffs))
+            sp = j.get("wind_speed_10m", [])
+            di = j.get("wind_direction_10m", []) if with_dir else []
+            speed = float(sp[k]) if k < len(sp) else float("nan")
+            deg   = (float(di[k]) if with_dir and k < len(di) else None)
+            return {"time": times[k], "speed_ms": speed, "deg": deg, "diff_min": diffs[k]/60.0}
+        except Exception as e:
+            last_err = e
+            continue
+    raise RuntimeError(f"Open-Meteo取得失敗（最後のエラー: {last_err}）")
+
 
 
 # ==============================
@@ -1037,8 +1039,9 @@ with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expand
             st.sidebar.error(f"{track} の座標が未登録です（VELODROME_MASTER に lat/lon を入れてください）")
         else:
             try:
-                target = fetch_openmeteo_hour(api_date, race_time)
+                target = build_openmeteo_target_dt(api_date, race_time)
                 data = fetch_openmeteo_hour(info_xy["lat"], info_xy["lon"], target)
+
                 st.session_state["wind_speed"] = round(float(data["speed_ms"]), 2)
                 st.sidebar.success(
                     f"{track} {target:%Y-%m-%d %H:%M} 風速 {st.session_state['wind_speed']:.1f} m/s "
