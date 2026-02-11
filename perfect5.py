@@ -3496,17 +3496,53 @@ try:
         note_sections.append("ライン　" + "　".join(_lines))
     note_sections.append("")
 
-    # ---- ライン想定FR（順流/渦/逆流 + その他） ----
-    def _line_fr_val(ln):
-        return float(line_fr_map.get(_line_key(ln), 0.0) or 0.0)
+    # === ライン想定FR（順流/渦/逆流 + その他） ===
 
-    note_sections.append(f"【順流】◎ライン {_free_fmt_nums(FR_line)}：想定FR={_line_fr_val(FR_line):.3f}")
-    note_sections.append(f"【渦】候補ライン：{_free_fmt_nums(VTX_line)}：想定FR={_line_fr_val(VTX_line):.3f}")
-    note_sections.append(f"【逆流】無ライン {_free_fmt_nums(U_line)}：想定FR={_line_fr_val(U_line):.3f}")
-    for ln in all_lines:
-        if ln == FR_line or ln == VTX_line or ln == U_line:
-            continue
-        note_sections.append(f"　　　その他ライン {_free_fmt_nums(ln)}：想定FR={_line_fr_val(ln):.3f}")
+# まずは “意味で拾う” （変数名の揺れを吸収）
+_FR_line = (
+    _bets.get("FR_line")
+    or _flow.get("FR_line")
+    or _flow.get("flow_line")
+    or _flow.get("main_flow_line")
+    or _flow.get("jyunryu_line")
+    or []
+)
+
+# 渦：vortex / uzu / candidate_vortex を優先（VTX_line は保険）
+_VORT_line = (
+    _bets.get("vortex_line")
+    or _flow.get("vortex_line")
+    or _flow.get("uzu_line")
+    or _flow.get("candidate_vortex_line")
+    or _bets.get("VTX_line")
+    or _flow.get("VTX_line")
+    or []
+)
+
+# 逆流：reverse / gyakuryu を優先（U_line は保険）
+_REV_line = (
+    _bets.get("reverse_line")
+    or _flow.get("reverse_line")
+    or _flow.get("gyakuryu_line")
+    or _bets.get("U_line")
+    or _flow.get("U_line")
+    or []
+)
+
+def _line_key(ln):
+    return "" if not ln else "".join(str(x) for x in ln)
+
+def _line_fr_val(ln):
+    return float(line_fr_map.get(_line_key(ln), 0.0) or 0.0)
+
+note_sections.append(f"【順流】◎ライン {_free_fmt_nums(_FR_line)}：想定FR={_line_fr_val(_FR_line):.3f}")
+note_sections.append(f"【渦】候補ライン：{_free_fmt_nums(_VORT_line)}：想定FR={_line_fr_val(_VORT_line):.3f}")
+note_sections.append(f"【逆流】無ライン {_free_fmt_nums(_REV_line)}：想定FR={_line_fr_val(_REV_line):.3f}")
+
+for ln in all_lines:
+    if ln == _FR_line or ln == _VORT_line or ln == _REV_line:
+        continue
+    note_sections.append(f"　　　その他ライン {_free_fmt_nums(ln)}：想定FR={_line_fr_val(ln):.3f}")
 
     # =========================================================
     # ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
