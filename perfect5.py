@@ -4033,6 +4033,40 @@ try:
         globals()["note_sections"] = ns
     note_sections = ns
 
+        # --- DEBUG + 正規化：line_fr_map が tuple/list キーなら "571" キーに統一 ---
+    _lfm = globals().get("line_fr_map", None)
+    if isinstance(_lfm, dict):
+        # 1) 現状キーのサンプル確認（1回だけ）
+        if "_DBG_LFM_ONCE" not in st.session_state:
+            st.session_state["_DBG_LFM_ONCE"] = True
+            try:
+                sample_keys = list(_lfm.keys())[:12]
+                note_sections.append("\n[DEBUG] line_fr_map.keys sample = " + str(sample_keys))
+            except Exception:
+                pass
+
+        # 2) tuple/list/set キーを "571" に正規化して新辞書へ
+        _lfm2 = {}
+        for k, v in _lfm.items():
+            try:
+                if isinstance(k, (list, tuple, set)):
+                    kk = "".join(str(x) for x in k if str(x).isdigit())
+                else:
+                    kk = "".join(ch for ch in str(k) if ch.isdigit())
+                if not kk:
+                    continue
+                _lfm2[kk] = float(v or 0.0)
+            except Exception:
+                continue
+
+        # 3) 上書き（以降の _get_line_fr が全部拾えるようになる）
+        if _lfm2:
+            globals()["line_fr_map"] = _lfm2
+            line_fr_map = _lfm2  # ローカルにも
+
+
+    
+
     # --- 依存関数の最低限（未定義なら生やす） ---
     if "_digits_of_line" not in globals():
         def _digits_of_line(ln):
