@@ -316,139 +316,25 @@ VELODROME_MASTER = {
     "手入力":{"lat":None,"lon":None,"home_azimuth":None},
 }
 
-# --- 最新の印別実測率（2025/09/25版：画像反映済） -----------------
-# === ランク別統計データ 最新版 (2025/9/28) ===
-
-# --- 全体 ---
+# --- 印別実測率（統計） ---
+# NOTE: KO（隊列ノックアウト）には使わない。混ぜると「統計が順位をワープさせる」ため。
 RANK_STATS_TOTAL = {
     "◎": {"p1": 0.261, "pTop2": 0.459, "pTop3": 0.617},
     "〇": {"p1": 0.235, "pTop2": 0.403, "pTop3": 0.533},
     "▲": {"p1": 0.175, "pTop2": 0.331, "pTop3": 0.484},
     "△": {"p1": 0.133, "pTop2": 0.282, "pTop3": 0.434},
-    "×": {"p1": 0.109, "pTop2": 0.242, "pTop3": 0.39},
+    "×": {"p1": 0.109, "pTop2": 0.242, "pTop3": 0.390},
     "α": {"p1": 0.059, "pTop2": 0.167, "pTop3": 0.295},
     "無": {"p1": 0.003, "pTop2": 0.118, "pTop3": 0.256},
 }
 
-# --- FR順位と印・どの確率を使うかの対応表 ---
-
 def compute_weighted_rank_from_carfr_text(carfr_text: str):
     """
-    【carFR順位】のテキスト(_carfr_txt)を解析して、
-    「FR値 ×（印ごとの 1着率／2着率／3着率）」でスコアを計算し、
-    高い順に並べたリストを返す。
-
-    戻り値: list[dict]
-      {
-        "final_rank": 最終順位(1〜),
-        "car_no":     車番,
-        "fr_rank":    FR順位(1〜),
-        "fr_value":   FR値,
-        "mark":       使った印（◎,〇,▲,△,×,α,無）, 
-        "prob_label": "1着率" / "2着率" / "3着率",
-        "prob":       掛け合わせた確率値,
-        "score":      fr_value * prob
-      }
+    統計混入スコア（FR×印別実測率）は現在は使用しない。
+    互換のため関数だけ残し、常に空を返す。
     """
-    import re
+    return []
 
-    if not carfr_text:
-        return []
-
-    # carFRテキストから「順位・車番・FR値」を抜き出す
-    # 例: "1位：2 (0.0927)"
-    pattern = r"(\d+)位：(\d+) \((\d+\.\d+)\)"
-    rows = []
-    for m in re.finditer(pattern, carfr_text):
-        fr_rank = int(m.group(1))    # 1〜7位
-        car_no  = int(m.group(2))    # 車番
-        fr_val  = float(m.group(3))  # FR値
-        rows.append((fr_rank, car_no, fr_val))
-
-    if not rows:
-        return []
-
-    n = len(rows)
-
-    # --- FR順位 → 印 の対応（6車 / 7車で切り替え） ---
-    rank_to_mark_7 = {
-        1: "〇",
-        2: "◎",
-        3: "△",
-        4: "▲",
-        5: "無",
-        6: "α",
-        7: "×",
-    }
-
-    rank_to_mark_6 = {
-        1: "〇",
-        2: "◎",
-        3: "△",
-        4: "▲",
-        5: "α",
-        6: "×",
-    }
-
-    if n >= 7:
-        rank_to_mark = rank_to_mark_7
-    elif n == 6:
-        rank_to_mark = rank_to_mark_6
-    else:
-        # 想定外（5車立て等）は、とりあえず7車版の上から n 個を流用
-        rank_to_mark = {r: rank_to_mark_7[r] for r in range(1, n + 1) if r in rank_to_mark_7}
-
-    def _calc_prob_and_label(mark: str, fr_rank: int):
-        """
-        指定された印とFR順位に応じて、
-        1着率 / 2着率 / 3着率 を返す。
-        """
-        stats = RANK_STATS_TOTAL.get(mark)
-        if not stats:
-            return 0.0, "不明"
-
-        p1    = float(stats.get("p1", 0.0))
-        pTop2 = float(stats.get("pTop2", 0.0))
-        pTop3 = float(stats.get("pTop3", 0.0))
-
-        # 2着率・3着率を「ちょうどその着」の確率として再計算する
-        p2 = max(pTop2 - p1, 0.0)        # 2着率
-        p3 = max(pTop3 - pTop2, 0.0)     # 3着率
-
-        if fr_rank in (1, 2):
-            return p1, "1着率"
-        elif fr_rank in (3, 4):
-            return p2, "2着率"
-        else:
-            return p3, "3着率"
-
-    scored = []
-    for fr_rank, car_no, fr_val in rows:
-        mark = rank_to_mark.get(fr_rank)
-        if not mark:
-            continue
-
-        prob, label = _calc_prob_and_label(mark, fr_rank)
-        score = fr_val * prob
-
-        scored.append(
-            {
-                "car_no":     car_no,
-                "fr_rank":    fr_rank,
-                "fr_value":   fr_val,
-                "mark":       mark,
-                "prob_label": label,
-                "prob":       prob,
-                "score":      score,
-            }
-        )
-
-    # スコアの高い順に並べて、final_rankを付与
-    scored.sort(key=lambda r: r["score"], reverse=True)
-    for i, r in enumerate(scored, start=1):
-        r["final_rank"] = i
-
-    return scored
 
 
 
