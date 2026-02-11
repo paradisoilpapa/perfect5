@@ -3839,7 +3839,8 @@ except Exception:
     note_sections += lines_out
 
     # 末尾に最終判定
-    note_sections.append(f"\n判定：{tier}")
+    note_sections.append(f"\n判定：{infer_eval_with_share(FRv, VTXv, Uv, share_pct)}")
+
 except Exception:
     pass
 
