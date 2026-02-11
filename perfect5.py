@@ -3496,53 +3496,92 @@ try:
         note_sections.append("ライン　" + "　".join(_lines))
     note_sections.append("")
 
-    # === ライン想定FR（順流/渦/逆流 + その他） ===
+   # === ライン想定FR（順流/渦/逆流 + その他） ===
+try:
+    # 上流の flow / bets / line_fr_map / all_lines / _free_fmt_nums がある前提
+    # ただし無くても落とさない
 
-# まずは “意味で拾う” （変数名の揺れを吸収）
-_FR_line = (
-    _bets.get("FR_line")
-    or _flow.get("FR_line")
-    or _flow.get("flow_line")
-    or _flow.get("main_flow_line")
-    or _flow.get("jyunryu_line")
-    or []
-)
+    _flow_local = globals().get("_flow", {}) or {}
+    _bets_local = globals().get("_bets", {}) or {}
 
-# 渦：vortex / uzu / candidate_vortex を優先（VTX_line は保険）
-_VORT_line = (
-    _bets.get("vortex_line")
-    or _flow.get("vortex_line")
-    or _flow.get("uzu_line")
-    or _flow.get("candidate_vortex_line")
-    or _bets.get("VTX_line")
-    or _flow.get("VTX_line")
-    or []
-)
+    # all_lines が無ければ flow.lines を使う
+    _all_lines_local = globals().get("all_lines", None)
+    if not isinstance(_all_lines_local, list) or not _all_lines_local:
+        _all_lines_local = list(_flow_local.get("lines") or [])
 
-# 逆流：reverse / gyakuryu を優先（U_line は保険）
-_REV_line = (
-    _bets.get("reverse_line")
-    or _flow.get("reverse_line")
-    or _flow.get("gyakuryu_line")
-    or _bets.get("U_line")
-    or _flow.get("U_line")
-    or []
-)
+    _lfm_local = globals().get("line_fr_map", None)
+    if not isinstance(_lfm_local, dict):
+        _lfm_local = {}
 
-def _line_key(ln):
-    return "" if not ln else "".join(str(x) for x in ln)
+    def _lk(ln):
+        try:
+            return "" if not ln else "".join(str(x) for x in ln)
+        except Exception:
+            return ""
 
-def _line_fr_val(ln):
-    return float(line_fr_map.get(_line_key(ln), 0.0) or 0.0)
+    def _lfr(ln):
+        try:
+            return float(_lfm_local.get(_lk(ln), 0.0) or 0.0)
+        except Exception:
+            return 0.0
 
-note_sections.append(f"【順流】◎ライン {_free_fmt_nums(_FR_line)}：想定FR={_line_fr_val(_FR_line):.3f}")
-note_sections.append(f"【渦】候補ライン：{_free_fmt_nums(_VORT_line)}：想定FR={_line_fr_val(_VORT_line):.3f}")
-note_sections.append(f"【逆流】無ライン {_free_fmt_nums(_REV_line)}：想定FR={_line_fr_val(_REV_line):.3f}")
+    def _fmt(ln):
+        # _free_fmt_nums が無い場合の保険
+        try:
+            f = globals().get("_free_fmt_nums")
+            if callable(f):
+                return f(ln)
+        except Exception:
+            pass
+        try:
+            return "".join(str(x) for x in ln) if isinstance(ln, list) else "—"
+        except Exception:
+            return "—"
 
-for ln in all_lines:
-    if ln == _FR_line or ln == _VORT_line or ln == _REV_line:
-        continue
-    note_sections.append(f"　　　その他ライン {_free_fmt_nums(ln)}：想定FR={_line_fr_val(ln):.3f}")
+    # --- “意味で拾う” (命名揺れ吸収) ---
+    _FR_line = (
+        _bets_local.get("FR_line")
+        or _flow_local.get("FR_line")
+        or _flow_local.get("flow_line")
+        or _flow_local.get("main_flow_line")
+        or _flow_local.get("jyunryu_line")
+        or []
+    )
+
+    _VORT_line = (
+        _bets_local.get("vortex_line")
+        or _flow_local.get("vortex_line")
+        or _flow_local.get("uzu_line")
+        or _flow_local.get("candidate_vortex_line")
+        or _bets_local.get("VTX_line")   # 保険
+        or _flow_local.get("VTX_line")   # 保険
+        or []
+    )
+
+    _REV_line = (
+        _bets_local.get("reverse_line")
+        or _flow_local.get("reverse_line")
+        or _flow_local.get("gyakuryu_line")
+        or _bets_local.get("U_line")     # 保険
+        or _flow_local.get("U_line")     # 保険
+        or []
+    )
+
+    note_sections.append(f"【順流】◎ライン {_fmt(_FR_line)}：想定FR={_lfr(_FR_line):.3f}")
+    note_sections.append(f"【渦】候補ライン：{_fmt(_VORT_line)}：想定FR={_lfr(_VORT_line):.3f}")
+    note_sections.append(f"【逆流】無ライン {_fmt(_REV_line)}：想定FR={_lfr(_REV_line):.3f}")
+
+    for ln in (_all_lines_local or []):
+        if ln == _FR_line or ln == _VORT_line or ln == _REV_line:
+            continue
+        note_sections.append(f"　　　その他ライン {_fmt(ln)}：想定FR={_lfr(ln):.3f}")
+
+except Exception as e:
+    try:
+        note_sections.append(f"[LINE FR ERROR] {type(e).__name__}: {e}")
+    except Exception:
+        pass
+
 
     # =========================================================
     # ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
