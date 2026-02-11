@@ -3648,12 +3648,14 @@ try:
 
     # KO使用スコア表示（=score_mapそのもの）
     _sc_pairs = sorted([(int(k), float(v)) for k, v in score_map.items()], key=lambda t: (-t[1], t[0]))
+   
     note_sections.append("\n【KO使用スコア（降順）】")
 if _sc_pairs:
     for i, (n, sc) in enumerate(_sc_pairs, start=1):
         note_sections.append(f"{i}位：{n} (スコア={sc:.6f})")
 else:
     note_sections.append("—")
+
 
 
     # ---- KOヘルパ ----
