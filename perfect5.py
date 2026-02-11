@@ -3574,338 +3574,307 @@ try:
         note_sections.append(f"　　　その他ライン {_fmt(ln)}：想定FR={_lfr(ln):.3f}")
 
 
-    # =========================================================
+# =========================================================
 # ★ 最終ジャン想定隊列（ラインFRの大きい順で隊列化）
 # ★ 予想最終順位（最終隊列×スコアでノックアウト）
-#    ※ 1つのtry/exceptに固定（SyntaxError回避）
-#    ※ KO使用スコアを縦表示
-#    ※ 0/None/NaN を「床値」で補完（0固定沈み対策）
-#    ※ line_fr_map が空/キー不整合でも再構築して想定FR=0.000連発を止める
+#    ※ try/except を使わない（上流try未閉鎖でもSyntaxErrorを起こさない）
 # =========================================================
 
-try:
-    import math
+import math
 
-    # --- 0) note_sections を必ず用意 ---
-    ns = globals().get("note_sections", None)
-    if not isinstance(ns, list):
-        ns = []
-        globals()["note_sections"] = ns
-    note_sections = ns
+# --- note_sections を必ず用意 ---
+ns = globals().get("note_sections", None)
+if not isinstance(ns, list):
+    ns = []
+    globals()["note_sections"] = ns
+note_sections = ns
 
-    # =========================================================
-    # line_fr_map 正規化 + 再構築（DEBUG出力なし）
-    # =========================================================
-    _lfm = globals().get("line_fr_map", None)
-    _need_rebuild = (not isinstance(_lfm, dict)) or (len(_lfm) == 0)
+# =========================================================
+# line_fr_map 正規化 + 再構築（DEBUG出力なし）
+# =========================================================
+_lfm = globals().get("line_fr_map", None)
+_need_rebuild = (not isinstance(_lfm, dict)) or (len(_lfm) == 0)
 
-    # 空じゃない場合：tuple/list/setキーを "571" 形式に正規化
-    if (not _need_rebuild) and isinstance(_lfm, dict):
-        _lfm2 = {}
-        for k, v in _lfm.items():
-            try:
-                if isinstance(k, (list, tuple, set)):
-                    kk = "".join(str(x) for x in k if str(x).isdigit())
-                else:
-                    kk = "".join(ch for ch in str(k) if ch.isdigit())
-                if not kk:
-                    continue
-                _lfm2[kk] = float(v or 0.0)
-            except Exception:
-                continue
-
-        globals()["line_fr_map"] = _lfm2
-        line_fr_map = _lfm2
-        _lfm = _lfm2
-        if len(_lfm) == 0:
-            _need_rebuild = True
-
-    # 空なら：KO母集団スコアでライン比率を作り直す
-    if _need_rebuild:
-        _lines_src = globals().get("all_lines")
-        if not isinstance(_lines_src, (list, tuple)) or len(_lines_src) == 0:
-            _lines_src = globals().get("lines")
-        if not isinstance(_lines_src, (list, tuple)):
-            _lines_src = []
-
-        _norm_lines = []
-        for ln in (_lines_src or []):
-            s = "".join(ch for ch in str(ln) if ch.isdigit())
-            if not s:
-                continue
-            _norm_lines.append([int(ch) for ch in s])
-
-        if isinstance(globals().get("v_final", None), dict) and globals().get("v_final"):
-            _src_scores = globals().get("v_final")
-        elif isinstance(globals().get("v_wo", None), dict) and globals().get("v_wo"):
-            _src_scores = globals().get("v_wo")
-        else:
-            _src_scores = {}
-
-        _scores_map = {}
-        for k, v in (_src_scores or {}).items():
-            try:
-                _scores_map[int(k)] = float(v)
-            except Exception:
-                pass
-
-        _blfm = globals().get("_build_line_fr_map")
-        if callable(_blfm):
-            try:
-                _lfm2 = _blfm(_norm_lines, _scores_map, 1.0)
-            except Exception:
-                _lfm2 = {}
-        else:
-            sums = []
-            for ln in _norm_lines:
-                key = "".join(map(str, ln))
-                s = sum(_scores_map.get(int(x), 0.0) for x in ln)
-                sums.append((key, float(s)))
-            total = sum(s for _, s in sums)
-
-            _lfm2 = {}
-            if total > 1e-12:
-                for k, s in sums:
-                    _lfm2[k] = float(s) / total
-            else:
-                n = len(sums)
-                if n > 0:
-                    eq = 1.0 / n
-                    for k, _ in sums:
-                        _lfm2[k] = eq
-
-        globals()["all_lines"] = _norm_lines
-        globals()["line_fr_map"] = _lfm2
-        line_fr_map = _lfm2
-
-    # --- 依存関数の最低限（未定義なら生やす） ---
-    if "_digits_of_line" not in globals():
-        def _digits_of_line(ln):
-            s = "".join(ch for ch in str(ln) if ch.isdigit())
-            return [int(ch) for ch in s] if s else []
-
-    # 6パターン（未定義なら作る）
-    if "_PATTERNS" not in globals() or not globals().get("_PATTERNS"):
-        _PATTERNS = [
-            ("順流→渦→逆流", ["順流", "渦", "逆流"]),
-            ("順流→逆流→渦", ["順流", "逆流", "渦"]),
-            ("渦→順流→逆流", ["渦", "順流", "逆流"]),
-            ("渦→逆流→順流", ["渦", "逆流", "順流"]),
-            ("逆流→順流→渦", ["逆流", "順流", "渦"]),
-            ("逆流→渦→順流", ["逆流", "渦", "順流"]),
-        ]
-
-    def _line_key(ln):
-        if ln is None:
-            return ""
-        if isinstance(ln, (list, tuple, set)):
-            return "".join(str(x) for x in ln if str(x).isdigit())
-        return "".join(ch for ch in str(ln) if ch.isdigit())
-
-    def _infer_line_zone(ln):
-        k = _line_key(ln)
-
-        for key in ("line_zone_map", "line_type_map", "line_class_map", "line_role_map"):
-            m = globals().get(key)
-            if isinstance(m, dict):
-                z = m.get(k) or m.get(str(k))
-                if z in ("順流", "渦", "逆流"):
-                    return z
-
-        flow = globals().get("flow_line") or globals().get("main_flow_line") or globals().get("jyunryu_line")
-        rev  = globals().get("reverse_line") or globals().get("gyakuryu_line")
-        vort = globals().get("vortex_line") or globals().get("uzu_line") or globals().get("candidate_vortex_line")
-
-        if flow is not None and _line_key(flow) == k:
-            return "順流"
-        if rev is not None and _line_key(rev) == k:
-            return "逆流"
-        if vort is not None and _line_key(vort) == k:
-            return "渦"
-
-        for key in ("vortex_lines", "uzu_lines", "candidate_vortex_lines"):
-            xs = globals().get(key)
-            if isinstance(xs, (list, tuple, set)):
-                if any(_line_key(x) == k for x in xs):
-                    return "渦"
-
-        return "順流"
-
-    def _get_line_fr(ln):
-        k = _line_key(ln)
-        m = globals().get("line_fr_map")
-        if isinstance(m, dict):
-            v = m.get(k) or m.get(str(k))
-            if v is not None:
-                try:
-                    return float(v)
-                except Exception:
-                    pass
-        return 0.0
-
-    def _queue_for_pattern(all_lines, svr_order):
-        lines = list(all_lines or [])
-        bucket = {"順流": [], "渦": [], "逆流": []}
-        for ln in lines:
-            z = _infer_line_zone(ln)
-            bucket.setdefault(z, []).append(ln)
-
-        queue = []
-        for z in (svr_order or ["順流", "渦", "逆流"]):
-            xs = bucket.get(z, [])
-            xs = sorted(xs, key=lambda x: _get_line_fr(x), reverse=True)
-            for ln in xs:
-                queue.extend(_digits_of_line(ln))
-
-        if not queue:
-            for ln in lines:
-                queue.extend(_digits_of_line(ln))
-
-        return queue
-
-    # =========================================================
-    # ★ スコア母集団：v_final > v_wo > _carfr_map
-    # =========================================================
-    def _as_int_float_map(m):
-        out = {}
-        if not isinstance(m, dict):
-            return out
-        for k, v in m.items():
-            try:
-                kk = int(k)
-                vv = float(v)
-                if math.isfinite(vv):
-                    out[kk] = vv
-            except Exception:
-                pass
-        return out
-
-    v_final_map = _as_int_float_map(globals().get("v_final"))
-    v_wo_map    = _as_int_float_map(globals().get("v_wo"))
-
-    _carfr_map = globals().get("_carfr_map")
-    carfr_map_int = {}
-    if isinstance(_carfr_map, dict):
-        for k, v in _carfr_map.items():
-            try:
-                carfr_map_int[int(k)] = float(v)
-            except Exception:
-                pass
-
-    if v_final_map:
-        score_map = dict(v_final_map)
-    elif v_wo_map:
-        score_map = dict(v_wo_map)
-    elif carfr_map_int:
-        score_map = dict(carfr_map_int)
-    else:
-        score_map = {}
-
-    active_cars = [int(x) for x in (globals().get("active_cars") or []) if str(x).isdigit()]
-    for n in active_cars:
-        score_map.setdefault(int(n), 0.0)
-
-    vals_pos = [float(v) for v in score_map.values()
-                if isinstance(v, (int, float)) and float(v) > 0.0 and math.isfinite(float(v))]
-    _floor = min(vals_pos) if vals_pos else 1e-6
-    for k in list(score_map.keys()):
+if (not _need_rebuild) and isinstance(_lfm, dict):
+    _lfm2 = {}
+    for k, v in _lfm.items():
         try:
-            v = float(score_map[k])
-            if (not math.isfinite(v)) or v <= 0.0:
-                score_map[k] = float(_floor)
+            if isinstance(k, (list, tuple, set)):
+                kk = "".join(str(x) for x in k if str(x).isdigit())
+            else:
+                kk = "".join(ch for ch in str(k) if ch.isdigit())
+            if not kk:
+                continue
+            _lfm2[kk] = float(v or 0.0)
         except Exception:
-            score_map[k] = float(_floor)
+            continue
+    globals()["line_fr_map"] = _lfm2
+    line_fr_map = _lfm2
+    _lfm = _lfm2
+    if len(_lfm) == 0:
+        _need_rebuild = True
 
-    # =========================================================
-    # KO使用スコア表示（縦表示）
-    # =========================================================
-    _sc_pairs = sorted([(int(k), float(v)) for k, v in score_map.items()],
-                       key=lambda t: (-t[1], t[0]))
+if _need_rebuild:
+    _lines_src = globals().get("all_lines")
+    if not isinstance(_lines_src, (list, tuple)) or len(_lines_src) == 0:
+        _lines_src = globals().get("lines")
+    if not isinstance(_lines_src, (list, tuple)):
+        _lines_src = []
 
-    note_sections.append("\n【KO使用スコア（降順）】")
-    if _sc_pairs:
-        for i, (n, sc) in enumerate(_sc_pairs, start=1):
-            note_sections.append(f"{i}位：{n} (スコア={sc:.6f})")
+    _norm_lines = []
+    for ln in (_lines_src or []):
+        s = "".join(ch for ch in str(ln) if ch.isdigit())
+        if not s:
+            continue
+        _norm_lines.append([int(ch) for ch in s])
+
+    if isinstance(globals().get("v_final", None), dict) and globals().get("v_final"):
+        _src_scores = globals().get("v_final")
+    elif isinstance(globals().get("v_wo", None), dict) and globals().get("v_wo"):
+        _src_scores = globals().get("v_wo")
     else:
-        note_sections.append("—")
+        _src_scores = {}
 
-    # =========================================================
-    # KO（既存があれば使う。無ければ簡易版）
-    # =========================================================
-    _use_existing_ko = False
-    _ko = None
-    if "_knockout_finish_from_queue" in globals() and callable(globals().get("_knockout_finish_from_queue")):
-        _ko = globals().get("_knockout_finish_from_queue")
-        _use_existing_ko = True
+    _scores_map = {}
+    for k, v in (_src_scores or {}).items():
+        try:
+            _scores_map[int(k)] = float(v)
+        except Exception:
+            pass
+
+    _blfm = globals().get("_build_line_fr_map")
+    if callable(_blfm):
+        try:
+            _lfm2 = _blfm(_norm_lines, _scores_map, 1.0)
+        except Exception:
+            _lfm2 = {}
     else:
-        def _ko(finaljump_queue, score_map_int):
-            q = [int(x) for x in (finaljump_queue or []) if str(x).isdigit()]
-            first_pos = {}
-            for i, c in enumerate(q):
-                if c not in first_pos:
-                    first_pos[c] = i
-            tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
-            for c in score_map_int.keys():
-                if c not in first_pos:
-                    first_pos[c] = tail_pos
+        sums = []
+        for ln in _norm_lines:
+            key = "".join(map(str, ln))
+            s = sum(_scores_map.get(int(x), 0.0) for x in ln)
+            sums.append((key, float(s)))
+        total = sum(s for _, s in sums)
 
-            scored = []
-            for c, i in first_pos.items():
-                base = float(score_map_int.get(int(c), 0.0))
-                pos_factor = 1.0 / (1.0 + 0.10 * float(i))
-                scored.append((int(c), base * pos_factor, int(i)))
-
-            scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
-            return [c for c, _, _ in scored]
-
-    # =========================================================
-    # 実行：6パターン → 2パターン合成表示
-    # =========================================================
-    all_lines = globals().get("all_lines") or []
-    outs = {}
-    for pname, svr in _PATTERNS:
-        q = _queue_for_pattern(all_lines, svr)
-        if _use_existing_ko:
-            try:
-                finish = _ko(q, score_map, 1.0)
-            except TypeError:
-                finish = _ko(q, score_map)
+        _lfm2 = {}
+        if total > 1e-12:
+            for k, s in sums:
+                _lfm2[k] = float(s) / total
         else:
-            finish = _ko(q, score_map)
-        outs[pname] = [int(x) for x in (finish or []) if str(x).isdigit()]
+            n = len(sums)
+            if n > 0:
+                eq = 1.0 / n
+                for k, _ in sums:
+                    _lfm2[k] = eq
 
-    def _slot_union(a, b, idx):
-        s = set()
-        if a and idx < len(a): s.add(int(a[idx]))
-        if b and idx < len(b): s.add(int(b[idx]))
-        return ".".join(str(x) for x in sorted(s)) if s else ""
+    globals()["all_lines"] = _norm_lines
+    globals()["line_fr_map"] = _lfm2
+    line_fr_map = _lfm2
 
-    def _fmt_pair(a, b, max_n=7):
-        n = min(max(len(a or []), len(b or []), max_n), max_n)
-        parts = []
-        for i in range(n):
-            u = _slot_union(a, b, i)
-            if u:
-                parts.append(u)
-        return " → ".join(parts) if parts else "（なし）"
+# --- 依存関数の最低限 ---
+if "_digits_of_line" not in globals():
+    def _digits_of_line(ln):
+        s = "".join(ch for ch in str(ln) if ch.isdigit())
+        return [int(ch) for ch in s] if s else []
 
-    note_sections.append("\n【順流メイン着順予想】")
-    note_sections.append(_fmt_pair(outs.get("順流→渦→逆流", []), outs.get("順流→逆流→渦", [])))
+if "_PATTERNS" not in globals() or not globals().get("_PATTERNS"):
+    _PATTERNS = [
+        ("順流→渦→逆流", ["順流", "渦", "逆流"]),
+        ("順流→逆流→渦", ["順流", "逆流", "渦"]),
+        ("渦→順流→逆流", ["渦", "順流", "逆流"]),
+        ("渦→逆流→順流", ["渦", "逆流", "順流"]),
+        ("逆流→順流→渦", ["逆流", "順流", "渦"]),
+        ("逆流→渦→順流", ["逆流", "渦", "順流"]),
+    ]
 
-    note_sections.append("\n【渦メイン着順予想】")
-    note_sections.append(_fmt_pair(outs.get("渦→順流→逆流", []), outs.get("渦→逆流→順流", [])))
+def _line_key(ln):
+    if ln is None:
+        return ""
+    if isinstance(ln, (list, tuple, set)):
+        return "".join(str(x) for x in ln if str(x).isdigit())
+    return "".join(ch for ch in str(ln) if ch.isdigit())
 
-    note_sections.append("\n【逆流メイン着順予想】")
-    note_sections.append(_fmt_pair(outs.get("逆流→順流→渦", []), outs.get("逆流→渦→順流", [])))
+def _infer_line_zone(ln):
+    k = _line_key(ln)
+    for key in ("line_zone_map", "line_type_map", "line_class_map", "line_role_map"):
+        m = globals().get(key)
+        if isinstance(m, dict):
+            z = m.get(k) or m.get(str(k))
+            if z in ("順流", "渦", "逆流"):
+                return z
 
-except Exception as e:
+    flow = globals().get("flow_line") or globals().get("main_flow_line") or globals().get("jyunryu_line")
+    rev  = globals().get("reverse_line") or globals().get("gyakuryu_line")
+    vort = globals().get("vortex_line") or globals().get("uzu_line") or globals().get("candidate_vortex_line")
+    if flow is not None and _line_key(flow) == k:
+        return "順流"
+    if rev is not None and _line_key(rev) == k:
+        return "逆流"
+    if vort is not None and _line_key(vort) == k:
+        return "渦"
+    for key in ("vortex_lines", "uzu_lines", "candidate_vortex_lines"):
+        xs = globals().get(key)
+        if isinstance(xs, (list, tuple, set)):
+            if any(_line_key(x) == k for x in xs):
+                return "渦"
+    return "順流"
+
+def _get_line_fr(ln):
+    k = _line_key(ln)
+    m = globals().get("line_fr_map")
+    if isinstance(m, dict):
+        v = m.get(k) or m.get(str(k))
+        if v is not None:
+            try:
+                return float(v)
+            except Exception:
+                pass
+    return 0.0
+
+def _queue_for_pattern(all_lines, svr_order):
+    lines = list(all_lines or [])
+    bucket = {"順流": [], "渦": [], "逆流": []}
+    for ln in lines:
+        z = _infer_line_zone(ln)
+        bucket.setdefault(z, []).append(ln)
+
+    queue = []
+    for z in (svr_order or ["順流", "渦", "逆流"]):
+        xs = bucket.get(z, [])
+        xs = sorted(xs, key=lambda x: _get_line_fr(x), reverse=True)
+        for ln in xs:
+            queue.extend(_digits_of_line(ln))
+
+    if not queue:
+        for ln in lines:
+            queue.extend(_digits_of_line(ln))
+    return queue
+
+def _as_int_float_map(m):
+    out = {}
+    if not isinstance(m, dict):
+        return out
+    for k, v in m.items():
+        try:
+            kk = int(k)
+            vv = float(v)
+            if math.isfinite(vv):
+                out[kk] = vv
+        except Exception:
+            pass
+    return out
+
+v_final_map = _as_int_float_map(globals().get("v_final"))
+v_wo_map    = _as_int_float_map(globals().get("v_wo"))
+
+_carfr_map = globals().get("_carfr_map")
+carfr_map_int = {}
+if isinstance(_carfr_map, dict):
+    for k, v in _carfr_map.items():
+        try:
+            carfr_map_int[int(k)] = float(v)
+        except Exception:
+            pass
+
+if v_final_map:
+    score_map = dict(v_final_map)
+elif v_wo_map:
+    score_map = dict(v_wo_map)
+elif carfr_map_int:
+    score_map = dict(carfr_map_int)
+else:
+    score_map = {}
+
+active_cars = [int(x) for x in (globals().get("active_cars") or []) if str(x).isdigit()]
+for n in active_cars:
+    score_map.setdefault(int(n), 0.0)
+
+vals_pos = [float(v) for v in score_map.values()
+            if isinstance(v, (int, float)) and float(v) > 0.0 and math.isfinite(float(v))]
+_floor = min(vals_pos) if vals_pos else 1e-6
+for k in list(score_map.keys()):
     try:
-        note_sections.append(f"\n[KO ERROR] {type(e).__name__}: {e}")
-        st.exception(e)
+        v = float(score_map[k])
+        if (not math.isfinite(v)) or v <= 0.0:
+            score_map[k] = float(_floor)
     except Exception:
-        print(e)
+        score_map[k] = float(_floor)
+
+_sc_pairs = sorted([(int(k), float(v)) for k, v in score_map.items()],
+                   key=lambda t: (-t[1], t[0]))
+
+note_sections.append("\n【KO使用スコア（降順）】")
+if _sc_pairs:
+    for i, (n, sc) in enumerate(_sc_pairs, start=1):
+        note_sections.append(f"{i}位：{n} (スコア={sc:.6f})")
+else:
+    note_sections.append("—")
+
+_use_existing_ko = False
+_ko = None
+if "_knockout_finish_from_queue" in globals() and callable(globals().get("_knockout_finish_from_queue")):
+    _ko = globals().get("_knockout_finish_from_queue")
+    _use_existing_ko = True
+else:
+    def _ko(finaljump_queue, score_map_int):
+        q = [int(x) for x in (finaljump_queue or []) if str(x).isdigit()]
+        first_pos = {}
+        for i, c in enumerate(q):
+            if c not in first_pos:
+                first_pos[c] = i
+        tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
+        for c in score_map_int.keys():
+            if c not in first_pos:
+                first_pos[c] = tail_pos
+
+        scored = []
+        for c, i in first_pos.items():
+            base = float(score_map_int.get(int(c), 0.0))
+            pos_factor = 1.0 / (1.0 + 0.10 * float(i))
+            scored.append((int(c), base * pos_factor, int(i)))
+
+        scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
+        return [c for c, _, _ in scored]
+
+all_lines = globals().get("all_lines") or []
+outs = {}
+for pname, svr in _PATTERNS:
+    q = _queue_for_pattern(all_lines, svr)
+    if _use_existing_ko:
+        try:
+            finish = _ko(q, score_map, 1.0)
+        except TypeError:
+            finish = _ko(q, score_map)
+    else:
+        finish = _ko(q, score_map)
+    outs[pname] = [int(x) for x in (finish or []) if str(x).isdigit()]
+
+def _slot_union(a, b, idx):
+    s = set()
+    if a and idx < len(a): s.add(int(a[idx]))
+    if b and idx < len(b): s.add(int(b[idx]))
+    return ".".join(str(x) for x in sorted(s)) if s else ""
+
+def _fmt_pair(a, b, max_n=7):
+    n = min(max(len(a or []), len(b or []), max_n), max_n)
+    parts = []
+    for i in range(n):
+        u = _slot_union(a, b, i)
+        if u:
+            parts.append(u)
+    return " → ".join(parts) if parts else "（なし）"
+
+note_sections.append("\n【順流メイン着順予想】")
+note_sections.append(_fmt_pair(outs.get("順流→渦→逆流", []), outs.get("順流→逆流→渦", [])))
+
+note_sections.append("\n【渦メイン着順予想】")
+note_sections.append(_fmt_pair(outs.get("渦→順流→逆流", []), outs.get("渦→逆流→順流", [])))
+
+note_sections.append("\n【逆流メイン着順予想】")
+note_sections.append(_fmt_pair(outs.get("逆流→順流→渦", []), outs.get("逆流→渦→順流", [])))
 
 note_sections.append("")
+
 
 
 # === ＜短評＞（コンパクト） ===
