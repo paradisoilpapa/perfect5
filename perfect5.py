@@ -798,10 +798,9 @@ def _ko_order(v_base_map,
     while i < len(order) - 2:
         a, b, c = order[i], order[i + 1], order[i + 2]
         if _same_group(a, b):
-            vx = v_base_map.get(b, 0.0) - v_base_map.get(c, 0.0)
-            if vx >= -gap_delta:
-                order.pop(i + 2)
-                order.insert(i + 1, b)
+    vx = v_base_map.get(b, 0.0) - v_base_map.get(c, 0.0)
+    if vx >= -gap_delta:
+        order[i+1], order[i+2] = order[i+2], order[i+1]
         i += 1
 
     return order
@@ -1852,7 +1851,7 @@ def anchor_score(no: int) -> float:
         bonus_init.get(car_to_group.get(no, None), 0.0)
         * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
     )
-    pos_term  = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
+    pos_term = (POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)) if line_sb_enable else 0.0
     env_term  = SD_ENV  * float(ENV_Z.get(int(no), 0.0))
     form_term = SD_FORM * float(FORM_Z.get(int(no), 0.0))
     stab_term = SD_STAB * float(STAB_Z.get(int(no), 0.0))
