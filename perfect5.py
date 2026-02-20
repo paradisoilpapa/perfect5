@@ -1485,6 +1485,41 @@ df = pd.DataFrame(rows, columns=[
     "周長補正","周回補正","個人補正","安定度","ラスト200","合計_SBなし_raw",
 ])
 
+# ===== [PATCH] dfの型を確定させ、SBなし母集団(v_wo/v_final)を必ず作る =====
+# 1) dfが空のときも落とさない
+if df is None or len(df) == 0:
+    st.warning("DEBUG: df（SBなし内訳）が空です。rowsが生成されていない可能性。")
+    v_wo = {int(no): 0.0 for no in active_cars}
+else:
+    # 2) 車番を必ずintにする（★最重要：ここがズレると全部emptyになる）
+    df["車番"] = df["車番"].astype(int)
+
+    # 3) v_wo を df から必ず生成（全車キー保証）
+    v_wo = {int(r["車番"]): float(r["合計_SBなし_raw"]) for _, r in df.iterrows()}
+    for no in active_cars:
+        ino = int(no)
+        if ino not in v_wo:
+            v_wo[ino] = 0.0
+
+# 4) v_final は最低でも v_wo を引き継ぐ（KOが走らない/空でも落ちない）
+v_final = dict(v_wo)
+
+# 5) df_sorted_pure をここで確定（アンカー選定が安定）
+df_sorted_pure = pd.DataFrame({
+    "車番": sorted([int(k) for k in v_final.keys()]),
+    "合計_SBなし": [float(v_final[int(k)]) for k in sorted([int(k) for k in v_final.keys()])]
+}).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
+
+# DEBUG（1回だけでOK。うるさければ消してOK）
+st.write("DEBUG PATCH after df", {
+    "len_df": len(df) if df is not None else 0,
+    "df_cols": list(df.columns) if df is not None else [],
+    "dtype_車番": str(df["車番"].dtype) if (df is not None and "車番" in df.columns) else None,
+    "len_v_wo": len(v_wo),
+    "v_wo_head": list(v_wo.items())[:7],
+    "len_df_sorted_pure": len(df_sorted_pure),
+})
+    
 # ===== DEBUG: 内訳確認（ガールズで1が沈む原因探し） =====
 try:
     st.subheader("DEBUG: SBなし内訳（車番1 vs 2）")
