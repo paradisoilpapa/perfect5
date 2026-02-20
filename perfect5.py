@@ -1948,44 +1948,118 @@ if guarantee_top_rating and (race_class == "ガールズ") and len(ratings_sorte
 
 ANCHOR_CAND_SB_TOPK   = globals().get("ANCHOR_CAND_SB_TOPK", 5)
 ANCHOR_REQUIRE_TOP_SB = globals().get("ANCHOR_REQUIRE_TOP_SB", 3)
-rank_pure = {int(df_sorted_pure.loc[i, "車番"]): i+1 for i in range(len(df_sorted_pure))}
-cand_pool = [c for c in C if rank_pure.get(c, 999) <= ANCHOR_CAND_SB_TOPK]
-if not cand_pool:
-    cand_pool = [int(df_sorted_pure.loc[i, "車番"]) for i in range(min(ANCHOR_CAND_SB_TOPK, len(df_sorted_pure)))]
-anchor_no_pre = max(cand_pool, key=lambda x: anchor_score(x)) if cand_pool else int(df_sorted_pure.loc[0, "車番"])
-anchor_no = anchor_no_pre
-top2 = sorted(cand_pool, key=lambda x: anchor_score(x), reverse=True)[:2]
-if len(top2) >= 2:
-    s1 = anchor_score(top2[0]); s2 = anchor_score(top2[1])
-    if (s1 - s2) < TIE_EPSILON:
-        better_by_rating = min(top2, key=lambda x: ratings_rank2.get(x, 999))
-        anchor_no = better_by_rating
-if rank_pure.get(anchor_no, 999) > ANCHOR_REQUIRE_TOP_SB:
-    pool = [c for c in cand_pool if rank_pure.get(c, 999) <= ANCHOR_REQUIRE_TOP_SB]
-    if pool:
-        anchor_no = max(pool, key=lambda x: anchor_score(x))
-    else:
-        anchor_no = int(df_sorted_pure.loc[0, "車番"])
-    st.caption(f"※ ◎は『SBなし 上位{ANCHOR_REQUIRE_TOP_SB}位以内』縛りで {anchor_no_pre}→{anchor_no} に調整。")
 
-role_map = {no: role_in_line(no, line_def) for no in active_cars}
-cand_scores = [anchor_score(no) for no in C] if len(C) >= 2 else [0, 0]
+# ===== ANCHOR 選定（SBなし母集団ベース）+ 安全弁 + DEBUG =====
+ANCHOR_CAND_SB_TOPK   = globals().get("ANCHOR_CAND_SB_TOPK", 5)
+ANCHOR_REQUIRE_TOP_SB = globals().get("ANCHOR_REQUIRE_TOP_SB", 3)
+
+# --- DEBUG（必要ならOFFにできる） ---
+DBG_ANCHOR = bool(globals().get("DBG_ANCHOR", True))
+
+def _safe_int(x, default=1):
+    try:
+        return int(x)
+    except Exception:
+        return int(default)
+
+# df_sorted_pure が空なら、active_cars を母集団として使う（落下防止）
+df_pure_empty = (df_sorted_pure is None) or (len(df_sorted_pure) == 0)
+
+if df_pure_empty:
+    base_order = [int(x) for x in list(active_cars)[:]]  # 1..7
+else:
+    # 念のため int 化
+    base_order = df_sorted_pure["車番"].astype(int).tolist()
+
+# rank_pure（SBなしランキング順位）
+rank_pure = {int(no): i + 1 for i, no in enumerate(base_order)}
+
+# 候補プール：C の中で SBなし上位K位
+cand_pool = [int(c) for c in C if rank_pure.get(int(c), 999) <= ANCHOR_CAND_SB_TOPK]
+
+# もし空なら、SBなし上位K位から直接作る
+if not cand_pool:
+    cand_pool = [int(no) for no in base_order[:min(ANCHOR_CAND_SB_TOPK, len(base_order))]]
+
+# 最終フォールバック（どれも無い場合）
+fallback_no = int(active_cars[0]) if active_cars else 1
+
+# anchor_no_pre（まずは候補プール内で anchor_score 最大）
+if cand_pool:
+    anchor_no_pre = max(cand_pool, key=lambda x: anchor_score(int(x)))
+else:
+    anchor_no_pre = fallback_no
+
+anchor_no = anchor_no_pre
+
+# 同点圏（TIE_EPSILON以内）なら ratings_rank2 で決める
+top2 = sorted(cand_pool, key=lambda x: anchor_score(int(x)), reverse=True)[:2]
+if len(top2) >= 2:
+    s1 = float(anchor_score(int(top2[0])))
+    s2 = float(anchor_score(int(top2[1])))
+    if (s1 - s2) < TIE_EPSILON:
+        better_by_rating = min(top2, key=lambda x: ratings_rank2.get(int(x), 999))
+        anchor_no = int(better_by_rating)
+
+# SBなし上位N位縛り
+if rank_pure.get(int(anchor_no), 999) > ANCHOR_REQUIRE_TOP_SB:
+    pool = [int(c) for c in cand_pool if rank_pure.get(int(c), 999) <= ANCHOR_REQUIRE_TOP_SB]
+    if pool:
+        anchor_no = max(pool, key=lambda x: anchor_score(int(x)))
+    else:
+        anchor_no = int(base_order[0]) if base_order else fallback_no
+
+    st.caption(
+        f"※ ◎は『SBなし 上位{ANCHOR_REQUIRE_TOP_SB}位以内』縛りで {anchor_no_pre}→{anchor_no} に調整。"
+    )
+
+# --- DEBUG表示（空の原因切り分け）---
+if DBG_ANCHOR:
+    st.write("DEBUG ANCHOR", {
+        "df_sorted_pure_empty": df_pure_empty,
+        "len_df_sorted_pure": 0 if df_sorted_pure is None else len(df_sorted_pure),
+        "active_cars": list(active_cars) if active_cars else [],
+        "base_order": base_order,
+        "rank_pure": rank_pure,
+        "C": list(C) if C else [],
+        "cand_pool": cand_pool,
+        "anchor_no_pre": int(anchor_no_pre),
+        "anchor_no": int(anchor_no),
+        "v_final_empty": (not bool(v_final)),
+        "len_v_final": (len(v_final) if isinstance(v_final, dict) else 0),
+    })
+
+# ===== confidence 算出（anchor_score のギャップ/分散）=====
+role_map = {int(no): role_in_line(int(no), line_def) for no in active_cars}
+
+cand_scores = [float(anchor_score(int(no))) for no in C] if len(C) >= 2 else [0.0, 0.0]
 cand_scores_sorted = sorted(cand_scores, reverse=True)
-conf_gap = cand_scores_sorted[0] - cand_scores_sorted[1] if len(cand_scores_sorted) >= 2 else 0.0
-spread = float(np.std(list(v_final.values()))) if len(v_final) >= 2 else 0.0
+conf_gap = float(cand_scores_sorted[0] - cand_scores_sorted[1]) if len(cand_scores_sorted) >= 2 else 0.0
+
+# v_final が空のときは spread=0 で落ちないように（confidenceは混戦寄りになる）
+spread = float(np.std(list(v_final.values()))) if isinstance(v_final, dict) and len(v_final) >= 2 else 0.0
 norm = conf_gap / (spread if spread > 1e-6 else 1.0)
 confidence = "優位" if norm >= 1.0 else ("互角" if norm >= 0.5 else "混戦")
 
-score_adj_map = apply_anchor_line_bonus(v_final, car_to_group, role_map, anchor_no, confidence)
+# ===== 格上げ（v_final が空でも落ちないように）=====
+if not isinstance(v_final, dict) or len(v_final) == 0:
+    # downstream を落とさないための最小母集団（全車0）
+    v_final = {int(no): 0.0 for no in active_cars}
+
+score_adj_map = apply_anchor_line_bonus(v_final, car_to_group, role_map, int(anchor_no), confidence)
 
 df_sorted_wo = pd.DataFrame({
-    "車番": active_cars,
-    "合計_SBなし": [round(float(score_adj_map.get(int(c), v_final.get(int(c), float("-inf")))), 6) for c in active_cars]
+    "車番": [int(c) for c in active_cars],
+    "合計_SBなし": [
+        round(float(score_adj_map.get(int(c), v_final.get(int(c), float("-inf")))), 6)
+        for c in active_cars
+    ]
 }).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
 
-velobi_wo = list(zip(df_sorted_wo["車番"].astype(int).tolist(),
-                     df_sorted_wo["合計_SBなし"].round(3).tolist()))
-
+velobi_wo = list(zip(
+    df_sorted_wo["車番"].astype(int).tolist(),
+    df_sorted_wo["合計_SBなし"].round(3).tolist()
+))
 # ==============================
 # ★ レース内T偏差値 → 印 → 買い目 → note出力（2車系対応＋会場個性浸透版）
 # ==============================
