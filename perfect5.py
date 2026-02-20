@@ -1426,11 +1426,12 @@ for no in active_cars:
     ) * fatigue_scale
 
     # ガールズは周回疲労を弱める
-if race_class == "ガールズ":
-    laps_adj *= 0.3
+    if race_class == "ガールズ":
+        laps_adj *= 0.3
+
     laps_adj = clamp(laps_adj, -0.15, 0.15)
 
-# --- 車番1だけデバッグ表示（任意） ---
+    # --- 車番1だけデバッグ表示（任意） ---
     if no == 1:
         st.write("DEBUG fatigue:", {
             "eff_laps": eff_laps,
