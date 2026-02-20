@@ -1467,6 +1467,34 @@ df = pd.DataFrame(rows, columns=[
     "周長補正","周回補正","個人補正","安定度","ラスト200","合計_SBなし_raw",
 ])
 
+# ===== DEBUG: 内訳確認（ガールズで1が沈む原因探し） =====
+try:
+    st.subheader("DEBUG: SBなし内訳（車番1 vs 2）")
+    st.write("車番1（縦表示）")
+    st.write(df[df["車番"] == 1].T)
+
+    st.write("車番2（縦表示）")
+    st.write(df[df["車番"] == 2].T)
+
+    st.subheader("DEBUG: SBなし合計の降順")
+    st.write(df.sort_values("合計_SBなし_raw", ascending=False)[["車番","合計_SBなし_raw","安定度"]])
+
+except Exception as e:
+    st.write("DEBUG ERROR:", e)
+
+# ===== DEBUG: 安定度の入力（x1,x2,x3,x_out と stability_score）=====
+try:
+    st.subheader("DEBUG: 安定度入力（x1/x2/x3/x_out）と stability_score")
+    for no in [1,2,6,7]:
+        st.write(no,
+                 "x1", x1.get(no, None),
+                 "x2", x2.get(no, None),
+                 "x3", x3.get(no, None),
+                 "x_out", x_out.get(no, None),
+                 "stab", stability_score(no))
+except Exception as e:
+    st.write("DEBUG STAB ERROR:", e)
+
 # === ここは df = pd.DataFrame(...) の直後に貼るだけ ===
 
 # --- fallback: note_sections が無い環境でも落ちないように ---
