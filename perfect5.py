@@ -1730,7 +1730,11 @@ mu = float(df["合計_SBなし_raw"].mean()) if not df.empty else 0.0
 df["合計_SBなし"] = mu + 1.0 * (df["合計_SBなし_raw"] - mu)
 
 # --- SBなし(母集団) を df から「全車ぶん必ず」作る（None防止） ---
-sb_map = {int(r["車番"]): float(r["合計_SBなし"]) for _, r in df.iterrows()}
+sb_map = {int(r["車番"]): float(r.get("合計_SBなし", 0.0)) for _, r in df.iterrows()}
+
+# df が空 / sb_map が空のときは、全車0で母集団を作る（5車・欠番・SB未入力でも止めない）
+if not sb_map:
+    sb_map = {int(no): 0.0 for no in active_cars}
 
 # === [PATCH-A] 安定度をENVから分離し、各柱をレース内z化（SD固定） ===
 SD_FORM = 0.28
