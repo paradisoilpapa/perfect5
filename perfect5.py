@@ -1427,10 +1427,8 @@ for no in active_cars:
 
     # ガールズは周回疲労を弱める
     if race_class == "ガールズ":
-        laps_adj *= 0.3
-
-    # 仕上げにキャップ
-    laps_adj = clamp(laps_adj, -0.15, 0.15)
+    laps_adj *= 0.3
+laps_adj = clamp(laps_adj, -0.15, 0.15)
 
     # --- 車番1だけデバッグ表示（任意） ---
     if no == 1:
