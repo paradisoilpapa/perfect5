@@ -794,13 +794,14 @@ def _ko_order(v_base_map,
         gb = next((g for g, mem in line_def.items() if b in mem), None)
         return ga is not None and ga == gb
 
-    i = 0
+        i = 0
     while i < len(order) - 2:
         a, b, c = order[i], order[i + 1], order[i + 2]
         if _same_group(a, b):
-    vx = v_base_map.get(b, 0.0) - v_base_map.get(c, 0.0)
-    if vx >= -gap_delta:
-        order[i+1], order[i+2] = order[i+2], order[i+1]
+            vx = v_base_map.get(b, 0.0) - v_base_map.get(c, 0.0)
+            # b と c の差が小さいなら入れ替えて “寄せる”
+            if vx >= -gap_delta:
+                order[i + 1], order[i + 2] = order[i + 2], order[i + 1]
         i += 1
 
     return order
