@@ -1821,24 +1821,30 @@ KO_SCALE_MAX = 0.45
 ko_scale = min(ko_scale_raw, KO_SCALE_MAX)
 
 if ko_scale > 0.0 and line_def and len(line_def) >= 1 and v_wo:
-    ko_order = _ko_order(
-        v_wo, line_def, S, B,
-        line_factor=line_factor_eff,
-        gap_delta=KO_GAP_DELTA
-    )
+    # --- KO順序（_ko_order が落ちる/不正でも必ずフォールバックで作る） ---
+    try:
+        ko_order = _ko_order(
+            v_wo, line_def, S, B,
+            line_factor=line_factor_eff,
+            gap_delta=KO_GAP_DELTA
+        )
+    except Exception as e:
+        # Streamlitで原因を見たいならコメント解除
+        # st.warning(f"_ko_order fallback: {type(e).__name__}: {e}")
+        ko_order = None
 
-    # ★重要：ko_order に入らない車を落とさない（今回のNone連発の根本）
+    # ★重要：ko_order が None/空/欠損でも「全車」を必ず含める
     ko_order = [int(c) for c in (ko_order or []) if int(c) in v_wo]
-    rest = [c for c in v_wo.keys() if int(c) not in set(ko_order)]
+    rest = [int(c) for c in v_wo.keys() if int(c) not in set(ko_order)]
     rest = sorted(rest, key=lambda c: float(v_wo[int(c)]), reverse=True)
-    ko_order = ko_order + rest  # ← 全車を必ず含める
+    ko_order = ko_order + rest  # ← 全車を必ず含める（ここが最重要）
 
+    # ここ以降は ko_order が必ず全車になるので安全
     vals = [float(v_wo[c]) for c in v_wo.keys()]
     mu0  = float(np.mean(vals))
     sd0  = float(np.std(vals) + 1e-12)
     KO_STEP_SIGMA_LOCAL = max(0.25, KO_STEP_SIGMA * 0.7)
     step = KO_STEP_SIGMA_LOCAL * sd0
-
     # ★new_scores は「全車のベース」から開始して KO で上書き
     new_scores = dict(v_wo)
 
