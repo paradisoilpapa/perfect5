@@ -1735,6 +1735,7 @@ sb_map = {int(r["車番"]): float(r.get("合計_SBなし", 0.0)) for _, r in df.
 # df が空 / sb_map が空のときは、全車0で母集団を作る（5車・欠番・SB未入力でも止めない）
 if not sb_map:
     sb_map = {int(no): 0.0 for no in active_cars}
+    
 
 # === [PATCH-A] 安定度をENVから分離し、各柱をレース内z化（SD固定） ===
 SD_FORM = 0.28
@@ -1786,6 +1787,10 @@ L200_Z = {int(n): (float(L200_RAW.get(n, mu_l2)) - mu_l2) / _den_l2 for n in act
 
 # 0) SBなし(母集団) を df から確実に作る（全車）
 sb_map = {int(k): float(v) for k, v in zip(df["車番"].astype(int), df["合計_SBなし"].astype(float))}
+
+# ★必須：dfが空でも全車0で母集団を作る
+if not sb_map:
+    sb_map = {int(no): 0.0 for no in active_cars}
 
 # 1) key 欠損チェック
 missing = [int(n) for n in active_cars if int(n) not in sb_map]
