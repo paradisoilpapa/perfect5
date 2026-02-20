@@ -1406,68 +1406,70 @@ eff_wind_dir   = globals().get("eff_wind_dir", wind_dir)
 eff_wind_speed = globals().get("eff_wind_speed", wind_speed)
 
 for no in active_cars:
+    no = int(no)
     role = role_in_line(no, line_def)
 
     # 周回疲労（DAY×頭数×級別を反映）
     extra = fatigue_extra(eff_laps, day_label, n_cars, race_class)
-    extra = min(extra, 1.5)   # まず 1.0〜2.0 の範囲で試す
+    extra = min(extra, 1.5)   # 応急上限（暴走止め）
+
     fatigue_scale = (
         1.0  if race_class == "Ｓ級" else
         1.1  if race_class == "Ａ級" else
         1.2  if race_class == "Ａ級チャレンジ" else
         1.05
     )
+
     laps_adj = (
-    -0.10 * extra * (1.0 if float(prof_escape[no]) > 0.5 else 0.0)
-    + 0.05 * extra * (1.0 if float(prof_oikomi[no]) > 0.4 else 0.0)
-) * fatigue_scale
+        -0.10 * extra * (1.0 if float(prof_escape[no]) > 0.5 else 0.0)
+        + 0.05 * extra * (1.0 if float(prof_oikomi[no]) > 0.4 else 0.0)
+    ) * fatigue_scale
 
-laps_adj = clamp(laps_adj, -0.15, 0.15)
+    # ガールズは周回疲労を弱める
+    if race_class == "ガールズ":
+        laps_adj *= 0.3
 
-if race_class == "ガールズ":
-    laps_adj *= 0.3
+    # 仕上げにキャップ
+    laps_adj = clamp(laps_adj, -0.15, 0.15)
 
-    
-if int(no) == 1:
-    st.write("DEBUG fatigue:", {
-        "eff_laps": eff_laps,
-        "day_label": day_label,
-        "n_cars": n_cars,
-        "race_class": race_class,
-        "extra": extra,
-        "fatigue_scale": fatigue_scale,
-        "prof_escape": float(prof_escape[no]),
-        "prof_oikomi": float(prof_oikomi[no]),
-        "laps_adj": laps_adj,
-    })
+    # --- 車番1だけデバッグ表示（任意） ---
+    if no == 1:
+        st.write("DEBUG fatigue:", {
+            "eff_laps": eff_laps,
+            "day_label": day_label,
+            "n_cars": n_cars,
+            "race_class": race_class,
+            "extra": extra,
+            "fatigue_scale": fatigue_scale,
+            "prof_escape": float(prof_escape[no]),
+            "prof_oikomi": float(prof_oikomi[no]),
+            "laps_adj": laps_adj,
+        })
 
     # 環境・個人補正（既存）
     wind     = _wind_func(eff_wind_dir, float(eff_wind_speed or 0.0), role, float(prof_escape[no]))
-    bank_b = bank_character_bonus(bank_angle, straight_length, prof_escape[no], prof_sashi[no], bank_length)
-
-
+    bank_b   = bank_character_bonus(bank_angle, straight_length, prof_escape[no], prof_sashi[no], bank_length)
     length_b = bank_length_adjust(bank_length, prof_oikomi[no])
     indiv    = extra_bonus.get(no, 0.0)
     stab     = stability_score(no)  # 安定度
 
-    # ★ ラスト200（必要なら last200_bonus を l200_adjust に変更）
-    l200 = l200_adjust(role, straight_length, bank_length, race_class,
-                   float(prof_escape[no]), float(prof_sashi[no]), float(prof_oikomi[no]),
-                   is_wet=st.session_state.get("is_wet", False))
+    l200 = l200_adjust(
+        role, straight_length, bank_length, race_class,
+        float(prof_escape[no]), float(prof_sashi[no]), float(prof_oikomi[no]),
+        is_wet=st.session_state.get("is_wet", False)
+    )
 
-
-    # ★ 合計（SBなし）…ここでは l200 も加算する版
     total_raw = (
-        prof_base[no] +
-        wind +
-        cf["spread"] * tens_corr.get(no, 0.0) +
-        bank_b + length_b +
-        laps_adj + indiv + stab +
-        l200
+        prof_base[no]
+        + wind
+        + cf["spread"] * tens_corr.get(no, 0.0)
+        + bank_b + length_b
+        + laps_adj + indiv + stab
+        + l200
     )
 
     rows.append([
-        int(no), role,
+        no, role,
         round(prof_base[no], 3),
         round(wind, 3),
         round(cf["spread"] * tens_corr.get(no, 0.0), 3),
@@ -1477,14 +1479,13 @@ if int(no) == 1:
         round(indiv, 3),
         round(stab, 3),
         round(l200, 3),
-        total_raw
+        float(total_raw)
     ])
 
 df = pd.DataFrame(rows, columns=[
     "車番","役割","脚質基準(会場)","風補正","得点補正","バンク補正",
     "周長補正","周回補正","個人補正","安定度","ラスト200","合計_SBなし_raw",
 ])
-
 # ===== [PATCH] dfの型を確定させ、SBなし母集団(v_wo/v_final)を必ず作る =====
 # 1) dfが空のときも落とさない
 if df is None or len(df) == 0:
