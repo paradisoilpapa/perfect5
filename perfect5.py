@@ -3896,7 +3896,7 @@ try:
             scored = []
             for c, i in first_pos.items():
                 base = float(score_map.get(int(c), 0.0))
-                pos_factor = 1.0 / (1.0 + 0.10 * float(i))
+                pos_factor = 1.0 / (1.0 + 0.03 * float(i))
                 scored.append((int(c), base * pos_factor, int(i)))
 
             scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
