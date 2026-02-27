@@ -3812,8 +3812,7 @@ try:
     note_sections.append("")
 
 
-# === ＜短評＞（コンパクト） ===
-try:
+    # === ＜短評＞（コンパクト） ===
     lines_out = ["\n＜短評＞"]
 
     # レースFR（外部に無いなら line_fr_map から定義）
