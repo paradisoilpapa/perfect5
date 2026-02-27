@@ -3775,7 +3775,7 @@ try:
                 return _ko(q, score_map, 1.0)
             return _ko(q, score_map)
     
-        def _run_ko(q):
+def _run_ko(q):
     q = [int(x) for x in (q or []) if str(x).isdigit()]
 
     first_pos = {}
@@ -3791,11 +3791,8 @@ try:
     scored = []
     for c, i in first_pos.items():
         base = float(score_map.get(int(c), 0.0))
-
-        # iが小さいほど加点（最大 +0.20）
         pos_bonus = 0.20 * (1.0 / (1.0 + float(i)))
         final = base + pos_bonus
-
         scored.append((int(c), final, int(i)))
 
     return scored
