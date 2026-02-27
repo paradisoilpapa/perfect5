@@ -3708,6 +3708,18 @@ try:
         note_sections.append("ライン　" + "　".join(_lines))
     note_sections.append("")
 
+except Exception as _e:
+    # 4) 出力本体 全体の保険：ここで止めず、最低限のメッセージを残す
+    try:
+        ns = globals().get("note_sections", None)
+        if isinstance(ns, list):
+            ns.append("")
+            ns.append("＜短評＞")
+            ns.append(f"・出力生成中に例外が発生しました: {_e}")
+            ns.append("判定：混戦")
+    except Exception:
+        pass
+
 # =========================================================
 # 最終ジャン想定隊列 → KO（6パターン→2パターン合成表示）
 #   ※ ゾーンは flow で確定した3本を最優先（逆転しにくい）
