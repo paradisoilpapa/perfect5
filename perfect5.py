@@ -3879,7 +3879,7 @@ def _fmt_pair(a, b, max_n=7):
 
     lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
 
-    if axis_line:
+if axis_line:
     lines_out.append(
         f"・軸ラインFR={axis_line_fr:.3f}（取り分≈{(share_pct or 0.0):.1f}%：軸={axis_id}／ライン={_free_fmt_nums(axis_line)}）"
     )
