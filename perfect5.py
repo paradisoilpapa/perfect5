@@ -3775,7 +3775,7 @@ try:
                 return _ko(q, score_map, 1.0)
             return _ko(q, score_map)
     
-def _run_ko(q):
+    def _run_ko(q):
     q = [int(x) for x in (q or []) if str(x).isdigit()]
 
     first_pos = {}
@@ -3796,7 +3796,6 @@ def _run_ko(q):
         scored.append((int(c), final, int(i)))
 
     return scored
-
     outs = {}
     for pname, svr in _PATTERNS:
         q = _queue_for_pattern(all_lines, svr)
