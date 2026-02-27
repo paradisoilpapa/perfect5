@@ -3883,7 +3883,7 @@ try:
             if _ko_nargs == 3:
                 return _ko(q, score_map, 1.0)
             return _ko(q, score_map)
-else:
+
     def _run_ko(q):
     q = [int(x) for x in (q or []) if str(x).isdigit()]
     first_pos = {}
