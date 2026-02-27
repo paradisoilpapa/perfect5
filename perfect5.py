@@ -3611,8 +3611,10 @@ try:
         score_map.setdefault(int(n), 0.0)
 
     # 0/None/NaN の床値補完
-    vals_pos = [float(v) for v in score_map.values()
-                if isinstance(v, (int, float)) and float(v) > 0.0 and math.isfinite(float(v))]
+    vals_pos = [
+        float(v) for v in score_map.values()
+        if isinstance(v, (int, float)) and float(v) > 0.0 and math.isfinite(float(v))
+    ]
     _floor = min(vals_pos) if vals_pos else 1e-6
     for k in list(score_map.keys()):
         try:
@@ -3621,6 +3623,8 @@ try:
                 score_map[k] = float(_floor)
         except Exception:
             score_map[k] = float(_floor)
+
+    globals()["score_map"] = score_map  # 後段参照用に保持
 
     # =========================================================
     # line_fr_map を確定（0.000連発対策：空/キー不一致を潰す）
@@ -3670,6 +3674,10 @@ try:
     VTX_line = _normalize_lines([VTX_line])[0] if VTX_line else []
     U_line   = _normalize_lines([U_line])[0] if U_line else []
 
+    globals()["FR_line"] = FR_line
+    globals()["VTX_line"] = VTX_line
+    globals()["U_line"] = U_line
+
     # =========================================================
     # 渦ラインを必ず埋める（空なら自動選定）
     # ルール：FR_line / U_line 以外で、想定FRが最大のラインを渦にする
@@ -3684,6 +3692,7 @@ try:
             _cand.append(ln)
         if _cand:
             VTX_line = max(_cand, key=lambda x: _lfr(x))
+            globals()["VTX_line"] = VTX_line
 
     axis_line = FR_line if FR_line else (all_lines[0] if all_lines else [])
     axis_line_fr = float(line_fr_map.get(_line_key(axis_line), 0.0) or 0.0)
@@ -3708,7 +3717,26 @@ try:
     note_sections.append("")
 
     # =========================================================
-    # 最終ジャン想定隊列 → KO（6パターン→2パターン合成表示）
+    # KO使用スコア（降順）※復活
+    # =========================================================
+    _sc_pairs = sorted(
+        [(int(k), float(v)) for k, v in (score_map or {}).items()],
+        key=lambda t: (-t[1], t[0])
+    )
+
+    note_sections.append("【KO使用スコア（降順）】")
+    if _sc_pairs:
+        for i, (n, sc) in enumerate(_sc_pairs, start=1):
+            note_sections.append(f"{i}位：{n} (スコア={sc:.6f})")
+    else:
+        note_sections.append("—")
+    note_sections.append("")
+
+    # =========================================================
+    # 最終ジャン想定隊列 → KO（6パターン）
+    #   想定FR＝ラインのスコア（メイン別に薄く加点）
+    #   KOスコア＝個々の強さ（主役）
+    #   先頭は2番手よりやや不利（極端にしない）
     # =========================================================
     if "_digits_of_line" not in globals():
         def _digits_of_line(ln):
@@ -3764,25 +3792,28 @@ try:
 
     _car_zone_map = _build_car_zone_map(all_lines)
 
-    _FR_K = 0.07  # FR=0.43で+0.0301（薄く）
-
-    def _fr_bonus_for_car(car):
-        z = _car_zone_map.get(int(car), "その他")
-        z_fr = {
-            "順流": float(_lfr(FR_line) if FR_line else 0.0),
-            "渦":   float(_lfr(VTX_line) if VTX_line else 0.0),
-            "逆流": float(_lfr(U_line) if U_line else 0.0),
-        }.get(z, 0.0)
-        return _FR_K * z_fr
-
     def _pos_adj(i):
+        # 先頭は風よけに使われやすく、2番手よりやや不利
         if i == 0:
             return -0.010
         if i == 1:
             return +0.005
         return 0.0
 
-    def _run_ko(q):
+    _FR_K_MAIN = 0.07  # メインライン：最大+0.03程度
+    _FR_K_SUB  = 0.02  # 非メイン：最大+0.01未満
+
+    def _fr_bonus_for_car(car, main_zone):
+        z = _car_zone_map.get(int(car), "その他")
+        z_fr = {
+            "順流": float(_lfr(FR_line) if FR_line else 0.0),
+            "渦":   float(_lfr(VTX_line) if VTX_line else 0.0),
+            "逆流": float(_lfr(U_line) if U_line else 0.0),
+        }.get(z, 0.0)
+        k = _FR_K_MAIN if z == main_zone else _FR_K_SUB
+        return k * z_fr
+
+    def _run_ko(q, main_zone):
         q = [int(x) for x in (q or []) if str(x).isdigit()]
 
         first_pos = {}
@@ -3798,7 +3829,7 @@ try:
         scored = []
         for c, i in first_pos.items():
             base = float(score_map.get(int(c), 0.0))
-            final = base + _pos_adj(int(i)) + _fr_bonus_for_car(int(c))
+            final = base + _pos_adj(int(i)) + _fr_bonus_for_car(int(c), main_zone)
             scored.append((int(c), float(final), int(i)))
 
         scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
@@ -3807,32 +3838,15 @@ try:
     outs = {}
     for pname, svr in _PATTERNS:
         q = _queue_for_pattern(all_lines, svr)
-        outs[pname] = _run_ko(q)
-
-    def _slot_union(a, b, idx):
-        s = set()
-        if a and idx < len(a):
-            s.add(int(a[idx]))
-        if b and idx < len(b):
-            s.add(int(b[idx]))
-        return ".".join(str(x) for x in sorted(s)) if s else ""
-
-    def _fmt_pair(a, b, max_n=7):
-        n = min(max(len(a or []), len(b or []), max_n), max_n)
-        parts = []
-        for i in range(n):
-            u = _slot_union(a, b, i)
-            if u:
-                parts.append(u)
-        return " → ".join(parts) if parts else "（なし）"
+        main_zone = (svr[0] if (svr and len(svr) >= 1) else "順流")
+        outs[pname] = _run_ko(q, main_zone)
 
     def _fmt_seq(seq, max_n=7):
         xs = [int(x) for x in (seq or []) if str(x).isdigit()]
         xs = xs[:max_n]
         return " → ".join(str(x) for x in xs) if xs else "（なし）"
 
-    # 6パターン → 2パターン合成（例：順流系2本を合成、渦系2本、逆流系2本）
-    # 表示側の都合で必要ならここを変更してください（ロジックは outs に全部入ってます）
+    # 表示は “各メイン1本固定”
     out_j = outs.get("順流→渦→逆流") or []
     out_v = outs.get("渦→順流→逆流") or []
     out_u = outs.get("逆流→順流→渦") or []
@@ -3849,6 +3863,7 @@ try:
 
     # =========================================================
     # ＜短評＞（コンパクト）
+    #   VTX/U は flow値ではなく「ラインFR」で表示（ズレ防止）
     # =========================================================
     lines_out = ["＜短評＞"]
 
@@ -3876,7 +3891,6 @@ try:
 
     lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
 
-    # 軸ライン情報（axis_id が無い環境でも落ちないように）
     axis_id = globals().get("axis_id", "—")
     if axis_line:
         try:
@@ -3888,10 +3902,11 @@ try:
             f"・軸ラインFR={axis_line_fr:.3f}（取り分≈{(share_pct or 0.0):.1f}%：軸={axis_id}／ライン={axis_txt}）"
         )
 
-    lines_out.append(f"・VTX={VTXv:.3f}［{_band3_vtx(VTXv)}］")
-    lines_out.append(f"・U={Uv:.3f}［{_band3_u(Uv)}］")
+    _vtx_fr = float(_lfr(VTX_line) if VTX_line else 0.0)
+    _u_fr   = float(_lfr(U_line) if U_line else 0.0)
+    lines_out.append(f"・VTXラインFR={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
+    lines_out.append(f"・逆流ラインFR={_u_fr:.3f}［{_band3_u(_u_fr)}］")
 
-    # dbg があれば要約を付ける
     dbg = _flow.get("dbg", {})
     if isinstance(dbg, dict) and dbg:
         bs = float(dbg.get("blend_star", 0.0) or 0.0)
@@ -3920,7 +3935,6 @@ except Exception as _e:
         pass
 
 # ===================== /T369｜FREE-ONLY 出力一括ブロック（レイアウト改） =====================
-
 
 # =========================
 note_text = "\n".join(note_sections)
