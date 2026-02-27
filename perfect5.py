@@ -3762,21 +3762,20 @@ try:
         note_sections.append("—")
     note_sections.append("")
 
-   # =========================================================
+# =========================================================
 # 最終ジャン想定隊列 → KO（6パターン）
 #   想定FR＝ラインのスコア（メイン別に薄く加点）
 #   KOスコア＝個々の強さ（主役）
 #   先頭は2番手よりやや不利（極端にしない）
-#   ※順流/渦/逆流が全部KO降順で同一になる事故を潰す：
-#     - ライン一致判定を“数字列正規化”で確実化
-#     - “薄い”範囲で効き量を現実に順位が動く程度まで上げる（上限クリップ付）
+#   事故対策：
+#     - ライン一致判定を数字列正規化（表記ブレで“その他”化を防ぐ）
+#     - “薄い”範囲で係数を、順位が動く最低ラインまで上げる（上限クリップ）
 # =========================================================
 if "_digits_of_line" not in globals():
     def _digits_of_line(ln):
         s = "".join(ch for ch in str(ln) if ch.isdigit())
         return [int(ch) for ch in s] if s else []
 
-# 追加：ライン比較の正規化（"7-3-5" vs "735" 等の表記ブレ対策）
 def _norm_line(ln):
     return "".join(ch for ch in str(ln) if ch.isdigit())
 
@@ -3839,17 +3838,16 @@ for ln in (all_lines or []):
         _car_line_size[int(c)] = sz if sz > 0 else 1
 
 def _pos_adj(i):
-    # 先頭は風よけに使われやすく、2番手よりやや不利（“薄い”が効く程度に調整）
+    # 先頭はやや不利／2番手やや有利（“薄い”が効く最低ライン）
     if i == 0:
-        return -0.040   # -0.010 → -0.040
+        return -0.040
     if i == 1:
-        return +0.020   # +0.005 → +0.020
+        return +0.020
     return 0.0
 
-# “薄く加点”の範囲で、順位が動く最低ラインまで引き上げ
-_FR_K_MAIN = 0.18  # 0.07 → 0.18
-_FR_K_SUB  = 0.06  # 0.02 → 0.06
-_FR_BONUS_CAP = 0.06  # 暴走防止（好みで0.04〜0.08）
+_FR_K_MAIN = 0.18
+_FR_K_SUB  = 0.06
+_FR_BONUS_CAP = 0.06
 
 def _fr_bonus_for_car(car, main_zone):
     z = _car_zone_map.get(int(car), "その他")
@@ -3863,8 +3861,6 @@ def _fr_bonus_for_car(car, main_zone):
     sz = float(_car_line_size.get(int(car), 1) or 1.0)
 
     bonus = (k * z_fr) / sz
-
-    # 暴走防止（マイナスは出さない運用）
     if bonus > _FR_BONUS_CAP:
         bonus = _FR_BONUS_CAP
     if bonus < 0.0:
@@ -3918,7 +3914,6 @@ note_sections.append("")
 note_sections.append("【逆流メイン着順予想】")
 note_sections.append(_fmt_seq(out_u))
 note_sections.append("")
-
     # =========================================================
     # ＜短評＞（コンパクト）
     #   VTX/U は flow値ではなく「ラインFR」で表示（ズレ防止）
