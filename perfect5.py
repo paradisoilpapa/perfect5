@@ -3885,31 +3885,25 @@ try:
             return _ko(q, score_map)
 else:
     def _run_ko(q):
-        q = [int(x) for x in (q or []) if str(x).isdigit()]
+    q = [int(x) for x in (q or []) if str(x).isdigit()]
+    first_pos = {}
+    for i, c in enumerate(q):
+        if c not in first_pos:
+            first_pos[c] = i
+    tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
+    for c in score_map.keys():
+        if c not in first_pos:
+            first_pos[c] = tail_pos
+    scored = []
+    for c, i in first_pos.items():
+        base = float(score_map.get(int(c), 0.0))
+        pos_bonus = 0.20 * (1.0 / (1.0 + float(i)))
+        final = base + pos_bonus
+        scored.append((int(c), final, int(i)))
+    scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
+    return [c for c, _, _ in scored]
 
-        first_pos = {}
-        for i, c in enumerate(q):
-            if c not in first_pos:
-                first_pos[c] = i
-
-        tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
-        for c in score_map.keys():
-            if c not in first_pos:
-                first_pos[c] = tail_pos
-
-        scored = []
-        for c, i in first_pos.items():
-            base = float(score_map.get(int(c), 0.0))
-
-            # iが小さいほど加点（最大 +0.20）
-            pos_bonus = 0.20 * (1.0 / (1.0 + float(i)))  # 0番目+0.20, 1番目+0.10, 2番目+0.066...
-            final = base + pos_bonus
-
-            scored.append((int(c), final, int(i)))
-
-        scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
-        return [c for c, _, _ in scored]
-
+try:
     q_j = _queue_for_order(all_lines, ["順流", "渦", "逆流"])
     q_v = _queue_for_order(all_lines, ["渦", "順流", "逆流"])
     q_u = _queue_for_order(all_lines, ["逆流", "順流", "渦"])
@@ -3917,7 +3911,8 @@ else:
     out_j = _run_ko(q_j)
     out_v = _run_ko(q_v)
     out_u = _run_ko(q_u)
-
+except Exception:
+ 
         # =========================================================
     # ライン想定FR（順流/渦/逆流 + その他） + KO使用スコア（縦表示）※復活
     # =========================================================
