@@ -3799,6 +3799,44 @@ try:
             if u:
                 parts.append(u)
         return " → ".join(parts) if parts else "（なし）"
+    # =========================================================
+    # ライン想定FR（順流/渦/逆流 + その他） + KO使用スコア（降順）表示
+    # =========================================================
+    def _fmt_line(ln):
+        try:
+            f = globals().get("_free_fmt_nums")
+            if callable(f):
+                return f(ln)
+        except Exception:
+            pass
+        return "".join(map(str, ln)) if isinstance(ln, list) and ln else "—"
+
+    note_sections.append(f"【順流】◎ライン {_fmt_line(FR_line)}：想定FR={_lfr(FR_line):.3f}")
+
+    if VTX_line and _lfr(VTX_line) > 0:
+        note_sections.append(f"【渦】候補ライン：{_fmt_line(VTX_line)}：想定FR={_lfr(VTX_line):.3f}")
+    else:
+        note_sections.append("【渦】候補ライン：—：想定FR=0.000")
+
+    note_sections.append(f"【逆流】無ライン {_fmt_line(U_line)}：想定FR={_lfr(U_line):.3f}")
+
+    for ln in (all_lines or []):
+        if ln == FR_line or ln == VTX_line or ln == U_line:
+            continue
+        note_sections.append(f"　　　その他ライン {_fmt_line(ln)}：想定FR={_lfr(ln):.3f}")
+
+    _sc_pairs = sorted(
+        [(int(k), float(v)) for k, v in (score_map or {}).items()],
+        key=lambda t: (-t[1], t[0])
+    )
+
+    note_sections.append("\n【KO使用スコア（降順）】")
+    if _sc_pairs:
+        for i, (n, sc) in enumerate(_sc_pairs, start=1):
+            note_sections.append(f"{i}位：{n} (スコア={sc:.6f})")
+    else:
+        note_sections.append("—")
+    
 
     note_sections.append("\n【順流メイン着順予想】")
     note_sections.append(_fmt_pair(outs.get("順流→渦→逆流", []), outs.get("順流→逆流→渦", [])))
