@@ -3820,7 +3820,7 @@ try:
                 m[int(c)] = z
         return m
 
-       _car_zone_map = _build_car_zone_map(all_lines)
+    _car_zone_map = _build_car_zone_map(all_lines)
 
     # 車番→所属ライン人数（3車ライン有利を打ち消す）
     _car_line_size = {}
