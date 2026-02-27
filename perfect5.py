@@ -3817,7 +3817,7 @@ try:
             if u:
                 parts.append(u)
         return " → ".join(parts) if parts else "（なし）"
-        # =========================================================
+       # =========================================================
     # 最終ジャン想定隊列 → KO（分岐なし：各メイン1本固定）
     #   順流メイン：順流→渦→逆流
     #   渦メイン　：渦→順流→逆流
@@ -3869,7 +3869,31 @@ try:
                 out.append(x)
         return out
 
-    # KO関数（既存優先）: try/except を使わず、引数数で分岐（構文崩壊防止）
+    def _run_ko_fallback(q):
+        q = [int(x) for x in (q or []) if str(x).isdigit()]
+
+        first_pos = {}
+        for i, c in enumerate(q):
+            if c not in first_pos:
+                first_pos[c] = i
+
+        tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
+        for c in score_map.keys():
+            if c not in first_pos:
+                first_pos[c] = tail_pos
+
+        scored = []
+        for c, i in first_pos.items():
+            base = float(score_map.get(int(c), 0.0))
+            pos_bonus = 0.20 * (1.0 / (1.0 + float(i)))
+            final = base + pos_bonus
+            scored.append((int(c), final, int(i)))
+
+        scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
+        return [c for c, _, _ in scored]
+
+    # KO関数（既存優先）: try/except を最小化（inspectだけ）
+    _run_ko = _run_ko_fallback
     if "_knockout_finish_from_queue" in globals() and callable(globals().get("_knockout_finish_from_queue")):
         _ko = globals().get("_knockout_finish_from_queue")
         _ko_nargs = None
@@ -3884,38 +3908,17 @@ try:
                 return _ko(q, score_map, 1.0)
             return _ko(q, score_map)
 
-def _run_ko(q):
-    q = [int(x) for x in (q or []) if str(x).isdigit()]
+    # 実行
+    try:
+        q_j = _queue_for_order(all_lines, ["順流", "渦", "逆流"])
+        q_v = _queue_for_order(all_lines, ["渦", "順流", "逆流"])
+        q_u = _queue_for_order(all_lines, ["逆流", "順流", "渦"])
 
-    first_pos = {}
-    for i, c in enumerate(q):
-        if c not in first_pos:
-            first_pos[c] = i
-
-    tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
-    for c in score_map.keys():
-        if c not in first_pos:
-            first_pos[c] = tail_pos
-
-    scored = []
-    for c, i in first_pos.items():
-        base = float(score_map.get(int(c), 0.0))
-        pos_bonus = 0.20 * (1.0 / (1.0 + float(i)))
-        final = base + pos_bonus
-        scored.append((int(c), final, int(i)))
-
-    scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
-    return [c for c, _, _ in scored]
-
-try:
-    q_j = _queue_for_order(all_lines, ["順流", "渦", "逆流"])
-    q_v = _queue_for_order(all_lines, ["渦", "順流", "逆流"])
-    q_u = _queue_for_order(all_lines, ["逆流", "順流", "渦"])
-
-    out_j = _run_ko(q_j)
-    out_v = _run_ko(q_v)
-    out_u = _run_ko(q_u)
-except Exception:
+        out_j = _run_ko(q_j)
+        out_v = _run_ko(q_v)
+        out_u = _run_ko(q_u)
+    except Exception:
+        out_j, out_v, out_u = [], [], []
  
         # =========================================================
     # ライン想定FR（順流/渦/逆流 + その他） + KO使用スコア（縦表示）※復活
