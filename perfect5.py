@@ -3715,6 +3715,8 @@ try:
 #   ※ 想定FR＝ラインの強さ（薄く加点） / KOスコア＝個々の強さ（主役）
 #   ※ 先頭は2番手よりやや不利（極端にしない）
 # =========================================================
+except Exception:
+    pass
 
 if "_digits_of_line" not in globals():
     def _digits_of_line(ln):
