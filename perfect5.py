@@ -3883,7 +3883,7 @@ try:
             if _ko_nargs == 3:
                 return _ko(q, score_map, 1.0)
             return _ko(q, score_map)
-   else:
+else:
     def _run_ko(q):
         q = [int(x) for x in (q or []) if str(x).isdigit()]
 
@@ -3907,8 +3907,8 @@ try:
 
             scored.append((int(c), final, int(i)))
 
-scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
-return [c for c, _, _ in scored]
+        scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
+        return [c for c, _, _ in scored]
 
     q_j = _queue_for_order(all_lines, ["順流", "渦", "逆流"])
     q_v = _queue_for_order(all_lines, ["渦", "順流", "逆流"])
