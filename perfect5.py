@@ -3692,118 +3692,127 @@ try:
         note_sections.append("ライン　" + "　".join(_lines))
     note_sections.append("")
 
-    # =========================================================
-    # 最終ジャン想定隊列 → KO（6パターン→2パターン合成表示）
-    #   ※ ゾーンは flow で確定した3本を最優先（逆転しにくい）
-    #   ※ 微差でも「順流/渦/逆流」を必ず分け、その他は混ぜず最後に回す
-    # =========================================================
-    if "_digits_of_line" not in globals():
-        def _digits_of_line(ln):
-            s = "".join(ch for ch in str(ln) if ch.isdigit())
-            return [int(ch) for ch in s] if s else []
+# =========================================================
+# 最終ジャン想定隊列 → KO（6パターン→2パターン合成表示）
+#   ※ ゾーンは flow で確定した3本を最優先（逆転しにくい）
+#   ※ 微差でも「順流/渦/逆流」を必ず分け、その他は混ぜず最後に回す
+# =========================================================
+if "_digits_of_line" not in globals():
+    def _digits_of_line(ln):
+        s = "".join(ch for ch in str(ln) if ch.isdigit())
+        return [int(ch) for ch in s] if s else []
 
-    _PATTERNS = [
-        ("順流→渦→逆流", ["順流", "渦", "逆流"]),
-        ("順流→逆流→渦", ["順流", "逆流", "渦"]),
-        ("渦→順流→逆流", ["渦", "順流", "逆流"]),
-        ("渦→逆流→順流", ["渦", "逆流", "順流"]),
-        ("逆流→順流→渦", ["逆流", "順流", "渦"]),
-        ("逆流→渦→順流", ["逆流", "渦", "順流"]),
-    ]
+_PATTERNS = [
+    ("順流→渦→逆流", ["順流", "渦", "逆流"]),
+    ("順流→逆流→渦", ["順流", "逆流", "渦"]),
+    ("渦→順流→逆流", ["渦", "順流", "逆流"]),
+    ("渦→逆流→順流", ["渦", "逆流", "順流"]),
+    ("逆流→順流→渦", ["逆流", "順流", "渦"]),
+    ("逆流→渦→順流", ["逆流", "渦", "順流"]),
+]
 
-    def _infer_line_zone(ln):
-        if ln == FR_line:
-            return "順流"
-        if VTX_line and ln == VTX_line:
-            return "渦"
-        if ln == U_line:
-            return "逆流"
-        return "その他"
+def _infer_line_zone(ln):
+    if ln == FR_line:
+        return "順流"
+    if VTX_line and ln == VTX_line:
+        return "渦"
+    if ln == U_line:
+        return "逆流"
+    return "その他"
 
-    def _queue_for_pattern(lines, svr_order):
-        lines = list(lines or [])
-        bucket = {"順流": [], "渦": [], "逆流": [], "その他": []}
+def _queue_for_pattern(lines, svr_order):
+    lines = list(lines or [])
+    bucket = {"順流": [], "渦": [], "逆流": [], "その他": []}
 
-        for ln in lines:
-            bucket[_infer_line_zone(ln)].append(ln)
+    for ln in lines:
+        bucket[_infer_line_zone(ln)].append(ln)
 
-        queue = []
+    queue = []
 
-        for z in (svr_order or ["順流", "渦", "逆流"]):
-            xs = bucket.get(z, [])
-            xs = sorted(xs, key=lambda x: _lfr(x), reverse=True)
-            for ln in xs:
-                queue.extend(_digits_of_line(ln))
-
-        xs = sorted(bucket.get("その他", []), key=lambda x: _lfr(x), reverse=True)
+    # まず順流/渦/逆流を指定順に（ここが主役）
+    for z in (svr_order or ["順流", "渦", "逆流"]):
+        xs = bucket.get(z, [])
+        xs = sorted(xs, key=lambda x: _lfr(x), reverse=True)
         for ln in xs:
             queue.extend(_digits_of_line(ln))
 
-        if not queue:
-            for ln in lines:
-                queue.extend(_digits_of_line(ln))
-        return queue
+    # 最後にその他（順流に混ぜない。最後尾に付けるだけ）
+    xs = sorted(bucket.get("その他", []), key=lambda x: _lfr(x), reverse=True)
+    for ln in xs:
+        queue.extend(_digits_of_line(ln))
 
-    if "_knockout_finish_from_queue" in globals() and callable(globals().get("_knockout_finish_from_queue")):
-        _ko = globals().get("_knockout_finish_from_queue")
+    if not queue:
+        for ln in lines:
+            queue.extend(_digits_of_line(ln))
+    return queue
 
-        def _run_ko(q):
-            try:
-                return _ko(q, score_map, 1.0)
-            except TypeError:
-                return _ko(q, score_map)
-    else:
-        def _run_ko(q):
-            q = [int(x) for x in (q or []) if str(x).isdigit()]
-            first_pos = {}
-            for i, c in enumerate(q):
-                if c not in first_pos:
-                    first_pos[c] = i
-            tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
-            for c in score_map.keys():
-                if c not in first_pos:
-                    first_pos[c] = tail_pos
+# KO関数（既存優先）: try/except を使わず、引数数で分岐（構文崩壊防止）
+if "_knockout_finish_from_queue" in globals() and callable(globals().get("_knockout_finish_from_queue")):
+    _ko = globals().get("_knockout_finish_from_queue")
 
-            scored = []
-            for c, i in first_pos.items():
-                base = float(score_map.get(int(c), 0.0))
-                pos_factor = 1.0 / (1.0 + 0.10 * float(i))
-                scored.append((int(c), base * pos_factor, int(i)))
+    _ko_nargs = None
+    try:
+        import inspect
+        _ko_nargs = len(inspect.signature(_ko).parameters)
+    except Exception:
+        _ko_nargs = None
 
-            scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
-            return [c for c, _, _ in scored]
+    def _run_ko(q):
+        if _ko_nargs == 3:
+            return _ko(q, score_map, 1.0)
+        return _ko(q, score_map)
+else:
+    def _run_ko(q):
+        q = [int(x) for x in (q or []) if str(x).isdigit()]
+        first_pos = {}
+        for i, c in enumerate(q):
+            if c not in first_pos:
+                first_pos[c] = i
+        tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
+        for c in score_map.keys():
+            if c not in first_pos:
+                first_pos[c] = tail_pos
 
-    outs = {}
-    for pname, svr in _PATTERNS:
-        q = _queue_for_pattern(all_lines, svr)
-        finish = _run_ko(q)
-        outs[pname] = [int(x) for x in (finish or []) if str(x).isdigit()]
+        scored = []
+        for c, i in first_pos.items():
+            base = float(score_map.get(int(c), 0.0))
+            pos_factor = 1.0 / (1.0 + 0.10 * float(i))
+            scored.append((int(c), base * pos_factor, int(i)))
 
-    def _slot_union(a, b, idx):
-        s = set()
-        if a and idx < len(a): s.add(int(a[idx]))
-        if b and idx < len(b): s.add(int(b[idx]))
-        return ".".join(str(x) for x in sorted(s)) if s else ""
+        scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
+        return [c for c, _, _ in scored]
 
-    def _fmt_pair(a, b, max_n=7):
-        n = min(max(len(a or []), len(b or []), max_n), max_n)
-        parts = []
-        for i in range(n):
-            u = _slot_union(a, b, i)
-            if u:
-                parts.append(u)
-        return " → ".join(parts) if parts else "（なし）"
+outs = {}
+for pname, svr in _PATTERNS:
+    q = _queue_for_pattern(all_lines, svr)
+    finish = _run_ko(q)
+    outs[pname] = [int(x) for x in (finish or []) if str(x).isdigit()]
 
-    note_sections.append("\n【順流メイン着順予想】")
-    note_sections.append(_fmt_pair(outs.get("順流→渦→逆流", []), outs.get("順流→逆流→渦", [])))
+def _slot_union(a, b, idx):
+    s = set()
+    if a and idx < len(a): s.add(int(a[idx]))
+    if b and idx < len(b): s.add(int(b[idx]))
+    return ".".join(str(x) for x in sorted(s)) if s else ""
 
-    note_sections.append("\n【渦メイン着順予想】")
-    note_sections.append(_fmt_pair(outs.get("渦→順流→逆流", []), outs.get("渦→逆流→順流", [])))
+def _fmt_pair(a, b, max_n=7):
+    n = min(max(len(a or []), len(b or []), max_n), max_n)
+    parts = []
+    for i in range(n):
+        u = _slot_union(a, b, i)
+        if u:
+            parts.append(u)
+    return " → ".join(parts) if parts else "（なし）"
 
-    note_sections.append("\n【逆流メイン着順予想】")
-    note_sections.append(_fmt_pair(outs.get("逆流→順流→渦", []), outs.get("逆流→渦→順流", [])))
+note_sections.append("\n【順流メイン着順予想】")
+note_sections.append(_fmt_pair(outs.get("順流→渦→逆流", []), outs.get("順流→逆流→渦", [])))
 
-    note_sections.append("")
+note_sections.append("\n【渦メイン着順予想】")
+note_sections.append(_fmt_pair(outs.get("渦→順流→逆流", []), outs.get("渦→逆流→順流", [])))
+
+note_sections.append("\n【逆流メイン着順予想】")
+note_sections.append(_fmt_pair(outs.get("逆流→順流→渦", []), outs.get("逆流→渦→順流", [])))
+
+note_sections.append("")
 
 
 
