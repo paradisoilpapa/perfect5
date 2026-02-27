@@ -3815,56 +3815,111 @@ try:
             if u:
                 parts.append(u)
         return " → ".join(parts) if parts else "（なし）"
+        # =========================================================
+    # 最終ジャン想定隊列 → KO（分岐なし：各メイン1本固定）
+    #   順流メイン：順流→渦→逆流
+    #   渦メイン　：渦→順流→逆流
+    #   逆流メイン：逆流→順流→渦
     # =========================================================
-    # ライン想定FR（順流/渦/逆流 + その他） + KO使用スコア（降順）表示
-    # =========================================================
-    def _fmt_line(ln):
+    def _fmt_seq(seq, max_n=7):
+        xs = [int(x) for x in (seq or []) if str(x).isdigit()]
+        xs = xs[:max_n]
+        return " → ".join(str(x) for x in xs) if xs else "（なし）"
+
+    if "_digits_of_line" not in globals():
+        def _digits_of_line(ln):
+            s = "".join(ch for ch in str(ln) if ch.isdigit())
+            return [int(ch) for ch in s] if s else []
+
+    def _infer_line_zone(ln):
+        if ln == FR_line:
+            return "順流"
+        if VTX_line and ln == VTX_line:
+            return "渦"
+        if ln == U_line:
+            return "逆流"
+        return "その他"
+
+    def _queue_for_order(lines, order3):
+        lines = list(lines or [])
+        bucket = {"順流": [], "渦": [], "逆流": [], "その他": []}
+        for ln in lines:
+            bucket[_infer_line_zone(ln)].append(ln)
+
+        q = []
+        # まず3本を固定順で
+        for z in (order3 or ["順流", "渦", "逆流"]):
+            xs = sorted(bucket.get(z, []), key=lambda x: _lfr(x), reverse=True)
+            for ln in xs:
+                q.extend(_digits_of_line(ln))
+
+        # 最後にその他（混ぜたくないなら、このブロックごと削除）
+        xs = sorted(bucket.get("その他", []), key=lambda x: _lfr(x), reverse=True)
+        for ln in xs:
+            q.extend(_digits_of_line(ln))
+
+        # 重複除去（順序維持）
+        seen = set()
+        out = []
+        for x in q:
+            if x not in seen:
+                seen.add(x)
+                out.append(x)
+        return out
+
+    # KO関数（既存優先）: try/except を使わず、引数数で分岐（構文崩壊防止）
+    if "_knockout_finish_from_queue" in globals() and callable(globals().get("_knockout_finish_from_queue")):
+        _ko = globals().get("_knockout_finish_from_queue")
+        _ko_nargs = None
         try:
-            f = globals().get("_free_fmt_nums")
-            if callable(f):
-                return f(ln)
+            import inspect
+            _ko_nargs = len(inspect.signature(_ko).parameters)
         except Exception:
-            pass
-        return "".join(map(str, ln)) if isinstance(ln, list) and ln else "—"
+            _ko_nargs = None
 
-    note_sections.append(f"【順流】◎ライン {_fmt_line(FR_line)}：想定FR={_lfr(FR_line):.3f}")
-
-    if VTX_line and _lfr(VTX_line) > 0:
-        note_sections.append(f"【渦】候補ライン：{_fmt_line(VTX_line)}：想定FR={_lfr(VTX_line):.3f}")
+        def _run_ko(q):
+            if _ko_nargs == 3:
+                return _ko(q, score_map, 1.0)
+            return _ko(q, score_map)
     else:
-        note_sections.append("【渦】候補ライン：—：想定FR=0.000")
+        def _run_ko(q):
+            q = [int(x) for x in (q or []) if str(x).isdigit()]
+            first_pos = {}
+            for i, c in enumerate(q):
+                if c not in first_pos:
+                    first_pos[c] = i
+            tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
+            for c in score_map.keys():
+                if c not in first_pos:
+                    first_pos[c] = tail_pos
 
-    note_sections.append(f"【逆流】無ライン {_fmt_line(U_line)}：想定FR={_lfr(U_line):.3f}")
+            scored = []
+            for c, i in first_pos.items():
+                base = float(score_map.get(int(c), 0.0))
+                pos_factor = 1.0 / (1.0 + 0.10 * float(i))
+                scored.append((int(c), base * pos_factor, int(i)))
 
-    for ln in (all_lines or []):
-        if ln == FR_line or ln == VTX_line or ln == U_line:
-            continue
-        note_sections.append(f"　　　その他ライン {_fmt_line(ln)}：想定FR={_lfr(ln):.3f}")
+            scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
+            return [c for c, _, _ in scored]
 
-    _sc_pairs = sorted(
-        [(int(k), float(v)) for k, v in (score_map or {}).items()],
-        key=lambda t: (-t[1], t[0])
-    )
+    q_j = _queue_for_order(all_lines, ["順流", "渦", "逆流"])
+    q_v = _queue_for_order(all_lines, ["渦", "順流", "逆流"])
+    q_u = _queue_for_order(all_lines, ["逆流", "順流", "渦"])
 
-    note_sections.append("\n【KO使用スコア（降順）】")
-    if _sc_pairs:
-        for i, (n, sc) in enumerate(_sc_pairs, start=1):
-            note_sections.append(f"{i}位：{n} (スコア={sc:.6f})")
-    else:
-        note_sections.append("—")
-    
+    out_j = _run_ko(q_j)
+    out_v = _run_ko(q_v)
+    out_u = _run_ko(q_u)
 
     note_sections.append("\n【順流メイン着順予想】")
-    note_sections.append(_fmt_pair(outs.get("順流→渦→逆流", []), outs.get("順流→逆流→渦", [])))
+    note_sections.append(_fmt_seq(out_j))
 
     note_sections.append("\n【渦メイン着順予想】")
-    note_sections.append(_fmt_pair(outs.get("渦→順流→逆流", []), outs.get("渦→逆流→順流", [])))
+    note_sections.append(_fmt_seq(out_v))
 
     note_sections.append("\n【逆流メイン着順予想】")
-    note_sections.append(_fmt_pair(outs.get("逆流→順流→渦", []), outs.get("逆流→渦→順流", [])))
+    note_sections.append(_fmt_seq(out_u))
 
     note_sections.append("")
-
 
     # === ＜短評＞（コンパクト） ===
     lines_out = ["\n＜短評＞"]
