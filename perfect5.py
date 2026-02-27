@@ -3715,13 +3715,12 @@ try:
 #   ※ 想定FR＝ラインの強さ（薄く加点） / KOスコア＝個々の強さ（主役）
 #   ※ 先頭は2番手よりやや不利（極端にしない）
 # =========================================================
-except Exception:
-    pass
-
-if "_digits_of_line" not in globals():
-    def _digits_of_line(ln):
-        s = "".join(ch for ch in str(ln) if ch.isdigit())
-        return [int(ch) for ch in s] if s else []
+try:
+    # 3719行目から下を、この try の中にインデントして入れる
+    if "_digits_of_line" not in globals():
+        def _digits_of_line(ln):
+            s = "".join(ch for ch in str(ln) if ch.isdigit())
+            return [int(ch) for ch in s] if s else []
 
 _PATTERNS = [
     ("順流→渦→逆流", ["順流", "渦", "逆流"]),
