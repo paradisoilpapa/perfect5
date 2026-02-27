@@ -3897,14 +3897,17 @@ try:
             for c, i in first_pos.items():
     base = float(score_map.get(int(c), 0.0))
 
+   for c, i in first_pos.items():
+    base = float(score_map.get(int(c), 0.0))
+
     # iが小さいほど加点（最大 +0.20）
     pos_bonus = 0.20 * (1.0 / (1.0 + float(i)))  # 0番目+0.20, 1番目+0.10, 2番目+0.066...
     final = base + pos_bonus
 
     scored.append((int(c), final, int(i)))
 
-            scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
-            return [c for c, _, _ in scored]
+scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
+return [c for c, _, _ in scored]
 
     q_j = _queue_for_order(all_lines, ["順流", "渦", "逆流"])
     q_v = _queue_for_order(all_lines, ["渦", "順流", "逆流"])
