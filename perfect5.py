@@ -3670,6 +3670,22 @@ try:
     VTX_line = _normalize_lines([VTX_line])[0] if VTX_line else []
     U_line   = _normalize_lines([U_line])[0] if U_line else []
 
+    # =========================================================
+    # 渦ラインを必ず埋める（空なら自動選定）
+    # ルール：FR_line / U_line 以外で、想定FRが最大のラインを渦にする
+    # =========================================================
+    if (not VTX_line) or (_lfr(VTX_line) <= 0.0):
+        _cand = []
+        for ln in (all_lines or []):
+            if not ln:
+                continue
+            if ln == FR_line or ln == U_line:
+                continue
+            _cand.append(ln)
+
+        if _cand:
+            VTX_line = max(_cand, key=lambda x: _lfr(x))
+
     axis_line = FR_line if FR_line else (all_lines[0] if all_lines else [])
     axis_line_fr = float(line_fr_map.get(_line_key(axis_line), 0.0) or 0.0)
     total_fr = sum(float(v or 0.0) for v in line_fr_map.values()) if isinstance(line_fr_map, dict) else 0.0
