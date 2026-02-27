@@ -3820,7 +3820,15 @@ try:
                 m[int(c)] = z
         return m
 
-    _car_zone_map = _build_car_zone_map(all_lines)
+       _car_zone_map = _build_car_zone_map(all_lines)
+
+    # 車番→所属ライン人数（3車ライン有利を打ち消す）
+    _car_line_size = {}
+    for ln in (all_lines or []):
+        ds = _digits_of_line(ln)
+        sz = len(ds)
+        for c in ds:
+            _car_line_size[int(c)] = sz if sz > 0 else 1
 
     def _pos_adj(i):
         # 先頭は風よけに使われやすく、2番手よりやや不利
@@ -3840,8 +3848,10 @@ try:
             "渦":   float(_lfr(VTX_line) if VTX_line else 0.0),
             "逆流": float(_lfr(U_line) if U_line else 0.0),
         }.get(z, 0.0)
+
         k = _FR_K_MAIN if z == main_zone else _FR_K_SUB
-        return k * z_fr
+        sz = float(_car_line_size.get(int(car), 1) or 1.0)
+        return (k * z_fr) / sz
 
     def _run_ko(q, main_zone):
         q = [int(x) for x in (q or []) if str(x).isdigit()]
@@ -3875,7 +3885,6 @@ try:
         xs = [int(x) for x in (seq or []) if str(x).isdigit()]
         xs = xs[:max_n]
         return " → ".join(str(x) for x in xs) if xs else "（なし）"
-
     # 表示は “各メイン1本固定”
     out_j = outs.get("順流→渦→逆流") or []
     out_v = outs.get("渦→順流→逆流") or []
