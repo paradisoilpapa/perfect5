@@ -3776,26 +3776,27 @@ try:
             return _ko(q, score_map)
     
     def _run_ko(q):
-    q = [int(x) for x in (q or []) if str(x).isdigit()]
+        q = [int(x) for x in (q or []) if str(x).isdigit()]
 
-    first_pos = {}
-    for i, c in enumerate(q):
-        if c not in first_pos:
-            first_pos[c] = i
+        first_pos = {}
+        for i, c in enumerate(q):
+            if c not in first_pos:
+               first_pos[c] = i
 
-    tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
-    for c in score_map.keys():
-        if c not in first_pos:
-            first_pos[c] = tail_pos
+        tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
+        for c in score_map.keys():
+            if c not in first_pos:
+                first_pos[c] = tail_pos
 
-    scored = []
-    for c, i in first_pos.items():
-        base = float(score_map.get(int(c), 0.0))
-        pos_bonus = 0.20 * (1.0 / (1.0 + float(i)))
-        final = base + pos_bonus
-        scored.append((int(c), final, int(i)))
+        scored = []
+        for c, i in first_pos.items():
+            base = float(score_map.get(int(c), 0.0))
+            pos_bonus = 0.20 * (1.0 / (1.0 + float(i)))
+            final = base + pos_bonus
+            scored.append((int(c), final, int(i)))
 
-    return scored
+        return scored
+        
     outs = {}
     for pname, svr in _PATTERNS:
         q = _queue_for_pattern(all_lines, svr)
