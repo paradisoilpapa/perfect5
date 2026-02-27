@@ -3717,34 +3717,34 @@ try:
     note_sections.append("")
 
     # =========================================================
-# ライン想定FR（順流/渦/逆流 + その他）表示  ※区分け復活
-# =========================================================
-def _fmt_line(ln):
-    try:
-        f = globals().get("_free_fmt_nums")
-        if callable(f):
-            return f(ln)
-    except Exception:
-        pass
-    return "".join(map(str, ln)) if isinstance(ln, (list, tuple)) and ln else "—"
+    # ライン想定FR（順流/渦/逆流 + その他）表示  ※区分け復活
+    # =========================================================
+    def _fmt_line(ln):
+        try:
+            f = globals().get("_free_fmt_nums")
+            if callable(f):
+                return f(ln)
+        except Exception:
+            pass
+        return "".join(map(str, ln)) if isinstance(ln, (list, tuple)) and ln else "—"
 
-note_sections.append(f"【順流】◎ライン {_fmt_line(FR_line)}：想定FR={_lfr(FR_line):.3f}")
+    note_sections.append(f"【順流】◎ライン {_fmt_line(FR_line)}：想定FR={_lfr(FR_line):.3f}")
 
-# 渦が無いときは明確に “—”
-if VTX_line and _lfr(VTX_line) > 0:
-    note_sections.append(f"【渦】候補ライン：{_fmt_line(VTX_line)}：想定FR={_lfr(VTX_line):.3f}")
-else:
-    note_sections.append("【渦】候補ライン：—：想定FR=0.000")
+    # 渦が無いときは明確に “—”
+    if VTX_line and _lfr(VTX_line) > 0:
+        note_sections.append(f"【渦】候補ライン：{_fmt_line(VTX_line)}：想定FR={_lfr(VTX_line):.3f}")
+    else:
+        note_sections.append("【渦】候補ライン：—：想定FR=0.000")
 
-note_sections.append(f"【逆流】無ライン {_fmt_line(U_line)}：想定FR={_lfr(U_line):.3f}")
+    note_sections.append(f"【逆流】無ライン {_fmt_line(U_line)}：想定FR={_lfr(U_line):.3f}")
 
-# その他ラインも出す（不要ならこのforごと削除）
-for ln in (all_lines or []):
-    if ln == FR_line or ln == VTX_line or ln == U_line:
-        continue
-    note_sections.append(f"　　　その他ライン {_fmt_line(ln)}：想定FR={_lfr(ln):.3f}")
+    # その他ラインも出す（不要ならこのforごと削除）
+    for ln in (all_lines or []):
+        if ln == FR_line or ln == VTX_line or ln == U_line:
+            continue
+        note_sections.append(f"　　　その他ライン {_fmt_line(ln)}：想定FR={_lfr(ln):.3f}")
 
-note_sections.append("")
+    note_sections.append("")
 
     # =========================================================
     # KO使用スコア（降順）※復活
