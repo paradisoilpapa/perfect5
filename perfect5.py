@@ -3767,152 +3767,152 @@ try:
 #   想定FR＝ラインのスコア（メイン別に薄く加点）
 #   KOスコア＝個々の強さ（主役）
 #   先頭は2番手よりやや不利（極端にしない）
-#   事故対策：
-#     - ライン一致判定を数字列正規化（表記ブレで“その他”化を防ぐ）
-#     - “薄い”範囲で係数を、順位が動く最低ラインまで上げる（上限クリップ）
+#   ※try構造に依存しないよう、全処理を関数へ封じ込める
 # =========================================================
-if "_digits_of_line" not in globals():
+def _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr):
     def _digits_of_line(ln):
         s = "".join(ch for ch in str(ln) if ch.isdigit())
         return [int(ch) for ch in s] if s else []
 
-def _norm_line(ln):
-    return "".join(ch for ch in str(ln) if ch.isdigit())
+    def _norm_line(ln):
+        return "".join(ch for ch in str(ln) if ch.isdigit())
 
-_PATTERNS = [
-    ("順流→渦→逆流", ["順流", "渦", "逆流"]),
-    ("順流→逆流→渦", ["順流", "逆流", "渦"]),
-    ("渦→順流→逆流", ["渦", "順流", "逆流"]),
-    ("渦→逆流→順流", ["渦", "逆流", "順流"]),
-    ("逆流→順流→渦", ["逆流", "順流", "渦"]),
-    ("逆流→渦→順流", ["逆流", "渦", "順流"]),
-]
+    _PATTERNS = [
+        ("順流→渦→逆流", ["順流", "渦", "逆流"]),
+        ("順流→逆流→渦", ["順流", "逆流", "渦"]),
+        ("渦→順流→逆流", ["渦", "順流", "逆流"]),
+        ("渦→逆流→順流", ["渦", "逆流", "順流"]),
+        ("逆流→順流→渦", ["逆流", "順流", "渦"]),
+        ("逆流→渦→順流", ["逆流", "渦", "順流"]),
+    ]
 
-def _infer_line_zone(ln):
-    s = _norm_line(ln)
-    if s and FR_line and s == _norm_line(FR_line):
-        return "順流"
-    if VTX_line and s == _norm_line(VTX_line):
-        return "渦"
-    if s and U_line and s == _norm_line(U_line):
-        return "逆流"
-    return "その他"
+    def _infer_line_zone(ln):
+        s = _norm_line(ln)
+        if s and FR_line and s == _norm_line(FR_line):
+            return "順流"
+        if VTX_line and s == _norm_line(VTX_line):
+            return "渦"
+        if s and U_line and s == _norm_line(U_line):
+            return "逆流"
+        return "その他"
 
-def _queue_for_pattern(lines, svr_order):
-    lines = list(lines or [])
-    bucket = {"順流": [], "渦": [], "逆流": [], "その他": []}
-    for ln in lines:
-        bucket[_infer_line_zone(ln)].append(ln)
+    def _queue_for_pattern(lines, svr_order):
+        lines = list(lines or [])
+        bucket = {"順流": [], "渦": [], "逆流": [], "その他": []}
+        for ln in lines:
+            bucket[_infer_line_zone(ln)].append(ln)
 
-    queue = []
-    for z in (svr_order or ["順流", "渦", "逆流"]):
-        xs = sorted(bucket.get(z, []), key=lambda x: _lfr(x), reverse=True)
+        queue = []
+        for z in (svr_order or ["順流", "渦", "逆流"]):
+            xs = sorted(bucket.get(z, []), key=lambda x: _lfr(x), reverse=True)
+            for ln in xs:
+                queue.extend(_digits_of_line(ln))
+
+        xs = sorted(bucket.get("その他", []), key=lambda x: _lfr(x), reverse=True)
         for ln in xs:
             queue.extend(_digits_of_line(ln))
 
-    xs = sorted(bucket.get("その他", []), key=lambda x: _lfr(x), reverse=True)
-    for ln in xs:
-        queue.extend(_digits_of_line(ln))
+        if not queue:
+            for ln in lines:
+                queue.extend(_digits_of_line(ln))
+        return queue
 
-    if not queue:
-        for ln in lines:
-            queue.extend(_digits_of_line(ln))
-    return queue
+    def _build_car_zone_map(lines):
+        m = {}
+        for ln in (lines or []):
+            z = _infer_line_zone(ln)
+            for c in _digits_of_line(ln):
+                m[int(c)] = z
+        return m
 
-def _build_car_zone_map(lines):
-    m = {}
-    for ln in (lines or []):
-        z = _infer_line_zone(ln)
-        for c in _digits_of_line(ln):
-            m[int(c)] = z
-    return m
+    _car_zone_map = _build_car_zone_map(all_lines)
 
-_car_zone_map = _build_car_zone_map(all_lines)
+    # 車番→所属ライン人数（3車ライン有利を打ち消す）
+    _car_line_size = {}
+    for ln in (all_lines or []):
+        ds = _digits_of_line(ln)
+        sz = len(ds)
+        for c in ds:
+            _car_line_size[int(c)] = sz if sz > 0 else 1
 
-# 車番→所属ライン人数（3車ライン有利を打ち消す）
-_car_line_size = {}
-for ln in (all_lines or []):
-    ds = _digits_of_line(ln)
-    sz = len(ds)
-    for c in ds:
-        _car_line_size[int(c)] = sz if sz > 0 else 1
+    def _pos_adj(i):
+        if i == 0:
+            return -0.040
+        if i == 1:
+            return +0.020
+        return 0.0
 
-def _pos_adj(i):
-    # 先頭はやや不利／2番手やや有利（“薄い”が効く最低ライン）
-    if i == 0:
-        return -0.040
-    if i == 1:
-        return +0.020
-    return 0.0
+    _FR_K_MAIN = 0.18
+    _FR_K_SUB  = 0.06
+    _FR_BONUS_CAP = 0.06
 
-_FR_K_MAIN = 0.18
-_FR_K_SUB  = 0.06
-_FR_BONUS_CAP = 0.06
+    def _fr_bonus_for_car(car, main_zone):
+        z = _car_zone_map.get(int(car), "その他")
+        z_fr = {
+            "順流": float(_lfr(FR_line) if FR_line else 0.0),
+            "渦":   float(_lfr(VTX_line) if VTX_line else 0.0),
+            "逆流": float(_lfr(U_line) if U_line else 0.0),
+        }.get(z, 0.0)
 
-def _fr_bonus_for_car(car, main_zone):
-    z = _car_zone_map.get(int(car), "その他")
-    z_fr = {
-        "順流": float(_lfr(FR_line) if FR_line else 0.0),
-        "渦":   float(_lfr(VTX_line) if VTX_line else 0.0),
-        "逆流": float(_lfr(U_line) if U_line else 0.0),
-    }.get(z, 0.0)
+        k = _FR_K_MAIN if z == main_zone else _FR_K_SUB
+        sz = float(_car_line_size.get(int(car), 1) or 1.0)
 
-    k = _FR_K_MAIN if z == main_zone else _FR_K_SUB
-    sz = float(_car_line_size.get(int(car), 1) or 1.0)
+        bonus = (k * z_fr) / sz
+        if bonus > _FR_BONUS_CAP:
+            bonus = _FR_BONUS_CAP
+        if bonus < 0.0:
+            bonus = 0.0
+        return bonus
 
-    bonus = (k * z_fr) / sz
-    if bonus > _FR_BONUS_CAP:
-        bonus = _FR_BONUS_CAP
-    if bonus < 0.0:
-        bonus = 0.0
-    return bonus
+    def _run_ko(q, main_zone):
+        q = [int(x) for x in (q or []) if str(x).isdigit()]
 
-def _run_ko(q, main_zone):
-    q = [int(x) for x in (q or []) if str(x).isdigit()]
+        first_pos = {}
+        for i, c in enumerate(q):
+            if c not in first_pos:
+                first_pos[c] = i
 
-    first_pos = {}
-    for i, c in enumerate(q):
-        if c not in first_pos:
-            first_pos[c] = i
+        tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
+        for c in score_map.keys():
+            if c not in first_pos:
+                first_pos[c] = tail_pos
 
-    tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
-    for c in score_map.keys():
-        if c not in first_pos:
-            first_pos[c] = tail_pos
+        scored = []
+        for c, i in first_pos.items():
+            base = float(score_map.get(int(c), 0.0))
+            final = base + _pos_adj(int(i)) + _fr_bonus_for_car(int(c), main_zone)
+            scored.append((int(c), float(final), int(i)))
 
-    scored = []
-    for c, i in first_pos.items():
-        base = float(score_map.get(int(c), 0.0))
-        final = base + _pos_adj(int(i)) + _fr_bonus_for_car(int(c), main_zone)
-        scored.append((int(c), float(final), int(i)))
+        scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
+        return [c for c, _, _ in scored]
 
-    scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
-    return [c for c, _, _ in scored]
+    outs = {}
+    for pname, svr in _PATTERNS:
+        q = _queue_for_pattern(all_lines, svr)
+        main_zone = (svr[0] if (svr and len(svr) >= 1) else "順流")
+        outs[pname] = _run_ko(q, main_zone)
 
-outs = {}
-for pname, svr in _PATTERNS:
-    q = _queue_for_pattern(all_lines, svr)
-    main_zone = (svr[0] if (svr and len(svr) >= 1) else "順流")
-    outs[pname] = _run_ko(q, main_zone)
+    def _fmt_seq(seq, max_n=7):
+        xs = [int(x) for x in (seq or []) if str(x).isdigit()]
+        xs = xs[:max_n]
+        return " → ".join(str(x) for x in xs) if xs else "（なし）"
 
-def _fmt_seq(seq, max_n=7):
-    xs = [int(x) for x in (seq or []) if str(x).isdigit()]
-    xs = xs[:max_n]
-    return " → ".join(str(x) for x in xs) if xs else "（なし）"
+    out_j = outs.get("順流→渦→逆流") or []
+    out_v = outs.get("渦→順流→逆流") or []
+    out_u = outs.get("逆流→順流→渦") or []
 
-# 表示は “各メイン1本固定”
-out_j = outs.get("順流→渦→逆流") or []
-out_v = outs.get("渦→順流→逆流") or []
-out_u = outs.get("逆流→順流→渦") or []
+    note_sections.append("【順流メイン着順予想】")
+    note_sections.append(_fmt_seq(out_j))
+    note_sections.append("")
+    note_sections.append("【渦メイン着順予想】")
+    note_sections.append(_fmt_seq(out_v))
+    note_sections.append("")
+    note_sections.append("【逆流メイン着順予想】")
+    note_sections.append(_fmt_seq(out_u))
+    note_sections.append("")
 
-note_sections.append("【順流メイン着順予想】")
-note_sections.append(_fmt_seq(out_j))
-note_sections.append("")
-note_sections.append("【渦メイン着順予想】")
-note_sections.append(_fmt_seq(out_v))
-note_sections.append("")
-note_sections.append("【逆流メイン着順予想】")
-note_sections.append(_fmt_seq(out_u))
+# 実行（既存の try/except 構造に干渉しない）
+_append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
 note_sections.append("")
     # =========================================================
     # ＜短評＞（コンパクト）
