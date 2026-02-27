@@ -3880,19 +3880,17 @@ def _fmt_pair(a, b, max_n=7):
     lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
 
     if axis_line:
-        lines_out.append(
-            f"・軸ラインFR={axis_line_fr:.3f}（取り分≈{(share_pct or 0.0):.1f}%：軸={axis_id}／ライン={_free_fmt_nums(axis_line)}）"
-        )
+    lines_out.append(
+        f"・軸ラインFR={axis_line_fr:.3f}（取り分≈{(share_pct or 0.0):.1f}%：軸={axis_id}／ライン={_free_fmt_nums(axis_line)}）"
+    )
 
-    lines_out.append(f"・VTX={VTXv:.3f}［{_band3_vtx(VTXv)}］")
-    lines_out.append(f"・U={Uv:.3f}［{_band3_u(Uv)}］")
+lines_out.append(f"・VTX={VTXv:.3f}［{_band3_vtx(VTXv)}］")
+lines_out.append(f"・U={Uv:.3f}［{_band3_u(Uv)}］")
 
-    note_sections.extend(lines_out)
+note_sections.extend(lines_out)
 
-except Exception:
-    pass
-
-
+    except Exception:
+        pass
     dbg = _flow.get("dbg", {})
     if isinstance(dbg, dict) and dbg:
         bs = float(dbg.get("blend_star",0.0) or 0.0)
