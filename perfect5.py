@@ -3708,19 +3708,18 @@ try:
         note_sections.append("ライン　" + "　".join(_lines))
     note_sections.append("")
 
-    # =========================================================
+# =========================================================
 # 最終ジャン想定隊列 → KO（6パターン→2パターン合成表示）
 #   ※ ゾーンは flow で確定した3本を最優先（逆転しにくい）
 #   ※ 微差でも「順流/渦/逆流」を必ず分け、その他は混ぜず最後に回す
 #   ※ 想定FR＝ラインの強さ（薄く加点） / KOスコア＝個々の強さ（主役）
 #   ※ 先頭は2番手よりやや不利（極端にしない）
 # =========================================================
-try:
-    # ここに「3719行目から下のKOブロック」を全部入れる（1段インデント）
-    if "_digits_of_line" not in globals():
-        def _digits_of_line(ln):
-            s = "".join(ch for ch in str(ln) if ch.isdigit())
-            return [int(ch) for ch in s] if s else []
+
+if "_digits_of_line" not in globals():
+    def _digits_of_line(ln):
+        s = "".join(ch for ch in str(ln) if ch.isdigit())
+        return [int(ch) for ch in s] if s else []
 
 _PATTERNS = [
     ("順流→渦→逆流", ["順流", "渦", "逆流"]),
@@ -3763,7 +3762,6 @@ def _queue_for_pattern(lines, svr_order):
             queue.extend(_digits_of_line(ln))
     return queue
 
-# --- ここから「ラインFRを使う」ための下準備 ---
 def _build_car_zone_map(lines):
     m = {}
     for ln in (lines or []):
@@ -3774,9 +3772,8 @@ def _build_car_zone_map(lines):
 
 _car_zone_map = _build_car_zone_map(all_lines)
 
-# 想定FR（ラインの強さ）を 0〜1 想定で薄く加点（最大+0.03程度）
-# 係数は固定：0.07（FR=0.43で+0.0301）
-_FR_K = 0.07
+# 想定FR（ラインの強さ）を薄く加点（最大+0.03程度）
+_FR_K = 0.07  # FR=0.43で+0.0301
 
 def _fr_bonus_for_car(car):
     z = _car_zone_map.get(int(car), "その他")
@@ -3787,7 +3784,7 @@ def _fr_bonus_for_car(car):
     }.get(z, 0.0)
     return _FR_K * z_fr
 
-# 先頭は2番手よりやや不利（極端にしない：最大差 0.015）
+# 先頭は2番手よりやや不利（最大差 0.015）
 def _pos_adj(i):
     if i == 0:
         return -0.010
@@ -3795,7 +3792,6 @@ def _pos_adj(i):
         return +0.005
     return 0.0
 
-# --- KO（既存優先）と fallback を統一（try/except地獄回避） ---
 def _run_ko_fallback(q):
     q = [int(x) for x in (q or []) if str(x).isdigit()]
 
@@ -3818,23 +3814,8 @@ def _run_ko_fallback(q):
     scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
     return [c for c, _, _ in scored]
 
-# 既存関数がある場合はそれを使う（ただし “並び” は既存実装に依存）
+# 既存KOがあっても「FR加点＋先頭不利」を確実に反映するため、fallbackを使う
 _run_ko = _run_ko_fallback
-if "_knockout_finish_from_queue" in globals() and callable(globals().get("_knockout_finish_from_queue")):
-    _ko = globals().get("_knockout_finish_from_queue")
-    _ko_nargs = None
-    try:
-        import inspect
-        _ko_nargs = len(inspect.signature(_ko).parameters)
-    except Exception:
-        _ko_nargs = None
-
-    def _run_ko(q):
-        # 既存KOが score_map をそのまま使うなら、ラインFR/先頭補正が乗らない。
-        # ここでは “確実に反映する” ため fallback を優先したい場合は、この関数定義を消してください。
-        if _ko_nargs == 3:
-            return _ko(q, score_map, 1.0)
-        return _ko(q, score_map)
 
 outs = {}
 for pname, svr in _PATTERNS:
@@ -3858,9 +3839,6 @@ def _fmt_pair(a, b, max_n=7):
         if u:
             parts.append(u)
     return " → ".join(parts) if parts else "（なし）"
-
-    except Exception:
-    pass
 
     # === ＜短評＞（コンパクト） ===
     lines_out = ["\n＜短評＞"]
