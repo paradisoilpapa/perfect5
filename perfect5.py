@@ -3716,7 +3716,7 @@ try:
 #   ※ 先頭は2番手よりやや不利（極端にしない）
 # =========================================================
 try:
-    # 3719行目から下を、この try の中にインデントして入れる
+    # ここに「3719行目から下のKOブロック」を全部入れる（1段インデント）
     if "_digits_of_line" not in globals():
         def _digits_of_line(ln):
             s = "".join(ch for ch in str(ln) if ch.isdigit())
@@ -3858,6 +3858,9 @@ def _fmt_pair(a, b, max_n=7):
         if u:
             parts.append(u)
     return " → ".join(parts) if parts else "（なし）"
+
+    except Exception:
+    pass
 
     # === ＜短評＞（コンパクト） ===
     lines_out = ["\n＜短評＞"]
