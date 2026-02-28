@@ -3877,7 +3877,7 @@ try:
             # 距離ベース（B）＋ KO閾値（C）
             #   available_m = みなし直線[m]（サイドバー straight_length）
             #   pass_m      = 追い抜き1回に必要な距離[m]（外回し込み）
-            #   MAX_PASSES  = floor(available_m / pass_m)
+            #   MAX_PASSES  = 回数上限（今回は速度差ベース）
             #   PASS_DELTA  = score_per_m * pass_m
             # ======================================================
             q = [int(x) for x in (q or []) if str(x).isdigit()]
@@ -3905,37 +3905,79 @@ try:
                 base = float(score_map.get(int(car), 0.0))
                 return base + _pos_adj(int(i)) + _fr_bonus_for_car(int(car), main_zone)
 
+            # ====== PATCH: venue-aware pass_m / available_m + speed-based MAX_PASSES ======
             pass_m = 14.0 + 0.35 * straight_m
             pass_m *= (1.0 + 0.25 * max(0.0, style))
             pass_m *= (1.0 + 0.03 * max(0.0, wind_ms - 3))
+
+            # 会場カント（薄く：外回しロス増）
+            bank_angle = float(globals().get("bank_angle", 30.0) or 30.0)
+            pass_m *= (1.0 + 0.10 * max(0.0, (bank_angle - 30.0) / 10.0))  # 36°で+6%程度
+
+            # クリップ
             if pass_m < 18.0:
                 pass_m = 18.0
             if pass_m > 55.0:
                 pass_m = 55.0
 
+            # ---- available_m: bank_len を “差分だけ” 反映して飽和を減らす ----
             bank_len = float(globals().get("bank_length", 400.0) or 400.0)
-            available_m = float(straight_m) + 0.35 * bank_len  # 最終局面の可用距離（直線換算）
-            
-            MAX_PASSES = int(available_m // max(pass_m, 1e-9))
+            base_bank = 400.0
+            bank_term = 0.20 * base_bank + 0.20 * (bank_len - base_bank)   # 400→80 / 500→100 / 333→66.6
+            available_m = float(straight_m) + bank_term
+
+            # ---- スコア分布（sigma）----
+            vals = [float(score_map.get(int(c), 0.0)) for c in order]
+            if len(vals) >= 2:
+                mu = sum(vals) / float(len(vals))
+                var = sum((v - mu) ** 2 for v in vals) / float(len(vals))
+                sigma = max(var ** 0.5, 1e-6)
+            else:
+                mu = (vals[0] if vals else 0.0)
+                sigma = 1e-6
+
+            # ---- クラス別の代表速度（終盤の代表値）----
+            VREF_KMH = {"Ｓ級": 67.0, "Ａ級": 64.0, "Ａ級チャレンジ": 62.0, "ガールズ": 63.0}
+            v_ref = float(VREF_KMH.get(race_class, 64.0)) / 3.6  # m/s
+
+            # ---- スコア→速度：zで圧縮（暴走防止）----
+            k_speed = float(globals().get("ko_k_speed", 0.010) or 0.010)  # 0.005〜0.020
+            def _v_from_score(sc: float) -> float:
+                z = (float(sc) - float(mu)) / float(sigma)
+                if z > 2.0:
+                    z = 2.0
+                if z < -2.0:
+                    z = -2.0
+                return float(v_ref) * (1.0 + float(k_speed) * z)
+
+            # ---- 終盤時間 & 相対距離（抜ける回数の根拠）----
+            t_final = float(available_m) / max(float(v_ref), 1e-6)
+
+            top_scores = sorted(vals, reverse=True)
+            if len(top_scores) >= 3:
+                v_fast = _v_from_score(top_scores[0])
+                v_mid  = _v_from_score(top_scores[2])
+            else:
+                v_fast = _v_from_score(mu + sigma)
+                v_mid  = _v_from_score(mu)
+
+            gain_m = max(0.0, (float(v_fast) - float(v_mid)) * float(t_final))
+
+            # ---- MAX_PASSES：距離割りではなく「相対距離割り」----
+            MAX_PASSES = int(gain_m // max(pass_m, 1e-9))
             if MAX_PASSES < 0:
                 MAX_PASSES = 0
             if MAX_PASSES > 4:
                 MAX_PASSES = 4
 
-            vals = [float(score_map.get(int(c), 0.0)) for c in order]
-            if len(vals) >= 2:
-                mu = sum(vals) / float(len(vals))
-                var = sum((v - mu) ** 2 for v in vals) / float(len(vals))
-                sigma = var ** 0.5
-            else:
-                sigma = 0.05
-
+            # ---- 既存の PASS_DELTA 計算（基本はそのまま）----
             base_k = 0.70 / max(available_m, 1e-9)
             score_per_m = base_k * sigma * (1.0 / max(spread, 1e-6))
 
             PASS_DELTA = score_per_m * pass_m
             CROSS_DELTA = score_per_m * (0.30 * pass_m)
             fatigue_delta = 0.35 * PASS_DELTA
+            # ====== /PATCH ======
 
             overtake_cnt = {int(c): 0 for c in order}
 
@@ -3969,6 +4011,19 @@ try:
 
                 if not swapped:
                     break
+
+            globals()["_overtake_available_m"] = float(available_m)
+            globals()["_overtake_pass_m"] = float(pass_m)
+            globals()["_overtake_max_passes"] = int(MAX_PASSES)
+            globals()["_overtake_pass_delta"] = float(PASS_DELTA)
+            globals()["_overtake_cross_delta"] = float(CROSS_DELTA)
+
+            # 任意：調整が速くなるデバッグ（欲しければ d 表示にも足せる）
+            globals()["_overtake_gain_m"] = float(gain_m)
+            globals()["_overtake_t_final"] = float(t_final)
+            globals()["_overtake_v_ref"] = float(v_ref)
+
+            return order
 
             globals()["_overtake_available_m"] = float(available_m)
             globals()["_overtake_pass_m"] = float(pass_m)
