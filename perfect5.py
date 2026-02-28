@@ -3950,7 +3950,7 @@ File "/mount/src/perfect5/perfect5.py", line 3772
         note_sections.append("")
 
     _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
-    _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
+    
     # =========================================================
     # ＜短評＞（コンパクト）
     #   VTX/U は flow値ではなく「ラインFR」で表示（ズレ防止）
