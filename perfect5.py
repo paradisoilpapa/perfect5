@@ -3974,9 +3974,9 @@ try:
             if MAX_PASSES > 4:
                 MAX_PASSES = 4
 
-            # ---- 既存の PASS_DELTA 計算（基本はそのまま）----
-            base_k = 0.70 / max(available_m, 1e-9)
-            score_per_m = base_k * sigma * (1.0 / max(spread, 1e-6))
+            # ---- PASS_DELTAの正規化：available_m依存を弱めて安定化 ----
+            base_k = float(globals().get("ko_base_k", 0.040) or 0.040)  # 0.025〜0.060
+            score_per_m = base_k * sigma * (1.0 / max(spread, 1e-6)) / max(pass_m, 1e-6)
 
             PASS_DELTA = score_per_m * pass_m
             CROSS_DELTA = score_per_m * (0.30 * pass_m)
