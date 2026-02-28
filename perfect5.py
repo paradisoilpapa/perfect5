@@ -4124,7 +4124,7 @@ try:
     note_sections.append("")
 
     # --- d（距離/追い抜きデバッグ）ここで1回だけ ---
-        note_sections.append(f"・d：直線{globals().get('_overtake_available_m','—')}m／抜き{globals().get('_overtake_pass_m','—')}m／最大{globals().get('_overtake_max_passes','—')}回／Δ{globals().get('_overtake_pass_delta','—')}／跨Δ{globals().get('_overtake_cross_delta','—')}")
+    note_sections.append(f"・d：直線{globals().get('_overtake_available_m','—')}m／抜き{globals().get('_overtake_pass_m','—')}m／最大{globals().get('_overtake_max_passes','—')}回／Δ{globals().get('_overtake_pass_delta','—')}／跨Δ{globals().get('_overtake_cross_delta','—')}")
 
     
 
