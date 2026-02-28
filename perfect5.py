@@ -3567,16 +3567,16 @@ try:
     globals()["_flow"] = _flow  # 後段参照用に保持
 
     # ---- 値の確定 ----
-    FRv  = float(_flow.get("FR", 0.0) or 0.0)
+    FRv = float(_flow.get("FR", 0.0) or 0.0)
     VTXv = float(_flow.get("VTX", 0.0) or 0.0)
-    Uv   = float(_flow.get("U", 0.0) or 0.0)
+    Uv = float(_flow.get("U", 0.0) or 0.0)
 
     all_lines = list(_flow.get("lines") or [])
     all_lines = _normalize_lines(all_lines)  # ここで必ず正規化
     globals()["all_lines"] = all_lines
 
     # ---- レース名 ----
-    venue   = str(globals().get("track") or globals().get("place") or "").strip()
+    venue = str(globals().get("track") or globals().get("place") or "").strip()
     race_no = str(globals().get("race_no") or "").strip()
     if venue or race_no:
         _rn = race_no if (race_no.endswith("R") or race_no == "") else f"{race_no}R"
@@ -3600,8 +3600,8 @@ try:
         return out
 
     v_final_map = _as_int_float_map(globals().get("v_final"))
-    v_wo_map    = _as_int_float_map(globals().get("v_wo"))
-    scores_map  = _as_int_float_map(globals().get("scores"))
+    v_wo_map = _as_int_float_map(globals().get("v_wo"))
+    scores_map = _as_int_float_map(globals().get("scores"))
 
     score_map = dict(v_final_map or v_wo_map or scores_map or {})
 
@@ -3666,13 +3666,13 @@ try:
     # =========================================================
     # 展開評価（share_pct は「順流ライン」基準）
     # =========================================================
-    FR_line  = _flow.get("FR_line")  or []
+    FR_line = _flow.get("FR_line") or []
     VTX_line = _flow.get("VTX_line") or []
-    U_line   = _flow.get("U_line")   or []
+    U_line = _flow.get("U_line") or []
 
-    FR_line  = _normalize_lines([FR_line])[0] if FR_line else []
+    FR_line = _normalize_lines([FR_line])[0] if FR_line else []
     VTX_line = _normalize_lines([VTX_line])[0] if VTX_line else []
-    U_line   = _normalize_lines([U_line])[0] if U_line else []
+    U_line = _normalize_lines([U_line])[0] if U_line else []
 
     globals()["FR_line"] = FR_line
     globals()["VTX_line"] = VTX_line
@@ -3703,7 +3703,7 @@ try:
     note_sections.append("")
 
     # ---- 時刻・クラス ----
-    race_time  = str(globals().get("race_time", "") or "")
+    race_time = str(globals().get("race_time", "") or "")
     race_class = str(globals().get("race_class", "") or "")
     hdr = f"{race_time}　{race_class}".strip()
     if hdr:
@@ -3730,7 +3730,6 @@ try:
 
     note_sections.append(f"【順流】◎ライン {_fmt_line(FR_line)}：想定FR={_lfr(FR_line):.3f}")
 
-    # 渦が無いときは明確に “—”
     if VTX_line and _lfr(VTX_line) > 0:
         note_sections.append(f"【渦】候補ライン：{_fmt_line(VTX_line)}：想定FR={_lfr(VTX_line):.3f}")
     else:
@@ -3738,7 +3737,6 @@ try:
 
     note_sections.append(f"【逆流】無ライン {_fmt_line(U_line)}：想定FR={_lfr(U_line):.3f}")
 
-    # その他ラインも出す（不要ならこのforごと削除）
     for ln in (all_lines or []):
         if ln == FR_line or ln == VTX_line or ln == U_line:
             continue
@@ -3747,7 +3745,7 @@ try:
     note_sections.append("")
 
     # =========================================================
-    # KO使用スコア（降順）※復活
+    # KO使用スコア（降順）
     # =========================================================
     _sc_pairs = sorted(
         [(int(k), float(v)) for k, v in (score_map or {}).items()],
@@ -3762,14 +3760,11 @@ try:
         note_sections.append("—")
     note_sections.append("")
 
-File "/mount/src/perfect5/perfect5.py", line 3772
-  def _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr):
-  ^
-            # =========================================================
+    # =========================================================
     # 最終ジャン想定隊列 → KO（6パターン）
-    #   想定FR＝ラインのスコア（メイン別に薄く加点）
-    #   KOスコア＝個々の強さ（主役）
-    #   先頭は2番手よりやや不利（極端にしない）
+    #   ワープ禁止：全体再ソート禁止
+    #   距離：隣同士の交換のみ + 交換コスト
+    #   重要：1パス中に同一車が何回も抜けない
     # =========================================================
     def _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr):
         def _digits_of_line(ln):
@@ -3866,11 +3861,6 @@ File "/mount/src/perfect5/perfect5.py", line 3772
             return bonus
 
         def _run_ko(q, main_zone):
-            # ------------------------------------------------------
-            # ワープ禁止（全体再ソート禁止）
-            # 距離のある追い抜き：隣同士の交換のみ + 交換コスト
-            #  ※重要：1パス中に同じ車が何回も抜けない（距離制限）
-            # ------------------------------------------------------
             q = [int(x) for x in (q or []) if str(x).isdigit()]
 
             seen = set()
@@ -3948,6 +3938,18 @@ File "/mount/src/perfect5/perfect5.py", line 3772
         note_sections.append("")
 
     _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
+
+    # ここまでで note_sections を確実に保持
+    globals()["note_sections"] = note_sections
+
+except Exception as e:
+    # 失敗しても note_sections にエラーだけ残す（クラッシュさせない）
+    ns = globals().get("note_sections", None)
+    if not isinstance(ns, list):
+        ns = []
+        globals()["note_sections"] = ns
+    ns.append(f"[ERROR] 出力生成で例外: {type(e).__name__}: {e}")
+    globals()["note_sections"] = ns
     # =========================================================
     # ＜短評＞（コンパクト）
     #   VTX/U は flow値ではなく「ラインFR」で表示（ズレ防止）
