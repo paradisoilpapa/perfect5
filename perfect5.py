@@ -4092,6 +4092,8 @@ except Exception as e:
     cd  = globals().get("_overtake_cross_delta", "—")
     lines_out.append(f"・d：直線{avm}m／抜き{pm}m／最大{mp}回／Δ{pd}／跨Δ{cd}")
 
+    lines_out.append(f"・d_check={globals().get('_overtake_max_passes','?')}")
+
     note_sections.extend(lines_out)
     note_sections.append(f"判定：{infer_eval_with_share(FRv, VTXv, Uv, share_pct)}")
     note_sections.append("")
