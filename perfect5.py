@@ -3913,12 +3913,14 @@ try:
             if pass_m > 55.0:
                 pass_m = 55.0
 
-            available_m = straight_m
+            bank_len = float(globals().get("bank_length", 400.0) or 400.0)
+            available_m = float(straight_m) + 0.35 * bank_len  # 最終局面の可用距離（直線換算）
+            
             MAX_PASSES = int(available_m // max(pass_m, 1e-9))
             if MAX_PASSES < 0:
                 MAX_PASSES = 0
-            if MAX_PASSES > 3:
-                MAX_PASSES = 3
+            if MAX_PASSES > 4:
+                MAX_PASSES = 4
 
             vals = [float(score_map.get(int(c), 0.0)) for c in order]
             if len(vals) >= 2:
