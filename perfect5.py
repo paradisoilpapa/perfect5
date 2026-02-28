@@ -4128,59 +4128,20 @@ except Exception as e:
     globals()["note_sections"] = ns
 
     
-    # =========================================================
+        # =========================================================
     # ＜短評＞（コンパクト）
     #   VTX/U は flow値ではなく「ラインFR」で表示（ズレ防止）
     # =========================================================
     lines_out = ["＜短評＞"]
 
-        # レースFR（外部 → flow → 混戦度）※try無し・安全版
-    _rf = (
-        globals().get("race_FR")
-        or globals().get("race_fr")
-        or globals().get("RACE_FR")
-        or globals().get("race_fr_value")
-        or 0.0
-    )
-
-    s_rf = str(_rf).strip()
-    raceFR = float(s_rf) if s_rf not in ("", "None", "nan", "NaN") else 0.0
-    if raceFR != raceFR:  # NaN対策
-        raceFR = 0.0
-
-    # 1) flow の FR
-    if raceFR <= 0.0:
-        raceFR = float(_flow.get("FR", 0.0) or 0.0) if isinstance(_flow, dict) else 0.0
-        if raceFR != raceFR:
-            raceFR = 0.0
-
-    # 2) それでも 0 の場合：ライン配分から混戦度（1 - 最大取り分）
-    if raceFR <= 0.0 and isinstance(line_fr_map, dict) and line_fr_map:
-        vals = []
-        for v in line_fr_map.values():
-            try:
-                fv = float(v)
-            except Exception:
-                fv = 0.0
-            if fv > 0.0 and fv == fv:
-                vals.append(fv)
-
-        total = sum(vals)
-        if total > 1e-12:
-            max_share = max(v / total for v in vals)
-            raceFR = 1.0 - max_share
-            if raceFR < 0.0:
-                raceFR = 0.0
-            if raceFR > 1.0:
-                raceFR = 1.0
-
+    # レースFRは flow 指標（_flow["FR"]）をそのまま表示（定義を混ぜない）
+    raceFR = float((_flow.get("FR", 0.0) if isinstance(_flow, dict) else 0.0) or 0.0)
     lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
 
     _vtx_fr = float(_lfr(VTX_line) if VTX_line else 0.0)
     _u_fr   = float(_lfr(U_line) if U_line else 0.0)
     lines_out.append(f"・VTXラインFR={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
     lines_out.append(f"・逆流ラインFR={_u_fr:.3f}［{_band3_u(_u_fr)}］")
-
     dbg = _flow.get("dbg", {})
     if isinstance(dbg, dict) and dbg:
         bs = float(dbg.get("blend_star", 0.0) or 0.0)
