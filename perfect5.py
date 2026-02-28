@@ -4134,37 +4134,47 @@ except Exception as e:
     # =========================================================
     lines_out = ["＜短評＞"]
 
-    # レースFR（外部に無いなら flow から）
-    try:
-        raceFR = float(
-            globals().get("race_FR")
-            or globals().get("race_fr")
-            or globals().get("RACE_FR")
-            or globals().get("race_fr_value")
-            or 0.0
-        )
-    except Exception:
+        # レースFR（外部 → flow → 混戦度）※try無し・安全版
+    _rf = (
+        globals().get("race_FR")
+        or globals().get("race_fr")
+        or globals().get("RACE_FR")
+        or globals().get("race_fr_value")
+        or 0.0
+    )
+
+    s_rf = str(_rf).strip()
+    raceFR = float(s_rf) if s_rf not in ("", "None", "nan", "NaN") else 0.0
+    if raceFR != raceFR:  # NaN対策
         raceFR = 0.0
 
+    # 1) flow の FR
     if raceFR <= 0.0:
-        # line_fr_map 由来の推定は（配分が正規化されている場合）0に張り付きやすいので、
-        # flow 指標の FR を優先して使う
-        raceFR = float((_flow.get("FR", 0.0) if isinstance(_flow, dict) else 0.0) or 0.0)
+        raceFR = float(_flow.get("FR", 0.0) or 0.0) if isinstance(_flow, dict) else 0.0
+        if raceFR != raceFR:
+            raceFR = 0.0
+
+    # 2) それでも 0 の場合：ライン配分から混戦度（1 - 最大取り分）
+    if raceFR <= 0.0 and isinstance(line_fr_map, dict) and line_fr_map:
+        vals = []
+        for v in line_fr_map.values():
+            try:
+                fv = float(v)
+            except Exception:
+                fv = 0.0
+            if fv > 0.0 and fv == fv:
+                vals.append(fv)
+
+        total = sum(vals)
+        if total > 1e-12:
+            max_share = max(v / total for v in vals)
+            raceFR = 1.0 - max_share
+            if raceFR < 0.0:
+                raceFR = 0.0
+            if raceFR > 1.0:
+                raceFR = 1.0
 
     lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
-
-    lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
-
-    axis_id = globals().get("axis_id", "—")
-    if axis_line:
-        try:
-            fnums = globals().get("_free_fmt_nums")
-            axis_txt = fnums(axis_line) if callable(fnums) else "".join(map(str, axis_line))
-        except Exception:
-            axis_txt = "".join(map(str, axis_line))
-        lines_out.append(
-            f"・軸ラインFR={axis_line_fr:.3f}（取り分≈{(share_pct or 0.0):.1f}%：軸={axis_id}／ライン={axis_txt}）"
-        )
 
     _vtx_fr = float(_lfr(VTX_line) if VTX_line else 0.0)
     _u_fr   = float(_lfr(U_line) if U_line else 0.0)
