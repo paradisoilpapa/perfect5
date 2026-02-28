@@ -1101,6 +1101,18 @@ def fatigue_extra(eff_laps: int, day_label: str, n_cars: int, race_class: str) -
 # === PATCH-L200:（以下そのまま） ==========================================
 # ...（あなたの last200_bonus 以降は変更なし）
 
+# sidebarの直後あたり（straight_length/style/wind_speedが確定した後）
+globals()["straight_length"] = float(straight_length)
+globals()["bank_length"]     = float(bank_length)
+globals()["bank_angle"]      = float(bank_angle)
+globals()["style"]           = float(style)
+globals()["wind_speed"]      = float(wind_speed)
+globals()["race_class"]      = str(race_class)
+globals()["n_cars"]          = int(n_cars)
+globals()["day_label"] = str(day_label)
+globals()["eff_laps"]  = int(eff_laps)
+    
+
 
 # ==============================
 # メイン：入力
@@ -3861,56 +3873,131 @@ try:
             return bonus
 
         def _run_ko(q, main_zone):
-            q = [int(x) for x in (q or []) if str(x).isdigit()]
+    # ======================================================
+    # 距離ベース（B）＋ KO閾値（C）
+    #   available_m = みなし直線[m]（サイドバー straight_length）
+    #   pass_m      = 追い抜き1回に必要な距離[m]（外回し込み）
+    #   MAX_PASSES  = floor(available_m / pass_m)
+    #   PASS_DELTA  = score_per_m * pass_m
+    # ======================================================
+    q = [int(x) for x in (q or []) if str(x).isdigit()]
 
-            seen = set()
-            order = []
-            for c in q:
-                if c not in seen:
-                    seen.add(c)
-                    order.append(c)
+    # 骨格：qの出現順を保持（重複除去）
+    seen = set()
+    order = []
+    for c in q:
+        if c not in seen:
+            seen.add(c)
+            order.append(c)
 
-            tail = [int(c) for c in score_map.keys() if int(c) not in seen]
-            tail.sort(key=lambda c: float(score_map.get(int(c), 0.0)), reverse=True)
-            order.extend(tail)
+    # qにいない車は末尾へ（骨格を壊さない）
+    tail = [int(c) for c in score_map.keys() if int(c) not in seen]
+    tail.sort(key=lambda c: float(score_map.get(int(c), 0.0)), reverse=True)
+    order.extend(tail)
 
-            def _final_at(car, i):
-                base = float(score_map.get(int(car), 0.0))
-                return base + _pos_adj(int(i)) + _fr_bonus_for_car(int(car), main_zone)
+    # ---- サイドバー値（globals） ----
+    straight_m = float(globals().get("straight_length", 60.0) or 60.0)  # みなし直線[m]
+    style = float(globals().get("style", 0.0) or 0.0)                  # -1(差し)〜+1(先行)
+    wind_ms = float(globals().get("wind_speed", 0.0) or 0.0)           # 風速[m/s]
+    race_class = str(globals().get("race_class", "Ａ級") or "Ａ級")
 
-            MAX_PASSES = 3
-            BASE_EPS = 0.010
-            COST_STEP = 0.012
+    # クラス補正（あなたのsidebarと同等の思想で最低限）
+    CLASS_SPREAD = {"Ｓ級": 1.00, "Ａ級": 0.90, "Ａ級チャレンジ": 0.80, "ガールズ": 0.85}
+    spread = float(CLASS_SPREAD.get(race_class, 0.90))
 
-            overtake_cnt = {int(c): 0 for c in order}
+    # ---- KO+補正（位置・FR） ----
+    def _final_at(car, i):
+        base = float(score_map.get(int(car), 0.0))
+        return base + _pos_adj(int(i)) + _fr_bonus_for_car(int(car), main_zone)
 
-            for _ in range(MAX_PASSES):
-                swapped = False
-                n = len(order)
-                moved_this_pass = set()
+    # ---- pass_m（追い抜き1回に必要な距離[m]）を定義（B）
+    # 直線が長いほど追い抜き区間は確保できるが、外回し・壁で一定コストがある、という置き方
+    # 先行寄り(style>0)ほど追い抜きが難しい → 必要距離を増やす
+    # 風が強いほど外がキツい → 必要距離を増やす
+    pass_m = 14.0 + 0.35 * straight_m
+    pass_m *= (1.0 + 0.25 * max(0.0, style))        # 先行寄りで増
+    pass_m *= (1.0 + 0.03 * max(0.0, wind_ms - 3))  # 3m/s超で増
+    # 上下限（暴走防止）
+    if pass_m < 18.0:
+        pass_m = 18.0
+    if pass_m > 55.0:
+        pass_m = 55.0
 
-                for i in range(n - 1):
-                    a = order[i]
-                    b = order[i + 1]
+    available_m = straight_m
+    MAX_PASSES = int(available_m // max(pass_m, 1e-9))
+    if MAX_PASSES < 0:
+        MAX_PASSES = 0
+    # 7車想定で過剰な多段抜きを抑制（必要なら上限を調整）
+    if MAX_PASSES > 3:
+        MAX_PASSES = 3
 
-                    if b in moved_this_pass:
-                        continue
+    # ---- score_per_m（1mあたり必要KO差）を定義（C）
+    # KOのスケールは開催や級で変わるため、「スコア分布の幅」を使って距離換算する
+    vals = [float(score_map.get(int(c), 0.0)) for c in order]
+    if len(vals) >= 2:
+        mu = sum(vals) / float(len(vals))
+        var = sum((v - mu) ** 2 for v in vals) / float(len(vals))
+        sigma = var ** 0.5
+    else:
+        sigma = 0.05
 
-                    sa = _final_at(a, i)
-                    sb = _final_at(b, i + 1)
+    # 直線1本（available_m）で “スコア差 sigma の何割” 動けるか、を係数化
+    # spread が小さいほど（チャレンジ等）動きやすい → 1mあたり必要差を下げる
+    base_k = 0.70 / max(available_m, 1e-9)
+    score_per_m = base_k * sigma * (1.0 / max(spread, 1e-6))
 
-                    need = BASE_EPS + COST_STEP * float(overtake_cnt.get(b, 0))
+    PASS_DELTA = score_per_m * pass_m
 
-                    if sb >= sa + need:
-                        order[i], order[i + 1] = b, a
-                        overtake_cnt[b] = overtake_cnt.get(b, 0) + 1
-                        moved_this_pass.add(b)
-                        swapped = True
+    # ゾーン跨ぎ（壁）の追加距離→KO差（跨ぎは可能だが重い）
+    cross_penalty_m = 0.30 * pass_m
+    CROSS_DELTA = score_per_m * cross_penalty_m
 
-                if not swapped:
-                    break
+    # 抜けば抜くほど踏み直しでキツい（1回ごと加重）
+    fatigue_delta = 0.35 * PASS_DELTA
 
-            return order
+    overtake_cnt = {int(c): 0 for c in order}
+
+    # ---- 隣交換のみ（距離の最小単位）、MAX_PASSES回だけ“直線区間”を走らせる ----
+    for _ in range(MAX_PASSES):
+        swapped = False
+        n = len(order)
+        moved_this_pass = set()  # 1パス中に同一車が連続で抜けない
+
+        for i in range(n - 1):
+            a = order[i]
+            b = order[i + 1]
+
+            if b in moved_this_pass:
+                continue
+
+            sa = _final_at(a, i)
+            sb = _final_at(b, i + 1)
+
+            need = PASS_DELTA + fatigue_delta * float(overtake_cnt.get(b, 0))
+
+            # ゾーン跨ぎは“距離が余計に要る”→必要KO差を上乗せ
+            za = _car_zone_map.get(int(a), "その他")
+            zb = _car_zone_map.get(int(b), "その他")
+            if za != zb:
+                need += CROSS_DELTA
+
+            if sb >= sa + need:
+                order[i], order[i + 1] = b, a
+                overtake_cnt[b] = overtake_cnt.get(b, 0) + 1
+                moved_this_pass.add(b)
+                swapped = True
+
+        if not swapped:
+            break
+
+    # （任意）デバッグ用に距離条件を残すなら、globalsへ
+    globals()["_overtake_available_m"] = float(available_m)
+    globals()["_overtake_pass_m"] = float(pass_m)
+    globals()["_overtake_max_passes"] = int(MAX_PASSES)
+    globals()["_overtake_pass_delta"] = float(PASS_DELTA)
+    globals()["_overtake_cross_delta"] = float(CROSS_DELTA)
+
+    return order
 
         outs = {}
         for pname, svr in _PATTERNS:
