@@ -3941,7 +3941,11 @@ try:
             v_ref = float(VREF_KMH.get(race_class, 64.0)) / 3.6  # m/s
 
             # ---- スコア→速度：zで圧縮（暴走防止）----
-            k_speed = float(globals().get("ko_k_speed", 0.010) or 0.010)  # 0.005〜0.020
+            # 333/335は終盤時間が短く gain_m が出にくいので少し強める
+            if bank_len <= 335:
+                k_speed = float(globals().get("ko_k_speed_333", 0.014) or 0.014)
+            else:
+                k_speed = float(globals().get("ko_k_speed", 0.011) or 0.011)
             def _v_from_score(sc: float) -> float:
                 z = (float(sc) - float(mu)) / float(sigma)
                 if z > 2.0:
