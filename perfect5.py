@@ -4072,43 +4072,42 @@ try:
     _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
     # ここまでで note_sections を確実に保持
 
+        # =========================================================
+    # ＜短評＞（復活：KOの成否に関係なく表示）
     # =========================================================
-# ＜短評＞（復活：KOの成否に関係なく表示）
-# =========================================================
-try:
-    lines_out = ["＜短評＞"]
-
-    # レースFR（無ければ flow から）
-    raceFR = float(globals().get("race_FR") or globals().get("race_fr") or globals().get("RACE_FR") or 0.0)
-    if raceFR <= 0.0:
-        raceFR = float(FRv or 0.0)
-
-    lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
-
-    dbg = {}
     try:
+        lines_out = ["＜短評＞"]
+
+        # レースFR（無ければ flow から）
+        raceFR = float(
+            globals().get("race_FR")
+            or globals().get("race_fr")
+            or globals().get("RACE_FR")
+            or 0.0
+        )
+        if raceFR <= 0.0:
+            raceFR = float(FRv or 0.0)
+
+        lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
+
         dbg = (_flow.get("dbg", {}) if isinstance(_flow, dict) else {}) or {}
+        if isinstance(dbg, dict) and dbg:
+            bs = float(dbg.get("blend_star", 0.0) or 0.0)
+            bn = float(dbg.get("blend_none", 0.0) or 0.0)
+            sd = float(dbg.get("sd", 0.0) or 0.0)
+            nu = float(dbg.get("nu", 0.0) or 0.0)
+
+            star_txt = "先頭負担:強" if bs <= -0.60 else ("先頭負担:中" if bs <= -0.30 else "先頭負担:小")
+            none_txt = "無印押上げ:強" if bn >= 1.20 else ("無印押上げ:中" if bn >= 0.60 else "無印押上げ:小")
+            sd_txt   = "ライン偏差:大" if sd >= 0.60 else ("ライン偏差:中" if sd >= 0.30 else "ライン偏差:小")
+            nu_txt   = "正規化:小" if 0.90 <= nu <= 1.10 else "正規化:補正強"
+
+            lines_out.append(f"・内訳要約：{star_txt}／{none_txt}／{sd_txt}／{nu_txt}")
+
+        note_sections.extend(lines_out)
+        note_sections.append("")
     except Exception:
-        dbg = {}
-
-    if isinstance(dbg, dict) and dbg:
-        bs = float(dbg.get("blend_star", 0.0) or 0.0)
-        bn = float(dbg.get("blend_none", 0.0) or 0.0)
-        sd = float(dbg.get("sd", 0.0) or 0.0)
-        nu = float(dbg.get("nu", 0.0) or 0.0)
-
-        star_txt = "先頭負担:強" if bs <= -0.60 else ("先頭負担:中" if bs <= -0.30 else "先頭負担:小")
-        none_txt = "無印押上げ:強" if bn >= 1.20 else ("無印押上げ:中" if bn >= 0.60 else "無印押上げ:小")
-        sd_txt   = "ライン偏差:大" if sd >= 0.60 else ("ライン偏差:中" if sd >= 0.30 else "ライン偏差:小")
-        nu_txt   = "正規化:小" if 0.90 <= nu <= 1.10 else "正規化:補正強"
-
-        lines_out.append(f"・内訳要約：{star_txt}／{none_txt}／{sd_txt}／{nu_txt}")
-
-    note_sections.extend(lines_out)
-    note_sections.append("")  # 1行空け
-except Exception:
-    # 短評だけ失敗しても他を止めない
-    pass
+        pass
 
         # --- d（距離/追い抜きデバッグ）短評とは無関係に必ず表示 ---
     note_sections.append(
