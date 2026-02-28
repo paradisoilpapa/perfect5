@@ -4150,15 +4150,10 @@ except Exception as e:
     except Exception:
         raceFR = 0.0
 
-    if raceFR <= 0.0:
-        _total = sum(line_fr_map.values()) if isinstance(line_fr_map, dict) else 0.0
-        ps = [
-            (v / _total)
-            for v in (line_fr_map.values() if isinstance(line_fr_map, dict) else [])
-            if _total > 0 and v > 0
-        ]
-        max_share = max(ps) if ps else 0.0
-        raceFR = max(0.0, min(1.0, 1.0 - max_share))
+        if raceFR <= 0.0:
+        # line_fr_map 由来の推定は（配分が正規化されている場合）0に張り付きやすいので、
+        # flow 指標の FR を優先して使う
+        raceFR = float((_flow.get("FR", 0.0) if isinstance(_flow, dict) else 0.0) or 0.0)
 
     lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
 
