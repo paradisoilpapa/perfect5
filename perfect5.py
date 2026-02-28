@@ -3902,28 +3902,34 @@ def _run_ko(q, main_zone):
 
     # 4) 隣同士の交換を複数パス回す（バブル的）
     #    ※全体ソートは絶対にしない＝ワープ禁止
-    for _ in range(MAX_PASSES):
-        swapped = False
-        n = len(order)
+    # 4) 隣同士の交換を複数パス回す（距離あり）
+#    ※重要：1パス中に同じ車が何回も抜けないように制限（ワープ殺し）
+for _ in range(MAX_PASSES):
+    swapped = False
+    n = len(order)
+    moved_this_pass = set()  # このパスで1回でも抜いた車は、もう抜けない
 
-        for i in range(n - 1):
-            a = order[i]      # 前
-            b = order[i + 1]  # 後（ここが前を抜けるか？）
+    for i in range(n - 1):
+        a = order[i]      # 前
+        b = order[i + 1]  # 後（ここが前を抜けるか？）
 
-            sa = _final_at(a, i)
-            sb = _final_at(b, i + 1)
+        # b はこのパスで既に抜いていたら、これ以上は前に行けない（距離制限）
+        if b in moved_this_pass:
+            continue
 
-            # b が a を抜くための必要差（距離コスト）
-            need = BASE_EPS + COST_STEP * float(overtake_cnt.get(b, 0))
+        sa = _final_at(a, i)
+        sb = _final_at(b, i + 1)
 
-            # 後ろ(b)が十分強いなら、1台だけ抜く（=隣交換）
-            if sb >= sa + need:
-                order[i], order[i + 1] = b, a
-                overtake_cnt[b] = overtake_cnt.get(b, 0) + 1
-                swapped = True
+        need = BASE_EPS + COST_STEP * float(overtake_cnt.get(b, 0))
 
-        if not swapped:
-            break
+        if sb >= sa + need:
+            order[i], order[i + 1] = b, a
+            overtake_cnt[b] = overtake_cnt.get(b, 0) + 1
+            moved_this_pass.add(b)
+            swapped = True
+
+    if not swapped:
+        break
 
     return order
 
