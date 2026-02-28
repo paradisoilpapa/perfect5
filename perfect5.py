@@ -3971,8 +3971,11 @@ try:
             MAX_PASSES = int(gain_m // max(pass_m, 1e-9))
             if MAX_PASSES < 1:
                 MAX_PASSES = 1
-            if MAX_PASSES > 4:
-                MAX_PASSES = 4
+
+            # 333/335は最大2、その他は最大3（過剰シャッフル防止）
+            cap = 2 if bank_len <= 335 else 3
+            if MAX_PASSES > cap:
+                MAX_PASSES = cap
 
             # ---- PASS_DELTAの正規化：available_m依存を弱めて安定化 ----
             base_k = float(globals().get("ko_base_k", 0.040) or 0.040)  # 0.025〜0.060
