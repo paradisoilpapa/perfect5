@@ -4138,7 +4138,7 @@ except Exception as e:
     # =========================================================
     lines_out = ["＜短評＞"]
 
-    # レースFR（外部に無いなら line_fr_map から推定）
+    # レースFR（外部に無いなら flow から）
     try:
         raceFR = float(
             globals().get("race_FR")
@@ -4150,10 +4150,12 @@ except Exception as e:
     except Exception:
         raceFR = 0.0
 
-        if raceFR <= 0.0:
+    if raceFR <= 0.0:
         # line_fr_map 由来の推定は（配分が正規化されている場合）0に張り付きやすいので、
         # flow 指標の FR を優先して使う
         raceFR = float((_flow.get("FR", 0.0) if isinstance(_flow, dict) else 0.0) or 0.0)
+
+    lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
 
     lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
 
