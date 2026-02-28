@@ -4003,6 +4003,18 @@ try:
 
     _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
     # ここまでで note_sections を確実に保持
+
+        # --- d（距離/追い抜きデバッグ）短評とは無関係に必ず表示 ---
+    note_sections.append(
+        "・d：直線{}m／抜き{}m／最大{}回／Δ{}／跨Δ{}".format(
+            globals().get("_overtake_available_m", "—"),
+            globals().get("_overtake_pass_m", "—"),
+            globals().get("_overtake_max_passes", "—"),
+            globals().get("_overtake_pass_delta", "—"),
+            globals().get("_overtake_cross_delta", "—"),
+        )
+    )
+    
     globals()["note_sections"] = note_sections
 
 except Exception as e:
