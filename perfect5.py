@@ -4073,6 +4073,17 @@ except Exception as e:
         nu_txt   = "正規化:小" if 0.90 <= nu <= 1.10 else "正規化:補正強"
         lines_out.append(f"・内訳要約：{star_txt}／{none_txt}／{sd_txt}／{nu_txt}")
 
+    # --- 距離/追い抜きデバッグ（表示用） ---
+    try:
+        avm = float(globals().get("_overtake_available_m", 0.0) or 0.0)
+        pm  = float(globals().get("_overtake_pass_m", 0.0) or 0.0)
+        mp  = int(globals().get("_overtake_max_passes", 0) or 0)
+        pd  = float(globals().get("_overtake_pass_delta", 0.0) or 0.0)
+        cd  = float(globals().get("_overtake_cross_delta", 0.0) or 0.0)
+        lines_out.append(f"・d：直線{avm:.1f}m／抜き{pm:.1f}m／最大{mp}回／Δ{pd:.4f}／跨Δ{cd:.4f}")
+    except Exception:
+        lines_out.append("・d：—")
+
     note_sections.extend(lines_out)
     note_sections.append(f"判定：{infer_eval_with_share(FRv, VTXv, Uv, share_pct)}")
     note_sections.append("")
