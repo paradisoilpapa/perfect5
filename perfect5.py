@@ -3923,7 +3923,8 @@ try:
             # ---- available_m: bank_len を “差分だけ” 反映して飽和を減らす ----
             bank_len = float(globals().get("bank_length", 400.0) or 400.0)
             base_bank = 400.0
-            bank_term = 0.20 * base_bank + 0.20 * (bank_len - base_bank)   # 400→80 / 500→100 / 333→66.6
+            # bank_len差分の反映を少し強める（500が1回に張り付くのを緩和）
+            bank_term = 0.20 * base_bank + 0.30 * (bank_len - base_bank)
             available_m = float(straight_m) + bank_term
 
             # ---- スコア分布（sigma）----
