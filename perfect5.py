@@ -4084,6 +4084,14 @@ except Exception as e:
     except Exception:
         lines_out.append("・d：—")
 
+        # --- 距離/追い抜きデバッグ（try無し） ---
+    avm = globals().get("_overtake_available_m", "—")
+    pm  = globals().get("_overtake_pass_m", "—")
+    mp  = globals().get("_overtake_max_passes", "—")
+    pd  = globals().get("_overtake_pass_delta", "—")
+    cd  = globals().get("_overtake_cross_delta", "—")
+    lines_out.append(f"・d：直線{avm}m／抜き{pm}m／最大{mp}回／Δ{pd}／跨Δ{cd}")
+
     note_sections.extend(lines_out)
     note_sections.append(f"判定：{infer_eval_with_share(FRv, VTXv, Uv, share_pct)}")
     note_sections.append("")
