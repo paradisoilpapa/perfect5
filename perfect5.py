@@ -3963,10 +3963,10 @@ try:
 
             gain_m = max(0.0, (float(v_fast) - float(v_mid)) * float(t_final))
 
-            # ---- MAX_PASSES：距離割りではなく「相対距離割り」----
+            # ---- MAX_PASSES：相対距離割り（最低1回保証）----
             MAX_PASSES = int(gain_m // max(pass_m, 1e-9))
-            if MAX_PASSES < 0:
-                MAX_PASSES = 0
+            if MAX_PASSES < 1:
+                MAX_PASSES = 1
             if MAX_PASSES > 4:
                 MAX_PASSES = 4
 
