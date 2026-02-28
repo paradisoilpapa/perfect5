@@ -4072,38 +4072,43 @@ try:
     _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
     # ここまでで note_sections を確実に保持
 
-        # =========================================================
-    # ＜短評＞（復活：KOの成否に関係なく表示）
     # =========================================================
-    try:
-        lines_out = ["＜短評＞"]
+    # ＜短評＞（KOの成否に関係なく表示）※完全tryゼロ
+    # =========================================================
+    lines_out = ["＜短評＞"]
 
-            # レースFR（外部 → flow → ライン配分の混戦度 で補完）
-    try:
-        raceFR = float(
-            globals().get("race_FR")
-            or globals().get("race_fr")
-            or globals().get("RACE_FR")
-            or globals().get("race_fr_value")
-            or 0.0
-        )
-    except Exception:
+    # レースFR：flowのFR（過去出力と同じ定義）
+    raceFR = float(_flow.get("FR", 0.0) or 0.0) if isinstance(_flow, dict) else 0.0
+    if raceFR != raceFR:  # NaN
         raceFR = 0.0
 
-    # 1) 外部が無ければ flow の FR
-    if raceFR <= 0.0:
-        raceFR = float((_flow.get("FR", 0.0) if isinstance(_flow, dict) else 0.0) or 0.0)
+    # それでも0なら「混戦度」= 1 - 最大取り分（line_fr_mapがあれば）
+    if raceFR <= 0.0 and isinstance(line_fr_map, dict) and line_fr_map:
+        vals = []
+        for v in line_fr_map.values():
+            s = str(v).strip()
+            # floatにできそうなものだけ通す（失敗は0扱い）
+            fv = float(s) if s not in ("", "None", "nan", "NaN") else 0.0
+            if fv > 0.0 and fv == fv:
+                vals.append(fv)
+        total = sum(vals)
+        if total > 1e-12:
+            max_share = max(fv / total for fv in vals)
+            raceFR = 1.0 - max_share
+            if raceFR < 0.0:
+                raceFR = 0.0
+            if raceFR > 1.0:
+                raceFR = 1.0
 
-    # 2) それでも 0 に張り付く場合：ライン配分から「混戦度」を推定（1 - 最大取り分）
-    if raceFR <= 0.0:
-        try:
-            _total = sum(float(v) for v in line_fr_map.values()) if isinstance(line_fr_map, dict) else 0.0
-            if _total > 1e-12:
-                shares = [float(v) / _total for v in line_fr_map.values() if float(v) > 0.0]
-                max_share = max(shares) if shares else 0.0
-                raceFR = max(0.0, min(1.0, 1.0 - max_share))
-        except Exception:
-            pass
+    lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
+
+    _vtx_fr = float(_lfr(VTX_line) if VTX_line else 0.0)
+    _u_fr   = float(_lfr(U_line) if U_line else 0.0)
+    lines_out.append(f"・VTXラインFR={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
+    lines_out.append(f"・逆流ラインFR={_u_fr:.3f}［{_band3_u(_u_fr)}］")
+
+    note_sections.extend(lines_out)
+    note_sections.append("")
 
         # --- d（距離/追い抜きデバッグ）短評とは無関係に必ず表示 ---
     note_sections.append(
