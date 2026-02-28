@@ -3773,244 +3773,235 @@ try:
     note_sections.append("")
 
     # =========================================================
-# 最終ジャン想定隊列 → KO（6パターン）
-#   ワープ禁止：全体再ソート禁止
-#   距離：隣同士の交換のみ + 交換コスト
-#   重要：1パス中に同一車が何回も抜けない
-# =========================================================
-def _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr):
-    def _digits_of_line(ln):
-        s = "".join(ch for ch in str(ln) if ch.isdigit())
-        return [int(ch) for ch in s] if s else []
+    # 最終ジャン想定隊列 → KO（6パターン）
+    #   ワープ禁止：全体再ソート禁止
+    #   距離：隣同士の交換のみ + 交換コスト
+    #   重要：1パス中に同一車が何回も抜けない
+    # =========================================================
+    def _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr):
+        def _digits_of_line(ln):
+            s = "".join(ch for ch in str(ln) if ch.isdigit())
+            return [int(ch) for ch in s] if s else []
 
-    def _norm_line(ln):
-        return "".join(ch for ch in str(ln) if ch.isdigit())
+        def _norm_line(ln):
+            return "".join(ch for ch in str(ln) if ch.isdigit())
 
-    _PATTERNS = [
-        ("順流→渦→逆流", ["順流", "渦", "逆流"]),
-        ("順流→逆流→渦", ["順流", "逆流", "渦"]),
-        ("渦→順流→逆流", ["渦", "順流", "逆流"]),
-        ("渦→逆流→順流", ["渦", "逆流", "順流"]),
-        ("逆流→順流→渦", ["逆流", "順流", "渦"]),
-        ("逆流→渦→順流", ["逆流", "渦", "順流"]),
-    ]
+        _PATTERNS = [
+            ("順流→渦→逆流", ["順流", "渦", "逆流"]),
+            ("順流→逆流→渦", ["順流", "逆流", "渦"]),
+            ("渦→順流→逆流", ["渦", "順流", "逆流"]),
+            ("渦→逆流→順流", ["渦", "逆流", "順流"]),
+            ("逆流→順流→渦", ["逆流", "順流", "渦"]),
+            ("逆流→渦→順流", ["逆流", "渦", "順流"]),
+        ]
 
-    def _infer_line_zone(ln):
-        s = _norm_line(ln)
-        if s and FR_line and s == _norm_line(FR_line):
-            return "順流"
-        if VTX_line and s == _norm_line(VTX_line):
-            return "渦"
-        if s and U_line and s == _norm_line(U_line):
-            return "逆流"
-        return "その他"
+        def _infer_line_zone(ln):
+            s = _norm_line(ln)
+            if s and FR_line and s == _norm_line(FR_line):
+                return "順流"
+            if VTX_line and s == _norm_line(VTX_line):
+                return "渦"
+            if s and U_line and s == _norm_line(U_line):
+                return "逆流"
+            return "その他"
 
-    def _queue_for_pattern(lines, svr_order):
-        lines = list(lines or [])
-        bucket = {"順流": [], "渦": [], "逆流": [], "その他": []}
-        for ln in lines:
-            bucket[_infer_line_zone(ln)].append(ln)
+        def _queue_for_pattern(lines, svr_order):
+            lines = list(lines or [])
+            bucket = {"順流": [], "渦": [], "逆流": [], "その他": []}
+            for ln in lines:
+                bucket[_infer_line_zone(ln)].append(ln)
 
-        queue = []
-        for z in (svr_order or ["順流", "渦", "逆流"]):
-            xs = sorted(bucket.get(z, []), key=lambda x: _lfr(x), reverse=True)
+            queue = []
+            for z in (svr_order or ["順流", "渦", "逆流"]):
+                xs = sorted(bucket.get(z, []), key=lambda x: _lfr(x), reverse=True)
+                for ln in xs:
+                    queue.extend(_digits_of_line(ln))
+
+            xs = sorted(bucket.get("その他", []), key=lambda x: _lfr(x), reverse=True)
             for ln in xs:
                 queue.extend(_digits_of_line(ln))
 
-        xs = sorted(bucket.get("その他", []), key=lambda x: _lfr(x), reverse=True)
-        for ln in xs:
-            queue.extend(_digits_of_line(ln))
+            if not queue:
+                for ln in lines:
+                    queue.extend(_digits_of_line(ln))
+            return queue
 
-        if not queue:
-            for ln in lines:
-                queue.extend(_digits_of_line(ln))
-        return queue
+        def _build_car_zone_map(lines):
+            m = {}
+            for ln in (lines or []):
+                z = _infer_line_zone(ln)
+                for c in _digits_of_line(ln):
+                    m[int(c)] = z
+            return m
 
-    def _build_car_zone_map(lines):
-        m = {}
-        for ln in (lines or []):
-            z = _infer_line_zone(ln)
-            for c in _digits_of_line(ln):
-                m[int(c)] = z
-        return m
+        _car_zone_map = _build_car_zone_map(all_lines)
 
-    _car_zone_map = _build_car_zone_map(all_lines)
+        _car_line_size = {}
+        for ln in (all_lines or []):
+            ds = _digits_of_line(ln)
+            sz = len(ds)
+            for c in ds:
+                _car_line_size[int(c)] = sz if sz > 0 else 1
 
-    _car_line_size = {}
-    for ln in (all_lines or []):
-        ds = _digits_of_line(ln)
-        sz = len(ds)
-        for c in ds:
-            _car_line_size[int(c)] = sz if sz > 0 else 1
+        def _pos_adj(i):
+            if i == 0:
+                return -0.040
+            if i == 1:
+                return +0.020
+            return 0.0
 
-    def _pos_adj(i):
-        if i == 0:
-            return -0.040
-        if i == 1:
-            return +0.020
-        return 0.0
+        _FR_K_MAIN = 0.18
+        _FR_K_SUB = 0.06
+        _FR_BONUS_CAP = 0.06
 
-    _FR_K_MAIN = 0.18
-    _FR_K_SUB = 0.06
-    _FR_BONUS_CAP = 0.06
+        def _fr_bonus_for_car(car, main_zone):
+            z = _car_zone_map.get(int(car), "その他")
+            z_fr = {
+                "順流": float(_lfr(FR_line) if FR_line else 0.0),
+                "渦":   float(_lfr(VTX_line) if VTX_line else 0.0),
+                "逆流": float(_lfr(U_line) if U_line else 0.0),
+            }.get(z, 0.0)
 
-    def _fr_bonus_for_car(car, main_zone):
-        z = _car_zone_map.get(int(car), "その他")
-        z_fr = {
-            "順流": float(_lfr(FR_line) if FR_line else 0.0),
-            "渦":   float(_lfr(VTX_line) if VTX_line else 0.0),
-            "逆流": float(_lfr(U_line) if U_line else 0.0),
-        }.get(z, 0.0)
+            k = _FR_K_MAIN if z == main_zone else _FR_K_SUB
+            sz = float(_car_line_size.get(int(car), 1) or 1.0)
 
-        k = _FR_K_MAIN if z == main_zone else _FR_K_SUB
-        sz = float(_car_line_size.get(int(car), 1) or 1.0)
+            bonus = (k * z_fr) / sz
+            if bonus > _FR_BONUS_CAP:
+                bonus = _FR_BONUS_CAP
+            if bonus < 0.0:
+                bonus = 0.0
+            return bonus
 
-        bonus = (k * z_fr) / sz
-        if bonus > _FR_BONUS_CAP:
-            bonus = _FR_BONUS_CAP
-        if bonus < 0.0:
-            bonus = 0.0
-        return bonus
+        def _run_ko(q, main_zone):
+            # ======================================================
+            # 距離ベース（B）＋ KO閾値（C）
+            #   available_m = みなし直線[m]（サイドバー straight_length）
+            #   pass_m      = 追い抜き1回に必要な距離[m]（外回し込み）
+            #   MAX_PASSES  = floor(available_m / pass_m)
+            #   PASS_DELTA  = score_per_m * pass_m
+            # ======================================================
+            q = [int(x) for x in (q or []) if str(x).isdigit()]
 
-    def _run_ko(q, main_zone):
-        # ======================================================
-        # 距離ベース（B）＋ KO閾値（C）
-        #   available_m = みなし直線[m]（サイドバー straight_length）
-        #   pass_m      = 追い抜き1回に必要な距離[m]（外回し込み）
-        #   MAX_PASSES  = floor(available_m / pass_m)
-        #   PASS_DELTA  = score_per_m * pass_m
-        # ======================================================
-        q = [int(x) for x in (q or []) if str(x).isdigit()]
+            seen = set()
+            order = []
+            for c in q:
+                if c not in seen:
+                    seen.add(c)
+                    order.append(c)
 
-        # 骨格：qの出現順を保持（重複除去）
-        seen = set()
-        order = []
-        for c in q:
-            if c not in seen:
-                seen.add(c)
-                order.append(c)
+            tail = [int(c) for c in score_map.keys() if int(c) not in seen]
+            tail.sort(key=lambda c: float(score_map.get(int(c), 0.0)), reverse=True)
+            order.extend(tail)
 
-        # qにいない車は末尾へ（骨格を壊さない）
-        tail = [int(c) for c in score_map.keys() if int(c) not in seen]
-        tail.sort(key=lambda c: float(score_map.get(int(c), 0.0)), reverse=True)
-        order.extend(tail)
+            straight_m = float(globals().get("straight_length", 60.0) or 60.0)
+            style = float(globals().get("style", 0.0) or 0.0)
+            wind_ms = float(globals().get("wind_speed", 0.0) or 0.0)
+            race_class = str(globals().get("race_class", "Ａ級") or "Ａ級")
 
-        # ---- サイドバー値（globals） ----
-        straight_m = float(globals().get("straight_length", 60.0) or 60.0)  # みなし直線[m]
-        style = float(globals().get("style", 0.0) or 0.0)                   # -1(差し)〜+1(先行)
-        wind_ms = float(globals().get("wind_speed", 0.0) or 0.0)            # 風速[m/s]
-        race_class = str(globals().get("race_class", "Ａ級") or "Ａ級")
+            CLASS_SPREAD = {"Ｓ級": 1.00, "Ａ級": 0.90, "Ａ級チャレンジ": 0.80, "ガールズ": 0.85}
+            spread = float(CLASS_SPREAD.get(race_class, 0.90))
 
-        # クラス補正（最低限）
-        CLASS_SPREAD = {"Ｓ級": 1.00, "Ａ級": 0.90, "Ａ級チャレンジ": 0.80, "ガールズ": 0.85}
-        spread = float(CLASS_SPREAD.get(race_class, 0.90))
+            def _final_at(car, i):
+                base = float(score_map.get(int(car), 0.0))
+                return base + _pos_adj(int(i)) + _fr_bonus_for_car(int(car), main_zone)
 
-        # ---- KO+補正（位置・FR） ----
-        def _final_at(car, i):
-            base = float(score_map.get(int(car), 0.0))
-            return base + _pos_adj(int(i)) + _fr_bonus_for_car(int(car), main_zone)
+            pass_m = 14.0 + 0.35 * straight_m
+            pass_m *= (1.0 + 0.25 * max(0.0, style))
+            pass_m *= (1.0 + 0.03 * max(0.0, wind_ms - 3))
+            if pass_m < 18.0:
+                pass_m = 18.0
+            if pass_m > 55.0:
+                pass_m = 55.0
 
-        # ---- pass_m（追い抜き1回に必要な距離[m]） ----
-        pass_m = 14.0 + 0.35 * straight_m
-        pass_m *= (1.0 + 0.25 * max(0.0, style))
-        pass_m *= (1.0 + 0.03 * max(0.0, wind_ms - 3))
-        if pass_m < 18.0:
-            pass_m = 18.0
-        if pass_m > 55.0:
-            pass_m = 55.0
+            available_m = straight_m
+            MAX_PASSES = int(available_m // max(pass_m, 1e-9))
+            if MAX_PASSES < 0:
+                MAX_PASSES = 0
+            if MAX_PASSES > 3:
+                MAX_PASSES = 3
 
-        available_m = straight_m
-        MAX_PASSES = int(available_m // max(pass_m, 1e-9))
-        if MAX_PASSES < 0:
-            MAX_PASSES = 0
-        if MAX_PASSES > 3:
-            MAX_PASSES = 3
+            vals = [float(score_map.get(int(c), 0.0)) for c in order]
+            if len(vals) >= 2:
+                mu = sum(vals) / float(len(vals))
+                var = sum((v - mu) ** 2 for v in vals) / float(len(vals))
+                sigma = var ** 0.5
+            else:
+                sigma = 0.05
 
-        # ---- score_per_m（1mあたり必要KO差） ----
-        vals = [float(score_map.get(int(c), 0.0)) for c in order]
-        if len(vals) >= 2:
-            mu = sum(vals) / float(len(vals))
-            var = sum((v - mu) ** 2 for v in vals) / float(len(vals))
-            sigma = var ** 0.5
-        else:
-            sigma = 0.05
+            base_k = 0.70 / max(available_m, 1e-9)
+            score_per_m = base_k * sigma * (1.0 / max(spread, 1e-6))
 
-        base_k = 0.70 / max(available_m, 1e-9)
-        score_per_m = base_k * sigma * (1.0 / max(spread, 1e-6))
+            PASS_DELTA = score_per_m * pass_m
+            CROSS_DELTA = score_per_m * (0.30 * pass_m)
+            fatigue_delta = 0.35 * PASS_DELTA
 
-        PASS_DELTA = score_per_m * pass_m
-        cross_penalty_m = 0.30 * pass_m
-        CROSS_DELTA = score_per_m * cross_penalty_m
-        fatigue_delta = 0.35 * PASS_DELTA
+            overtake_cnt = {int(c): 0 for c in order}
 
-        overtake_cnt = {int(c): 0 for c in order}
+            for _ in range(MAX_PASSES):
+                swapped = False
+                n = len(order)
+                moved_this_pass = set()
 
-        # ---- 隣交換のみ、MAX_PASSES 回だけ ----
-        for _ in range(MAX_PASSES):
-            swapped = False
-            n = len(order)
-            moved_this_pass = set()
+                for i in range(n - 1):
+                    a = order[i]
+                    b = order[i + 1]
 
-            for i in range(n - 1):
-                a = order[i]
-                b = order[i + 1]
+                    if b in moved_this_pass:
+                        continue
 
-                if b in moved_this_pass:
-                    continue
+                    sa = _final_at(a, i)
+                    sb = _final_at(b, i + 1)
 
-                sa = _final_at(a, i)
-                sb = _final_at(b, i + 1)
+                    need = PASS_DELTA + fatigue_delta * float(overtake_cnt.get(b, 0))
 
-                need = PASS_DELTA + fatigue_delta * float(overtake_cnt.get(b, 0))
+                    za = _car_zone_map.get(int(a), "その他")
+                    zb = _car_zone_map.get(int(b), "その他")
+                    if za != zb:
+                        need += CROSS_DELTA
 
-                za = _car_zone_map.get(int(a), "その他")
-                zb = _car_zone_map.get(int(b), "その他")
-                if za != zb:
-                    need += CROSS_DELTA
+                    if sb >= sa + need:
+                        order[i], order[i + 1] = b, a
+                        overtake_cnt[b] = overtake_cnt.get(b, 0) + 1
+                        moved_this_pass.add(b)
+                        swapped = True
 
-                if sb >= sa + need:
-                    order[i], order[i + 1] = b, a
-                    overtake_cnt[b] = overtake_cnt.get(b, 0) + 1
-                    moved_this_pass.add(b)
-                    swapped = True
+                if not swapped:
+                    break
 
-            if not swapped:
-                break
+            globals()["_overtake_available_m"] = float(available_m)
+            globals()["_overtake_pass_m"] = float(pass_m)
+            globals()["_overtake_max_passes"] = int(MAX_PASSES)
+            globals()["_overtake_pass_delta"] = float(PASS_DELTA)
+            globals()["_overtake_cross_delta"] = float(CROSS_DELTA)
 
-        globals()["_overtake_available_m"] = float(available_m)
-        globals()["_overtake_pass_m"] = float(pass_m)
-        globals()["_overtake_max_passes"] = int(MAX_PASSES)
-        globals()["_overtake_pass_delta"] = float(PASS_DELTA)
-        globals()["_overtake_cross_delta"] = float(CROSS_DELTA)
+            return order
 
-        return order
+        outs = {}
+        for pname, svr in _PATTERNS:
+            q = _queue_for_pattern(all_lines, svr)
+            main_zone = (svr[0] if (svr and len(svr) >= 1) else "順流")
+            outs[pname] = _run_ko(q, main_zone)
 
-    outs = {}
-    for pname, svr in _PATTERNS:
-        q = _queue_for_pattern(all_lines, svr)
-        main_zone = (svr[0] if (svr and len(svr) >= 1) else "順流")
-        outs[pname] = _run_ko(q, main_zone)
+        def _fmt_seq(seq, max_n=7):
+            xs = [int(x) for x in (seq or []) if str(x).isdigit()]
+            xs = xs[:max_n]
+            return " → ".join(str(x) for x in xs) if xs else "（なし）"
 
-    def _fmt_seq(seq, max_n=7):
-        xs = [int(x) for x in (seq or []) if str(x).isdigit()]
-        xs = xs[:max_n]
-        return " → ".join(str(x) for x in xs) if xs else "（なし）"
+        out_j = outs.get("順流→渦→逆流") or []
+        out_v = outs.get("渦→順流→逆流") or []
+        out_u = outs.get("逆流→順流→渦") or []
 
-    out_j = outs.get("順流→渦→逆流") or []
-    out_v = outs.get("渦→順流→逆流") or []
-    out_u = outs.get("逆流→順流→渦") or []
+        note_sections.append("【順流メイン着順予想】")
+        note_sections.append(_fmt_seq(out_j))
+        note_sections.append("")
+        note_sections.append("【渦メイン着順予想】")
+        note_sections.append(_fmt_seq(out_v))
+        note_sections.append("")
+        note_sections.append("【逆流メイン着順予想】")
+        note_sections.append(_fmt_seq(out_u))
+        note_sections.append("")
 
-    note_sections.append("【順流メイン着順予想】")
-    note_sections.append(_fmt_seq(out_j))
-    note_sections.append("")
-    note_sections.append("【渦メイン着順予想】")
-    note_sections.append(_fmt_seq(out_v))
-    note_sections.append("")
-    note_sections.append("【逆流メイン着順予想】")
-    note_sections.append(_fmt_seq(out_u))
-    note_sections.append("")
     _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
-
     # ここまでで note_sections を確実に保持
     globals()["note_sections"] = note_sections
 
