@@ -4078,36 +4078,32 @@ try:
     try:
         lines_out = ["＜短評＞"]
 
-        # レースFR（無ければ flow から）
+            # レースFR（外部 → flow → ライン配分の混戦度 で補完）
+    try:
         raceFR = float(
             globals().get("race_FR")
             or globals().get("race_fr")
             or globals().get("RACE_FR")
+            or globals().get("race_fr_value")
             or 0.0
         )
-        if raceFR <= 0.0:
-            raceFR = float(FRv or 0.0)
-
-        lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
-
-        dbg = (_flow.get("dbg", {}) if isinstance(_flow, dict) else {}) or {}
-        if isinstance(dbg, dict) and dbg:
-            bs = float(dbg.get("blend_star", 0.0) or 0.0)
-            bn = float(dbg.get("blend_none", 0.0) or 0.0)
-            sd = float(dbg.get("sd", 0.0) or 0.0)
-            nu = float(dbg.get("nu", 0.0) or 0.0)
-
-            star_txt = "先頭負担:強" if bs <= -0.60 else ("先頭負担:中" if bs <= -0.30 else "先頭負担:小")
-            none_txt = "無印押上げ:強" if bn >= 1.20 else ("無印押上げ:中" if bn >= 0.60 else "無印押上げ:小")
-            sd_txt   = "ライン偏差:大" if sd >= 0.60 else ("ライン偏差:中" if sd >= 0.30 else "ライン偏差:小")
-            nu_txt   = "正規化:小" if 0.90 <= nu <= 1.10 else "正規化:補正強"
-
-            lines_out.append(f"・内訳要約：{star_txt}／{none_txt}／{sd_txt}／{nu_txt}")
-
-        note_sections.extend(lines_out)
-        note_sections.append("")
     except Exception:
-        pass
+        raceFR = 0.0
+
+    # 1) 外部が無ければ flow の FR
+    if raceFR <= 0.0:
+        raceFR = float((_flow.get("FR", 0.0) if isinstance(_flow, dict) else 0.0) or 0.0)
+
+    # 2) それでも 0 に張り付く場合：ライン配分から「混戦度」を推定（1 - 最大取り分）
+    if raceFR <= 0.0:
+        try:
+            _total = sum(float(v) for v in line_fr_map.values()) if isinstance(line_fr_map, dict) else 0.0
+            if _total > 1e-12:
+                shares = [float(v) / _total for v in line_fr_map.values() if float(v) > 0.0]
+                max_share = max(shares) if shares else 0.0
+                raceFR = max(0.0, min(1.0, 1.0 - max_share))
+        except Exception:
+            pass
 
         # --- d（距離/追い抜きデバッグ）短評とは無関係に必ず表示 ---
     note_sections.append(
