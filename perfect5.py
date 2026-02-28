@@ -3945,6 +3945,8 @@ try:
             # 333/335は終盤時間が短く gain_m が出にくいので少し強める
             if bank_len <= 335:
                 k_speed = float(globals().get("ko_k_speed_333", 0.014) or 0.014)
+            elif bank_len >= 500:
+                k_speed = float(globals().get("ko_k_speed_500", 0.012) or 0.012)
             else:
                 k_speed = float(globals().get("ko_k_speed", 0.011) or 0.011)
             def _v_from_score(sc: float) -> float:
