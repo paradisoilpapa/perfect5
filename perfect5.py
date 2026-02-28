@@ -4132,7 +4132,6 @@ try:
             globals().get("_overtake_pass_delta", "—"),
             globals().get("_overtake_cross_delta", "—"),
         )
-    ) = ns
 
     
 
