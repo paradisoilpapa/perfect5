@@ -4013,6 +4013,8 @@ except Exception as e:
         globals()["note_sections"] = ns
     ns.append(f"[ERROR] 出力生成で例外: {type(e).__name__}: {e}")
     globals()["note_sections"] = ns
+
+    
     # =========================================================
     # ＜短評＞（コンパクト）
     #   VTX/U は flow値ではなく「ラインFR」で表示（ズレ防止）
@@ -4073,16 +4075,22 @@ except Exception as e:
 
     note_sections.extend(lines_out)
     note_sections.append(f"判定：{infer_eval_with_share(FRv, VTXv, Uv, share_pct)}")
+    note_sections.append("")
+
+    # ここまでで note_sections を確実に保持
+    globals()["note_sections"] = note_sections
 
 except Exception as _e:
     # 4) 出力本体 全体の保険：ここで止めず、最低限のメッセージを残す
     try:
         ns = globals().get("note_sections", None)
-        if isinstance(ns, list):
-            ns.append("")
-            ns.append("＜短評＞")
-            ns.append(f"・出力生成中に例外が発生しました: {_e}")
-            ns.append("判定：混戦")
+        if not isinstance(ns, list):
+            ns = []
+            globals()["note_sections"] = ns
+        ns.append("")
+        ns.append("＜短評＞")
+        ns.append(f"・出力生成中に例外が発生しました: {_e}")
+        ns.append("判定：混戦")
     except Exception:
         pass
 
