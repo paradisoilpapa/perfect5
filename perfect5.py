@@ -4082,12 +4082,11 @@ try:
     if raceFR != raceFR:  # NaN
         raceFR = 0.0
 
-    # それでも0なら「混戦度」= 1 - 最大取り分（line_fr_mapがあれば）
+    # flowが0なら「混戦度」= 1 - 最大取り分（line_fr_mapがあれば）
     if raceFR <= 0.0 and isinstance(line_fr_map, dict) and line_fr_map:
         vals = []
         for v in line_fr_map.values():
             s = str(v).strip()
-            # floatにできそうなものだけ通す（失敗は0扱い）
             fv = float(s) if s not in ("", "None", "nan", "NaN") else 0.0
             if fv > 0.0 and fv == fv:
                 vals.append(fv)
@@ -4102,52 +4101,14 @@ try:
 
     lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
 
+    # VTX/U はラインFR（ズレ防止）
     _vtx_fr = float(_lfr(VTX_line) if VTX_line else 0.0)
     _u_fr   = float(_lfr(U_line) if U_line else 0.0)
     lines_out.append(f"・VTXラインFR={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
     lines_out.append(f"・逆流ラインFR={_u_fr:.3f}［{_band3_u(_u_fr)}］")
 
-    note_sections.extend(lines_out)
-    note_sections.append("")
-
-        # --- d（距離/追い抜きデバッグ）短評とは無関係に必ず表示 ---
-    note_sections.append(
-        "・d：直線{}m／抜き{}m／最大{}回／Δ{}／跨Δ{}".format(
-            globals().get("_overtake_available_m", "—"),
-            globals().get("_overtake_pass_m", "—"),
-            globals().get("_overtake_max_passes", "—"),
-            globals().get("_overtake_pass_delta", "—"),
-            globals().get("_overtake_cross_delta", "—"),
-        )
-    )
-    
-    globals()["note_sections"] = note_sections
-
-except Exception as e:
-    # 失敗しても note_sections にエラーだけ残す（クラッシュさせない）
-    ns = globals().get("note_sections", None)
-    if not isinstance(ns, list):
-        ns = []
-        globals()["note_sections"] = ns
-    ns.append(f"[ERROR] 出力生成で例外: {type(e).__name__}: {e}")
-    globals()["note_sections"] = ns
-
-    
-        # =========================================================
-    # ＜短評＞（コンパクト）
-    #   VTX/U は flow値ではなく「ラインFR」で表示（ズレ防止）
-    # =========================================================
-    lines_out = ["＜短評＞"]
-
-    # レースFRは flow 指標（_flow["FR"]）をそのまま表示（定義を混ぜない）
-    raceFR = float((_flow.get("FR", 0.0) if isinstance(_flow, dict) else 0.0) or 0.0)
-    lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
-
-    _vtx_fr = float(_lfr(VTX_line) if VTX_line else 0.0)
-    _u_fr   = float(_lfr(U_line) if U_line else 0.0)
-    lines_out.append(f"・VTXラインFR={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
-    lines_out.append(f"・逆流ラインFR={_u_fr:.3f}［{_band3_u(_u_fr)}］")
-    dbg = _flow.get("dbg", {})
+    # 内訳要約（flow dbg）
+    dbg = _flow.get("dbg", {}) if isinstance(_flow, dict) else {}
     if isinstance(dbg, dict) and dbg:
         bs = float(dbg.get("blend_star", 0.0) or 0.0)
         bn = float(dbg.get("blend_none", 0.0) or 0.0)
@@ -4159,30 +4120,22 @@ except Exception as e:
         nu_txt   = "正規化:小" if 0.90 <= nu <= 1.10 else "正規化:補正強"
         lines_out.append(f"・内訳要約：{star_txt}／{none_txt}／{sd_txt}／{nu_txt}")
 
-    # --- 距離/追い抜きデバッグ（表示用） ---
-    try:
-        avm = float(globals().get("_overtake_available_m", 0.0) or 0.0)
-        pm  = float(globals().get("_overtake_pass_m", 0.0) or 0.0)
-        mp  = int(globals().get("_overtake_max_passes", 0) or 0)
-        pd  = float(globals().get("_overtake_pass_delta", 0.0) or 0.0)
-        cd  = float(globals().get("_overtake_cross_delta", 0.0) or 0.0)
-        lines_out.append(f"・d：直線{avm:.1f}m／抜き{pm:.1f}m／最大{mp}回／Δ{pd:.4f}／跨Δ{cd:.4f}")
-    except Exception:
-        lines_out.append("・d：—")
-
-        # --- 距離/追い抜きデバッグ（try無し） ---
-    avm = globals().get("_overtake_available_m", "—")
-    pm  = globals().get("_overtake_pass_m", "—")
-    mp  = globals().get("_overtake_max_passes", "—")
-    pd  = globals().get("_overtake_pass_delta", "—")
-    cd  = globals().get("_overtake_cross_delta", "—")
-    lines_out.append(f"・d：直線{avm}m／抜き{pm}m／最大{mp}回／Δ{pd}／跨Δ{cd}")
-
-    lines_out.append(f"・d_check={globals().get('_overtake_max_passes','?')}")
-
     note_sections.extend(lines_out)
-    note_sections.append(f"判定：{infer_eval_with_share(FRv, VTXv, Uv, share_pct)}")
     note_sections.append("")
+
+    # --- d（距離/追い抜きデバッグ）ここで1回だけ ---
+    note_sections.append(
+        "・d：直線{}m／抜き{}m／最大{}回／Δ{}／跨Δ{}".format(
+            globals().get("_overtake_available_m", "—"),
+            globals().get("_overtake_pass_m", "—"),
+            globals().get("_overtake_max_passes", "—"),
+            globals().get("_overtake_pass_delta", "—"),
+            globals().get("_overtake_cross_delta", "—"),
+        )
+    ) = ns
+
+    
+
 
     # ここまでで note_sections を確実に保持
     globals()["note_sections"] = note_sections
