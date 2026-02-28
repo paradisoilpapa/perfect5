@@ -3982,7 +3982,8 @@ try:
             score_per_m = base_k * sigma * (1.0 / max(spread, 1e-6)) / max(pass_m, 1e-6)
 
             PASS_DELTA = score_per_m * pass_m
-            CROSS_DELTA = score_per_m * (0.30 * pass_m)
+            cross_mul = 0.35 if bank_len <= 335 else 0.30
+            CROSS_DELTA = score_per_m * (cross_mul * pass_m)
             fatigue_delta = 0.35 * PASS_DELTA
             # ====== /PATCH ======
 
