@@ -3846,70 +3846,114 @@ try:
         _FR_BONUS_CAP = 0.06
 
         def _fr_bonus_for_car(car, main_zone):
-            z = _car_zone_map.get(int(car), "その他")
-            z_fr = {
-                "順流": float(_lfr(FR_line) if FR_line else 0.0),
-                "渦":   float(_lfr(VTX_line) if VTX_line else 0.0),
-                "逆流": float(_lfr(U_line) if U_line else 0.0),
-            }.get(z, 0.0)
+    z = _car_zone_map.get(int(car), "その他")
 
-            k = _FR_K_MAIN if z == main_zone else _FR_K_SUB
-            sz = float(_car_line_size.get(int(car), 1) or 1.0)
+    z_fr = {
+        "順流": float(_lfr(FR_line) if FR_line else 0.0),
+        "渦":   float(_lfr(VTX_line) if VTX_line else 0.0),
+        "逆流": float(_lfr(U_line) if U_line else 0.0),
+    }.get(z, 0.0)
 
-            bonus = (k * z_fr) / sz
-            if bonus > _FR_BONUS_CAP:
-                bonus = _FR_BONUS_CAP
-            if bonus < 0.0:
-                bonus = 0.0
-            return bonus
+    k = _FR_K_MAIN if z == main_zone else _FR_K_SUB
+    sz = float(_car_line_size.get(int(car), 1) or 1.0)
 
-        def _run_ko(q, main_zone):
-            q = [int(x) for x in (q or []) if str(x).isdigit()]
+    bonus = (k * z_fr) / sz
+    if bonus > _FR_BONUS_CAP:
+        bonus = _FR_BONUS_CAP
+    if bonus < 0.0:
+        bonus = 0.0
+    return bonus
 
-            first_pos = {}
-            for i, c in enumerate(q):
-                if c not in first_pos:
-                    first_pos[c] = i
 
-            tail_pos = (max(first_pos.values()) + 1) if first_pos else 999
-            for c in score_map.keys():
-                if c not in first_pos:
-                    first_pos[c] = tail_pos
+def _run_ko(q, main_zone):
+    # ------------------------------------------------------
+    # ワープ禁止（全体再ソート禁止）
+    # 距離のある追い抜き：隣同士の交換のみ + 交換コスト
+    # ------------------------------------------------------
+    q = [int(x) for x in (q or []) if str(x).isdigit()]
 
-            scored = []
-            for c, i in first_pos.items():
-                base = float(score_map.get(int(c), 0.0))
-                final = base + _pos_adj(int(i)) + _fr_bonus_for_car(int(c), main_zone)
-                scored.append((int(c), float(final), int(i)))
+    # 1) 展開の骨格（基準順）：qの出現順を保持しつつ重複除去
+    seen = set()
+    order = []
+    for c in q:
+        if c not in seen:
+            seen.add(c)
+            order.append(c)
 
-            scored.sort(key=lambda t: (t[1], -t[2], -t[0]), reverse=True)
-            return [c for c, _, _ in scored]
+    # qにいない車は末尾へ（ここはワープさせないため末尾固定）
+    tail = [int(c) for c in score_map.keys() if int(c) not in seen]
+    tail.sort(key=lambda c: float(score_map.get(int(c), 0.0)), reverse=True)
+    order.extend(tail)
 
-        outs = {}
-        for pname, svr in _PATTERNS:
-            q = _queue_for_pattern(all_lines, svr)
-            main_zone = (svr[0] if (svr and len(svr) >= 1) else "順流")
-            outs[pname] = _run_ko(q, main_zone)
+    # 2) 現在位置 i における評価（KO+位置補正+FR薄加点）
+    def _final_at(car, i):
+        base = float(score_map.get(int(car), 0.0))
+        return base + _pos_adj(int(i)) + _fr_bonus_for_car(int(car), main_zone)
 
-        def _fmt_seq(seq, max_n=7):
-            xs = [int(x) for x in (seq or []) if str(x).isdigit()]
-            xs = xs[:max_n]
-            return " → ".join(str(x) for x in xs) if xs else "（なし）"
+    # 3) “距離”＝追い抜きのコスト
+    #    ・隣同士だけ比較（自転車の距離を守る）
+    #    ・何台も抜くほどコストが積み上がる（外回し・踏み直し）
+    MAX_PASSES = 3      # 何回隣交換を試すか（=最大で数台分しか前に行けない）
+    BASE_EPS   = 0.010  # 最低限必要な優位差（小さすぎるとぐちゃぐちゃになる）
+    COST_STEP  = 0.012  # 1回抜くごとに必要差が増える（距離コスト）
 
-        out_j = outs.get("順流→渦→逆流") or []
-        out_v = outs.get("渦→順流→逆流") or []
-        out_u = outs.get("逆流→順流→渦") or []
+    # 車ごとの「抜いた回数」をカウント（抜けば抜くほど次がきつい）
+    overtake_cnt = {int(c): 0 for c in order}
 
-        note_sections.append("【順流メイン着順予想】")
-        note_sections.append(_fmt_seq(out_j))
-        note_sections.append("")
-        note_sections.append("【渦メイン着順予想】")
-        note_sections.append(_fmt_seq(out_v))
-        note_sections.append("")
-        note_sections.append("【逆流メイン着順予想】")
-        note_sections.append(_fmt_seq(out_u))
-        note_sections.append("")
+    # 4) 隣同士の交換を複数パス回す（バブル的）
+    #    ※全体ソートは絶対にしない＝ワープ禁止
+    for _ in range(MAX_PASSES):
+        swapped = False
+        n = len(order)
 
+        for i in range(n - 1):
+            a = order[i]      # 前
+            b = order[i + 1]  # 後（ここが前を抜けるか？）
+
+            sa = _final_at(a, i)
+            sb = _final_at(b, i + 1)
+
+            # b が a を抜くための必要差（距離コスト）
+            need = BASE_EPS + COST_STEP * float(overtake_cnt.get(b, 0))
+
+            # 後ろ(b)が十分強いなら、1台だけ抜く（=隣交換）
+            if sb >= sa + need:
+                order[i], order[i + 1] = b, a
+                overtake_cnt[b] = overtake_cnt.get(b, 0) + 1
+                swapped = True
+
+        if not swapped:
+            break
+
+    return order
+
+
+outs = {}
+for pname, svr in _PATTERNS:
+    q = _queue_for_pattern(all_lines, svr)
+    main_zone = (svr[0] if (svr and len(svr) >= 1) else "順流")
+    outs[pname] = _run_ko(q, main_zone)
+
+
+def _fmt_seq(seq, max_n=7):
+    xs = [int(x) for x in (seq or []) if str(x).isdigit()]
+    xs = xs[:max_n]
+    return " → ".join(str(x) for x in xs) if xs else "（なし）"
+
+
+out_j = outs.get("順流→渦→逆流") or []
+out_v = outs.get("渦→順流→逆流") or []
+out_u = outs.get("逆流→順流→渦") or []
+
+note_sections.append("【順流メイン着順予想】")
+note_sections.append(_fmt_seq(out_j))
+note_sections.append("")
+note_sections.append("【渦メイン着順予想】")
+note_sections.append(_fmt_seq(out_v))
+note_sections.append("")
+note_sections.append("【逆流メイン着順予想】")
+note_sections.append(_fmt_seq(out_u))
+note_sections.append("")
     _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
     # =========================================================
     # ＜短評＞（コンパクト）
