@@ -1184,7 +1184,7 @@ def input_float_text(label: str, key: str, placeholder: str = ""):
 
 st.subheader("個人データ（直近4か月：回数）")
 cols = st.columns(n_cars)
-ratings, S, B = {}, {}, {}
+ratings, S, H, B = {}, {}, {}, {}
 
 k_esc, k_mak, k_sashi, k_mark = {}, {}, {}, {}
 x1, x2, x3, x_out = {}, {}, {}, {}
@@ -1194,6 +1194,7 @@ for i, no in enumerate(active_cars):
         st.markdown(f"**{no}番**")
         ratings[no] = input_float_text("得点（空欄可）", key=f"pt_{no}", placeholder="例: 55.0")
         S[no] = st.number_input("S", 0, 99, 0, key=f"s_{no}")
+        H[no] = st.number_input("H", 0, 99, 0, key=f"h_{no}")
         B[no] = st.number_input("B", 0, 99, 0, key=f"b_{no}")
         k_esc[no]   = st.number_input("逃", 0, 99, 0, key=f"ke_{no}")
         k_mak[no]   = st.number_input("捲", 0, 99, 0, key=f"km_{no}")
