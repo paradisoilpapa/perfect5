@@ -4325,10 +4325,15 @@ try:
             f"・推奨理由：{'／'.join(recommend_reason)}"
         )
 
-        note_sections.extend(lines_out)
-        note_sections.append("")
+    except Exception as _e:
+        lines_out.append(
+            f"・推奨戦法：判定不可（{_e}）"
+        )
 
-        globals()["note_sections"] = note_sections
+    note_sections.extend(lines_out)
+    note_sections.append("")
+
+    globals()["note_sections"] = note_sections
 
     except Exception as _e:
         try:
