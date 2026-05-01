@@ -412,6 +412,74 @@ def role_in_line(car, line_def):
             return ['head','second','thirdplus'][idx] if idx<3 else 'thirdplus'
     return 'single'
 
+
+# ==============================
+# H：最終ホーム想定ライン
+# ==============================
+def calc_home_line_scores(line_def: dict, H: dict, B: dict, active_cars: list[int]) -> dict:
+    """
+    H = 最終ホーム先頭通過回数を使って、
+    最終周回ホームで前に出やすいラインを評価する。
+    ※本体スコアには混ぜず、展開表示用。
+    """
+    scores = {}
+
+    for gid, members in line_def.items():
+        mem = [int(x) for x in members if int(x) in active_cars]
+        if not mem:
+            continue
+
+        head = mem[0]
+        second = mem[1] if len(mem) >= 2 else None
+        third = mem[2] if len(mem) >= 3 else None
+
+        head_h = float(H.get(head, 0))
+        second_h = float(H.get(second, 0)) if second is not None else 0.0
+        third_h = float(H.get(third, 0)) if third is not None else 0.0
+
+        # 単騎は自分のHをそのまま見る
+        if len(mem) == 1:
+            score = head_h
+        else:
+            # ライン先頭のHを主役、番手・三番手は補助
+            score = head_h * 0.75 + second_h * 0.15 + third_h * 0.10
+
+        # 同点時の微差用：Bをほんの少しだけ見る
+        score += float(B.get(head, 0)) * 0.01
+
+        scores[gid] = round(score, 3)
+
+    return scores
+
+
+def make_home_line_order(line_def: dict, H: dict, B: dict, active_cars: list[int]) -> list:
+    """
+    最終ホーム想定ライン順を返す。
+    """
+    scores = calc_home_line_scores(line_def, H, B, active_cars)
+
+    return sorted(
+        scores.keys(),
+        key=lambda gid: scores.get(gid, 0.0),
+        reverse=True
+    )
+
+
+def format_home_line_order(line_def: dict, order: list) -> str:
+    """
+    A/B/Cなどのgid順を、実際のライン文字列に変換する。
+    例：['B','C','A'] → 26　37　145
+    """
+    parts = []
+
+    for gid in order:
+        members = line_def.get(gid, [])
+        if members:
+            parts.append("".join(str(int(x)) for x in members))
+
+    return "　".join(parts) if parts else "—"
+
+
 # 単騎を全体的に抑える共通係数（あとでいじれるようにする）
 SINGLE_NERF = float(globals().get("SINGLE_NERF", 0.85))  # 0.80〜0.88くらいで調整
 
@@ -452,7 +520,6 @@ def track_effective_ratio(track_name: str,
     L_eff = back + alpha_goal * home + beta_corner * corner_total
     ratio = (L_eff / lap) if lap > 0 else 0.50
     return clamp(ratio, 0.20, 0.90)
-
 
 def wind_adjust(wind_dir, wind_speed, role, prof_escape):
     s = max(0.0, float(wind_speed))
@@ -1206,6 +1273,15 @@ for i, no in enumerate(active_cars):
         x_out[no]= st.number_input("着外", 0, 99, 0, key=f"xo_{no}")
 
 ratings_val = {no: (ratings[no] if ratings[no] is not None else 55.0) for no in active_cars}
+
+# H：最終ホーム想定ライン
+home_line_scores = calc_home_line_scores(line_def, H, B, active_cars)
+home_line_order = make_home_line_order(line_def, H, B, active_cars)
+home_line_text = format_home_line_order(line_def, home_line_order)
+home_top_gid = home_line_order[0] if home_line_order else None
+home_top_line = format_home_line_order(line_def, [home_top_gid]) if home_top_gid is not None else "—"
+
+
 
 # 1着・2着の縮約（級別×会場の事前分布を混ぜる）
 def prior_by_class(cls, style_adj):
