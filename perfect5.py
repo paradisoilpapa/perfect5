@@ -4108,15 +4108,54 @@ try:
     lines_out.append(f"・VTXラインFR={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
     lines_out.append(f"・逆流ラインFR={_u_fr:.3f}［{_band3_u(_u_fr)}］")
 
-    # 内訳要約（flow dbg）
+        # 内訳要約（flow dbg）
     dbg = _flow.get("dbg", {}) if isinstance(_flow, dict) else {}
     if isinstance(dbg, dict) and dbg:
+
         bs = float(dbg.get("blend_star", 0.0) or 0.0)
         bn = float(dbg.get("blend_none", 0.0) or 0.0)
         sd = float(dbg.get("sd", 0.0) or 0.0)
         nu = float(dbg.get("nu", 0.0) or 0.0)
-        star_txt = "先頭負担:強" if bs <= -0.60 else ("先頭負担:中" if bs <= -0.30 else "先頭負担:小")
-        none_txt = "無印押上げ:強" if bn >= 1.20 else ("無印押上げ:中" if bn >= 0.60 else "無印押上げ:小")
+
+        star_txt = "先頭負担:強" if bs <= -0.60 else (
+                   "先頭負担:中" if bs <= -0.30 else
+                   "先頭負担:小")
+
+        none_txt = "無印押上げ:強" if bn >= 1.20 else (
+                   "無印押上げ:中" if bn >= 0.60 else
+                   "無印押上げ:小")
+
+        sd_txt = "ライン偏差:大" if sd >= 0.60 else (
+                 "ライン偏差:中" if sd >= 0.30 else
+                 "ライン偏差:小")
+
+        nu_txt = "正規化:小" if 0.90 <= nu <= 1.10 else "正規化:補正強"
+
+        lines_out.append(
+            f"・内訳要約：{star_txt}／{none_txt}／{sd_txt}／{nu_txt}"
+        )
+
+        # =========================================================
+        # 推奨戦法ロジック（ここが同じ階層）
+        # =========================================================
+
+        # 混戦＋無印押上げ中以上 → 渦
+        if "混戦" in tenkai_txt and bn >= 0.50:
+            recommend_style = "渦"
+            recommend_reason.append("混戦＋無印押上げ中以上")
+
+        # 逆流が明確に優勢
+        elif _u_fr - _vtx_fr >= 0.02:
+            recommend_style = "逆流"
+            recommend_reason.append("逆流FR優勢")
+
+        # 混戦でない＋順流優勢
+        elif "混戦" not in tenkai_txt and _vtx_fr - _u_fr >= 0.02:
+            recommend_style = "順流"
+            recommend_reason.append("VTX優勢")
+elif "混戦" not in tenkai_txt and _vtx_fr - _u_fr >= 0.02:
+    recommend_style = "順流"
+    recommend_reason.append("VTX優勢")
         sd_txt   = "ライン偏差:大" if sd >= 0.60 else ("ライン偏差:中" if sd >= 0.30 else "ライン偏差:小")
         nu_txt   = "正規化:小" if 0.90 <= nu <= 1.10 else "正規化:補正強"
         lines_out.append(f"・内訳要約：{star_txt}／{none_txt}／{sd_txt}／{nu_txt}")
