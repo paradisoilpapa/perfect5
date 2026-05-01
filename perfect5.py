@@ -4371,6 +4371,16 @@ try:
         except Exception:
             pass
 
+                # H反映チェック表示
+        try:
+            if h_style is not None:
+                if h_changed:
+                    recommend_reason.append("H反映=戦法変更あり")
+                else:
+                    recommend_reason.append("H反映=戦法変更なし")
+        except Exception:
+            pass
+
         lines_out.append(
             f"・推奨戦法：{recommend_style}［信頼度{confidence}］"
         )
