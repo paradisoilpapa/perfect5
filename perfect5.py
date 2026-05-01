@@ -4308,57 +4308,7 @@ try:
 
                 
                
-        # =====================================================
-        # H：推奨戦法への薄い反映（第4段階）
-        # =====================================================
-        h_style = None
-        h_changed = False
-
-        try:
-            if home_top_line != "主導なし":
-                h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
-
-                # Hが示す戦法候補
-                if h_line == FR_line:
-                    h_style = "順流"
-                elif h_line == VTX_line:
-                    h_style = "渦"
-                elif h_line == U_line:
-                    h_style = "逆流"
-
-                # H主導があり、現在の推奨が低信頼Cで、H側FRが同等以上ならH側へ寄せる
-if h_style is not None:
-    if h_style == "順流":
-        h_fr = float(FRv)
-    elif h_style == "渦":
-        h_fr = float(VTXv)
-    elif h_style == "逆流":
-        h_fr = float(Uv)
-    else:
-        h_fr = 0.0
-
-    if recommend_style == "順流":
-        cur_fr = float(FRv)
-    elif recommend_style == "渦":
-        cur_fr = float(VTXv)
-    elif recommend_style == "逆流":
-        cur_fr = float(Uv)
-    else:
-        cur_fr = 0.0
-
-    if (
-        h_style != recommend_style
-        and confidence == "C"
-        and h_fr >= cur_fr - 0.01
-    ):
-        recommend_reason.append(f"H主導により{h_style}寄せ")
-        recommend_style = h_style
-        h_changed = True
-
-        except Exception:
-            pass
-        
-        # =====================================================
+                # =====================================================
         # 信頼度
         # =====================================================
         if bn >= 0.50:
@@ -4373,17 +4323,15 @@ if h_style is not None:
         else:
             confidence = "C"
 
-                
-                    
         # =====================================================
         # H：低信頼時の推奨戦法切り替え
         # =====================================================
+        h_style = None
+        h_changed = False
+
         try:
             if home_top_line != "主導なし":
                 h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
-
-                h_style = None
-                h_fr = 0.0
 
                 if h_line == FR_line:
                     h_style = "順流"
@@ -4394,6 +4342,9 @@ if h_style is not None:
                 elif h_line == U_line:
                     h_style = "逆流"
                     h_fr = float(Uv)
+                else:
+                    h_style = None
+                    h_fr = 0.0
 
                 if recommend_style == "順流":
                     cur_fr = float(FRv)
@@ -4409,15 +4360,13 @@ if h_style is not None:
                     and h_style != recommend_style
                     and confidence == "C"
                     and h_fr >= cur_fr - 0.01
-                    and bn < 0.50
                 ):
                     recommend_reason.append(f"H主導により{h_style}寄せ")
                     recommend_style = h_style
+                    h_changed = True
 
         except Exception:
-            pass   
-        
-        
+            pass
         # =====================================================
         # H：信頼度への反映（第3段階）
         # =====================================================
