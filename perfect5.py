@@ -1444,19 +1444,7 @@ for no in active_cars:
 
     laps_adj = clamp(laps_adj, -0.15, 0.15)
 
-    # --- 車番1だけデバッグ表示（任意） ---
-    if no == 1:
-        st.write("DEBUG fatigue:", {
-            "eff_laps": eff_laps,
-            "day_label": day_label,
-            "n_cars": n_cars,
-            "race_class": race_class,
-            "extra": extra,
-            "fatigue_scale": fatigue_scale,
-            "prof_escape": float(prof_escape[no]),
-            "prof_oikomi": float(prof_oikomi[no]),
-            "laps_adj": laps_adj,
-        })
+   
 
     # 環境・個人補正（既存）
     wind     = _wind_func(eff_wind_dir, float(eff_wind_speed or 0.0), role, float(prof_escape[no]))
@@ -1523,43 +1511,9 @@ df_sorted_pure = pd.DataFrame({
     "合計_SBなし": [float(v_final[int(k)]) for k in sorted([int(k) for k in v_final.keys()])]
 }).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
 
-# DEBUG（1回だけでOK。うるさければ消してOK）
-st.write("DEBUG PATCH after df", {
-    "len_df": len(df) if df is not None else 0,
-    "df_cols": list(df.columns) if df is not None else [],
-    "dtype_車番": str(df["車番"].dtype) if (df is not None and "車番" in df.columns) else None,
-    "len_v_wo": len(v_wo),
-    "v_wo_head": list(v_wo.items())[:7],
-    "len_df_sorted_pure": len(df_sorted_pure),
-})
+
     
-# ===== DEBUG: 内訳確認（ガールズで1が沈む原因探し） =====
-try:
-    st.subheader("DEBUG: SBなし内訳（車番1 vs 2）")
-    st.write("車番1（縦表示）")
-    st.write(df[df["車番"] == 1].T)
 
-    st.write("車番2（縦表示）")
-    st.write(df[df["車番"] == 2].T)
-
-    st.subheader("DEBUG: SBなし合計の降順")
-    st.write(df.sort_values("合計_SBなし_raw", ascending=False)[["車番","合計_SBなし_raw","安定度"]])
-
-except Exception as e:
-    st.write("DEBUG ERROR:", e)
-
-# ===== DEBUG: 安定度の入力（x1,x2,x3,x_out と stability_score）=====
-try:
-    st.subheader("DEBUG: 安定度入力（x1/x2/x3/x_out）と stability_score")
-    for no in [1,2,6,7]:
-        st.write(no,
-                 "x1", x1.get(no, None),
-                 "x2", x2.get(no, None),
-                 "x3", x3.get(no, None),
-                 "x_out", x_out.get(no, None),
-                 "stab", stability_score(no))
-except Exception as e:
-    st.write("DEBUG STAB ERROR:", e)
 
 # === ここは df = pd.DataFrame(...) の直後に貼るだけ ===
 
