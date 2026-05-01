@@ -4190,7 +4190,7 @@ try:
 
         lines_out.append(f"・内訳要約：{star_txt}／{none_txt}／{sd_txt}／{nu_txt}")
 
-        # =========================================================
+    # =========================================================
     # 推奨戦法（順流・渦・逆流）
     # =========================================================
     try:
@@ -4204,18 +4204,15 @@ try:
             or ""
         )
 
-        # FR差
         fr_diff = abs(_vtx_fr - _u_fr)
 
         # まず展開評価で初期判定
         if "混戦" in tenkai_txt:
             recommend_style = "渦"
             recommend_reason.append("展開=混戦")
-
         elif "差し" in tenkai_txt:
             recommend_style = "渦"
             recommend_reason.append("展開=差し寄り")
-
         elif "先行" in tenkai_txt or "逃げ" in tenkai_txt:
             recommend_style = "順流"
             recommend_reason.append("展開=先行寄り")
@@ -4232,22 +4229,16 @@ try:
             recommend_style = "順流"
             recommend_reason.append("ライン偏差=大")
 
-        # 混戦＋押上げ中以上は渦を最優先
+        # 最終上書き
         if "混戦" in tenkai_txt and bn >= 0.50:
             recommend_style = "渦"
             recommend_reason.append("混戦＋無印押上げ中以上")
-
-        # 逆流だけは明確に高い場合のみ上書き
         elif _u_fr - _vtx_fr >= 0.02:
             recommend_style = "逆流"
             recommend_reason.append("逆流FR優勢")
-
-        # VTX優勢は、混戦なら渦寄りとして扱う
         elif _vtx_fr - _u_fr >= 0.02 and "混戦" in tenkai_txt:
             recommend_style = "渦"
             recommend_reason.append("VTX優勢だが混戦のため渦寄り")
-
-        # 混戦でない場合のみ順流優勢を採用
         elif _vtx_fr - _u_fr >= 0.02 and "混戦" not in tenkai_txt:
             recommend_style = "順流"
             recommend_reason.append("VTX優勢")
@@ -4265,7 +4256,6 @@ try:
         if not recommend_reason:
             recommend_reason.append("標準判定")
 
-        # 重複理由を削除
         recommend_reason = list(dict.fromkeys(recommend_reason))
 
         lines_out.append(f"・推奨戦法：{recommend_style}［信頼度{confidence}］")
@@ -4288,6 +4278,22 @@ try:
 
     # ここまでで note_sections を確実に保持
     globals()["note_sections"] = note_sections
+
+except Exception as _e:
+    try:
+        ns = globals().get("note_sections", None)
+        if not isinstance(ns, list):
+            ns = []
+            globals()["note_sections"] = ns
+
+        ns.append("")
+        ns.append("＜短評＞")
+        ns.append(f"・出力生成中に例外が発生しました: {_e}")
+        ns.append("判定：混戦")
+
+    except Exception:
+        pass
+
 # =========================
 note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
