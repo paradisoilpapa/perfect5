@@ -3729,11 +3729,19 @@ try:
     if hdr:
         note_sections.append(hdr)
 
-    # ---- ライン表示 ----
+        # ---- ライン表示 ----
     line_inputs = globals().get("line_inputs", [])
     if isinstance(line_inputs, list) and any(str(x).strip() for x in line_inputs):
         _lines = [str(x).strip() for x in line_inputs if str(x).strip()]
         note_sections.append("ライン　" + "　".join(_lines))
+
+        # H：最終ホーム想定ライン
+        try:
+            note_sections.append(f"最終ホーム想定　{home_line_text}")
+            note_sections.append(f"H主導ライン　{home_top_line}")
+        except Exception:
+            pass
+
     note_sections.append("")
 
     # =========================================================
