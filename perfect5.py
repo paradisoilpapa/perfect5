@@ -4186,11 +4186,11 @@ try:
     lines_out.append(f"・内訳要約：{star_txt}／{none_txt}／{sd_txt}／{nu_txt}")
 
     # =========================================================
-    # 推奨戦法（順流・渦・逆流）
-    # 優先順位：展開評価 → 短評 → FR差
+    # 推奨戦法（優先順位固定・上書き禁止）
     # =========================================================
+
     try:
-        recommend_style = "渦"
+        recommend_style = None
         recommend_reason = []
         confidence = "C"
 
@@ -4202,58 +4202,86 @@ try:
 
         fr_diff = abs(_vtx_fr - _u_fr)
 
-        # 1. 展開評価
+        # =====================================================
+        # 1. 展開評価（最優先）
+        # =====================================================
+
         if "混戦" in tenkai_txt:
             recommend_style = "渦"
-            recommend_reason.append("展開=混戦")
+            recommend_reason = ["展開=混戦"]
+
         elif "差し" in tenkai_txt:
             recommend_style = "渦"
-            recommend_reason.append("展開=差し寄り")
+            recommend_reason = ["展開=差し寄り"]
+
         elif "先行" in tenkai_txt or "逃げ" in tenkai_txt:
             recommend_style = "順流"
-            recommend_reason.append("展開=先行寄り")
-        else:
-            recommend_style = "渦"
-            recommend_reason.append("展開=標準")
+            recommend_reason = ["展開=先行寄り"]
 
-        # 2. 短評
-        if bn >= 0.50:
-            recommend_style = "渦"
-            recommend_reason.append("無印押上げ=中以上")
+        # =====================================================
+        # 2. 短評（ここで確定させる）
+        # =====================================================
 
-        if bs <= -0.60 and bn >= 0.50:
-            recommend_style = "逆流"
-            recommend_reason.append("先頭負担強＋押上げ中以上")
+        if recommend_style is None:
 
-        if sd >= 0.60 and "混戦" not in tenkai_txt:
-            recommend_style = "順流"
-            recommend_reason.append("ライン偏差=大")
+            if bn >= 0.50:
+                recommend_style = "渦"
+                recommend_reason = ["無印押上げ=中以上"]
 
-        # 3. FR差：明確差がある時だけ使用
-        # ただし混戦時はVTX優勢でも順流に上書きしない
-        if fr_diff >= 0.02:
-            if _u_fr > _vtx_fr:
-                recommend_style = "逆流"
-                recommend_reason.append("逆流FR優勢")
-            elif _vtx_fr > _u_fr and "混戦" not in tenkai_txt:
+            elif sd >= 0.60:
                 recommend_style = "順流"
-                recommend_reason.append("VTX優勢")
+                recommend_reason = ["ライン偏差=大"]
 
+            elif bs <= -0.60 and bn >= 0.50:
+                recommend_style = "逆流"
+                recommend_reason = ["先頭負担強＋押上げ中以上"]
+
+        # =====================================================
+        # 3. FR差（ここは最後）
+        # =====================================================
+
+        if recommend_style is None:
+
+            if fr_diff >= 0.02:
+
+                if _u_fr > _vtx_fr:
+                    recommend_style = "逆流"
+                    recommend_reason = ["逆流FR優勢"]
+
+                else:
+                    recommend_style = "順流"
+                    recommend_reason = ["VTX優勢"]
+
+        # =====================================================
+        # 4. 最終安全側
+        # =====================================================
+
+        if recommend_style is None:
+            recommend_style = "渦"
+            recommend_reason = ["標準判定"]
+
+        # =====================================================
         # 信頼度
-        if fr_diff >= 0.02 and "混戦" not in tenkai_txt:
+        # =====================================================
+
+        if fr_diff >= 0.02:
             confidence = "A"
         elif fr_diff >= 0.01:
             confidence = "B"
         else:
             confidence = "C"
 
-        recommend_reason = list(dict.fromkeys(recommend_reason))
-
-        lines_out.append(f"・推奨戦法：{recommend_style}［信頼度{confidence}］")
-        lines_out.append(f"・推奨理由：{'／'.join(recommend_reason)}")
+        lines_out.append(
+            f"・推奨戦法：{recommend_style}［信頼度{confidence}］"
+        )
+        lines_out.append(
+            f"・推奨理由：{'／'.join(recommend_reason)}"
+        )
 
     except Exception as _e:
-        lines_out.append(f"・推奨戦法：判定不可（{_e}）")
+        lines_out.append(
+            f"・推奨戦法：判定不可（{_e}）"
+        )
 
     note_sections.extend(lines_out)
     note_sections.append("")
