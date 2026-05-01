@@ -4288,32 +4288,45 @@ try:
         # 信頼度
         # =====================================================
 
-        if bn >= 0.50:
-            confidence = "B"
+           if bn >= 0.50:
+        confidence = "B"
 
-        elif fr_diff >= 0.02:
-            confidence = "A"
+    elif fr_diff >= 0.02:
+        confidence = "A"
 
-        elif fr_diff >= 0.01:
-            confidence = "B"
+    elif fr_diff >= 0.01:
+        confidence = "B"
 
+    else:
+        confidence = "C"
+
+
+    # H：推奨理由への反映（第2段階）
+    # ※戦法そのもの・信頼度はまだ変えない。理由にだけ追加する。
+    try:
+        if home_top_line == "主導なし":
+            recommend_reason.append("H主導ラインなし")
         else:
-            confidence = "C"
+            h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
 
-        lines_out.append(
-            f"・推奨戦法：{recommend_style}［信頼度{confidence}］"
-        )
-        lines_out.append(
-            f"・推奨理由：{'／'.join(recommend_reason)}"
-        )
+            if h_line == FR_line:
+                recommend_reason.append("H主導=順流ライン")
+            elif h_line == VTX_line:
+                recommend_reason.append("H主導=渦ライン")
+            elif h_line == U_line:
+                recommend_reason.append("H主導=逆流ライン")
+            else:
+                recommend_reason.append("H主導=その他ライン")
+    except Exception:
+        pass
 
-    except Exception as _e:
-        lines_out.append(
-            f"・推奨戦法：判定不可（{_e}）"
-        )
 
-    note_sections.extend(lines_out)
-    note_sections.append("")
+    lines_out.append(
+        f"・推奨戦法：{recommend_style}［信頼度{confidence}］"
+    )
+    lines_out.append(
+        f"・推奨理由：{'／'.join(recommend_reason)}"
+    )
 
 
     globals()["note_sections"] = note_sections
