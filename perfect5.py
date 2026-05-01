@@ -1113,7 +1113,7 @@ with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expand
     st.sidebar.caption("基準時刻：モ=8時 / デ=11時 / ナ=18時 / ミ=22時（JST・tzなしで取得）")
 
         # ★ sidebarに統一
-    if st.sidebar.button("APIで取得→風速に反映", use_container_width=True):
+    if st.sidebar.button("APIで取得→風速に反映", use_container_width=True, key="btn_fetch_weather_api"):
         info_xy = VELODROME_MASTER.get(track)
         if not info_xy or info_xy.get("lat") is None or info_xy.get("lon") is None:
             st.sidebar.error(f"{track} の座標が未登録です（VELODROME_MASTER に lat/lon を入れてください）")
