@@ -922,12 +922,12 @@ def fetch_openmeteo_hour(lat, lon, target_dt_naive):
     base = "https://api.open-meteo.com/v1/forecast"
     urls = [
         (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
-         "&hourly=wind_speed_10m,wind_direction_10m"
+         "&hourly=wind_speed_10m,wind_direction_10m,precipitation,weather_code"
          "&timezone=Asia%2FTokyo"
          "&windspeed_unit=ms"
          f"&start_date={d}&end_date={d}", True),
         (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
-         "&hourly=wind_speed_10m"
+         "&hourly=wind_speed_10m,precipitation,weather_code"
          "&timezone=Asia%2FTokyo"
          "&windspeed_unit=ms"
          f"&start_date={d}&end_date={d}", False),
@@ -955,9 +955,22 @@ def fetch_openmeteo_hour(lat, lon, target_dt_naive):
             k = int(np.argmin(diffs))
             sp = j.get("wind_speed_10m", [])
             di = j.get("wind_direction_10m", []) if with_dir else []
+            pr = j.get("precipitation", [])
+            wc = j.get("weather_code", [])
+
             speed = float(sp[k]) if k < len(sp) else float("nan")
-            deg   = (float(di[k]) if with_dir and k < len(di) else None)
-            return {"time": times[k], "speed_ms": speed, "deg": deg, "diff_min": diffs[k]/60.0}
+            deg = float(di[k]) if with_dir and k < len(di) and di[k] is not None else None
+            precip = float(pr[k]) if k < len(pr) and pr[k] is not None else 0.0
+            weather_code = int(wc[k]) if k < len(wc) and wc[k] is not None else None
+
+            return {
+                "time": times[k],
+                "speed_ms": speed,
+                "deg": deg,
+                "precipitation": precip,
+                "weather_code": weather_code,
+                "diff_min": diffs[k] / 60.0,
+             }
         except Exception as e:
             last_err = e
             continue
@@ -1109,9 +1122,19 @@ with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expand
                 target = build_openmeteo_target_dt(api_date, race_time)
                 data = fetch_openmeteo_hour(info_xy["lat"], info_xy["lon"], target)
 
-                st.session_state["wind_speed"] = round(float(data["speed_ms"]), 2)
+                                st.session_state["wind_speed"] = round(float(data["speed_ms"]), 2)
+
+                precip = float(data.get("precipitation", 0.0) or 0.0)
+                weather_code = data.get("weather_code", None)
+
+                st.session_state["precipitation"] = precip
+                st.session_state["weather_code"] = weather_code
+                st.session_state["is_wet"] = bool(precip >= 0.3)
+
                 st.sidebar.success(
-                    f"{track} {target:%Y-%m-%d %H:%M} 風速 {st.session_state['wind_speed']:.1f} m/s "
+                    f"{track} {target:%Y-%m-%d %H:%M} "
+                    f"風速 {st.session_state['wind_speed']:.1f} m/s "
+                    f"降水 {precip:.1f}mm/h "
                     f"（API側と{data['diff_min']:.0f}分ズレ）"
                 )
                 st.rerun()
@@ -1132,8 +1155,30 @@ race_class = st.sidebar.selectbox("級別", ["Ｓ級","Ａ級","Ａ級チャレ�
 # === 会場styleを「得意会場平均」を基準に再定義
 zL, zTH, dC = venue_z_terms(straight_length, bank_angle, bank_length)
 style_raw = venue_mix(zL, zTH, dC)
-override = st.sidebar.slider("会場バイアス補正（−2差し ←→ +2先行）", -2.0, 2.0, 0.0, 0.1)
-style = clamp(style_raw + 0.25*override, -1.0, +1.0)
+# 天候による自動バイアス補正
+precip = float(st.session_state.get("precipitation", 0.0) or 0.0)
+
+if precip >= 5.0:
+    weather_override = 0.6
+elif precip >= 2.0:
+    weather_override = 0.4
+elif precip >= 0.3:
+    weather_override = 0.2
+else:
+    weather_override = 0.0
+
+manual_override = st.sidebar.slider(
+    "会場バイアス補正（−2差し ←→ +2先行）",
+    -2.0, 2.0, 0.0, 0.1
+)
+
+override = clamp(manual_override + weather_override, -2.0, 2.0)
+
+st.sidebar.caption(
+    f"天候自動補正：{weather_override:+.1f} / 最終バイアス補正：{override:+.1f}"
+)
+
+style = clamp(style_raw + 0.25 * override, -1.0, +1.0)
 
 CLASS_FACTORS = {
     "Ｓ級":           {"spread":1.00, "line":1.00},
