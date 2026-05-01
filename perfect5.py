@@ -4323,7 +4323,7 @@ try:
         else:
             confidence = "C"
 
-        # =====================================================
+                # =====================================================
         # H：低信頼時の推奨戦法切り替え
         # =====================================================
         h_style = None
@@ -4360,13 +4360,14 @@ try:
                     and h_style != recommend_style
                     and confidence in ("B", "C")
                     and h_fr >= cur_fr - 0.01
-                 ):
+                ):
                     recommend_reason.append(f"H主導により{h_style}寄せ")
                     recommend_style = h_style
                     h_changed = True
                     confidence = "B"
-                    except Exception:
-           
+
+        except Exception:
+            pass
         # =====================================================
         # H：信頼度への反映（第3段階）
         # =====================================================
