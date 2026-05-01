@@ -4315,13 +4315,6 @@ try:
     note_sections.extend(lines_out)
     note_sections.append("")
 
-    note_sections.append(
-        f"・d：直線{globals().get('_overtake_available_m','—')}m"
-        f"／抜き{globals().get('_overtake_pass_m','—')}m"
-        f"／最大{globals().get('_overtake_max_passes','—')}回"
-        f"／Δ{globals().get('_overtake_pass_delta','—')}"
-        f"／跨Δ{globals().get('_overtake_cross_delta','—')}"
-    )
 
     globals()["note_sections"] = note_sections
 
