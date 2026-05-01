@@ -4358,14 +4358,14 @@ try:
                 if (
                     h_style is not None
                     and h_style != recommend_style
-                    and confidence == "C"
+                    and confidence in ("B", "C")
                     and h_fr >= cur_fr - 0.01
-                ):
+                 ):
                     recommend_reason.append(f"H主導により{h_style}寄せ")
                     recommend_style = h_style
                     h_changed = True
-
-        except Exception:
+                    confidence = "B"
+                    except Exception:
             pass
         # =====================================================
         # H：信頼度への反映（第3段階）
