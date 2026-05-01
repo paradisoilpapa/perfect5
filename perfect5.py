@@ -1172,9 +1172,6 @@ with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expand
             except Exception as e:
                 st.sidebar.error(f"取得に失敗：{e}")
 
-st.sidebar.caption(
-    f"天候自動補正：{weather_override:+.1f} / 最終バイアス補正：{override:+.1f}"
-)
 
 style = clamp(style_raw + 0.25 * override, -1.0, +1.0)
 
