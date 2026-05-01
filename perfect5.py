@@ -4321,6 +4321,26 @@ try:
         else:
             confidence = "C"
 
+                
+        # =====================================================
+        # H：信頼度への反映（第3段階）
+        # =====================================================
+        try:
+            if home_top_line != "主導なし":
+                h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+
+                if (
+                    (recommend_style == "順流" and h_line == FR_line)
+                    or (recommend_style == "渦" and h_line == VTX_line)
+                    or (recommend_style == "逆流" and h_line == U_line)
+                ):
+                    if confidence == "C":
+                        confidence = "B"
+                    elif confidence == "B":
+                        confidence = "A"
+        except Exception:
+            pass
+
         lines_out.append(
             f"・推奨戦法：{recommend_style}［信頼度{confidence}］"
         )
