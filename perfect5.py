@@ -4202,7 +4202,7 @@ try:
             globals().get("展開評価", "")
             or globals().get("tenkai_eval", "")
             or ""
-        )
+        ).strip()
 
         fr_diff = abs(_vtx_fr - _u_fr)
 
