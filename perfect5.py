@@ -4306,15 +4306,19 @@ try:
         except Exception:
             pass
 
-                # =====================================================
+                
+               
+        # =====================================================
         # H：推奨戦法への薄い反映（第4段階）
         # =====================================================
+        h_style = None
+        h_changed = False
+
         try:
             if home_top_line != "主導なし":
                 h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
 
                 # Hが示す戦法候補
-                h_style = None
                 if h_line == FR_line:
                     h_style = "順流"
                 elif h_line == VTX_line:
@@ -4323,12 +4327,11 @@ try:
                     h_style = "逆流"
 
                 # 混戦時だけHを採用する
-                # fr_diffが小さい＝順流/渦/逆流の差が小さい
-                # bnが強すぎる場合は従来判定を優先
                 if h_style is not None:
                     if h_style != recommend_style and fr_diff < 0.015 and bn < 0.50:
                         recommend_reason.append(f"H主導により{h_style}寄せ")
                         recommend_style = h_style
+                        h_changed = True
 
         except Exception:
             pass
