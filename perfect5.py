@@ -4260,14 +4260,19 @@ try:
             recommend_style = "渦"
             recommend_reason = ["標準判定"]
 
-        # =====================================================
+                # =====================================================
         # 信頼度
         # =====================================================
 
-        if fr_diff >= 0.02:
+        if bn >= 0.50:
+            confidence = "B"
+
+        elif fr_diff >= 0.02:
             confidence = "A"
+
         elif fr_diff >= 0.01:
             confidence = "B"
+
         else:
             confidence = "C"
 
