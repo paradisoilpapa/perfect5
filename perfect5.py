@@ -4402,6 +4402,13 @@ try:
         except Exception:
             pass
 
+                # Hで戦法変更した場合は、過信防止で信頼度AをBに抑える
+        try:
+            if h_changed and confidence == "A":
+                confidence = "B"
+        except Exception:
+            pass
+
                 # H反映チェック表示
         try:
             if h_style is not None:
