@@ -4335,21 +4335,6 @@ try:
 
     globals()["note_sections"] = note_sections
 
-    except Exception as _e:
-        try:
-            ns = globals().get("note_sections", None)
-            if not isinstance(ns, list):
-                ns = []
-                globals()["note_sections"] = ns
-
-            ns.append("")
-            ns.append("＜短評＞")
-            ns.append(f"・出力生成中に例外が発生しました: {_e}")
-            ns.append("判定：混戦")
-
-        except Exception:
-            pass
-
 # =========================
 note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
