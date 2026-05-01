@@ -4121,6 +4121,72 @@ try:
         nu_txt   = "正規化:小" if 0.90 <= nu <= 1.10 else "正規化:補正強"
         lines_out.append(f"・内訳要約：{star_txt}／{none_txt}／{sd_txt}／{nu_txt}")
 
+
+        # =========================================================
+    # 推奨戦法（順流・渦・逆流）
+    # =========================================================
+    try:
+        # FR差
+        fr_diff = abs(_vtx_fr - _u_fr)
+
+        # 初期値
+        recommend_style = "順流"
+        recommend_reason = []
+
+        # 展開評価がある場合
+        tenkai_txt = str(globals().get("展開評価", "") or globals().get("tenkai_eval", "") or "")
+
+        if "混戦" in tenkai_txt:
+            recommend_style = "渦"
+            recommend_reason.append("展開=混戦")
+
+        elif "差し" in tenkai_txt:
+            recommend_style = "渦"
+            recommend_reason.append("展開=差し寄り")
+
+        elif "先行" in tenkai_txt or "逃げ" in tenkai_txt:
+            recommend_style = "順流"
+            recommend_reason.append("展開=先行寄り")
+
+        # 無印押上げが中以上なら渦寄り
+        if isinstance(dbg, dict) and dbg:
+            if bn >= 0.60:
+                recommend_style = "渦"
+                recommend_reason.append("無印押上げ=中以上")
+
+            if bs <= -0.60:
+                recommend_reason.append("先頭負担=強")
+
+            if sd >= 0.60:
+                recommend_style = "順流"
+                recommend_reason.append("ライン偏差=大")
+
+        # VTXと逆流FRの差が大きい場合
+        if _vtx_fr - _u_fr >= 0.02:
+            recommend_style = "順流"
+            recommend_reason.append("VTX優勢")
+
+        elif _u_fr - _vtx_fr >= 0.02:
+            recommend_style = "逆流"
+            recommend_reason.append("逆流FR優勢")
+
+        # 信頼度
+        if fr_diff >= 0.02:
+            confidence = "A"
+        elif fr_diff >= 0.01:
+            confidence = "B"
+        else:
+            confidence = "C"
+
+        if not recommend_reason:
+            recommend_reason.append("標準判定")
+
+        lines_out.append(f"・推奨戦法：{recommend_style}［信頼度{confidence}］")
+        lines_out.append(f"・推奨理由：{'／'.join(recommend_reason)}")
+
+    except Exception as _e:
+        lines_out.append("・推奨戦法：判定不可")
+
     note_sections.extend(lines_out)
     note_sections.append("")
 
