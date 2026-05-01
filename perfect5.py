@@ -1278,8 +1278,17 @@ ratings_val = {no: (ratings[no] if ratings[no] is not None else 55.0) for no in 
 home_line_scores = calc_home_line_scores(line_def, H, B, active_cars)
 home_line_order = make_home_line_order(line_def, H, B, active_cars)
 home_line_text = format_home_line_order(line_def, home_line_order)
+
 home_top_gid = home_line_order[0] if home_line_order else None
-home_top_line = format_home_line_order(line_def, [home_top_gid]) if home_top_gid is not None else "—"
+
+# H主導ライン判定
+# Hスコアが低すぎる場合は「主導なし」とする
+home_top_score = float(home_line_scores.get(home_top_gid, 0.0)) if home_top_gid is not None else 0.0
+
+if home_top_gid is not None and home_top_score >= 1.0:
+    home_top_line = format_home_line_order(line_def, [home_top_gid])
+else:
+    home_top_line = "主導なし"
 
 
 
