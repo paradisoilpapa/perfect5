@@ -4161,22 +4161,37 @@ try:
                 recommend_style = "順流"
                 recommend_reason.append("ライン偏差=大")
 
-        # VTXと逆流FRの差が大きい場合
-        if _vtx_fr - _u_fr >= 0.02:
-            recommend_style = "順流"
-            recommend_reason.append("VTX優勢")
+            # =========================================================
+            # 戦法推奨ロジック（混戦時の渦優先ルール）
+            # =========================================================
 
-        elif _u_fr - _vtx_fr >= 0.02:
-            recommend_style = "逆流"
-            recommend_reason.append("逆流FR優勢")
+            # 混戦時は、順流と渦が僅差なら渦を優先
+            if "混戦" in tenkai_txt and bn >= 0.60:
+                recommend_style = "渦"
+                recommend_reason.append("混戦＋無印押上げ中")
 
-        # 信頼度
-        if fr_diff >= 0.02:
-            confidence = "A"
-        elif fr_diff >= 0.01:
-            confidence = "B"
-        else:
-            confidence = "C"
+            # 逆流FRだけは明確に高い場合のみ上書き
+            elif _u_fr - _vtx_fr >= 0.02:
+                recommend_style = "逆流"
+                recommend_reason.append("逆流FR優勢")
+
+            # 順流優勢は、混戦でない場合だけ強く反映
+            elif "混戦" not in tenkai_txt and _vtx_fr - _u_fr >= 0.02:
+                recommend_style = "順流"
+                recommend_reason.append("VTX優勢")
+
+            # =========================================================
+            # 信頼度判定
+            # =========================================================
+
+            fr_diff = abs(_vtx_fr - _u_fr)
+
+            if fr_diff >= 0.02:
+                confidence = "A"
+            elif fr_diff >= 0.01:
+                confidence = "B"
+            else:
+                confidence = "C"
 
         if not recommend_reason:
             recommend_reason.append("標準判定")
