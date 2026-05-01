@@ -2030,21 +2030,7 @@ if rank_pure.get(int(anchor_no), 999) > ANCHOR_REQUIRE_TOP_SB:
         f"※ ◎は『SBなし 上位{ANCHOR_REQUIRE_TOP_SB}位以内』縛りで {anchor_no_pre}→{anchor_no} に調整。"
     )
 
-# --- DEBUG表示（空の原因切り分け）---
-if DBG_ANCHOR:
-    st.write("DEBUG ANCHOR", {
-        "df_sorted_pure_empty": df_pure_empty,
-        "len_df_sorted_pure": 0 if df_sorted_pure is None else len(df_sorted_pure),
-        "active_cars": list(active_cars) if active_cars else [],
-        "base_order": base_order,
-        "rank_pure": rank_pure,
-        "C": list(C) if C else [],
-        "cand_pool": cand_pool,
-        "anchor_no_pre": int(anchor_no_pre),
-        "anchor_no": int(anchor_no),
-        "v_final_empty": (not bool(v_final)),
-        "len_v_final": (len(v_final) if isinstance(v_final, dict) else 0),
-    })
+
 
 # ===== confidence 算出（anchor_score のギャップ/分散）=====
 role_map = {int(no): role_in_line(int(no), line_def) for no in active_cars}
