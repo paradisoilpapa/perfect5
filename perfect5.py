@@ -1112,7 +1112,7 @@ with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expand
     )
     st.sidebar.caption("基準時刻：モ=8時 / デ=11時 / ナ=18時 / ミ=22時（JST・tzなしで取得）")
 
-    # ★ sidebarに統一
+        # ★ sidebarに統一
     if st.sidebar.button("APIで取得→風速に反映", use_container_width=True):
         info_xy = VELODROME_MASTER.get(track)
         if not info_xy or info_xy.get("lat") is None or info_xy.get("lon") is None:
@@ -1122,7 +1122,7 @@ with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expand
                 target = build_openmeteo_target_dt(api_date, race_time)
                 data = fetch_openmeteo_hour(info_xy["lat"], info_xy["lon"], target)
 
-                                st.session_state["wind_speed"] = round(float(data["speed_ms"]), 2)
+                st.session_state["wind_speed"] = round(float(data["speed_ms"]), 2)
 
                 precip = float(data.get("precipitation", 0.0) or 0.0)
                 weather_code = data.get("weather_code", None)
@@ -1138,6 +1138,7 @@ with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expand
                     f"（API側と{data['diff_min']:.0f}分ズレ）"
                 )
                 st.rerun()
+
             except Exception as e:
                 st.sidebar.error(f"取得に失敗：{e}")
 
