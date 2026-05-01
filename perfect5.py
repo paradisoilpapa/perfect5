@@ -4287,64 +4287,63 @@ try:
                 # =====================================================
         # 信頼度
         # =====================================================
+        if bn >= 0.50:
+            confidence = "B"
 
-           if bn >= 0.50:
-        confidence = "B"
+        elif fr_diff >= 0.02:
+            confidence = "A"
 
-    elif fr_diff >= 0.02:
-        confidence = "A"
+        elif fr_diff >= 0.01:
+            confidence = "B"
 
-    elif fr_diff >= 0.01:
-        confidence = "B"
-
-    else:
-        confidence = "C"
-
-
-    # H：推奨理由への反映（第2段階）
-    # ※戦法そのもの・信頼度はまだ変えない。理由にだけ追加する。
-    try:
-        if home_top_line == "主導なし":
-            recommend_reason.append("H主導ラインなし")
         else:
-            h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+            confidence = "C"
 
-            if h_line == FR_line:
-                recommend_reason.append("H主導=順流ライン")
-            elif h_line == VTX_line:
-                recommend_reason.append("H主導=渦ライン")
-            elif h_line == U_line:
-                recommend_reason.append("H主導=逆流ライン")
+        # H：推奨理由への反映（第2段階）
+        # ※戦法そのもの・信頼度はまだ変えない。理由にだけ追加する。
+        try:
+            if home_top_line == "主導なし":
+                recommend_reason.append("H主導ラインなし")
             else:
-                recommend_reason.append("H主導=その他ライン")
-    except Exception:
-        pass
+                h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
 
+                if h_line == FR_line:
+                    recommend_reason.append("H主導=順流ライン")
+                elif h_line == VTX_line:
+                    recommend_reason.append("H主導=渦ライン")
+                elif h_line == U_line:
+                    recommend_reason.append("H主導=逆流ライン")
+                else:
+                    recommend_reason.append("H主導=その他ライン")
+        except Exception:
+            pass
 
-    lines_out.append(
-        f"・推奨戦法：{recommend_style}［信頼度{confidence}］"
-    )
-    lines_out.append(
-        f"・推奨理由：{'／'.join(recommend_reason)}"
-    )
+        lines_out.append(
+            f"・推奨戦法：{recommend_style}［信頼度{confidence}］"
+        )
+        lines_out.append(
+            f"・推奨理由：{'／'.join(recommend_reason)}"
+        )
 
+        note_sections.extend(lines_out)
+        note_sections.append("")
 
-    globals()["note_sections"] = note_sections
+        globals()["note_sections"] = note_sections
 
-except Exception as _e:
-    try:
-        ns = globals().get("note_sections", None)
-        if not isinstance(ns, list):
-            ns = []
-            globals()["note_sections"] = ns
+    except Exception as _e:
+        try:
+            ns = globals().get("note_sections", None)
+            if not isinstance(ns, list):
+                ns = []
+                globals()["note_sections"] = ns
 
-        ns.append("")
-        ns.append("＜短評＞")
-        ns.append(f"・出力生成中に例外が発生しました: {_e}")
-        ns.append("判定：混戦")
+            ns.append("")
+            ns.append("＜短評＞")
+            ns.append(f"・出力生成中に例外が発生しました: {_e}")
+            ns.append("判定：混戦")
 
-    except Exception:
-        pass
+        except Exception:
+            pass
 
 # =========================
 note_text = "\n".join(note_sections)
