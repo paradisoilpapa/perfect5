@@ -4190,18 +4190,22 @@ try:
 
         lines_out.append(f"・内訳要約：{star_txt}／{none_txt}／{sd_txt}／{nu_txt}")
 
-    # =========================================================
+        # =========================================================
     # 推奨戦法（順流・渦・逆流）
     # =========================================================
     try:
         recommend_style = "順流"
         recommend_reason = []
+        confidence = "C"
 
         tenkai_txt = str(
             globals().get("展開評価", "")
             or globals().get("tenkai_eval", "")
             or ""
         )
+
+        # FR差
+        fr_diff = abs(_vtx_fr - _u_fr)
 
         # まず展開評価で初期判定
         if "混戦" in tenkai_txt:
@@ -4238,10 +4242,10 @@ try:
             recommend_style = "逆流"
             recommend_reason.append("逆流FR優勢")
 
-        # VTX優勢は渦寄りとして扱う
+        # VTX優勢は、混戦なら渦寄りとして扱う
         elif _vtx_fr - _u_fr >= 0.02 and "混戦" in tenkai_txt:
             recommend_style = "渦"
-            recommend_reason.append("VTX優勢")
+            recommend_reason.append("VTX優勢だが混戦のため渦寄り")
 
         # 混戦でない場合のみ順流優勢を採用
         elif _vtx_fr - _u_fr >= 0.02 and "混戦" not in tenkai_txt:
@@ -4249,8 +4253,6 @@ try:
             recommend_reason.append("VTX優勢")
 
         # 信頼度
-        fr_diff = abs(_vtx_fr - _u_fr)
-
         if "混戦" in tenkai_txt and bn >= 0.50:
             confidence = "B"
         elif fr_diff >= 0.02:
@@ -4269,8 +4271,8 @@ try:
         lines_out.append(f"・推奨戦法：{recommend_style}［信頼度{confidence}］")
         lines_out.append(f"・推奨理由：{'／'.join(recommend_reason)}")
 
-    except Exception:
-        lines_out.append("・推奨戦法：判定不可")
+    except Exception as _e:
+        lines_out.append(f"・推奨戦法：判定不可（{_e}）")
 
     note_sections.extend(lines_out)
     note_sections.append("")
@@ -4286,7 +4288,6 @@ try:
 
     # ここまでで note_sections を確実に保持
     globals()["note_sections"] = note_sections
-
 # =========================
 note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
