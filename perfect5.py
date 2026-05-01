@@ -4233,14 +4233,22 @@ try:
         if "混戦" in tenkai_txt and bn >= 0.50:
             recommend_style = "渦"
             recommend_reason.append("混戦＋無印押上げ中以上")
+                # 最終上書き（優先順位固定）
+
+        # ① 混戦＋押上げ中以上は絶対に渦
+        if "混戦" in tenkai_txt and bn >= 0.50:
+            recommend_style = "渦"
+            recommend_reason.append("混戦＋無印押上げ中以上")
+
+        # ② 逆流が明確に優勢
         elif _u_fr - _vtx_fr >= 0.02:
             recommend_style = "逆流"
             recommend_reason.append("逆流FR優勢")
-        elif _vtx_fr - _u_fr >= 0.02 and "混戦" in tenkai_txt:
-            recommend_style = "渦"
-            recommend_reason.append("VTX優勢だが混戦のため渦寄り")
-        elif _vtx_fr - _u_fr >= 0.02 and "混戦" not in tenkai_txt:
+
+        # ③ それ以外で順流優勢
+        elif _vtx_fr - _u_fr >= 0.02:
             recommend_style = "順流"
+            recommend_reason.append("VTX優勢")
             recommend_reason.append("VTX優勢")
 
         # 信頼度
