@@ -4284,7 +4284,7 @@ try:
             recommend_style = "渦"
             recommend_reason = ["標準判定"]
 
-        # =====================================================
+               # =====================================================
         # 信頼度
         # =====================================================
         if bn >= 0.50:
@@ -4315,6 +4315,21 @@ try:
     note_sections.append("")
 
     globals()["note_sections"] = note_sections
+
+except Exception as _e:
+    try:
+        ns = globals().get("note_sections", None)
+        if not isinstance(ns, list):
+            ns = []
+            globals()["note_sections"] = ns
+
+        ns.append("")
+        ns.append("＜短評＞")
+        ns.append(f"・出力生成中に例外が発生しました: {_e}")
+        ns.append("判定：混戦")
+
+    except Exception:
+        pass
 
 # =========================
 note_text = "\n".join(note_sections)
