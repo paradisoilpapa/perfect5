@@ -4284,7 +4284,29 @@ try:
             recommend_style = "渦"
             recommend_reason = ["標準判定"]
 
-               # =====================================================
+               
+                
+        # =====================================================
+        # H：推奨理由への反映
+        # =====================================================
+        try:
+            if home_top_line == "主導なし":
+                recommend_reason.append("H主導ラインなし")
+            else:
+                h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+
+                if h_line == FR_line:
+                    recommend_reason.append("H主導=順流ライン")
+                elif h_line == VTX_line:
+                    recommend_reason.append("H主導=渦ライン")
+                elif h_line == U_line:
+                    recommend_reason.append("H主導=逆流ライン")
+                else:
+                    recommend_reason.append("H主導=その他ライン")
+        except Exception:
+            pass
+        
+        # =====================================================
         # 信頼度
         # =====================================================
         if bn >= 0.50:
