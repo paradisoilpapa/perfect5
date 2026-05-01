@@ -1173,7 +1173,6 @@ with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expand
                 st.sidebar.error(f"取得に失敗：{e}")
 
 
-style = clamp(style_raw + 0.25 * override, -1.0, +1.0)
 
 straight_length = st.sidebar.number_input("みなし直線(m)", 30.0, 80.0, float(info["straight_length"]), 0.1)
 bank_angle      = st.sidebar.number_input("バンク角(°)", 20.0, 45.0, float(info["bank_angle"]), 0.1)
