@@ -4352,7 +4352,50 @@ try:
             confidence = "C"
 
                 
-                
+                    
+        # =====================================================
+        # H：低信頼時の推奨戦法切り替え
+        # =====================================================
+        try:
+            if home_top_line != "主導なし":
+                h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+
+                h_style = None
+                h_fr = 0.0
+
+                if h_line == FR_line:
+                    h_style = "順流"
+                    h_fr = float(FRv)
+                elif h_line == VTX_line:
+                    h_style = "渦"
+                    h_fr = float(VTXv)
+                elif h_line == U_line:
+                    h_style = "逆流"
+                    h_fr = float(Uv)
+
+                if recommend_style == "順流":
+                    cur_fr = float(FRv)
+                elif recommend_style == "渦":
+                    cur_fr = float(VTXv)
+                elif recommend_style == "逆流":
+                    cur_fr = float(Uv)
+                else:
+                    cur_fr = 0.0
+
+                if (
+                    h_style is not None
+                    and h_style != recommend_style
+                    and confidence == "C"
+                    and h_fr >= cur_fr - 0.01
+                    and bn < 0.50
+                ):
+                    recommend_reason.append(f"H主導により{h_style}寄せ")
+                    recommend_style = h_style
+
+        except Exception:
+            pass   
+        
+        
         # =====================================================
         # H：信頼度への反映（第3段階）
         # =====================================================
