@@ -4326,12 +4326,34 @@ try:
                 elif h_line == U_line:
                     h_style = "逆流"
 
-                # 混戦時だけHを採用する
-                if h_style is not None:
-                    if h_style != recommend_style and fr_diff < 0.015 and bn < 0.50:
-                        recommend_reason.append(f"H主導により{h_style}寄せ")
-                        recommend_style = h_style
-                        h_changed = True
+                # H主導があり、現在の推奨が低信頼Cで、H側FRが同等以上ならH側へ寄せる
+if h_style is not None:
+    if h_style == "順流":
+        h_fr = float(FRv)
+    elif h_style == "渦":
+        h_fr = float(VTXv)
+    elif h_style == "逆流":
+        h_fr = float(Uv)
+    else:
+        h_fr = 0.0
+
+    if recommend_style == "順流":
+        cur_fr = float(FRv)
+    elif recommend_style == "渦":
+        cur_fr = float(VTXv)
+    elif recommend_style == "逆流":
+        cur_fr = float(Uv)
+    else:
+        cur_fr = 0.0
+
+    if (
+        h_style != recommend_style
+        and confidence == "C"
+        and h_fr >= cur_fr - 0.01
+    ):
+        recommend_reason.append(f"H主導により{h_style}寄せ")
+        recommend_style = h_style
+        h_changed = True
 
         except Exception:
             pass
