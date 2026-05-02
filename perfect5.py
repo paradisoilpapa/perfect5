@@ -379,6 +379,54 @@ def zscore_val(x, xs):
     xs = np.array(xs, dtype=float); m, s = float(np.mean(xs)), float(np.std(xs))
     return 0.0 if s==0 else (float(x)-m)/s
 
+# ==============================
+# H：最終ホーム地力補正
+# ==============================
+H_SCORE_SCALE = float(globals().get("H_SCORE_SCALE", 0.045))
+H_SCORE_CAP   = float(globals().get("H_SCORE_CAP", 0.075))
+
+def calc_h_score_map(H: dict, active_cars: list[int]) -> dict[int, float]:
+    """
+    Hをレース内z化して、車番ごとの相対H評価を作る。
+    絶対値ではなく、そのレース内でHが高いか低いかを見る。
+    """
+    vals = np.array(
+        [float(H.get(int(n), 0.0)) for n in active_cars],
+        dtype=float
+    )
+
+    if len(vals) < 2:
+        return {int(n): 0.0 for n in active_cars}
+
+    mu = float(np.mean(vals))
+    sd = float(np.std(vals))
+
+    if sd < 1e-12:
+        return {int(n): 0.0 for n in active_cars}
+
+    return {
+        int(n): float((float(H.get(int(n), 0.0)) - mu) / sd)
+        for n in active_cars
+    }
+
+
+def h_home_bonus(no: int, role: str, H_Z: dict[int, float]) -> float:
+    """
+    H補正。
+    ライン先頭・単騎を中心に加点。
+    番手・三番手は薄く反映。
+    """
+    role_mult = {
+        "head": 1.00,
+        "single": 0.70,
+        "second": 0.30,
+        "thirdplus": 0.15,
+    }.get(role, 0.20)
+
+    raw = H_SCORE_SCALE * float(H_Z.get(int(no), 0.0)) * role_mult
+    return round(clamp(raw, -H_SCORE_CAP, H_SCORE_CAP), 3)
+
+
 def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
     """NaNを除いた母集団でT=50+10*(x-μ)/σを作り、NaNは50に置換して返す"""
     v = values.astype(float, copy=True)
@@ -1504,6 +1552,10 @@ for no in active_cars:
 # rows（本体計算）ここで laps_adj を計算して使う（2重計算しない）
 # ==============================
 rows = []
+
+# H：最終ホーム地力補正マップ
+H_Z = calc_h_score_map(H, active_cars)
+
 _wind_func = wind_adjust
 eff_wind_dir   = globals().get("eff_wind_dir", wind_dir)
 eff_wind_speed = globals().get("eff_wind_speed", wind_speed)
@@ -1534,14 +1586,13 @@ for no in active_cars:
 
     laps_adj = clamp(laps_adj, -0.15, 0.15)
 
-   
-
     # 環境・個人補正（既存）
     wind     = _wind_func(eff_wind_dir, float(eff_wind_speed or 0.0), role, float(prof_escape[no]))
     bank_b   = bank_character_bonus(bank_angle, straight_length, prof_escape[no], prof_sashi[no], bank_length)
     length_b = bank_length_adjust(bank_length, prof_oikomi[no])
     indiv    = extra_bonus.get(no, 0.0)
     stab     = stability_score(no)  # 安定度
+    h_bonus  = h_home_bonus(no, role, H_Z)
 
     l200 = l200_adjust(
         role, straight_length, bank_length, race_class,
@@ -1555,6 +1606,7 @@ for no in active_cars:
         + cf["spread"] * tens_corr.get(no, 0.0)
         + bank_b + length_b
         + laps_adj + indiv + stab
+        + h_bonus
         + l200
     )
 
@@ -1568,14 +1620,17 @@ for no in active_cars:
         round(laps_adj, 3),
         round(indiv, 3),
         round(stab, 3),
+        round(h_bonus, 3),
         round(l200, 3),
         float(total_raw)
     ])
 
 df = pd.DataFrame(rows, columns=[
-    "車番","役割","脚質基準(会場)","風補正","得点補正","バンク補正",
-    "周長補正","周回補正","個人補正","安定度","ラスト200","合計_SBなし_raw",
+    "車番", "役割", "脚質基準(会場)", "風補正", "得点補正", "バンク補正",
+    "周長補正", "周回補正", "個人補正", "安定度", "H補正", "ラスト200", "合計_SBなし_raw",
 ])
+
+
 # ===== [PATCH] dfの型を確定させ、SBなし母集団(v_wo/v_final)を必ず作る =====
 # 1) dfが空のときも落とさない
 if df is None or len(df) == 0:
