@@ -1248,11 +1248,6 @@ if "_DID_SELF_GREP" not in st.session_state:
     _grep_self("ko_text", __file__, context=6)
 # →★ここまで
 
-st.subheader("レース番号（直前にサクッと変更）")
-
-
-
-
 
 st.subheader("レース番号（直前にサクッと変更）")
 if "race_no_main" not in st.session_state:
