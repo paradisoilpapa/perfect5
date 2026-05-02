@@ -1249,7 +1249,7 @@ if "_DID_SELF_GREP" not in st.session_state:
 # →★ここまで
 
 
-st.subheader("レース番号（直前にサクッと変更）")
+st.subheader("7車専用")
 if "race_no_main" not in st.session_state:
     st.session_state["race_no_main"] = 1
 c1, c2, c3 = st.columns([6,2,2])
