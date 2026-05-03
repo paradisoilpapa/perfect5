@@ -427,6 +427,55 @@ def h_home_bonus(no: int, role: str, H_Z: dict[int, float]) -> float:
     return round(clamp(raw, -H_SCORE_CAP, H_SCORE_CAP), 3)
 
 
+def h_lead_line_bonus(
+    no: int,
+    role: str,
+    H: dict,
+    B: dict,
+    line_def: dict,
+    home_top_gid,
+) -> float:
+    """
+    H主導ラインの先頭車だけを下支えする補正。
+    目的：H主導ライン先頭がKO最下位まで沈む現象を防ぐ。
+    """
+    try:
+        if home_top_gid is None:
+            return 0.0
+
+        members = line_def.get(home_top_gid, [])
+        if not members:
+            return 0.0
+
+        head = int(members[0])
+
+        # H主導ラインの先頭車だけ対象
+        if int(no) != head:
+            return 0.0
+
+        # 役割が先頭でないなら対象外
+        if role != "head":
+            return 0.0
+
+        h_val = float(H.get(int(no), 0.0) or 0.0)
+        b_val = float(B.get(int(no), 0.0) or 0.0)
+
+        # Hが低いなら補正しない
+        if h_val < 3.0:
+            return 0.0
+
+        # Hを主、Bを補助にする
+        bonus = 0.035 + 0.004 * h_val + 0.002 * b_val
+
+        # 暴走防止
+        return round(clamp(bonus, 0.0, 0.090), 3)
+
+    except Exception:
+        return 0.0
+    raw = H_SCORE_SCALE * float(H_Z.get(int(no), 0.0)) * role_mult
+    return round(clamp(raw, -H_SCORE_CAP, H_SCORE_CAP), 3)
+
+
 def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
     """NaNを除いた母集団でT=50+10*(x-μ)/σを作り、NaNは50に置換して返す"""
     v = values.astype(float, copy=True)
@@ -442,10 +491,27 @@ def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
     T[~finite] = 50.0
     return T, mu, sd, k
 
-def extract_car_list(s, nmax):
-    s = str(s or "").strip()
-    return [int(c) for c in s if c.isdigit() and 1 <= int(c) <= nmax]
+def extract_car_list(s, n_cars=None):
+    """
+    ライン入力文字列から車番を抽出する。
+    出走数n_carsでは車番を制限しない。
+    5車立てでも 12346 のような欠番ありを許可する。
+    """
+    cars = []
+    seen = set()
 
+    for ch in str(s):
+        if not ch.isdigit():
+            continue
+
+        v = int(ch)
+
+        # 競輪の車番として1〜9だけ許可
+        if 1 <= v <= 9 and v not in seen:
+            cars.append(v)
+            seen.add(v)
+
+    return cars
 def build_line_maps(lines):
     labels = "ABCDEFG"
     line_def = {labels[i]: lst for i,lst in enumerate(lines) if lst}
@@ -1249,7 +1315,7 @@ if "_DID_SELF_GREP" not in st.session_state:
 # →★ここまで
 
 
-st.subheader("7車専用")
+st.subheader("２０２６/５/２更新")
 if "race_no_main" not in st.session_state:
     st.session_state["race_no_main"] = 1
 c1, c2, c3 = st.columns([6,2,2])
@@ -1271,18 +1337,27 @@ race_no = int(st.session_state["race_no_main"])
 
 # ライン構成（最大7：単騎も1ライン）
 line_inputs = [
-    st.text_input("ライン1（例：317）", key="line_1", max_chars=9),
-    st.text_input("ライン2（例：6）", key="line_2", max_chars=9),
-    st.text_input("ライン3（例：425）", key="line_3", max_chars=9),
+    st.text_input("ライン1（例：123）", key="line_1", max_chars=9),
+    st.text_input("ライン2（例：456）", key="line_2", max_chars=9),
+    st.text_input("ライン3（例：789）", key="line_3", max_chars=9),
     st.text_input("ライン4（任意）", key="line_4", max_chars=9),
     st.text_input("ライン5（任意）", key="line_5", max_chars=9),
     st.text_input("ライン6（任意）", key="line_6", max_chars=9),
     st.text_input("ライン7（任意）", key="line_7", max_chars=9),
+    st.text_input("ライン8（任意）", key="line_8", max_chars=9),
+    st.text_input("ライン9（任意）", key="line_9", max_chars=9),
 ]
 n_cars = int(n_cars)
 lines = [extract_car_list(x, n_cars) for x in line_inputs if str(x).strip()]
 line_def, car_to_group = build_line_maps(lines)
 active_cars = sorted({c for lst in lines for c in lst}) if lines else list(range(1, n_cars+1))
+
+# 5〜9車対応：ライン入力漏れチェック
+if len(active_cars) != int(n_cars):
+    st.warning(
+        f"出走数{n_cars}に対して、ライン入力済みは{len(active_cars)}車です。"
+        " ライン入力漏れを確認してください。"
+    )
 
 # ←←← ここに入れる
 def input_float_text(label: str, key: str, placeholder: str = ""):
@@ -3820,19 +3895,204 @@ try:
             pass
         return "".join(map(str, ln)) if isinstance(ln, (list, tuple)) and ln else "—"
 
-    note_sections.append(f"【順流】◎ライン {_fmt_line(FR_line)}：想定FR={_lfr(FR_line):.3f}")
+        # =========================================================
+    # ライン評価グループ（順流域／渦域／逆流域）
+    # =========================================================
+    def _fmt_line(ln):
+        try:
+            f = globals().get("_free_fmt_nums")
+            if callable(f):
+                return f(ln)
+        except Exception:
+            pass
+        return "".join(map(str, ln)) if isinstance(ln, (list, tuple)) and ln else "—"
 
-    if VTX_line and _lfr(VTX_line) > 0:
-        note_sections.append(f"【渦】候補ライン：{_fmt_line(VTX_line)}：想定FR={_lfr(VTX_line):.3f}")
+    def _same_line(a, b):
+        return tuple(int(x) for x in (a or [])) == tuple(int(x) for x in (b or []))
+
+    try:
+        h_line_members = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+    except Exception:
+        h_line_members = []
+
+    valid_lines = [ln for ln in (all_lines or []) if ln]
+    line_items = []
+
+    for ln in valid_lines:
+        fr = float(_lfr(ln))
+        line_items.append({
+            "line": ln,
+            "fr": fr,
+            "is_fr": _same_line(ln, FR_line),
+            "is_vtx": _same_line(ln, VTX_line),
+            "is_u": _same_line(ln, U_line),
+            "is_h": _same_line(ln, h_line_members),
+        })
+
+    line_items = sorted(line_items, key=lambda x: (-x["fr"], _fmt_line(x["line"])))
+
+    if line_items:
+        top_fr = float(line_items[0]["fr"])
+
+        # FR差による範囲判定
+        # 7車以下はやや狭め、8・9車は広め
+        if int(n_cars) >= 8:
+            upper_gap = 0.080
+            middle_ratio = 0.45
+            h_gap = 0.150
+        else:
+            upper_gap = 0.050
+            middle_ratio = 0.45
+            h_gap = 0.090
+
+        zones = {
+            "順流域": [],
+            "渦域": [],
+            "逆流域": [],
+        }
+
+        for item in line_items:
+            ln = item["line"]
+            fr = float(item["fr"])
+            gap = top_fr - fr
+            ratio = (fr / top_fr) if top_fr > 1e-12 else 0.0
+
+            tags = []
+            if item["is_fr"]:
+                tags.append("◎")
+            if item["is_h"]:
+                tags.append("H主導")
+            if item["is_vtx"]:
+                tags.append("旧渦")
+            if item["is_u"]:
+                tags.append("旧逆流")
+
+            # 順流域：
+            # FRトップ、またはFRトップとの差が小さいライン
+            if item["is_fr"] or gap <= upper_gap:
+                zone = "順流域"
+
+            # H主導ラインは、FR2位級なら実質上位へ寄せる
+            elif item["is_h"] and (gap <= h_gap or ratio >= 0.55):
+                zone = "順流域"
+                tags.append("実質上位")
+
+            # 中位以上の別線は渦域
+            elif ratio >= middle_ratio:
+                zone = "渦域"
+
+            # 低FR・単騎・押上げ側は逆流域
+            else:
+                zone = "逆流域"
+
+            sort_score = fr + (0.030 if item["is_h"] else 0.0)
+
+            zones[zone].append({
+                "line": ln,
+                "fr": fr,
+                "tags": tags,
+                "sort_score": sort_score,
+            })
+
+        for z in zones:
+            zones[z] = sorted(
+                zones[z],
+                key=lambda x: (-x["sort_score"], -x["fr"], _fmt_line(x["line"]))
+            )
+
+                # =====================================================
+        # 全ラインが順流域に吸収された場合の強制分割
+        # 目的：順流・渦・逆流メインが全部同じになるのを防ぐ
+        # =====================================================
+        try:
+            if (
+                len(zones.get("順流域", [])) >= 3
+                and len(zones.get("渦域", [])) == 0
+                and len(zones.get("逆流域", [])) == 0
+            ):
+                all_top_items = list(zones["順流域"])
+
+                # まずFR順で並べる
+                all_top_items = sorted(
+                    all_top_items,
+                    key=lambda x: (-float(x["fr"]), _fmt_line(x["line"]))
+                )
+
+                # ◎ラインは順流域に残す
+                fr_items = [x for x in all_top_items if "◎" in x.get("tags", [])]
+
+                if fr_items:
+                    keep_jun = fr_items[0]
+                else:
+                    keep_jun = all_top_items[0]
+
+                rest = [x for x in all_top_items if x is not keep_jun]
+
+                # 残りの中でFR最上位を渦域へ
+                rest = sorted(
+                    rest,
+                    key=lambda x: (-float(x["fr"]), _fmt_line(x["line"]))
+                )
+
+                keep_vtx = rest[0] if rest else None
+                rest2 = [x for x in rest if x is not keep_vtx]
+
+                zones["順流域"] = [keep_jun]
+                zones["渦域"] = [keep_vtx] if keep_vtx is not None else []
+                zones["逆流域"] = rest2
+
+        except Exception:
+            pass
+
+        
+
+        # KO隊列用：ラインごとの新ゾーン分類を保存
+        _LINE_ZONE_MAP = {}
+
+        _zone_to_short = {
+            "順流域": "順流",
+            "渦域": "渦",
+            "逆流域": "逆流",
+        }
+
+        for zone_name, items in zones.items():
+            short_zone = _zone_to_short.get(zone_name, "その他")
+            for item in items:
+                try:
+                   key = "".join(ch for ch in str(item["line"]) if ch.isdigit())
+                   if key:
+                       _LINE_ZONE_MAP[key] = short_zone
+                except Exception:
+                   pass
+
+        globals()["LINE_ZONE_MAP"] = _LINE_ZONE_MAP
+
+        # st.write("DEBUG LINE_ZONE_MAP", _LINE_ZONE_MAP)
+
+        note_sections.append("【ライン評価グループ】")
+
+        for zone_name in ["順流域", "渦域", "逆流域"]:
+            items = zones.get(zone_name, [])
+            if not items:
+                note_sections.append(f"{zone_name}：—")
+                continue
+            parts = []
+            for item in items:
+                tag_txt = ""
+                if item["tags"]:
+                    tag_txt = "・" + "・".join(item["tags"])
+
+                parts.append(
+                    f"{_fmt_line(item['line'])}［FR={item['fr']:.3f}{tag_txt}］"
+                )
+
+            note_sections.append(f"{zone_name}：" + "／".join(parts))
+
     else:
-        note_sections.append("【渦】候補ライン：—：想定FR=0.000")
-
-    note_sections.append(f"【逆流】無ライン {_fmt_line(U_line)}：想定FR={_lfr(U_line):.3f}")
-
-    for ln in (all_lines or []):
-        if ln == FR_line or ln == VTX_line or ln == U_line:
-            continue
-        note_sections.append(f"　　　その他ライン {_fmt_line(ln)}：想定FR={_lfr(ln):.3f}")
+        note_sections.append("【ライン評価グループ】")
+        note_sections.append("順流域：—")
+        note_sections.append("渦域：—")
+        note_sections.append("逆流域：—")
 
     note_sections.append("")
 
@@ -3877,12 +4137,23 @@ try:
 
         def _infer_line_zone(ln):
             s = _norm_line(ln)
+
+            # 新方式：ライン評価グループを優先
+            try:
+                zmap = globals().get("LINE_ZONE_MAP", {})
+                if isinstance(zmap, dict) and s in zmap:
+                    return zmap.get(s, "その他")
+            except Exception:
+                pass
+
+            # 保険：旧方式
             if s and FR_line and s == _norm_line(FR_line):
                 return "順流"
             if VTX_line and s == _norm_line(VTX_line):
                 return "渦"
             if s and U_line and s == _norm_line(U_line):
                 return "逆流"
+
             return "その他"
 
         def _queue_for_pattern(lines, svr_order):
@@ -3917,17 +4188,39 @@ try:
         _car_zone_map = _build_car_zone_map(all_lines)
 
         _car_line_size = {}
+        _car_line_pos = {}
+
         for ln in (all_lines or []):
             ds = _digits_of_line(ln)
             sz = len(ds)
-            for c in ds:
-                _car_line_size[int(c)] = sz if sz > 0 else 1
 
-        def _pos_adj(i):
-            if i == 0:
+            for idx, c in enumerate(ds):
+                _car_line_size[int(c)] = sz if sz > 0 else 1
+                _car_line_pos[int(c)] = int(idx)
+
+        def _pos_adj_for_car(car):
+            """
+            位置補正は隊列全体の何番目かではなく、
+            その車が所属ライン内で何番手かを見る。
+            単騎は番手利を与えない。
+            """
+            car = int(car)
+            sz = int(_car_line_size.get(car, 1) or 1)
+            pos = int(_car_line_pos.get(car, 0) or 0)
+
+            # 単騎は位置補正なし
+            if sz <= 1:
+                return 0.0
+
+            # ライン先頭
+            if pos == 0:
                 return -0.040
-            if i == 1:
+
+            # ライン2番手
+            if pos == 1:
                 return +0.020
+
+            # 3番手以降
             return 0.0
 
         _FR_K_MAIN = 0.18
@@ -3983,8 +4276,7 @@ try:
 
             def _final_at(car, i):
                 base = float(score_map.get(int(car), 0.0))
-                return base + _pos_adj(int(i)) + _fr_bonus_for_car(int(car), main_zone)
-
+                return base + _pos_adj_for_car(int(car)) + _fr_bonus_for_car(int(car), main_zone)
             # ====== PATCH: venue-aware pass_m / available_m + speed-based MAX_PASSES ======
             pass_m = 14.0 + 0.35 * straight_m
             pass_m *= (1.0 + 0.25 * max(0.0, style))
@@ -4130,8 +4422,10 @@ try:
             main_zone = (svr[0] if (svr and len(svr) >= 1) else "順流")
             outs[pname] = _run_ko(q, main_zone)
 
-        def _fmt_seq(seq, max_n=7):
+        def _fmt_seq(seq, max_n=None):
             xs = [int(x) for x in (seq or []) if str(x).isdigit()]
+            if max_n is None:
+                max_n = int(globals().get("n_cars", len(xs)))
             xs = xs[:max_n]
             return " → ".join(str(x) for x in xs) if xs else "（なし）"
 
