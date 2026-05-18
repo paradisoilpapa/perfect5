@@ -525,7 +525,137 @@ def role_in_line(car, line_def):
             idx = mem.index(car)
             return ['head','second','thirdplus'][idx] if idx<3 else 'thirdplus'
     return 'single'
+# =====================================================
+# ラスト半周補正：番手差し・前で動ける上位補正
+# =====================================================
 
+LAST_HALF_ENABLE = True
+
+# ラスト半周補正の全体上限
+LAST_HALF_CAP = 0.050
+
+# 番手補正の上限
+LAST_HALF_SECOND_CAP = 0.050
+
+# 先頭・単騎の前で動ける補正の上限
+LAST_HALF_FRONT_CAP = 0.040
+
+
+def _is_top_third(rank_val, top_third_limit: int) -> bool:
+    """
+    レース内上位1/3判定。
+    7車なら3位以内。
+    """
+    try:
+        return int(rank_val) <= int(top_third_limit)
+    except Exception:
+        return False
+
+
+def calc_last_half_role_bonus(
+    role: str,
+    kaku: str,
+    tenscore: float,
+    leader_tenscore: float,
+    race_avg_tenscore: float,
+    h_count: float = 0.0,
+    b_count: float = 0.0,
+    race_score_rank=None,
+    ko_score_rank=None,
+    tenkai_score_rank=None,
+    top_third_limit: int = 3,
+    scenario_top_count: int = 0,
+    p1_rate=None,
+    p2_rate=None,
+    p3_rate=None,
+):
+    """
+    ラスト半周〜ゴール前の個人戦補正。
+
+    思想：
+    ラスト半周までは団体戦。
+    ラスト半周からは個人戦。
+    そのため、位置ではなく「実際に着を取れる個人成績」で補正する。
+
+    使用するもの：
+    ・1着率
+    ・2着内率
+    ・3着内率
+
+    使わないもの：
+    ・番手位置だけの加点
+    ・H/Bだけの加点
+    ・自力だから加点
+    ・単騎だから加点
+    ・H主導3番手以降だから加点
+    """
+
+    if not LAST_HALF_ENABLE:
+        return 0.0, []
+
+    bonus = 0.0
+    reasons = []
+
+    try:
+        role = str(role)
+
+        def _rate(v):
+            try:
+                x = float(v)
+                if x > 1.0:
+                    x = x / 100.0
+                return x
+            except Exception:
+                return None
+
+        p1 = _rate(p1_rate)
+        p2 = _rate(p2_rate)
+        p3 = _rate(p3_rate)
+
+        # ---------------------------------------------
+        # 個人戦補正
+        # ---------------------------------------------
+        # 勝ち切れる個人力を強めに評価
+        if p1 is not None and p1 >= 0.20:
+            bonus += 0.025
+            reasons.append(f"1着率{p1 * 100:.0f}%以上")
+
+        # 2着内率は評価するが、1着率より軽くする
+        if p2 is not None and p2 >= 0.30:
+            bonus += 0.010
+            reasons.append(f"2着内率{p2 * 100:.0f}%以上")
+
+        # 3着内率は、2着内率もある場合だけ補正
+        # 3着に残るだけの選手をラスト半周個人力として過大評価しない
+        if (
+            p3 is not None
+            and p3 >= 0.40
+            and p2 is not None
+            and p2 >= 0.30
+        ):
+            bonus += 0.010
+            reasons.append(f"3着内率{p3 * 100:.0f}%以上")
+
+        # ---------------------------------------------
+        # 役割別上限
+        # 位置で加点はしない。
+        # ただし3番手以降だけは暴走防止で上限を低くする。
+        # ---------------------------------------------
+        if role == "thirdplus":
+            role_cap = 0.030
+        else:
+            role_cap = 0.050
+
+        bonus = clamp(bonus, 0.0, role_cap)
+        bonus = clamp(bonus, -LAST_HALF_CAP, LAST_HALF_CAP)
+
+        if not reasons:
+            reasons.append("補正なし")
+
+        return round(float(bonus), 3), reasons
+
+    except Exception as e:
+        return 0.0, [f"ラスト半周補正エラー:{e}"]
 
 # ==============================
 # H：最終ホーム想定ライン
@@ -1159,7 +1289,7 @@ info = KEIRIN_DATA[track]
 st.session_state["track"] = track
 
 race_time = st.sidebar.selectbox("開催区分", ["モーニング","デイ","ナイター","ミッドナイト"], 1)
-race_day  = st.sidebar.date_input("開催日（風の取得基準日）", value=date.today())
+race_day = st.sidebar.date_input("日付（風取得用）", value=date.today())
 
 wind_dir = st.sidebar.selectbox(
     "風向", ["無風","左上","上","右上","左","右","左下","下","右下"],
@@ -1170,24 +1300,15 @@ wind_speed_default = st.session_state.get("wind_speed", 3.0)
 wind_speed = st.sidebar.number_input("風速(m/s)", 0.0, 60.0, float(wind_speed_default), 0.1)
 
 with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expanded=False):
-    # ★ sidebarに統一（UIが迷子にならない）
-    api_date = st.sidebar.date_input(
-        "開催日（風の取得基準日）",
-        value=pd.to_datetime("today").date(),
-        key="api_date"
-    )
     st.sidebar.caption("基準時刻：モ=8時 / デ=11時 / ナ=18時 / ミ=22時（JST・tzなしで取得）")
 
-   
-
-    # ★ sidebarに統一
     if st.sidebar.button("APIで取得→風速に反映", use_container_width=True):
         info_xy = VELODROME_MASTER.get(track)
         if not info_xy or info_xy.get("lat") is None or info_xy.get("lon") is None:
             st.sidebar.error(f"{track} の座標が未登録です（VELODROME_MASTER に lat/lon を入れてください）")
         else:
             try:
-                target = build_openmeteo_target_dt(api_date, race_time)
+                target = build_openmeteo_target_dt(race_day, race_time)
                 data = fetch_openmeteo_hour(info_xy["lat"], info_xy["lon"], target)
 
                 st.session_state["wind_speed"] = round(float(data["speed_ms"]), 2)
@@ -1218,10 +1339,30 @@ bank_length     = st.sidebar.number_input("周長(m)", 300.0, 500.0, float(info[
 st.session_state["bank_length"] = float(bank_length)
 
 base_laps = st.sidebar.number_input("周回（通常4）", 1, 10, 4, 1)
-day_label = st.sidebar.selectbox("開催日", ["初日","2日目","最終日"], 0)
-eff_laps  = int(base_laps) + {"初日":1,"2日目":2,"最終日":3}[day_label]
+day_label = st.sidebar.selectbox(
+    "開催日",
+    ["初日", "2日目", "3日目", "4日目", "5日目", "最終日"],
+    0
+)
 
-race_class = st.sidebar.selectbox("級別", ["Ｓ級","Ａ級","Ａ級チャレンジ","ガールズ"], 0)
+DAY_LAP_ADD = {
+    "初日": 1,
+    "2日目": 2,
+    "3日目": 3,
+    "4日目": 4,
+    "5日目": 5,
+    "最終日": 6,
+}
+
+eff_laps = int(base_laps) + DAY_LAP_ADD[day_label]
+
+race_class = st.sidebar.selectbox(
+    "級別",
+    ["Ｓ級", "Ａ級", "Ａ級チャレンジ", "ガールズ", "アドバンス"],
+    0
+)
+
+is_girls_like = race_class in ("ガールズ", "アドバンス")
 
 # === 会場styleを「得意会場平均」を基準に再定義
 zL, zTH, dC = venue_z_terms(straight_length, bank_angle, bank_length)
@@ -1259,10 +1400,18 @@ CLASS_FACTORS = {
     "Ａ級":           {"spread":0.90, "line":0.85},
     "Ａ級チャレンジ": {"spread":0.80, "line":0.70},
     "ガールズ":       {"spread":0.85, "line":1.00},
+    "アドバンス":     {"spread":0.85, "line":1.00},
 }
 cf = CLASS_FACTORS[race_class]
 
-DAY_FACTOR = {"初日":1.00, "2日目":1.00, "最終日":1.00}
+DAY_FACTOR = {
+    "初日": 1.00,
+    "2日目": 1.00,
+    "3日目": 0.99,
+    "4日目": 0.98,
+    "5日目": 0.97,
+    "最終日": 0.96,
+}
 day_factor = DAY_FACTOR[day_label]
 
 cap_base = clamp(0.06 + 0.02*style, 0.04, 0.08)
@@ -1273,8 +1422,21 @@ if race_time == "ミッドナイト":
     cap_SB_eff *= 0.95
 
 # ===== 日程・級別・頭数で“周回疲労の効き”を薄くシフト（出力には出さない） =====
-DAY_SHIFT = {"初日": -0.5, "2日目": 0.0, "最終日": +0.5}
-CLASS_SHIFT = {"Ｓ級": 0.0, "Ａ級": +0.10, "Ａ級チャレンジ": +0.20, "ガールズ": -0.10}
+DAY_SHIFT = {
+    "初日": -0.5,
+    "2日目": 0.0,
+    "3日目": +0.2,
+    "4日目": +0.4,
+    "5日目": +0.6,
+    "最終日": +0.8,
+}
+CLASS_SHIFT = {
+    "Ｓ級": 0.0,
+    "Ａ級": +0.10,
+    "Ａ級チャレンジ": +0.20,
+    "ガールズ": -0.10,
+    "アドバンス": -0.10,
+}
 HEADCOUNT_SHIFT = {5: -0.20, 6: -0.10, 7: -0.05, 8: 0.0, 9: +0.10}
 
 def fatigue_extra(eff_laps: int, day_label: str, n_cars: int, race_class: str) -> float:
@@ -1286,6 +1448,11 @@ def fatigue_extra(eff_laps: int, day_label: str, n_cars: int, race_class: str) -
 
 # === PATCH-L200:（以下そのまま） ==========================================
 # ...（あなたの last200_bonus 以降は変更なし）
+
+fatigue_value = fatigue_extra(eff_laps, day_label, n_cars, race_class)
+
+globals()["fatigue_value"] = float(fatigue_value)
+globals()["fatigue_extra_value"] = float(fatigue_value)
 
 # sidebarの直後あたり（straight_length/style/wind_speedが確定した後）
 globals()["straight_length"] = float(straight_length)
@@ -1396,6 +1563,123 @@ for i, no in enumerate(active_cars):
         x_out[no]= st.number_input("着外", 0, 99, 0, key=f"xo_{no}")
 
 ratings_val = {no: (ratings[no] if ratings[no] is not None else 55.0) for no in active_cars}
+
+# =====================================================
+# 混戦度判定
+#   平均得点ではなく、競走得点1位と2位の差で見る
+#   High   = 上位差が大きく、順当寄り
+#   Middle = 標準
+#   Low    = 上位差が小さく、波乱気味
+#
+#   ※スコア補正には使わない。まずは表示・検証用。
+# =====================================================
+def calc_race_compactness(ratings_val: dict, active_cars: list):
+    vals = []
+
+    for no in active_cars:
+        try:
+            v = float(ratings_val.get(int(no), 0.0))
+            if v > 0:
+                vals.append(v)
+        except Exception:
+            pass
+
+    if len(vals) < 2:
+        return {
+            "label": "Middle",
+            "top1": 0.0,
+            "top2": 0.0,
+            "top_gap": 0.0,
+        }
+
+    vals = sorted(vals, reverse=True)
+
+    top1 = vals[0]
+    top2 = vals[1]
+    top_gap = top1 - top2
+
+    if top_gap >= 2.00:
+        label = "順当寄り"
+    elif top_gap >= 1.00:
+        label = "標準"
+    else:
+        label = "波乱気味"
+
+    return {
+        "label": label,
+        "top1": float(top1),
+        "top2": float(top2),
+        "top_gap": float(top_gap),
+    }
+
+
+race_compact_info = calc_race_compactness(ratings_val, active_cars)
+
+race_compact_label = race_compact_info["label"]
+race_compact_top1 = race_compact_info["top1"]
+race_compact_top2 = race_compact_info["top2"]
+race_compact_gap = race_compact_info["top_gap"]
+
+globals()["race_compact_info"] = race_compact_info
+globals()["race_compact_label"] = race_compact_label
+globals()["race_compact_gap"] = race_compact_gap
+
+# =====================================================
+# 旧レースレベル補正は無効化
+#   平均得点High/Middle/Lowはスコアを歪めやすいため使わない
+# =====================================================
+level_rating_scale = 1.00
+level_comment_scale = 1.00
+level_line_scale = 1.00
+
+globals()["level_rating_scale"] = level_rating_scale
+globals()["level_comment_scale"] = level_comment_scale
+globals()["level_line_scale"] = level_line_scale
+# =====================================================
+# コメントチェック表
+#   前検コメントを見て手動チェック
+#   自力：自力 / 自力自在 / 自力基本 / 自分で / 前で 等
+#   番手：○○君 / ○○へ / 任せる / 近畿勢 等
+#   競り：競り対象の車番にチェック
+# =====================================================
+st.subheader("コメントチェック")
+
+jiryoku_comment = {}
+target_comment = {}
+seri_comment = {}
+
+comment_cols = st.columns(n_cars)
+
+for i, no in enumerate(active_cars):
+    no = int(no)
+    with comment_cols[i]:
+        st.markdown(f"**{no}番**")
+
+        jiryoku_comment[no] = st.checkbox(
+            "自力",
+            value=False,
+            key=f"jiryoku_comment_r{race_no}_{no}"
+        )
+
+        target_comment[no] = st.checkbox(
+            "番手",
+            value=False,
+            key=f"target_comment_r{race_no}_{no}"
+        )
+
+        seri_comment[no] = st.checkbox(
+            "競り",
+            value=False,
+            key=f"seri_comment_r{race_no}_{no}"
+        )
+
+globals()["jiryoku_comment"] = jiryoku_comment
+globals()["target_comment"] = target_comment
+globals()["seri_comment"] = seri_comment
+
+
+# H：最終ホーム想定ライン
+home_line_scores = calc_home_line_scores(line_def, H, B, active_cars)
 
 # H：最終ホーム想定ライン
 home_line_scores = calc_home_line_scores(line_def, H, B, active_cars)
@@ -1634,9 +1918,11 @@ for no in active_cars:
     no = int(no)
     role = role_in_line(no, line_def)
 
+    # =====================================================
     # 周回疲労（DAY×頭数×級別を反映）
+    # =====================================================
     extra = fatigue_extra(eff_laps, day_label, n_cars, race_class)
-    extra = min(extra, 1.5)   # 応急上限（暴走止め）
+    extra = min(extra, 3.0)   # 応急上限（暴走止め）
 
     fatigue_scale = (
         1.0  if race_class == "Ｓ級" else
@@ -1645,18 +1931,119 @@ for no in active_cars:
         1.05
     )
 
+    # =====================================================
+    # 周回疲労補正
+    # =====================================================
     laps_adj = (
         -0.10 * extra * (1.0 if float(prof_escape[no]) > 0.5 else 0.0)
         + 0.05 * extra * (1.0 if float(prof_oikomi[no]) > 0.4 else 0.0)
     ) * fatigue_scale
 
     # ガールズは周回疲労を弱める
-    if race_class == "ガールズ":
+    if is_girls_like:
         laps_adj *= 0.3
 
-    laps_adj = clamp(laps_adj, -0.15, 0.15)
+    # 周回疲労の暴走防止
+    laps_adj = clamp(laps_adj, -0.22, 0.18)
 
+    # =====================================================
+    # コメント補正
+    #   自力：本人をプラス補正
+    #   番手：本人ではなく、前の自力先頭をライン連動で格上げ
+    #   競り：競り対象者を減点
+    # =====================================================
+    jiryoku_comment_map = globals().get("jiryoku_comment", {})
+    target_comment_map  = globals().get("target_comment", {})
+    seri_comment_map    = globals().get("seri_comment", {})
+
+    is_jiryoku_comment = bool(jiryoku_comment_map.get(int(no), False))
+    is_seri_comment    = bool(seri_comment_map.get(int(no), False))
+
+        # -----------------------------------------------------
+    # 自力コメント補正
+    # -----------------------------------------------------
+    jiryoku_comment_bonus = 0.0
+
+    if is_jiryoku_comment:
+        # 基本加点
+        jiryoku_comment_bonus = 0.120
+
+        # ライン先頭の自力コメントは、実際に動く役割なので追加
+        if role == "head":
+            jiryoku_comment_bonus += 0.020
+
+        # H主導ラインの先頭なら、さらに追加
+        try:
+            h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+            if h_line and int(h_line[0]) == int(no):
+                jiryoku_comment_bonus += 0.030
+        except Exception:
+            pass
+
+        # ガールズはラインがないため少し薄め
+        if is_girls_like:
+            jiryoku_comment_bonus *= 0.60
+
+    jiryoku_comment_bonus = clamp(jiryoku_comment_bonus, 0.0, 0.170)
+    # -----------------------------------------------------
+    # ライン連動補正
+    #   後ろの選手が「番手・目標」チェックありなら、
+    #   その前のライン先頭を少し格上げする。
+    #   例：42で2が「小原君」なら、4を少し救う。
+    # -----------------------------------------------------
+    line_cushion_bonus = 0.0
+
+    try:
+        gid = car_to_group.get(int(no), None)
+        members = line_def.get(gid, []) if gid is not None else []
+
+        # 自分がそのラインの先頭かどうか
+        is_line_head = bool(members and int(members[0]) == int(no))
+
+        if is_line_head:
+            behind_members = [int(x) for x in members[1:]]
+
+            has_target_behind = any(
+                bool(target_comment_map.get(int(x), False))
+                for x in behind_members
+            )
+
+            if has_target_behind:
+                # 番手・後位が前を指名しているなら、先頭車を少し救う
+                line_cushion_bonus = 0.040
+
+                # H主導ラインの先頭なら、ライン成立度を少し上乗せ
+                try:
+                    h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+                    if h_line and int(h_line[0]) == int(no):
+                        line_cushion_bonus += 0.020
+                except Exception:
+                    pass
+
+    except Exception:
+        line_cushion_bonus = 0.0
+
+    line_cushion_bonus = clamp(line_cushion_bonus, 0.0, 0.060)
+
+    # -----------------------------------------------------
+    # 競り補正
+    #   ライン入力は崩さず、競り対象者だけを減点する。
+    #   例：12345 67 のまま、2・3に競りチェック。
+    # -----------------------------------------------------
+    seri_penalty = 0.0
+
+    if is_seri_comment:
+        seri_penalty = -0.100
+
+        # ガールズは基本的に競りの意味が薄いので弱め
+        if is_girls_like:
+            seri_penalty *= 0.50
+
+    seri_penalty = clamp(seri_penalty, -0.120, 0.0)
+
+    # =====================================================
     # 環境・個人補正（既存）
+    # =====================================================
     wind     = _wind_func(eff_wind_dir, float(eff_wind_speed or 0.0), role, float(prof_escape[no]))
     bank_b   = bank_character_bonus(bank_angle, straight_length, prof_escape[no], prof_sashi[no], bank_length)
     length_b = bank_length_adjust(bank_length, prof_oikomi[no])
@@ -1670,21 +2057,30 @@ for no in active_cars:
         is_wet=st.session_state.get("is_wet", False)
     )
 
+    # =====================================================
+    # 合計スコア
+    # =====================================================
     total_raw = (
         prof_base[no]
         + wind
-        + cf["spread"] * tens_corr.get(no, 0.0)
-        + bank_b + length_b
-        + laps_adj + indiv + stab
+        + cf["spread"] * level_rating_scale * tens_corr.get(no, 0.0)
+        + bank_b
+        + length_b
+        + laps_adj
+        + indiv
+        + stab
         + h_bonus
         + l200
+        + jiryoku_comment_bonus
+        + line_cushion_bonus
+        + seri_penalty
     )
 
     rows.append([
         no, role,
         round(prof_base[no], 3),
         round(wind, 3),
-        round(cf["spread"] * tens_corr.get(no, 0.0), 3),
+        round(cf["spread"] * level_rating_scale * tens_corr.get(no, 0.0), 3),
         round(bank_b, 3),
         round(length_b, 3),
         round(laps_adj, 3),
@@ -1692,14 +2088,18 @@ for no in active_cars:
         round(stab, 3),
         round(h_bonus, 3),
         round(l200, 3),
+        round(jiryoku_comment_bonus, 3),
+        round(line_cushion_bonus, 3),
+        round(seri_penalty, 3),
         float(total_raw)
     ])
 
 df = pd.DataFrame(rows, columns=[
     "車番", "役割", "脚質基準(会場)", "風補正", "得点補正", "バンク補正",
-    "周長補正", "周回補正", "個人補正", "安定度", "H補正", "ラスト200", "合計_SBなし_raw",
+    "周長補正", "周回補正", "個人補正", "安定度", "H補正", "ラスト200",
+    "自力コメント補正", "ライン連動補正", "競り補正",
+    "合計_SBなし_raw",
 ])
-
 
 # ===== [PATCH] dfの型を確定させ、SBなし母集団(v_wo/v_final)を必ず作る =====
 # 1) dfが空のときも落とさない
@@ -1929,7 +2329,11 @@ SD_L200 = float(globals().get("SD_L200", 0.22))  # ← 追加。まず0.22〜0.3
 # 安定度（raw）と、ENVのベース（= 合計_SBなし_raw から安定度だけ除いたもの）
 STAB_RAW = {int(df.loc[i, "車番"]): float(df.loc[i, "安定度"]) for i in df.index}
 ENV_BASE = {
-    int(df.loc[i, "車番"]): float(df.loc[i, "合計_SBなし_raw"]) - float(df.loc[i, "安定度"])
+    int(df.loc[i, "車番"]): (
+        float(df.loc[i, "合計_SBなし_raw"])
+        - float(df.loc[i, "安定度"])
+        - float(df.loc[i, "ラスト200"])
+    )
     for i in df.index
 }
 
@@ -1997,7 +2401,7 @@ if bad:
 v_wo = dict(sb_map)
 
 # 4) 以降 KO
-_is_girls = (race_class == "ガールズ")
+_is_girls = is_girls_like
 head_scale = KO_HEADCOUNT_SCALE.get(int(n_cars), 1.0)
 ko_scale_raw = (KO_GIRLS_SCALE if _is_girls else 1.0) * head_scale
 KO_SCALE_MAX = 0.45
@@ -3740,6 +4144,7 @@ try:
     if venue or race_no:
         _rn = race_no if (race_no.endswith("R") or race_no == "") else f"{race_no}R"
         note_sections.append(f"{venue}{_rn}")
+        note_sections.append("")
 
     # =========================================================
     # KO母集団スコア（v_final > v_wo > scores）で統一
@@ -3769,12 +4174,295 @@ try:
     for n in active_cars:
         score_map.setdefault(int(n), 0.0)
 
-    # 0/None/NaN の床値補完
+   
+
+        # =========================================================
+    # KO母集団スコア補正：ライン3番手以降・H0/B0の過大評価抑制
+    # ※脚質名に依存しない版。「追」ではなく「マーク」扱いでも効く。
+    # =========================================================
+    try:
+        _line_def = globals().get("line_def", {})
+        _H = globals().get("H", {})
+        _B = globals().get("B", {})
+
+        for _n in list(score_map.keys()):
+            _car = int(_n)
+
+            _role = role_in_line(_car, _line_def) if isinstance(_line_def, dict) else "single"
+
+            _h_val = float(_H.get(_car, _H.get(str(_car), 0)) or 0)
+            _b_val = float(_B.get(_car, _B.get(str(_car), 0)) or 0)
+
+            # 例：364 の 4番 = thirdplus、H0、B0 → 必ず減点
+            if _role == "thirdplus":
+                if _h_val == 0 and _b_val == 0:
+                    score_map[_n] = float(score_map[_n]) - 0.15
+                else:
+                    score_map[_n] = float(score_map[_n]) - 0.08
+
+    except Exception as _e:
+        note_sections.append(f"※KO母集団補正エラー：{_e}")
+
+    score_map_before_last_half = dict(score_map)
+    globals()["score_map_before_last_half"] = dict(score_map_before_last_half)
+
+    # =========================================================
+    # ラスト半周補正：自力粘り・番手差し
+    # ※既存のKO母集団スコアに後付けする
+    # =========================================================
+    try:
+        _line_def = globals().get("line_def", {})
+        _H = globals().get("H", {})
+        _B = globals().get("B", {})
+        _kaku = globals().get("kaku", {})
+        _tenscore = globals().get("tenscore", globals().get("tenscores", {}))
+
+        # 競走得点の取り出し
+        def _get_num_from_map(_mp, _car, _default=0.0):
+            try:
+                if isinstance(_mp, dict):
+                    return float(_mp.get(int(_car), _mp.get(str(_car), _default)) or _default)
+            except Exception:
+                pass
+            return float(_default)
+
+        _race_scores = []
+        for _n in active_cars:
+            _v = _get_num_from_map(_tenscore, _n, 0.0)
+            if _v > 0:
+                _race_scores.append(_v)
+
+        _race_avg_tenscore = float(np.mean(_race_scores)) if _race_scores else 0.0
+        _last_half_bonus_map = {}
+        _last_half_reason_map = {}
+        
+                # -------------------------------------------------
+        # ラスト半周補正用：レース内順位マップ
+        # 上位1/3判定用。7車なら3位以内。
+        # -------------------------------------------------
+        _active_list = [int(x) for x in active_cars]
+        _top_third_limit = int(math.ceil(len(_active_list) / 3.0)) if _active_list else 3
+        _top_third_limit = max(1, _top_third_limit)
+
+        # 競走得点順位
+        _race_score_rank_map = {}
+        _ten_pairs = []
+        for _n in _active_list:
+            _v = _get_num_from_map(_tenscore, _n, 0.0)
+            _ten_pairs.append((int(_n), float(_v)))
+
+        _ten_pairs_sorted = sorted(_ten_pairs, key=lambda x: (-x[1], x[0]))
+        for _idx, (_car2, _v2) in enumerate(_ten_pairs_sorted, start=1):
+            _race_score_rank_map[int(_car2)] = int(_idx)
+
+        # KO順位・展開順位
+        # この時点の score_map_before_last_half は「ラスト半周補正前」のスコア
+        _ko_score_rank_map = {}
+        _ko_pairs_sorted = sorted(
+            [(int(k), float(v)) for k, v in score_map_before_last_half.items()],
+            key=lambda x: (-x[1], x[0])
+        )
+        for _idx, (_car2, _v2) in enumerate(_ko_pairs_sorted, start=1):
+            _ko_score_rank_map[int(_car2)] = int(_idx)
+
+        _tenkai_score_rank_map = dict(_ko_score_rank_map)
+
+        # 順流・渦・逆流の複数上位は次段階用
+        _scenario_top_count_map = globals().get("scenario_top_count_map", {})
+        if not isinstance(_scenario_top_count_map, dict):
+            _scenario_top_count_map = {}
+
+        for _n in list(score_map.keys()):
+            _car = int(_n)
+
+            # ライン内の役割
+            _role = role_in_line(_car, _line_def) if isinstance(_line_def, dict) else "single"
+
+            # 同ライン先頭の競走得点
+            _leader = _car
+            try:
+                if isinstance(_line_def, dict):
+                    for _gid, _mem in _line_def.items():
+                        _mem2 = [int(x) for x in _mem]
+                        if _car in _mem2 and _mem2:
+                            _leader = int(_mem2[0])
+                            break
+            except Exception:
+                _leader = _car
+
+            _car_ten = _get_num_from_map(_tenscore, _car, 0.0)
+            _leader_ten = _get_num_from_map(_tenscore, _leader, _car_ten)
+
+            _h_val = _get_num_from_map(_H, _car, 0.0)
+            _b_val = _get_num_from_map(_B, _car, 0.0)
+
+            # kakuは現在の入力仕様では使わない。
+            # 関数互換用に空文字で渡す。
+            _style = ""
+
+            # H主導ラインの3番手以降かどうか
+            _is_h_lead_thirdplus = False
+            try:
+                _h_members = []
+                if home_top_gid is not None and isinstance(_line_def, dict):
+                    _h_members = [int(x) for x in _line_def.get(home_top_gid, [])]
+
+                if (
+                    len(_h_members) >= 3
+                    and _role == "thirdplus"
+                    and _car in _h_members[2:]
+                ):
+                    _is_h_lead_thirdplus = True
+
+            except Exception:
+                _is_h_lead_thirdplus = False
+
+            # ---------------------------------------------
+            # ラスト半周用：個人成績率
+            # x1 / x2 / x3 / x_out から
+            # 1着率・2着内率・3着内率を作る
+            # ---------------------------------------------
+            _p1_rate = None
+            _p2_rate = None
+            _p3_rate = None
+
+            try:
+                _x1 = globals().get("x1", {})
+                _x2 = globals().get("x2", {})
+                _x3 = globals().get("x3", {})
+                _xo = globals().get("x_out", {})
+
+                _n1 = float(_x1.get(_car, _x1.get(str(_car), 0)) or 0)
+                _n2 = float(_x2.get(_car, _x2.get(str(_car), 0)) or 0)
+                _n3 = float(_x3.get(_car, _x3.get(str(_car), 0)) or 0)
+                _no = float(_xo.get(_car, _xo.get(str(_car), 0)) or 0)
+
+                _total = _n1 + _n2 + _n3 + _no
+
+                if _total > 0:
+                    _p1_rate = _n1 / _total
+                    _p2_rate = (_n1 + _n2) / _total
+                    _p3_rate = (_n1 + _n2 + _n3) / _total
+
+            except Exception:
+                _p1_rate = None
+                _p2_rate = None
+                _p3_rate = None
+
+            _bonus, _reasons = calc_last_half_role_bonus(
+                role=_role,
+                kaku=_style,
+                tenscore=_car_ten,
+                leader_tenscore=_leader_ten,
+                race_avg_tenscore=_race_avg_tenscore,
+                h_count=_h_val,
+                b_count=_b_val,
+                race_score_rank=_race_score_rank_map.get(_car),
+                ko_score_rank=_ko_score_rank_map.get(_car),
+                tenkai_score_rank=_tenkai_score_rank_map.get(_car),
+                top_third_limit=_top_third_limit,
+                scenario_top_count=int(_scenario_top_count_map.get(_car, 0) or 0),
+                p1_rate=_p1_rate,
+                p2_rate=_p2_rate,
+                p3_rate=_p3_rate,
+            )
+
+            _last_half_bonus_map[_car] = float(_bonus)
+            _last_half_reason_map[_car] = list(_reasons)
+
+            score_map[_car] = float(score_map.get(_car, 0.0)) + float(_bonus)
+
+    
+
+
+            # -------------------------------------------------
+        # H主導ライン3番手以降：3着内率40%以上なら最低4番手評価まで床上げ
+        # -------------------------------------------------
+        THIRDPLUS_TOP3_RATE_MIN = 0.40
+        THIRDPLUS_FLOOR_RANK = 4
+        THIRDPLUS_FLOOR_EPS = 0.001
+
+        def _normalize_rate_0to1(v):
+            try:
+                x = float(v)
+                if x > 1.0:
+                    x = x / 100.0
+                return x
+            except Exception:
+                return None
+
+        def _get_top3_rate_for_car(_car_no):
+            """
+            車番ごとの3着内率を取得する。
+            変数名が多少違っても拾えるように、候補名とglobals内のdictを探す。
+            値は 0.40 / 40.0 のどちらでも対応。
+            """
+            _car_no = int(_car_no)
+
+            # よくありそうな名前を優先
+            _candidate_names = [
+                "top3_rate_map",
+                "in3_rate_map",
+                "pTop3_map",
+                "ptop3_map",
+                "car_top3_rate_map",
+                "car_in3_rate_map",
+                "top3_map",
+                "in3_map",
+                "P_TOP3_MAP",
+                "IN3_RATE_MAP",
+            ]
+
+            for _name in _candidate_names:
+                _obj = globals().get(_name, None)
+                if isinstance(_obj, dict):
+                    _v = _obj.get(_car_no, _obj.get(str(_car_no), None))
+                    _r = _normalize_rate_0to1(_v)
+                    if _r is not None:
+                        return _r
+
+            # 名前が違う場合の保険：globals内の「top3 / in3 / 3着」系dictを探索
+            try:
+                for _name, _obj in globals().items():
+                    _lname = str(_name).lower()
+                    if not isinstance(_obj, dict):
+                        continue
+
+                    if not (
+                        "top3" in _lname
+                        or "in3" in _lname
+                        or "p_top3" in _lname
+                        or "3着" in str(_name)
+                        or "三着" in str(_name)
+                    ):
+                        continue
+
+                    _v = _obj.get(_car_no, _obj.get(str(_car_no), None))
+                    _r = _normalize_rate_0to1(_v)
+                    if _r is not None:
+                        return _r
+            except Exception:
+                pass
+
+            return None
+
+
+
+        globals()["last_half_bonus_map"] = _last_half_bonus_map
+        globals()["last_half_reason_map"] = _last_half_reason_map
+        globals()["score_map_last_half_applied"] = dict(score_map)
+
+    except Exception as _e:
+        note_sections.append(f"※ラスト半周補正エラー：{_e}")
+
+        # 0/None/NaN の床値補完
     vals_pos = [
         float(v) for v in score_map.values()
         if isinstance(v, (int, float)) and float(v) > 0.0 and math.isfinite(float(v))
     ]
+
     _floor = min(vals_pos) if vals_pos else 1e-6
+
     for k in list(score_map.keys()):
         try:
             v = float(score_map[k])
@@ -3786,12 +4474,12 @@ try:
     globals()["score_map"] = score_map  # 後段参照用に保持
 
     # =========================================================
-    # line_fr_map を確定（0.000連発対策：空/キー不一致を潰す）
+    # line_fr_map を確定（_lfr 未定義事故対策）
     # =========================================================
     line_fr_map = globals().get("line_fr_map")
     need_rebuild = (not isinstance(line_fr_map, dict)) or (len(line_fr_map) == 0)
 
-    # 既存があればキー正規化（tuple/listキー→"571"）
+    # 既存があればキー正規化（tuple/listキー → "571"）
     if (not need_rebuild) and isinstance(line_fr_map, dict):
         _lfm2 = {}
         for k, v in line_fr_map.items():
@@ -3800,28 +4488,41 @@ try:
                     kk = "".join(str(x) for x in k if str(x).isdigit())
                 else:
                     kk = "".join(ch for ch in str(k) if ch.isdigit())
+
                 if kk:
                     _lfm2[kk] = float(v or 0.0)
             except Exception:
                 continue
+
         line_fr_map = _lfm2
         need_rebuild = (len(line_fr_map) == 0)
 
-    # 空なら作り直し（DEBUG出力なし）
+    # 空なら作り直し
     if need_rebuild:
-        line_fr_map = _build_line_fr_map(all_lines, score_map, FRv if FRv > 0.0 else 1.0)
+        try:
+            line_fr_map = _build_line_fr_map(
+                all_lines,
+                score_map,
+                FRv if FRv > 0.0 else 1.0
+            )
+        except Exception:
+            line_fr_map = {}
 
     globals()["line_fr_map"] = line_fr_map
 
     def _line_key(ln):
-        return "" if not ln else "".join(map(str, ln))
+        try:
+            if not ln:
+                return ""
+            return "".join(str(int(x)) for x in ln if str(x).isdigit())
+        except Exception:
+            return "".join(ch for ch in str(ln) if ch.isdigit())
 
     def _lfr(ln):
         try:
             return float(line_fr_map.get(_line_key(ln), 0.0) or 0.0)
         except Exception:
             return 0.0
-
     # =========================================================
     # 展開評価（share_pct は「順流ライン」基準）
     # =========================================================
@@ -4096,6 +4797,44 @@ try:
 
     note_sections.append("")
 
+        # =========================================================
+    # ラスト半周補正 表示
+    # =========================================================
+    try:
+        _lh_bonus_map = globals().get("last_half_bonus_map", {})
+        _lh_reason_map = globals().get("last_half_reason_map", {})
+        _before_map = globals().get("score_map_before_last_half", {})
+        _after_map = globals().get("score_map_last_half_applied", {})
+
+        if isinstance(_lh_bonus_map, dict) and _lh_bonus_map:
+            note_sections.append("【ラスト半周補正】")
+
+            _lh_pairs = sorted(
+                [(int(k), float(v)) for k, v in _lh_bonus_map.items()],
+                key=lambda t: t[0]
+            )
+
+            for _car, _bonus in _lh_pairs:
+                _before = float(_before_map.get(_car, 0.0) or 0.0)
+                _after = float(_after_map.get(_car, _before + _bonus) or 0.0)
+
+                _reasons = _lh_reason_map.get(_car, [])
+                if not isinstance(_reasons, list):
+                    _reasons = [_reasons]
+
+                _reason_txt = "／".join(str(x) for x in _reasons if str(x).strip())
+                if not _reason_txt:
+                    _reason_txt = "補正なし"
+
+                note_sections.append(
+                    f"{_car}：展開={_before:.6f} ／ 補正={_bonus:+.3f} ／ 最終={_after:.6f}［{_reason_txt}］"
+                )
+
+            note_sections.append("")
+
+    except Exception as _e:
+        note_sections.append(f"※ラスト半周補正表示エラー：{_e}")
+        note_sections.append("")
     # =========================================================
     # KO使用スコア（降順）
     # =========================================================
@@ -4105,6 +4844,8 @@ try:
     )
 
     note_sections.append("【KO使用スコア（降順）】")
+
+    
     if _sc_pairs:
         for i, (n, sc) in enumerate(_sc_pairs, start=1):
             note_sections.append(f"{i}位：{n} (スコア={sc:.6f})")
@@ -4248,10 +4989,6 @@ try:
         def _run_ko(q, main_zone):
             # ======================================================
             # 距離ベース（B）＋ KO閾値（C）
-            #   available_m = みなし直線[m]（サイドバー straight_length）
-            #   pass_m      = 追い抜き1回に必要な距離[m]（外回し込み）
-            #   MAX_PASSES  = 回数上限（今回は速度差ベース）
-            #   PASS_DELTA  = score_per_m * pass_m
             # ======================================================
             q = [int(x) for x in (q or []) if str(x).isdigit()]
 
@@ -4261,6 +4998,20 @@ try:
                 if c not in seen:
                     seen.add(c)
                     order.append(c)
+
+        def _run_ko(q, main_zone):
+            # ======================================================
+            # 距離ベース（B）＋ KO閾値（C）
+            # ======================================================
+            q = [int(x) for x in (q or []) if str(x).isdigit()]
+
+            seen = set()
+            order = []
+            for c in q:
+                if c not in seen:
+                    seen.add(c)
+                    order.append(c)
+
 
             tail = [int(c) for c in score_map.keys() if int(c) not in seen]
             tail.sort(key=lambda c: float(score_map.get(int(c), 0.0)), reverse=True)
@@ -4277,6 +5028,7 @@ try:
             def _final_at(car, i):
                 base = float(score_map.get(int(car), 0.0))
                 return base + _pos_adj_for_car(int(car)) + _fr_bonus_for_car(int(car), main_zone)
+            
             # ====== PATCH: venue-aware pass_m / available_m + speed-based MAX_PASSES ======
             pass_m = 14.0 + 0.35 * straight_m
             pass_m *= (1.0 + 0.25 * max(0.0, style))
@@ -4342,7 +5094,6 @@ try:
 
             gain_m = max(0.0, (float(v_fast) - float(v_mid)) * float(t_final))
 
-            # ---- MAX_PASSES：相対距離割り（最低1回保証）----
             MAX_PASSES = int(gain_m // max(pass_m, 1e-9))
             if MAX_PASSES < 1:
                 MAX_PASSES = 1
@@ -4433,6 +5184,224 @@ try:
         out_v = outs.get("渦→順流→逆流") or []
         out_u = outs.get("逆流→順流→渦") or []
 
+        
+
+                       # ======================================================
+        # 表示用ガード：
+        # 1) KO隊列結果がスコア下位を頭に置きすぎる場合だけ補正
+        # 2) 主戦ライン先頭が同ライン低スコア車より後ろに落ちるのを防ぐ
+        # ※ _run_ko本体は触らない
+        # ======================================================
+        def _digits_line(x):
+            return [int(ch) for ch in str(x) if ch.isdigit()]
+
+        def _display_score_guard(seq, main_line=None):
+            xs = [int(x) for x in (seq or []) if str(x).isdigit()]
+            if not xs:
+                return xs
+
+            score_order = sorted(
+                [int(k) for k in score_map.keys()],
+                key=lambda c: (-float(score_map.get(c, 0.0)), c)
+            )
+            score_rank = {c: i + 1 for i, c in enumerate(score_order)}
+
+            # 1) 先頭ガード
+            # 先頭がKOスコア5位以下なら、スコア上位3台のうち
+            # 元の隊列内で一番前にいる車を先頭へ上げる
+            head = xs[0]
+            if score_rank.get(head, 99) >= 5:
+                candidates = [c for c in score_order[:3] if c in xs]
+                if candidates:
+                    best = min(candidates, key=lambda c: xs.index(c))
+                    xs.remove(best)
+                    xs.insert(0, best)
+
+                        # 2) 主戦ライン先頭ガード
+            # 例：364なら3がライン先頭。
+            # 3よりスコアが低い同ライン車（例：6）が3より前にいるなら、
+            # 3をその車の前まで戻す。
+            line_members = _digits_line(main_line)
+            if len(line_members) >= 2:
+                line_head = line_members[0]
+
+                if line_head in xs:
+                    line_head_score = float(score_map.get(line_head, 0.0))
+                    line_head_idx = xs.index(line_head)
+
+                    lower_mates_before = []
+                    for m in line_members[1:]:
+                        if m in xs:
+                            m_score = float(score_map.get(m, 0.0))
+                            if m_score < line_head_score and xs.index(m) < line_head_idx:
+                                lower_mates_before.append(m)
+
+                    if lower_mates_before:
+                        target_idx = min(xs.index(m) for m in lower_mates_before)
+                        xs.remove(line_head)
+                        xs.insert(target_idx, line_head)
+
+                        # 3) 最下位スコア車の早出しガード
+            # KOスコア最下位の車が3番手以内に残るのを防ぐ
+            n_score = len(score_order)
+
+            for bad in list(xs):
+                if score_rank.get(bad, 99) == n_score and xs.index(bad) <= 2:
+                    xs.remove(bad)
+
+                    # スコア5位以内の車が並んだ最後の直後へ送る
+                    insert_pos = 0
+                    for i, c in enumerate(xs):
+                        if score_rank.get(c, 99) <= 5:
+                            insert_pos = i + 1
+
+                    xs.insert(insert_pos, bad)
+
+                        # 4) KO上位車の沈みすぎガード
+            # KOスコア上位3車が沈みすぎるのを防ぐ
+            # 1位は頭候補、2〜3位は3番手以内を目安に戻す
+            for good in score_order[:3]:
+                if good not in xs:
+                    continue
+
+                r = score_rank.get(good, 99)
+
+                # KO2〜3位が4番手以下なら、3番手以内へ戻す
+                if r in (2, 3) and xs.index(good) >= 3:
+                    xs.remove(good)
+                    target_pos = min(2, len(xs))
+                    xs.insert(target_pos, good)
+
+                # KO1位が3番手以下なら、2番手以内へ戻す
+                elif r == 1 and xs.index(good) >= 2:
+                    xs.remove(good)
+                    target_pos = min(1, len(xs))
+                    xs.insert(target_pos, good)
+
+            return xs
+
+        out_j = _display_score_guard(out_j, FR_line)
+        out_v = _display_score_guard(out_v, VTX_line)
+        out_u = _display_score_guard(out_u, U_line)
+
+        # ======================================================
+        # H主導ライン3番手以降：
+        # 3着内率40%以上なら、
+        # 「その戦法の表示1着候補ライン」と同じ場合だけ4番手以内へ移動
+        # ======================================================
+        try:
+            def _display_promote_gid(_car_no):
+                try:
+                    _car_no = int(_car_no)
+                    if isinstance(line_def, dict):
+                        for _gid, _mem in line_def.items():
+                            _mem2 = [int(x) for x in _mem]
+                            if _car_no in _mem2:
+                                return _gid
+                except Exception:
+                    pass
+                return None
+
+            def _display_promote_top3_rate(_car_no):
+                try:
+                    _car_no = int(_car_no)
+
+                    _x1 = globals().get("x1", {})
+                    _x2 = globals().get("x2", {})
+                    _x3 = globals().get("x3", {})
+                    _xo = globals().get("x_out", {})
+
+                    n1 = float(_x1.get(_car_no, _x1.get(str(_car_no), 0)) or 0)
+                    n2 = float(_x2.get(_car_no, _x2.get(str(_car_no), 0)) or 0)
+                    n3 = float(_x3.get(_car_no, _x3.get(str(_car_no), 0)) or 0)
+                    no = float(_xo.get(_car_no, _xo.get(str(_car_no), 0)) or 0)
+
+                    total = n1 + n2 + n3 + no
+                    if total <= 0:
+                        return None
+
+                    return float((n1 + n2 + n3) / total)
+
+                except Exception:
+                    return None
+
+            def _display_promote_to_top4(_seq, _target_car):
+                try:
+                    _target_car = int(_target_car)
+                    _xs = [int(x) for x in (_seq or []) if str(x).isdigit()]
+
+                    if _target_car not in _xs:
+                        return _xs
+
+                    _idx = _xs.index(_target_car)
+
+                    # すでに4番手以内なら何もしない
+                    if _idx <= 3:
+                        return _xs
+
+                    _xs.pop(_idx)
+                    _xs.insert(3, _target_car)
+
+                    return _xs
+
+                except Exception:
+                    return _seq
+
+            # H主導ラインの3番手以降で、3着内率40%以上の車だけ対象
+            _promote_targets = []
+
+            if home_top_gid is not None and isinstance(line_def, dict):
+                _h_members = [int(x) for x in line_def.get(home_top_gid, [])]
+
+                if len(_h_members) >= 3:
+                    for _car3 in _h_members[2:]:
+                        _p3 = _display_promote_top3_rate(_car3)
+
+                        if _p3 is not None and float(_p3) >= 0.40:
+                            _promote_targets.append(int(_car3))
+
+            # 各戦法の「表示上の1着候補ライン」と同じ場合だけ、4番手以内へ移動
+            for _car3 in _promote_targets:
+                _target_gid = _display_promote_gid(_car3)
+
+                if _target_gid is None:
+                    continue
+
+                # 順流
+                if out_j:
+                    _jun_head = int(out_j[0])
+                    _jun_gid = _display_promote_gid(_jun_head)
+                    if _target_gid == _jun_gid:
+                        out_j = _display_promote_to_top4(out_j, _car3)
+
+                # 渦
+                if out_v:
+                    _vtx_head = int(out_v[0])
+                    _vtx_gid = _display_promote_gid(_vtx_head)
+                    if _target_gid == _vtx_gid:
+                        out_v = _display_promote_to_top4(out_v, _car3)
+
+                # 逆流
+                if out_u:
+                    _u_head = int(out_u[0])
+                    _u_gid = _display_promote_gid(_u_head)
+                    if _target_gid == _u_gid:
+                        out_u = _display_promote_to_top4(out_u, _car3)
+
+        except Exception as _e:
+            note_sections.append(f"※H主導3番手以降・戦法別4番手以内補正エラー：{_e}")
+            note_sections.append("")
+
+        # ======================================================
+        # 戦法別評価順を保存
+        # 後段の「戦法別想定決着率」「2車複候補」で使う
+        # ======================================================
+        globals()["STYLE_SEQ_MAP"] = {
+            "順流": [int(x) for x in (out_j or []) if str(x).isdigit()],
+            "渦":   [int(x) for x in (out_v or []) if str(x).isdigit()],
+            "逆流": [int(x) for x in (out_u or []) if str(x).isdigit()],
+        }
+
         note_sections.append("【順流メイン着順予想】")
         note_sections.append(_fmt_seq(out_j))
         note_sections.append("")
@@ -4446,7 +5415,7 @@ try:
     _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
     # ここまでで note_sections を確実に保持
 
-    # =========================================================
+        # =========================================================
     # ＜短評＞（KOの成否に関係なく表示）※完全tryゼロ
     # =========================================================
     lines_out = ["＜短評＞"]
@@ -4464,6 +5433,7 @@ try:
             fv = float(s) if s not in ("", "None", "nan", "NaN") else 0.0
             if fv > 0.0 and fv == fv:
                 vals.append(fv)
+
         total = sum(vals)
         if total > 1e-12:
             max_share = max(fv / total for fv in vals)
@@ -4473,18 +5443,35 @@ try:
             if raceFR > 1.0:
                 raceFR = 1.0
 
+    # レースFR表示
     lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
+
+    # 混戦度表示
+    _compact_label = globals().get("race_compact_label", "未判定")
+    _compact_gap = globals().get("race_compact_gap", None)
+
+    if _compact_gap is not None:
+        lines_out.append(
+            f"・順当度：{_compact_label}［上位差={float(_compact_gap):.2f}］"
+        )
+    else:
+        lines_out.append(
+            f"・順当度：{_compact_label}"
+        )
 
     # VTX/U はラインFR（ズレ防止）
     _vtx_fr = float(_lfr(VTX_line) if VTX_line else 0.0)
-    _u_fr   = float(_lfr(U_line) if U_line else 0.0)
+    _u_fr = float(_lfr(U_line) if U_line else 0.0)
+
+    
+
     lines_out.append(f"・VTXラインFR={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
     lines_out.append(f"・逆流ラインFR={_u_fr:.3f}［{_band3_u(_u_fr)}］")
 
-        # 内訳要約（flow dbg）
+    # 内訳要約（flow dbg）
     dbg = _flow.get("dbg", {}) if isinstance(_flow, dict) else {}
-    if isinstance(dbg, dict) and dbg:
 
+    if isinstance(dbg, dict) and dbg:
         bs = float(dbg.get("blend_star", 0.0) or 0.0)
         bn = float(dbg.get("blend_none", 0.0) or 0.0)
         sd = float(dbg.get("sd", 0.0) or 0.0)
@@ -4531,10 +5518,31 @@ try:
             raceFR = 1.0 - max_share
             raceFR = max(0.0, min(1.0, raceFR))
 
-    lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
+        lines_out.append(f"・レースFR={raceFR:.3f}［{_band3_fr(raceFR)}］")
+
+    # レースレベル表示
+    try:
+        lines_out.append(
+            f"・レースレベル：{race_level_label}［平均得点={race_level_avg:.2f}／得点差={race_level_spread:.2f}］"
+        )
+    except Exception:
+        pass
 
     _vtx_fr = float(_lfr(VTX_line) if VTX_line else 0.0)
     _u_fr = float(_lfr(U_line) if U_line else 0.0)
+
+        # 混戦度表示
+    _compact_label = globals().get("race_compact_label", "未判定")
+    _compact_gap = globals().get("race_compact_gap", None)
+
+    if _compact_gap is not None:
+        lines_out.append(
+            f"・順当度：{_compact_label}［上位差={float(_compact_gap):.2f}］"
+        )
+    else:
+        lines_out.append(
+            f"・順当度：{_compact_label}"
+        )
 
     lines_out.append(f"・VTXラインFR={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
     lines_out.append(f"・逆流ラインFR={_u_fr:.3f}［{_band3_u(_u_fr)}］")
@@ -4574,6 +5582,49 @@ try:
         ).strip()
 
         fr_diff = abs(_vtx_fr - _u_fr)
+
+                # =====================================================
+        # 現在のライン評価グループでH主導ラインを判定する
+        #   旧FR_line / 旧VTX_line / 旧U_line ではなく、
+        #   LINE_ZONE_MAP を優先する
+        # =====================================================
+
+        def _norm_line_key_for_recommend(ln):
+            try:
+                if isinstance(ln, (list, tuple)):
+                    return "".join(str(int(x)) for x in ln if str(x).isdigit())
+            except Exception:
+                pass
+            return "".join(ch for ch in str(ln) if ch.isdigit())
+
+        def _current_zone_for_line(ln):
+            key = _norm_line_key_for_recommend(ln)
+
+            try:
+                zmap = globals().get("LINE_ZONE_MAP", {})
+                if isinstance(zmap, dict) and key in zmap:
+                    return zmap.get(key, "その他")
+            except Exception:
+                pass
+
+            # 保険：LINE_ZONE_MAPが無い場合だけ旧方式へフォールバック
+            if key and key == _norm_line_key_for_recommend(FR_line):
+                return "順流"
+            if key and key == _norm_line_key_for_recommend(VTX_line):
+                return "渦"
+            if key and key == _norm_line_key_for_recommend(U_line):
+                return "逆流"
+
+            return "その他"
+
+        def _style_fr_for_recommend(style_name):
+            if style_name == "順流":
+                return float(_lfr(FR_line) if FR_line else 0.0)
+            if style_name == "渦":
+                return float(_lfr(VTX_line) if VTX_line else 0.0)
+            if style_name == "逆流":
+                return float(_lfr(U_line) if U_line else 0.0)
+            return 0.0
 
         # =====================================================
         # 1. 展開評価（最優先）
@@ -4635,21 +5686,19 @@ try:
 
                
                 
-        # =====================================================
+                # =====================================================
         # H：推奨理由への反映
+        #   旧分類ではなく、現在のライン評価グループで判定
         # =====================================================
         try:
             if home_top_line == "主導なし":
                 recommend_reason.append("H主導ラインなし")
             else:
                 h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+                h_zone = _current_zone_for_line(h_line)
 
-                if h_line == FR_line:
-                    recommend_reason.append("H主導=順流ライン")
-                elif h_line == VTX_line:
-                    recommend_reason.append("H主導=渦ライン")
-                elif h_line == U_line:
-                    recommend_reason.append("H主導=逆流ライン")
+                if h_zone in ("順流", "渦", "逆流"):
+                    recommend_reason.append(f"H主導={h_zone}ライン")
                 else:
                     recommend_reason.append("H主導=その他ライン")
         except Exception:
@@ -4674,6 +5723,8 @@ try:
 
                 # =====================================================
         # H：低信頼時の推奨戦法切り替え
+        #   旧分類ではなく、現在のライン評価グループで判定
+        #   ※ガールズはライン戦ではないため、H主導で戦法を切り替えない
         # =====================================================
         h_style = None
         h_changed = False
@@ -4681,84 +5732,77 @@ try:
         try:
             if home_top_line != "主導なし":
                 h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+                h_zone = _current_zone_for_line(h_line)
 
-                if h_line == FR_line:
-                    h_style = "順流"
-                    h_fr = float(FRv)
-                elif h_line == VTX_line:
-                    h_style = "渦"
-                    h_fr = float(VTXv)
-                elif h_line == U_line:
-                    h_style = "逆流"
-                    h_fr = float(Uv)
+                if h_zone in ("順流", "渦", "逆流"):
+                    h_style = h_zone
+                    h_fr = float(_lfr(h_line) if h_line else 0.0)
                 else:
                     h_style = None
                     h_fr = 0.0
 
-                if recommend_style == "順流":
-                    cur_fr = float(FRv)
-                elif recommend_style == "渦":
-                    cur_fr = float(VTXv)
-                elif recommend_style == "逆流":
-                    cur_fr = float(Uv)
+                cur_fr = _style_fr_for_recommend(recommend_style)
+
+                if not is_girls_like:
+                    if (
+                        h_style is not None
+                        and h_style != recommend_style
+                        and confidence in ("B", "C")
+                        and h_fr >= cur_fr - 0.01
+                    ):
+                        recommend_reason.append(f"H主導により{h_style}寄せ")
+                        recommend_style = h_style
+                        h_changed = True
+                        confidence = "B"
                 else:
-                    cur_fr = 0.0
-
-                if (
-                    h_style is not None
-                    and h_style != recommend_style
-                    and confidence in ("B", "C")
-                    and h_fr >= cur_fr - 0.01
-                ):
-                    recommend_reason.append(f"H主導により{h_style}寄せ")
-                    recommend_style = h_style
-                    h_changed = True
-                    confidence = "B"
-
+                    recommend_reason.append("ガールズ/アドバンスのためH主導による戦法変更なし")
         except Exception:
             pass
+
         # =====================================================
-        # H：信頼度への反映（第3段階）
+        # H：信頼度への反映
+        #   旧分類ではなく、現在のライン評価グループで判定
+        #   ※ガールズはライン戦ではないため、H主導で信頼度も上下させない
         # =====================================================
         try:
-            if home_top_line != "主導なし":
-                h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+            if not is_girls_like:
+                if home_top_line != "主導なし":
+                    h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+                    h_zone = _current_zone_for_line(h_line)
 
-                h_match = (
-                    (recommend_style == "順流" and h_line == FR_line)
-                    or (recommend_style == "渦" and h_line == VTX_line)
-                    or (recommend_style == "逆流" and h_line == U_line)
-                )
+                    h_match = (
+                        h_zone in ("順流", "渦", "逆流")
+                        and h_zone == recommend_style
+                    )
 
-                h_conflict = (
-                    (recommend_style == "順流" and h_line != FR_line)
-                    or (recommend_style == "渦" and h_line != VTX_line)
-                    or (recommend_style == "逆流" and h_line != U_line)
-                )
+                    h_conflict = (
+                        h_zone in ("順流", "渦", "逆流")
+                        and h_zone != recommend_style
+                    )
 
-                if h_match:
-                    if confidence == "C":
-                        confidence = "B"
-                    elif confidence == "B":
-                        confidence = "A"
+                    if h_match:
+                        if confidence == "C":
+                            confidence = "B"
+                        elif confidence == "B":
+                            confidence = "A"
 
-                elif h_conflict:
-                    if confidence == "A":
-                        confidence = "B"
-                    elif confidence == "B":
-                        confidence = "C"
+                    elif h_conflict:
+                        if confidence == "A":
+                            confidence = "B"
+                        elif confidence == "B":
+                            confidence = "C"
 
         except Exception:
             pass
 
-                # Hで戦法変更した場合は、過信防止で信頼度AをBに抑える
+        # Hで戦法変更した場合は、過信防止で信頼度AをBに抑える
         try:
             if h_changed and confidence == "A":
                 confidence = "B"
         except Exception:
             pass
 
-                # H反映チェック表示
+        # H反映チェック表示
         try:
             if h_style is not None:
                 if h_changed:
@@ -4768,20 +5812,503 @@ try:
         except Exception:
             pass
 
-        lines_out.append(
-            f"・推奨戦法：{recommend_style}［信頼度{confidence}］"
+                # =====================================================
+        # ガールズ補正
+        #   ガールズはライン戦ではないため、
+        #   無印押上げだけで渦に寄せすぎない
+        # =====================================================
+        try:
+            if is_girls_like and recommend_style == "渦":
+                recommend_style = "順流"
+                recommend_reason.append("ガールズ/アドバンスのため渦寄せを順流扱いに補正")
+        except Exception:
+            pass
+
+                # =====================================================
+        # 信頼度の最終補正：展開評価・順当度・上位差を統合
+        # =====================================================
+        try:
+            compact_label = str(globals().get("race_compact_label", ""))
+            compact_gap = globals().get("race_compact_gap", None)
+
+            def _down_conf(conf):
+                if conf == "A":
+                    return "B"
+                if conf == "B":
+                    return "C"
+                return "C"
+
+            conf_down_reasons = []
+
+            # 波乱気味＋上位差小は、信頼度を1段階下げる
+            if "波乱気味" in compact_label and compact_gap is not None:
+                if float(compact_gap) < 1.0:
+                    old_conf = confidence
+                    confidence = _down_conf(confidence)
+                    if confidence != old_conf:
+                        conf_down_reasons.append(
+                            f"波乱気味＋上位差小={float(compact_gap):.2f}"
+                        )
+
+            # 混戦＋波乱気味はB以上を出しすぎない
+            if "混戦" in tenkai_txt and "波乱気味" in compact_label:
+                if confidence in ("A", "B"):
+                    old_conf = confidence
+                    confidence = "C"
+                    if confidence != old_conf:
+                        conf_down_reasons.append("混戦＋波乱気味")
+
+            # レースFRが不利域なら、AはBへ落とす
+            if raceFR >= 0.65 and confidence == "A":
+                confidence = "B"
+                conf_down_reasons.append(f"レースFR不利域={raceFR:.3f}")
+
+            # ライン偏差大なら、B以上を1段階下げる
+            if sd >= 0.60:
+                old_conf = confidence
+                confidence = _down_conf(confidence)
+                if confidence != old_conf:
+                    conf_down_reasons.append("ライン偏差大")
+
+            if conf_down_reasons:
+                recommend_reason.append(
+                    "信頼度補正：" + "／".join(conf_down_reasons)
+                )
+
+        except Exception:
+            pass
+
+               # =====================================================
+        # 推奨戦法を＜短評＞の上に表示
+        # =====================================================
+        recommend_lines = []
+        recommend_lines.append(
+            f"推奨戦法：{recommend_style}"
         )
+
+        # =====================================================
+        # 2車複 評価1軸候補
+        # 推奨戦法の評価順だけを使う
+        # =====================================================
+        try:
+            import math
+
+            def _axis_rank(p):
+                if p >= 0.40:
+                    return "A", "買い候補強"
+                if p >= 0.30:
+                    return "B", "買い候補"
+                if p >= 0.20:
+                    return "C", "オッズ条件付き"
+                if p >= 0.10:
+                    return "D", "高配当条件"
+                return "E", "ケン寄り"
+
+            def _safe_odds_from_prob(p):
+                if p <= 1e-12:
+                    return None
+                return 1.0 / float(p)
+
+            def _style_axis_pairs(seq, score_map):
+                """
+                評価順seqの1位を軸にした2車複候補を作る。
+                推定率はPlackett-Luce型の上位2着内ペア近似。
+                """
+                xs = []
+                seen = set()
+
+                for x in (seq or []):
+                    if str(x).isdigit():
+                        c = int(x)
+                        if c not in seen:
+                            seen.add(c)
+                            xs.append(c)
+
+                if len(xs) < 2:
+                    return None, [], 0.0
+
+                vals = []
+                for c in xs:
+                    vals.append(float(score_map.get(int(c), 0.0) or 0.0))
+
+                mu = sum(vals) / max(len(vals), 1)
+                var = sum((v - mu) ** 2 for v in vals) / max(len(vals), 1)
+                sdv = var ** 0.5
+                if sdv <= 1e-9:
+                    sdv = 1.0
+
+                # 温度：小さいほどスコア差を強く見る
+                temp = 1.65
+
+                weights = {}
+                for c, v in zip(xs, vals):
+                    z = (v - mu) / (sdv * temp)
+                    z = max(-6.0, min(6.0, z))
+                    weights[int(c)] = math.exp(z)
+
+                total_w = sum(weights.values())
+                if total_w <= 1e-12:
+                    return xs[0], [], 0.0
+
+                axis = xs[0]
+                wa = float(weights.get(axis, 0.0))
+
+                pair_rows = []
+                for opp in xs[1:]:
+                    wb = float(weights.get(int(opp), 0.0))
+
+                    # 無順序2車複：P(axis→opp) + P(opp→axis)
+                    p1 = (wa / total_w) * (wb / max(total_w - wa, 1e-12))
+                    p2 = (wb / total_w) * (wa / max(total_w - wb, 1e-12))
+                    p_pair = max(0.0, p1 + p2)
+
+                    pair_rows.append((axis, int(opp), p_pair))
+
+                # 評価1軸の想定2着内率
+                axis_rate = sum(p for _, _, p in pair_rows)
+
+                return axis, pair_rows, axis_rate
+
+            style_seq_map = globals().get("STYLE_SEQ_MAP", {})
+
+            # 推奨戦法に応じた評価順を採用
+            selected_style = recommend_style
+            selected_seq = style_seq_map.get(selected_style, [])
+
+            # 保険：推奨戦法のseqが空なら順流を使う
+            if not selected_seq:
+                selected_style = "順流"
+                selected_seq = style_seq_map.get("順流", [])
+
+            axis, pair_rows, axis_rate = _style_axis_pairs(selected_seq, score_map)
+            axis_rank, axis_label = _axis_rank(axis_rate)
+
+            # 他戦法で軸率が高いものを参考表示する
+            ref_msgs = []
+            selected_fr = _style_fr_for_recommend(selected_style)
+
+            for other_style in ["順流", "渦", "逆流"]:
+                if other_style == selected_style:
+                    continue
+
+                other_seq = style_seq_map.get(other_style, [])
+                other_axis, _, other_rate = _style_axis_pairs(other_seq, score_map)
+
+                if other_axis is None:
+                    continue
+
+                                # 推奨戦法より3%以上高い場合だけ参考表示
+                if other_rate >= axis_rate + 0.03:
+                    other_fr = _style_fr_for_recommend(other_style)
+
+                    if other_fr < selected_fr - 0.05:
+                        ref_msgs.append(
+                            f"{other_style}評価1位の{int(other_axis)}は軸率高め。ただし{other_style}FR低めのため参考扱い。"
+                        )
+                    else:
+                        ref_msgs.append(
+                            f"{other_style}評価1位の{int(other_axis)}も軸候補。{other_style}警戒。"
+                        )
+
+            if axis is not None and pair_rows:
+                recommend_lines.append(
+                    f"軸評価：{axis_rank}［{axis_label}］"
+                    f"（軸想定2着内率 {axis_rate*100:.0f}%）"
+                )
+                globals()["AXIS_EVAL_TOP_LINE"] = (
+                    f"軸評価：{axis_rank}［{axis_label}］"
+                    f"（軸想定2着内率 {axis_rate*100:.0f}%）"
+                )
+
+                try:
+                    _compact_label_for_buy = str(
+                        globals().get("race_compact_label", "未判定")
+                    )
+                    _compact_gap_for_buy = globals().get("race_compact_gap", None)
+
+                    if _compact_gap_for_buy is not None:
+                        recommend_lines.append(
+                            f"順当度：{_compact_label_for_buy}［上位差={float(_compact_gap_for_buy):.2f}］"
+                        )
+                    else:
+                        recommend_lines.append(
+                            f"順当度：{_compact_label_for_buy}"
+                        )
+
+                except Exception:
+                    pass
+
+                recommend_lines.append("")
+
+                recommend_lines.append("【2車複 評価軸候補】")
+                recommend_lines.append(f"基準：{selected_style}メイン")
+                recommend_lines.append("2車複想定軸：評価1・評価2")
+
+                # =====================================================
+                # 2車複候補一覧＋絞り推奨買目
+                # 評価1・評価2を軸にする
+                # 候補一覧：重複を削らない
+                # 絞り推奨：推定率10%以上、かつ重複削除
+                # =====================================================
+                SHIBORI_MIN_PROB = 0.10
+                shibori_items = []
+                shibori_seen = set()
+
+                def _format_nifuku_line(a, b, p):
+                    odds = _safe_odds_from_prob(p)
+                    if odds is None:
+                        return f"{int(a)}-{int(b)}　推定率 0.0% ／ 足切り —"
+                    return f"{int(a)}-{int(b)}　推定率 {p*100:.1f}% ／ 足切り {odds:.1f}倍以上"
+
+                def _make_axis_pair_rows(seq, score_map, axis_index=0):
+                    """
+                    評価順seqの axis_index 番目を軸にした2車複候補を作る。
+                    axis_index=0 → 評価1軸
+                    axis_index=1 → 評価2軸
+                    """
+                    xs = []
+                    seen = set()
+
+                    for x in (seq or []):
+                        if str(x).isdigit():
+                            c = int(x)
+                            if c not in seen:
+                                seen.add(c)
+                                xs.append(c)
+
+                    if len(xs) < 2 or axis_index >= len(xs):
+                        return None, [], 0.0
+
+                    vals = []
+                    for c in xs:
+                        vals.append(float(score_map.get(int(c), 0.0) or 0.0))
+
+                    mu = sum(vals) / max(len(vals), 1)
+                    var = sum((v - mu) ** 2 for v in vals) / max(len(vals), 1)
+                    sdv = var ** 0.5
+                    if sdv <= 1e-9:
+                        sdv = 1.0
+
+                    temp = 1.65
+
+                    weights = {}
+                    for c, v in zip(xs, vals):
+                        z = (v - mu) / (sdv * temp)
+                        z = max(-6.0, min(6.0, z))
+                        weights[int(c)] = math.exp(z)
+
+                    total_w = sum(weights.values())
+                    if total_w <= 1e-12:
+                        return xs[axis_index], [], 0.0
+
+                    axis2 = int(xs[axis_index])
+                    wa = float(weights.get(axis2, 0.0))
+
+                    rows = []
+                    for opp in xs:
+                        opp = int(opp)
+                        if opp == axis2:
+                            continue
+
+                        wb = float(weights.get(opp, 0.0))
+
+                        # 無順序2車複：P(axis→opp) + P(opp→axis)
+                        p1 = (wa / total_w) * (wb / max(total_w - wa, 1e-12))
+                        p2 = (wb / total_w) * (wa / max(total_w - wb, 1e-12))
+                        p_pair = max(0.0, p1 + p2)
+
+                        rows.append((axis2, opp, p_pair))
+
+                    rate = sum(p for _, _, p in rows)
+                    return axis2, rows, rate
+
+                for _axis_index, _label in [(0, "評価1軸"), (1, "評価2軸")]:
+                    _axis_car, _rows, _rate = _make_axis_pair_rows(
+                        selected_seq,
+                        score_map,
+                        axis_index=_axis_index
+                    )
+
+                    if _axis_car is None or not _rows:
+                        continue
+
+                    recommend_lines.append("")
+                    recommend_lines.append(f"{_label}：{int(_axis_car)}")
+
+                    _rows_sorted = sorted(
+                        _rows,
+                        key=lambda t: int(t[1])
+                    )
+
+                    for a, b, p in _rows_sorted:
+                        line = _format_nifuku_line(a, b, p)
+                        recommend_lines.append(line)
+
+                        if float(p) >= SHIBORI_MIN_PROB:
+                            # 絞り推奨だけは2車複なので重複削除
+                            k = tuple(sorted((int(a), int(b))))
+                            if k not in shibori_seen:
+                                shibori_seen.add(k)
+                                shibori_items.append((a, b, p, line))
+
+                if ref_msgs:
+                    recommend_lines.append("参考：" + "／".join(ref_msgs))
+
+                # 絞り推奨買目を別枠で表示
+                if shibori_items:
+                    recommend_lines.append("")
+                    recommend_lines.append("**【絞り推奨買目】（推定率10％以上が基準／重複削除）**")
+
+                    for a, b, p, line in shibori_items:
+                        recommend_lines.append(f"**{line}**")
+
+                                # =====================================================
+                # 仮想単勝：2車単 軸→全
+                # 競輪には単勝がないため、2車単「軸→全」を仮想単勝として扱う
+                # 評価1軸・評価2軸を表示
+                # =====================================================
+                try:
+                    def _axis_win_prob(seq, score_map, axis_car):
+                        xs = []
+                        seen = set()
+
+                        for x in (seq or []):
+                            if str(x).isdigit():
+                                c = int(x)
+                                if c not in seen:
+                                    seen.add(c)
+                                    xs.append(c)
+
+                        if not xs or int(axis_car) not in xs:
+                            return 0.0
+
+                        vals = []
+                        for c in xs:
+                            vals.append(float(score_map.get(int(c), 0.0) or 0.0))
+
+                        mu = sum(vals) / max(len(vals), 1)
+                        var = sum((v - mu) ** 2 for v in vals) / max(len(vals), 1)
+                        sdv = var ** 0.5
+                        if sdv <= 1e-9:
+                            sdv = 1.0
+
+                        # 2車複推定率と同じ温度を使用
+                        temp = 1.65
+
+                        weights = {}
+                        for c, v in zip(xs, vals):
+                            z = (v - mu) / (sdv * temp)
+                            z = max(-6.0, min(6.0, z))
+                            weights[int(c)] = math.exp(z)
+
+                        total_w = sum(weights.values())
+                        if total_w <= 1e-12:
+                            return 0.0
+
+                        return float(weights.get(int(axis_car), 0.0)) / total_w
+
+                    def _unique_seq(seq):
+                        xs = []
+                        seen = set()
+                        for x in (seq or []):
+                            if str(x).isdigit():
+                                c = int(x)
+                                if c not in seen:
+                                    seen.add(c)
+                                    xs.append(c)
+                        return xs
+
+                    _seq_unique = _unique_seq(selected_seq)
+
+                    recommend_lines.append("")
+                    recommend_lines.append("【仮想単勝：2車単 軸→全】")
+
+                    for _axis_index, _label in [(0, "評価1軸"), (1, "評価2軸")]:
+                        if _axis_index >= len(_seq_unique):
+                            continue
+
+                        _axis_car = int(_seq_unique[_axis_index])
+                        axis_win_rate = _axis_win_prob(
+                            selected_seq,
+                            score_map,
+                            _axis_car
+                        )
+
+                        if axis_win_rate <= 1e-12:
+                            continue
+
+                        theoretical_odds = 1.0 / axis_win_rate
+
+                        # 軸→全の点数。7車なら6点、5車なら4点、9車なら8点。
+                        n_tansho_points = max(len(_seq_unique) - 1, 1)
+
+                        # 2車単「軸→全」は、最安目ではなく合成オッズで見る
+                        required_composite_odds = theoretical_odds
+
+                        # 実戦では推定誤差を考えて少し上乗せ
+                        practical_composite_odds = theoretical_odds * 1.10
+
+                        recommend_lines.append("")
+                        recommend_lines.append(f"{_label}：{int(_axis_car)}")
+                        recommend_lines.append(
+                            f"軸1着推定率：{axis_win_rate*100:.1f}%"
+                        )
+                        
+                        recommend_lines.append(
+                            f"2車単 軸→全 必要合成オッズ：{required_composite_odds:.1f}倍以上"
+                        )
+                        recommend_lines.append(
+                            f"実戦目安：合成{practical_composite_odds:.1f}倍以上なら検討"
+                        )
+                        recommend_lines.append(
+                            f"参考：均等買いのトリガミ回避は各目{float(n_tansho_points):.1f}倍以上"
+                        )
+                except Exception:
+                    pass
+
+                recommend_lines.append("")
+
+        except Exception as _e:
+            recommend_lines.append(
+                f"【2車複 評価1軸候補】生成不可（{_e}）"
+            )
+            recommend_lines.append("")
+
+        # 推奨理由は短評内に残す
         lines_out.append(
             f"・推奨理由：{'／'.join(recommend_reason)}"
         )
 
     except Exception as _e:
-        lines_out.append(
-            f"・推奨戦法：判定不可（{_e}）"
+        recommend_lines = []
+        recommend_lines.append(
+            f"推奨戦法：判定不可（{_e}）"
         )
+        recommend_lines.append("")
 
+    # =====================================================
+    # 冒頭表示用：展開評価の直後に軸評価を1行だけ差し込む
+    # =====================================================
+    try:
+        _axis_top_line = globals().get("AXIS_EVAL_TOP_LINE", "")
+
+        if _axis_top_line:
+            for _i, _s in enumerate(note_sections):
+                if str(_s).startswith("展開評価："):
+                    if (
+                        _i + 1 >= len(note_sections)
+                        or str(note_sections[_i + 1]) != _axis_top_line
+                    ):
+                        note_sections.insert(_i + 1, _axis_top_line)
+                    break
+
+    except Exception:
+        pass
+
+    note_sections.extend(recommend_lines)
     note_sections.extend(lines_out)
     note_sections.append("")
+    globals()["note_sections"] = note_sections
 
     globals()["note_sections"] = note_sections
 
