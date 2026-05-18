@@ -1505,6 +1505,25 @@ else:
     st.session_state["race_no_main"] = int(race_no_input)
 race_no = int(st.session_state["race_no_main"])
 
+def input_float_text(label: str, key: str, placeholder: str = ""):
+    s = st.text_input(
+        label,
+        value=st.session_state.get(key, ""),
+        key=key,
+        placeholder=placeholder
+    )
+
+    ss = unicodedata.normalize("NFKC", str(s)).replace(",", "").strip()
+
+    if ss == "":
+        return None
+
+    if not re.fullmatch(r"[+-]?\d+(\.\d+)?", ss):
+        st.warning(f"{label} は数値で入力してください（入力値: {s}）")
+        return None
+
+    return float(ss)
+
 # ==============================
 # 入力フォーム：一時入力 → 反映ボタン
 # ==============================
