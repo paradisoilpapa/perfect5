@@ -1546,7 +1546,7 @@ def input_float_text(label: str, key: str, placeholder: str = ""):
 
 st.subheader("個人データ（直近4か月：回数）")
 cols = st.columns(len(active_cars_live))
-ratings_live, S_live, H_live, B_live = {}, {}, {}
+ratings_live, S_live, H_live, B_live = {}, {}, {}, {}
 
 k_esc_live, k_mak_live, k_sashi_live, k_mark_live = {}, {}, {}, {}
 x1_live, x2_live, x3_live, x_out_live = {}, {}, {}, {}
