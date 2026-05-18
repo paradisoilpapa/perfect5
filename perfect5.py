@@ -658,6 +658,65 @@ def calc_last_half_role_bonus(
         return 0.0, [f"ラスト半周補正エラー:{e}"]
 
 # ==============================
+
+# =====================================================
+# 混戦度判定
+#   平均得点ではなく、競走得点1位と2位の差で見る
+#   High   = 上位差が大きく、順当寄り
+#   Middle = 標準
+#   Low    = 上位差が小さく、波乱気味
+#
+#   ※スコア補正には使わない。表示・検証用。
+# =====================================================
+def calc_race_compactness(ratings_val: dict, active_cars: list):
+    vals = []
+
+    for no in active_cars:
+        try:
+            v = float(ratings_val.get(int(no), 0.0))
+            if v > 0:
+                vals.append(v)
+        except Exception:
+            pass
+
+    if len(vals) < 2:
+        return {
+            "label": "未判定",
+            "top1": 0.0,
+            "top2": 0.0,
+            "top_gap": None,
+        }
+
+    vals = sorted(vals, reverse=True)
+
+    top1 = vals[0]
+    top2 = vals[1]
+    top_gap = top1 - top2
+
+    if top_gap >= 2.00:
+        label = "順当寄り"
+    elif top_gap >= 1.00:
+        label = "標準"
+    else:
+        label = "波乱気味"
+
+    return {
+        "label": label,
+        "top1": float(top1),
+        "top2": float(top2),
+        "top_gap": float(top_gap),
+    }
+
+race_compact = calc_race_compactness(ratings_val, active_cars)
+
+race_compact_label = race_compact.get("label", "未判定")
+race_compact_gap = race_compact.get("top_gap", None)
+
+globals()["race_compact_label"] = race_compact_label
+globals()["race_compact_gap"] = race_compact_gap
+globals()["race_compact"] = race_compact
+
+
 # H：最終ホーム想定ライン
 # ==============================
 def calc_home_line_scores(line_def: dict, H: dict, B: dict, active_cars: list[int]) -> dict:
@@ -1806,7 +1865,6 @@ for no in active_cars:
 # ==============================
 # level_rating_scale 保険定義
 # ==============================
-
 if "level_rating_scale" not in globals():
     level_rating_scale = 1.0
 
@@ -6373,4 +6431,3 @@ st.text_area("ここを選択してコピー", note_text, height=560)
 # =========================
 #  一括置換ブロック ここまで
 # =========================
-
