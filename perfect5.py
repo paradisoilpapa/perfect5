@@ -1803,6 +1803,13 @@ for no in active_cars:
     venue_bonus = 0.06 * vmix * ( +1.00*esc + 0.40*mak - 0.60*sashi - 0.25*mark )
     prof_base[no] = base + clamp(venue_bonus, -0.06, +0.06)
 
+# ==============================
+# level_rating_scale 保険定義
+# ==============================
+
+if "level_rating_scale" not in globals():
+    level_rating_scale = 1.0
+
 # ======== 個人補正（得点/脚質上位/着順分布） ========
 ratings_sorted = sorted(active_cars, key=lambda n: ratings_val[n], reverse=True)
 ratings_rank = {no: i+1 for i,no in enumerate(ratings_sorted)}
