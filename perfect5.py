@@ -707,16 +707,6 @@ def calc_race_compactness(ratings_val: dict, active_cars: list):
         "top_gap": float(top_gap),
     }
 
-race_compact = calc_race_compactness(ratings_val, active_cars)
-
-race_compact_label = race_compact.get("label", "未判定")
-race_compact_gap = race_compact.get("top_gap", None)
-
-globals()["race_compact_label"] = race_compact_label
-globals()["race_compact_gap"] = race_compact_gap
-globals()["race_compact"] = race_compact
-
-
 # H：最終ホーム想定ライン
 # ==============================
 def calc_home_line_scores(line_def: dict, H: dict, B: dict, active_cars: list[int]) -> dict:
@@ -1765,6 +1755,18 @@ if dups:
     st.stop()
 
 ratings_val = {no: (float(ratings[no]) if ratings[no] is not None else 55.0) for no in active_cars}
+
+# =====================================================
+# 混戦度判定：競走得点1位と2位の差
+# ※ active_cars / ratings_val が確定した後で実行する
+# =====================================================
+race_compact = calc_race_compactness(ratings_val, active_cars)
+race_compact_label = race_compact.get("label", "未判定")
+race_compact_gap = race_compact.get("top_gap", None)
+
+globals()["race_compact_label"] = race_compact_label
+globals()["race_compact_gap"] = race_compact_gap
+globals()["race_compact"] = race_compact
 
 # H：最終ホーム想定ライン
 home_line_scores = calc_home_line_scores(line_def, H, B, active_cars)
