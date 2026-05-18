@@ -1702,10 +1702,58 @@ globals()["target_comment"] = target_comment
 globals()["seri_comment"] = seri_comment
 
 st.caption(
-    "反映済みデータで計算中："
+    
     f"車番={active_cars} ／ "
     f"ライン={'　'.join(''.join(map(str, ln)) for ln in lines) if lines else 'なし'}"
 )
+
+# ==============================
+# 反映済み入力デバッグ
+# ==============================
+debug_rows = []
+
+for no in active_cars:
+    no = int(no)
+    debug_rows.append({
+        "車番": no,
+        "得点": ratings.get(no),
+        "S": S.get(no),
+        "H": H.get(no),
+        "B": B.get(no),
+        "逃": k_esc.get(no),
+        "捲": k_mak.get(no),
+        "差": k_sashi.get(no),
+        "マ": k_mark.get(no),
+        "1着": x1.get(no),
+        "2着": x2.get(no),
+        "3着": x3.get(no),
+        "着外": x_out.get(no),
+        "自力": bool(jiryoku_comment.get(no, False)),
+        "番手": bool(target_comment.get(no, False)),
+        "競り": bool(seri_comment.get(no, False)),
+    })
+
+debug_df = pd.DataFrame(debug_rows)
+
+with st.expander("反映済み入力デバッグ", expanded=False):
+    st.dataframe(debug_df, use_container_width=True)
+    st.write({
+        "開催区分": race_time,
+        "級別": race_class,
+        "競輪場": track,
+        "風向": wind_dir,
+        "風速": wind_speed,
+        "直線": straight_length,
+        "バンク角": bank_angle,
+        "周長": bank_length,
+        "周回": base_laps,
+        "開催日": day_label,
+        "eff_laps": eff_laps,
+        "style": style,
+        "line_factor_eff": line_factor_eff,
+        "cap_SB_eff": cap_SB_eff,
+        "fatigue_value": fatigue_value,
+    })
 
 # 反映済みデータの整合チェック
 if len(active_cars) != int(n_cars):
