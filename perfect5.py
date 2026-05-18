@@ -1105,7 +1105,8 @@ def _ko_order(v_base_map,
         gb = next((g for g, mem in line_def.items() if b in mem), None)
         return ga is not None and ga == gb
 
-        i = 0
+    i = 0
+    while i < len(order) - 2:
     while i < len(order) - 2:
         a, b, c = order[i], order[i + 1], order[i + 2]
         if _same_group(a, b):
@@ -1502,67 +1503,218 @@ else:
     st.session_state["race_no_main"] = int(race_no_input)
 race_no = int(st.session_state["race_no_main"])
 
-# ライン構成（最大7：単騎も1ライン）
-line_inputs = [
-    st.text_input("ライン1（例：123）", key="line_1", max_chars=9),
-    st.text_input("ライン2（例：456）", key="line_2", max_chars=9),
-    st.text_input("ライン3（例：789）", key="line_3", max_chars=9),
-    st.text_input("ライン4（任意）", key="line_4", max_chars=9),
-    st.text_input("ライン5（任意）", key="line_5", max_chars=9),
-    st.text_input("ライン6（任意）", key="line_6", max_chars=9),
-    st.text_input("ライン7（任意）", key="line_7", max_chars=9),
-    st.text_input("ライン8（任意）", key="line_8", max_chars=9),
-    st.text_input("ライン9（任意）", key="line_9", max_chars=9),
-]
-n_cars = int(n_cars)
-lines = [extract_car_list(x, n_cars) for x in line_inputs if str(x).strip()]
-line_def, car_to_group = build_line_maps(lines)
-active_cars = sorted({c for lst in lines for c in lst}) if lines else list(range(1, n_cars+1))
+# ==============================
+# 入力フォーム：一時入力 → 反映ボタン
+# ==============================
 
-# 5〜9車対応：ライン入力漏れチェック
-if len(active_cars) != int(n_cars):
-    st.warning(
-        f"出走数{n_cars}に対して、ライン入力済みは{len(active_cars)}車です。"
-        " ライン入力漏れを確認してください。"
+if "applied_input" not in st.session_state:
+    st.session_state["applied_input"] = {}
+
+with st.form("race_input_form", clear_on_submit=False):
+
+    st.subheader("ライン構成")
+
+    line_inputs_tmp = [
+        st.text_input("ライン1（例：123）", key="tmp_line_1", max_chars=9),
+        st.text_input("ライン2（例：456）", key="tmp_line_2", max_chars=9),
+        st.text_input("ライン3（例：789）", key="tmp_line_3", max_chars=9),
+        st.text_input("ライン4（任意）", key="tmp_line_4", max_chars=9),
+        st.text_input("ライン5（任意）", key="tmp_line_5", max_chars=9),
+        st.text_input("ライン6（任意）", key="tmp_line_6", max_chars=9),
+        st.text_input("ライン7（任意）", key="tmp_line_7", max_chars=9),
+        st.text_input("ライン8（任意）", key="tmp_line_8", max_chars=9),
+        st.text_input("ライン9（任意）", key="tmp_line_9", max_chars=9),
+    ]
+
+    # フォーム内では「入力中の仮ライン」から表示車番を作る
+    tmp_lines = [
+        extract_car_list(x, n_cars)
+        for x in line_inputs_tmp
+        if str(x).strip()
+    ]
+
+    tmp_active_cars = (
+        sorted({c for lst in tmp_lines for c in lst})
+        if tmp_lines
+        else list(range(1, int(n_cars) + 1))
     )
 
-# ←←← ここに入れる
-def input_float_text(label: str, key: str, placeholder: str = ""):
-    s = st.text_input(label, value=st.session_state.get(key, ""), key=key, placeholder=placeholder)
-    ss = unicodedata.normalize("NFKC", str(s)).replace(",", "").strip()
-    if ss == "":
-        return None
-    if not re.fullmatch(r"[+-]?\d+(\.\d+)?", ss):
-        st.warning(f"{label} は数値で入力してください（入力値: {s}）")
-        return None
-    return float(ss)
+    st.subheader("個人データ（直近4か月：回数）")
 
-# →→→ ここまで
+    cols = st.columns(len(tmp_active_cars))
 
-st.subheader("個人データ（直近4か月：回数）")
-cols = st.columns(n_cars)
-ratings, S, H, B = {}, {}, {}, {}
+    tmp_ratings = {}
+    tmp_S = {}
+    tmp_H = {}
+    tmp_B = {}
 
-k_esc, k_mak, k_sashi, k_mark = {}, {}, {}, {}
-x1, x2, x3, x_out = {}, {}, {}, {}
+    tmp_k_esc = {}
+    tmp_k_mak = {}
+    tmp_k_sashi = {}
+    tmp_k_mark = {}
 
-for i, no in enumerate(active_cars):
-    with cols[i]:
-        st.markdown(f"**{no}番**")
-        ratings[no] = input_float_text("得点（空欄可）", key=f"pt_{no}", placeholder="例: 55.0")
-        S[no] = st.number_input("S", 0, 99, 0, key=f"s_{no}")
-        H[no] = st.number_input("H", 0, 99, 0, key=f"h_{no}")
-        B[no] = st.number_input("B", 0, 99, 0, key=f"b_{no}")
-        k_esc[no]   = st.number_input("逃", 0, 99, 0, key=f"ke_{no}")
-        k_mak[no]   = st.number_input("捲", 0, 99, 0, key=f"km_{no}")
-        k_sashi[no] = st.number_input("差", 0, 99, 0, key=f"ks_{no}")
-        k_mark[no]  = st.number_input("マ", 0, 99, 0, key=f"kk_{no}")
-        x1[no]  = st.number_input("1着", 0, 99, 0, key=f"x1_{no}")
-        x2[no]  = st.number_input("2着", 0, 99, 0, key=f"x2_{no}")
-        x3[no]  = st.number_input("3着", 0, 99, 0, key=f"x3_{no}")
-        x_out[no]= st.number_input("着外", 0, 99, 0, key=f"xo_{no}")
+    tmp_x1 = {}
+    tmp_x2 = {}
+    tmp_x3 = {}
+    tmp_x_out = {}
 
-ratings_val = {no: (ratings[no] if ratings[no] is not None else 55.0) for no in active_cars}
+    for i, no in enumerate(tmp_active_cars):
+        with cols[i]:
+            st.markdown(f"**{no}番**")
+
+            tmp_ratings[no] = input_float_text(
+                "得点（空欄可）",
+                key=f"tmp_pt_{no}",
+                placeholder="例: 55.0"
+            )
+
+            tmp_S[no] = st.number_input("S", 0, 99, 0, key=f"tmp_s_{no}")
+            tmp_H[no] = st.number_input("H", 0, 99, 0, key=f"tmp_h_{no}")
+            tmp_B[no] = st.number_input("B", 0, 99, 0, key=f"tmp_b_{no}")
+
+            tmp_k_esc[no] = st.number_input("逃", 0, 99, 0, key=f"tmp_ke_{no}")
+            tmp_k_mak[no] = st.number_input("捲", 0, 99, 0, key=f"tmp_km_{no}")
+            tmp_k_sashi[no] = st.number_input("差", 0, 99, 0, key=f"tmp_ks_{no}")
+            tmp_k_mark[no] = st.number_input("マ", 0, 99, 0, key=f"tmp_kk_{no}")
+
+            tmp_x1[no] = st.number_input("1着", 0, 99, 0, key=f"tmp_x1_{no}")
+            tmp_x2[no] = st.number_input("2着", 0, 99, 0, key=f"tmp_x2_{no}")
+            tmp_x3[no] = st.number_input("3着", 0, 99, 0, key=f"tmp_x3_{no}")
+            tmp_x_out[no] = st.number_input("着外", 0, 99, 0, key=f"tmp_xo_{no}")
+
+    applied = st.form_submit_button(
+        "入力を反映して計算する",
+        use_container_width=True
+    )
+
+
+# ==============================
+# 反映ボタン押下時だけ、計算用データとして保存
+# ==============================
+
+if applied:
+    st.session_state["applied_input"] = {
+        "line_inputs": line_inputs_tmp,
+        "active_cars": tmp_active_cars,
+
+        "ratings": tmp_ratings,
+        "S": tmp_S,
+        "H": tmp_H,
+        "B": tmp_B,
+
+        "k_esc": tmp_k_esc,
+        "k_mak": tmp_k_mak,
+        "k_sashi": tmp_k_sashi,
+        "k_mark": tmp_k_mark,
+
+        "x1": tmp_x1,
+        "x2": tmp_x2,
+        "x3": tmp_x3,
+        "x_out": tmp_x_out,
+    }
+
+
+# ==============================
+# ここから下は「反映済みデータ」だけで計算する
+# ==============================
+
+applied_data = st.session_state.get("applied_input", {})
+
+if not applied_data:
+    st.info("ラインと個人データを入力し、「入力を反映して計算する」を押してください。")
+    st.stop()
+
+
+line_inputs = applied_data["line_inputs"]
+active_cars = applied_data["active_cars"]
+
+lines = [
+    extract_car_list(x, n_cars)
+    for x in line_inputs
+    if str(x).strip()
+]
+
+line_def, car_to_group = build_line_maps(lines)
+
+ratings = applied_data["ratings"]
+S = applied_data["S"]
+H = applied_data["H"]
+B = applied_data["B"]
+
+k_esc = applied_data["k_esc"]
+k_mak = applied_data["k_mak"]
+k_sashi = applied_data["k_sashi"]
+k_mark = applied_data["k_mark"]
+
+x1 = applied_data["x1"]
+x2 = applied_data["x2"]
+x3 = applied_data["x3"]
+x_out = applied_data["x_out"]
+
+
+# ==============================
+# 入力整合チェック
+# ==============================
+
+if len(active_cars) != int(n_cars):
+    st.error(
+        f"出走数{n_cars}に対して、反映済みラインは{len(active_cars)}車です。"
+        f" 反映済み車番: {active_cars}"
+    )
+    st.stop()
+
+
+dup_check = []
+for lst in lines:
+    dup_check.extend(lst)
+
+dups = sorted([
+    x for x in set(dup_check)
+    if dup_check.count(x) >= 2
+])
+
+if dups:
+    st.error(f"同じ車番が複数ラインに入っています: {dups}")
+    st.stop()
+
+
+missing_inputs = []
+
+for no in active_cars:
+    for name, mp in [
+        ("得点", ratings),
+        ("S", S),
+        ("H", H),
+        ("B", B),
+        ("逃", k_esc),
+        ("捲", k_mak),
+        ("差", k_sashi),
+        ("マ", k_mark),
+        ("1着", x1),
+        ("2着", x2),
+        ("3着", x3),
+        ("着外", x_out),
+    ]:
+        if no not in mp:
+            missing_inputs.append(f"{no}番:{name}")
+
+if missing_inputs:
+    st.error("反映済み入力に欠損があります: " + " / ".join(missing_inputs))
+    st.stop()
+
+
+# ==============================
+# 得点の空欄補完
+# ==============================
+
+ratings_val = {
+    no: (
+        float(ratings.get(no))
+        if ratings.get(no) is not None
+        else 55.0
+    )
+    for no in active_cars
+}
 
 # =====================================================
 # 混戦度判定
