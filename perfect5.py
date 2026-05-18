@@ -1105,17 +1105,14 @@ def _ko_order(v_base_map,
         gb = next((g for g, mem in line_def.items() if b in mem), None)
         return ga is not None and ga == gb
 
-    i = 0
+        i = 0
     while i < len(order) - 2:
         a, b, c = order[i], order[i + 1], order[i + 2]
-
         if _same_group(a, b):
             vx = v_base_map.get(b, 0.0) - v_base_map.get(c, 0.0)
-
             # b と c の差が小さいなら入れ替えて “寄せる”
             if vx >= -gap_delta:
                 order[i + 1], order[i + 2] = order[i + 2], order[i + 1]
-
         i += 1
 
     return order
@@ -1505,32 +1502,12 @@ else:
     st.session_state["race_no_main"] = int(race_no_input)
 race_no = int(st.session_state["race_no_main"])
 
-def input_float_text(label: str, key: str, placeholder: str = ""):
-    s = st.text_input(
-        label,
-        value=st.session_state.get(key, ""),
-        key=key,
-        placeholder=placeholder
-    )
-
-    ss = unicodedata.normalize("NFKC", str(s)).replace(",", "").strip()
-
-    if ss == "":
-        return None
-
-    if not re.fullmatch(r"[+-]?\d+(\.\d+)?", ss):
-        st.warning(f"{label} は数値で入力してください（入力値: {s}）")
-        return None
-
-    return float(ss)
-
-
 # ==============================
 # メイン入力：通常入力 → 反映ボタンで計算用データを固定
+# ※スコア計算ロジックは元コードから変更しない
 # ==============================
 
-st.subheader("ライン構成")
-
+# ライン構成（最大7：単騎も1ライン）
 line_inputs_live = [
     st.text_input("ライン1（例：123）", key="line_1", max_chars=9),
     st.text_input("ライン2（例：456）", key="line_2", max_chars=9),
@@ -1542,53 +1519,56 @@ line_inputs_live = [
     st.text_input("ライン8（任意）", key="line_8", max_chars=9),
     st.text_input("ライン9（任意）", key="line_9", max_chars=9),
 ]
-
 n_cars = int(n_cars)
 lines_live = [extract_car_list(x, n_cars) for x in line_inputs_live if str(x).strip()]
 line_def_live, car_to_group_live = build_line_maps(lines_live)
-active_cars_live = sorted({c for lst in lines_live for c in lst}) if lines_live else list(range(1, n_cars + 1))
+active_cars_live = sorted({c for lst in lines_live for c in lst}) if lines_live else list(range(1, n_cars+1))
 
-# 5〜9車対応：ライン入力漏れチェック（入力中の確認用）
+# 5〜9車対応：ライン入力漏れチェック
 if len(active_cars_live) != int(n_cars):
     st.warning(
         f"出走数{n_cars}に対して、ライン入力済みは{len(active_cars_live)}車です。"
         " ライン入力漏れを確認してください。"
     )
 
+# ←←← ここに入れる
+def input_float_text(label: str, key: str, placeholder: str = ""):
+    s = st.text_input(label, value=st.session_state.get(key, ""), key=key, placeholder=placeholder)
+    ss = unicodedata.normalize("NFKC", str(s)).replace(",", "").strip()
+    if ss == "":
+        return None
+    if not re.fullmatch(r"[+-]?\d+(\.\d+)?", ss):
+        st.warning(f"{label} は数値で入力してください（入力値: {s}）")
+        return None
+    return float(ss)
+
+# →→→ ここまで
+
 st.subheader("個人データ（直近4か月：回数）")
-
 cols = st.columns(len(active_cars_live))
+ratings_live, S_live, H_live, B_live = {}, {}, {}
 
-ratings_live, S_live, H_live, B_live = {}, {}, {}, {}
 k_esc_live, k_mak_live, k_sashi_live, k_mark_live = {}, {}, {}, {}
 x1_live, x2_live, x3_live, x_out_live = {}, {}, {}, {}
 
 for i, no in enumerate(active_cars_live):
     with cols[i]:
         st.markdown(f"**{no}番**")
-
-        ratings_live[no] = input_float_text(
-            "得点（空欄可）",
-            key=f"pt_{no}",
-            placeholder="例: 55.0"
-        )
-
+        ratings_live[no] = input_float_text("得点（空欄可）", key=f"pt_{no}", placeholder="例: 55.0")
         S_live[no] = st.number_input("S", 0, 99, 0, key=f"s_{no}")
         H_live[no] = st.number_input("H", 0, 99, 0, key=f"h_{no}")
         B_live[no] = st.number_input("B", 0, 99, 0, key=f"b_{no}")
-
-        k_esc_live[no] = st.number_input("逃", 0, 99, 0, key=f"ke_{no}")
-        k_mak_live[no] = st.number_input("捲", 0, 99, 0, key=f"km_{no}")
+        k_esc_live[no]   = st.number_input("逃", 0, 99, 0, key=f"ke_{no}")
+        k_mak_live[no]   = st.number_input("捲", 0, 99, 0, key=f"km_{no}")
         k_sashi_live[no] = st.number_input("差", 0, 99, 0, key=f"ks_{no}")
-        k_mark_live[no] = st.number_input("マ", 0, 99, 0, key=f"kk_{no}")
-
-        x1_live[no] = st.number_input("1着", 0, 99, 0, key=f"x1_{no}")
-        x2_live[no] = st.number_input("2着", 0, 99, 0, key=f"x2_{no}")
-        x3_live[no] = st.number_input("3着", 0, 99, 0, key=f"x3_{no}")
-        x_out_live[no] = st.number_input("着外", 0, 99, 0, key=f"xo_{no}")
+        k_mark_live[no]  = st.number_input("マ", 0, 99, 0, key=f"kk_{no}")
+        x1_live[no]  = st.number_input("1着", 0, 99, 0, key=f"x1_{no}")
+        x2_live[no]  = st.number_input("2着", 0, 99, 0, key=f"x2_{no}")
+        x3_live[no]  = st.number_input("3着", 0, 99, 0, key=f"x3_{no}")
+        x_out_live[no]= st.number_input("着外", 0, 99, 0, key=f"xo_{no}")
 
 # =====================================================
-# コメントチェック表（入力欄）
+# コメントチェック表
 #   前検コメントを見て手動チェック
 #   自力：自力 / 自力自在 / 自力基本 / 自分で / 前で 等
 #   番手：○○君 / ○○へ / 任せる / 近畿勢 等
@@ -1702,58 +1682,10 @@ globals()["target_comment"] = target_comment
 globals()["seri_comment"] = seri_comment
 
 st.caption(
-    
+    "反映済みデータで計算中："
     f"車番={active_cars} ／ "
     f"ライン={'　'.join(''.join(map(str, ln)) for ln in lines) if lines else 'なし'}"
 )
-
-# ==============================
-# 反映済み入力デバッグ
-# ==============================
-debug_rows = []
-
-for no in active_cars:
-    no = int(no)
-    debug_rows.append({
-        "車番": no,
-        "得点": ratings.get(no),
-        "S": S.get(no),
-        "H": H.get(no),
-        "B": B.get(no),
-        "逃": k_esc.get(no),
-        "捲": k_mak.get(no),
-        "差": k_sashi.get(no),
-        "マ": k_mark.get(no),
-        "1着": x1.get(no),
-        "2着": x2.get(no),
-        "3着": x3.get(no),
-        "着外": x_out.get(no),
-        "自力": bool(jiryoku_comment.get(no, False)),
-        "番手": bool(target_comment.get(no, False)),
-        "競り": bool(seri_comment.get(no, False)),
-    })
-
-debug_df = pd.DataFrame(debug_rows)
-
-with st.expander("反映済み入力デバッグ", expanded=False):
-    st.dataframe(debug_df, use_container_width=True)
-    st.write({
-        "開催区分": race_time,
-        "級別": race_class,
-        "競輪場": track,
-        "風向": wind_dir,
-        "風速": wind_speed,
-        "直線": straight_length,
-        "バンク角": bank_angle,
-        "周長": bank_length,
-        "周回": base_laps,
-        "開催日": day_label,
-        "eff_laps": eff_laps,
-        "style": style,
-        "line_factor_eff": line_factor_eff,
-        "cap_SB_eff": cap_SB_eff,
-        "fatigue_value": fatigue_value,
-    })
 
 # 反映済みデータの整合チェック
 if len(active_cars) != int(n_cars):
@@ -1773,91 +1705,7 @@ if dups:
     st.error(f"同じ車番が複数ラインに入っています: {dups}")
     st.stop()
 
-ratings_val = {
-    no: (
-        float(ratings.get(no))
-        if ratings.get(no) is not None
-        else 55.0
-    )
-    for no in active_cars
-}
-
-# =====================================================
-# 混戦度判定
-#   平均得点ではなく、競走得点1位と2位の差で見る
-#   High   = 上位差が大きく、順当寄り
-#   Middle = 標準
-#   Low    = 上位差が小さく、波乱気味
-#
-#   ※スコア補正には使わない。まずは表示・検証用。
-# =====================================================
-def calc_race_compactness(ratings_val: dict, active_cars: list):
-    vals = []
-
-    for no in active_cars:
-        try:
-            v = float(ratings_val.get(int(no), 0.0))
-            if v > 0:
-                vals.append(v)
-        except Exception:
-            pass
-
-    if len(vals) < 2:
-        return {
-            "label": "Middle",
-            "top1": 0.0,
-            "top2": 0.0,
-            "top_gap": 0.0,
-        }
-
-    vals = sorted(vals, reverse=True)
-
-    top1 = vals[0]
-    top2 = vals[1]
-    top_gap = top1 - top2
-
-    if top_gap >= 2.00:
-        label = "順当寄り"
-    elif top_gap >= 1.00:
-        label = "標準"
-    else:
-        label = "波乱気味"
-
-    return {
-        "label": label,
-        "top1": float(top1),
-        "top2": float(top2),
-        "top_gap": float(top_gap),
-    }
-
-
-race_compact_info = calc_race_compactness(ratings_val, active_cars)
-
-race_compact_label = race_compact_info["label"]
-race_compact_top1 = race_compact_info["top1"]
-race_compact_top2 = race_compact_info["top2"]
-race_compact_gap = race_compact_info["top_gap"]
-
-globals()["race_compact_info"] = race_compact_info
-globals()["race_compact_label"] = race_compact_label
-globals()["race_compact_gap"] = race_compact_gap
-
-# =====================================================
-# 旧レースレベル補正は無効化
-#   平均得点High/Middle/Lowはスコアを歪めやすいため使わない
-# =====================================================
-level_rating_scale = 1.00
-level_comment_scale = 1.00
-level_line_scale = 1.00
-
-globals()["level_rating_scale"] = level_rating_scale
-globals()["level_comment_scale"] = level_comment_scale
-globals()["level_line_scale"] = level_line_scale
-# =====================================================
-# コメントチェック表
-#   反映ボタン押下時に保存したチェック値を使用する
-# =====================================================
-
+ratings_val = {no: (float(ratings[no]) if ratings[no] is not None else 55.0) for no in active_cars}
 
 # H：最終ホーム想定ライン
 home_line_scores = calc_home_line_scores(line_def, H, B, active_cars)
@@ -2281,42 +2129,6 @@ df = pd.DataFrame(rows, columns=[
     "自力コメント補正", "ライン連動補正", "競り補正",
     "合計_SBなし_raw",
 ])
-
-# ==============================
-# スコア内訳デバッグ
-# 目的：
-#   修正前後で順位がズレた場合に、
-#   どの補正項目が効いているかを車番ごとに確認する
-# ==============================
-with st.expander("スコア内訳デバッグ（合計_SBなし_rawの内訳）", expanded=False):
-    debug_score_df = df.copy()
-    if not debug_score_df.empty:
-        for _col in [
-            "脚質基準(会場)", "風補正", "得点補正", "バンク補正", "周長補正",
-            "周回補正", "個人補正", "安定度", "H補正", "ラスト200",
-            "自力コメント補正", "ライン連動補正", "競り補正", "合計_SBなし_raw"
-        ]:
-            if _col in debug_score_df.columns:
-                debug_score_df[_col] = debug_score_df[_col].astype(float).round(6)
-
-        st.dataframe(
-            debug_score_df.sort_values("合計_SBなし_raw", ascending=False),
-            use_container_width=True
-        )
-
-        st.write({
-            "確認ポイント": "修正前後で違う車番は、合計_SBなし_rawではなく各補正列を見てください。",
-            "特に見る列": [
-                "周回補正",
-                "自力コメント補正",
-                "ライン連動補正",
-                "安定度",
-                "H補正",
-                "ラスト200",
-            ],
-        })
-    else:
-        st.warning("df が空です。rows生成前の入力またはactive_carsを確認してください。")
 
 # ===== [PATCH] dfの型を確定させ、SBなし母集団(v_wo/v_final)を必ず作る =====
 # 1) dfが空のときも落とさない
