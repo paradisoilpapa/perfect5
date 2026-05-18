@@ -1558,7 +1558,7 @@ with st.form("race_input_form", clear_on_submit=False):
     tmp_x3 = {}
     tmp_x_out = {}
 
-    for i, no in enumerate(tmp_active_cars):
+        for i, no in enumerate(tmp_active_cars):
         with cols[i]:
             st.markdown(f"**{no}番**")
 
