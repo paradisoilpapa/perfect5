@@ -1587,6 +1587,44 @@ for i, no in enumerate(active_cars_live):
         x3_live[no] = st.number_input("3着", 0, 99, 0, key=f"x3_{no}")
         x_out_live[no] = st.number_input("着外", 0, 99, 0, key=f"xo_{no}")
 
+# =====================================================
+# コメントチェック表（入力欄）
+#   前検コメントを見て手動チェック
+#   自力：自力 / 自力自在 / 自力基本 / 自分で / 前で 等
+#   番手：○○君 / ○○へ / 任せる / 近畿勢 等
+#   競り：競り対象の車番にチェック
+# =====================================================
+st.subheader("コメントチェック")
+
+jiryoku_comment_live = {}
+target_comment_live = {}
+seri_comment_live = {}
+
+comment_cols = st.columns(len(active_cars_live))
+
+for i, no in enumerate(active_cars_live):
+    no = int(no)
+    with comment_cols[i]:
+        st.markdown(f"**{no}番**")
+
+        jiryoku_comment_live[no] = st.checkbox(
+            "自力",
+            value=False,
+            key=f"jiryoku_comment_r{race_no}_{no}"
+        )
+
+        target_comment_live[no] = st.checkbox(
+            "番手",
+            value=False,
+            key=f"target_comment_r{race_no}_{no}"
+        )
+
+        seri_comment_live[no] = st.checkbox(
+            "競り",
+            value=False,
+            key=f"seri_comment_r{race_no}_{no}"
+        )
+
 st.markdown("---")
 
 apply_input = st.button(
@@ -1618,6 +1656,10 @@ if apply_input:
         "x2": dict(x2_live),
         "x3": dict(x3_live),
         "x_out": dict(x_out_live),
+
+        "jiryoku_comment": dict(jiryoku_comment_live),
+        "target_comment": dict(target_comment_live),
+        "seri_comment": dict(seri_comment_live),
     }
 
 snapshot = st.session_state.get("race_snapshot")
@@ -1650,6 +1692,14 @@ x1 = snapshot["x1"]
 x2 = snapshot["x2"]
 x3 = snapshot["x3"]
 x_out = snapshot["x_out"]
+
+jiryoku_comment = snapshot.get("jiryoku_comment", {})
+target_comment = snapshot.get("target_comment", {})
+seri_comment = snapshot.get("seri_comment", {})
+
+globals()["jiryoku_comment"] = jiryoku_comment
+globals()["target_comment"] = target_comment
+globals()["seri_comment"] = seri_comment
 
 st.caption(
     "反映済みデータで計算中："
@@ -1757,45 +1807,8 @@ globals()["level_comment_scale"] = level_comment_scale
 globals()["level_line_scale"] = level_line_scale
 # =====================================================
 # コメントチェック表
-#   前検コメントを見て手動チェック
-#   自力：自力 / 自力自在 / 自力基本 / 自分で / 前で 等
-#   番手：○○君 / ○○へ / 任せる / 近畿勢 等
-#   競り：競り対象の車番にチェック
+#   反映ボタン押下時に保存したチェック値を使用する
 # =====================================================
-st.subheader("コメントチェック")
-
-jiryoku_comment = {}
-target_comment = {}
-seri_comment = {}
-
-comment_cols = st.columns(n_cars)
-
-for i, no in enumerate(active_cars):
-    no = int(no)
-    with comment_cols[i]:
-        st.markdown(f"**{no}番**")
-
-        jiryoku_comment[no] = st.checkbox(
-            "自力",
-            value=False,
-            key=f"jiryoku_comment_r{race_no}_{no}"
-        )
-
-        target_comment[no] = st.checkbox(
-            "番手",
-            value=False,
-            key=f"target_comment_r{race_no}_{no}"
-        )
-
-        seri_comment[no] = st.checkbox(
-            "競り",
-            value=False,
-            key=f"seri_comment_r{race_no}_{no}"
-        )
-
-globals()["jiryoku_comment"] = jiryoku_comment
-globals()["target_comment"] = target_comment
-globals()["seri_comment"] = seri_comment
 
 
 # H：最終ホーム想定ライン
