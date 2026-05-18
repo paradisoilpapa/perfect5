@@ -1947,6 +1947,21 @@ for no in active_cars:
     venue_bonus = 0.06 * vmix * ( +1.00*esc + 0.40*mak - 0.60*sashi - 0.25*mark )
     prof_base[no] = base + clamp(venue_bonus, -0.06, +0.06)
 
+# ==============================
+# 本計算実行ボタン
+# 入力中の途中値で重い計算へ進ませない
+# ==============================
+
+st.markdown("---")
+
+if not st.button(
+    "入力を反映して計算する",
+    type="primary",
+    use_container_width=True
+):
+    st.info("入力後、「入力を反映して計算する」を押すと本計算します。")
+    st.stop()
+
 # ======== 個人補正（得点/脚質上位/着順分布） ========
 ratings_sorted = sorted(active_cars, key=lambda n: ratings_val[n], reverse=True)
 ratings_rank = {no: i+1 for i,no in enumerate(ratings_sorted)}
