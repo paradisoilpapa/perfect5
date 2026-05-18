@@ -2282,6 +2282,42 @@ df = pd.DataFrame(rows, columns=[
     "合計_SBなし_raw",
 ])
 
+# ==============================
+# スコア内訳デバッグ
+# 目的：
+#   修正前後で順位がズレた場合に、
+#   どの補正項目が効いているかを車番ごとに確認する
+# ==============================
+with st.expander("スコア内訳デバッグ（合計_SBなし_rawの内訳）", expanded=False):
+    debug_score_df = df.copy()
+    if not debug_score_df.empty:
+        for _col in [
+            "脚質基準(会場)", "風補正", "得点補正", "バンク補正", "周長補正",
+            "周回補正", "個人補正", "安定度", "H補正", "ラスト200",
+            "自力コメント補正", "ライン連動補正", "競り補正", "合計_SBなし_raw"
+        ]:
+            if _col in debug_score_df.columns:
+                debug_score_df[_col] = debug_score_df[_col].astype(float).round(6)
+
+        st.dataframe(
+            debug_score_df.sort_values("合計_SBなし_raw", ascending=False),
+            use_container_width=True
+        )
+
+        st.write({
+            "確認ポイント": "修正前後で違う車番は、合計_SBなし_rawではなく各補正列を見てください。",
+            "特に見る列": [
+                "周回補正",
+                "自力コメント補正",
+                "ライン連動補正",
+                "安定度",
+                "H補正",
+                "ラスト200",
+            ],
+        })
+    else:
+        st.warning("df が空です。rows生成前の入力またはactive_carsを確認してください。")
+
 # ===== [PATCH] dfの型を確定させ、SBなし母集団(v_wo/v_final)を必ず作る =====
 # 1) dfが空のときも落とさない
 if df is None or len(df) == 0:
