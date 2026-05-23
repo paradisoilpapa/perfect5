@@ -6548,7 +6548,7 @@ try:
         _axis_car = int(_rec_seq[0])
         _remain_cars = [int(x) for x in _rec_seq[1:] if int(x) != _axis_car]
 
-        st.markdown("#### 現時点での推奨フォメ")
+        st.markdown("#### 現時点での推奨評価順フォメ")
         st.caption("2列目・3列目をチェック。反映計算してもチェック状態は保持されます。")
 
         # 初期値：2列目は評価2・3、3列目は評価2〜5
@@ -6582,7 +6582,7 @@ try:
 
             with _c2:
                 if st.checkbox(
-                    f"{_axis_car}-{_c}",
+                    f"{_c}",
                     key=f"sanpuku_col2_{_c}"
                 ):
                     selected_col2.append(_c)
