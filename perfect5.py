@@ -6691,20 +6691,61 @@ note_text = re.sub(
     flags=re.DOTALL
 )
 
-# コピー用の直後に新形式の推奨三連複フォメを差し込む
+# -----------------------------------------
+# note上部に実戦用サマリーを差し込む
+# -----------------------------------------
 try:
-    _m_copy = re.search(r"コピー用：[1-9]{3,9}", note_text)
+    _rec_style = globals().get("RECOMMENDED_STYLE", "")
+    _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
+    _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
 
-    if sanpuku_forme_line and _m_copy:
-        note_text = note_text.replace(
-            _m_copy.group(0),
-            _m_copy.group(0) + "\n\n" + sanpuku_forme_line
+    _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
+
+    if _rec_style and _rec_seq:
+        _rec_display_seq = " → ".join(str(int(x)) for x in _rec_seq)
+
+        summary_block = (
+            f"\n\n✅ 推奨戦法：{_rec_style}\n\n"
+            f"【{_rec_style}メイン着順予想】\n"
+            f"{_rec_display_seq}\n\n"
+            f"コピー用：{_rec_copy}\n\n"
+            f"{sanpuku_forme_line}\n"
         )
-    elif sanpuku_forme_line:
-        note_text = sanpuku_forme_line + "\n\n" + note_text
+    else:
+        summary_block = f"\n\n{sanpuku_forme_line}\n"
 
-except Exception:
-    pass
+    # 既存の旧フォメ・重複サマリーを削除
+    note_text = re.sub(
+        r"\n*✅ 推奨戦法：.*?(?=\n\nデイ|\n\nナイター|\n\nミッドナイト|\n\nモーニング|\n\nＡ級|\n\nＳ級|\n\nライン|\n\n【ライン評価グループ】|\Z)",
+        "",
+        note_text,
+        flags=re.DOTALL
+    )
+
+    note_text = re.sub(
+        r"\n*推奨三連複フォメ(?:☆☆|☆)?：.*?(?=\n\n|$)",
+        "",
+        note_text,
+        flags=re.DOTALL
+    )
+
+    # 最初の軸評価行の直後にサマリーを差し込む
+    _m_axis = re.search(
+        r"軸評価：[A-E](?:☆☆|☆)?［[^］]*］（軸想定2着内率\s*\d+%）",
+        note_text
+    )
+
+    if _m_axis:
+        note_text = note_text.replace(
+            _m_axis.group(0),
+            _m_axis.group(0) + summary_block,
+            1
+        )
+    else:
+        note_text = summary_block + "\n\n" + note_text
+
+except Exception as _e:
+    st.caption(f"note上部サマリー生成不可：{_e}")
 
 st.text_area("ここを選択してコピー", note_text, height=620)
 # =========================
