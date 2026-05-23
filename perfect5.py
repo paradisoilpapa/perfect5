@@ -6477,9 +6477,120 @@ except Exception as _e:
         pass
 
 # =========================
+# =========================
+# note用コピーエリア：WinTicket AI軸チェック連動
+# =========================
+
 note_text = "\n".join(note_sections)
+
 st.markdown("### 📋 note用（コピーエリア）")
-st.text_area("ここを選択してコピー", note_text, height=560)
+
+# -----------------------------------------
+# WinTicket AI：VeloBi評価1軸の許可フィルター
+# ◎なら☆☆、〇なら☆、未チェックならケン推奨
+# -----------------------------------------
+st.caption("WinTicket AI：VeloBi評価1軸チェック")
+
+_ai_col1, _ai_col2 = st.columns(2)
+
+with _ai_col1:
+    ai_axis_honmei = st.checkbox("AI◎", value=False, key="ai_axis_honmei")
+
+with _ai_col2:
+    ai_axis_taikou = st.checkbox("AI〇", value=False, key="ai_axis_taikou")
+
+# ◎優先。両方チェックされた場合も◎扱い
+if ai_axis_honmei:
+    ai_axis_badge = "☆☆"
+    ai_axis_status = "購入許可"
+elif ai_axis_taikou:
+    ai_axis_badge = "☆"
+    ai_axis_status = "購入許可"
+else:
+    ai_axis_badge = ""
+    ai_axis_status = "ケン推奨"
+
+
+def _apply_ai_badge_to_axis_line(text: str, badge: str, status: str) -> str:
+    """
+    軸評価：A［買い候補強］
+    → 軸評価：A☆☆［買い候補強］
+    未チェックなら
+    → 軸評価：A［ケン推奨］
+    """
+    import re
+
+    if status == "ケン推奨":
+        return re.sub(
+            r"軸評価：([A-E])(?:☆☆|☆)?［[^］]*］",
+            r"軸評価：\1［ケン推奨］",
+            text
+        )
+
+    return re.sub(
+        r"軸評価：([A-E])(?:☆☆|☆)?［",
+        rf"軸評価：\1{badge}［",
+        text
+    )
+
+
+def _make_sanpuku_forme_from_copy_line(text: str, badge: str, status: str) -> str:
+    """
+    コピー用：1672543
+    から
+    推奨三連複フォメ☆☆：
+    1-6-7
+    1-6-2
+    を自動生成する。
+    未チェックなら 推奨三連複フォメ：ケン推奨
+    """
+    import re
+
+    m = re.search(r"コピー用：([1-9]{3,9})", text)
+    if not m:
+        return ""
+
+    seq = m.group(1)
+    if len(seq) < 4:
+        return ""
+
+    if status == "ケン推奨":
+        return "\n推奨三連複フォメ：ケン推奨\n"
+
+    a = seq[0]
+    b = seq[1]
+    c = seq[2]
+    d = seq[3]
+
+    return (
+        f"\n推奨三連複フォメ{badge}：\n"
+        f"{a}-{b}-{c}\n"
+        f"{a}-{b}-{d}\n"
+    )
+
+
+# 軸評価にAI印を反映
+note_text = _apply_ai_badge_to_axis_line(
+    note_text,
+    ai_axis_badge,
+    ai_axis_status
+)
+
+# コピー用の直後に推奨三連複フォメを差し込む
+_sanpuku_forme_text = _make_sanpuku_forme_from_copy_line(
+    note_text,
+    ai_axis_badge,
+    ai_axis_status
+)
+
+if _sanpuku_forme_text and "推奨三連複フォメ" not in note_text:
+    note_text = note_text.replace(
+        re.search(r"コピー用：[1-9]{3,9}", note_text).group(0),
+        re.search(r"コピー用：[1-9]{3,9}", note_text).group(0) + "\n" + _sanpuku_forme_text
+    )
+
+st.text_area("ここを選択してコピー", note_text, height=620)
+# =========================
 # =========================
 
 
