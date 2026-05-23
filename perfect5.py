@@ -6477,7 +6477,6 @@ except Exception as _e:
         pass
 
 # =========================
-# =========================
 # note用コピーエリア：WinTicket AI軸チェック連動
 # =========================
 
@@ -6510,28 +6509,117 @@ else:
     ai_axis_badge = ""
     ai_axis_status = "ケン推奨"
 
+
 # -----------------------------------------
-# 画面確認用：推奨戦法とメイン着順予想を箱で強調表示
+# 推奨戦法とメイン着順予想を箱で強調表示
 # -----------------------------------------
 try:
     _rec_style = globals().get("RECOMMENDED_STYLE", "")
     _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
     _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
 
+    _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
+
     if _rec_style and _rec_seq:
-        _rec_display_seq = " → ".join(
-            str(int(x)) for x in _rec_seq if str(x).isdigit()
-        )
+        _rec_display_seq = " → ".join(str(int(x)) for x in _rec_seq)
 
         st.info(
             f"✅ 推奨戦法：{_rec_style}\n\n"
-            f"【{_rec_style}メイン着順予想】\n"
-            f"{_rec_display_seq}\n\n"
+            f"【{_rec_style}メイン着順予想】　{_rec_display_seq}\n\n"
             f"コピー用：{_rec_copy}"
         )
 
 except Exception as _e:
     st.caption(f"推奨戦法表示生成不可：{_e}")
+
+
+# -----------------------------------------
+# 推奨三連複フォメ：手動チェック欄
+# 例：1-24-2347
+# 反映計算ボタンを押しても session_state で保持
+# -----------------------------------------
+sanpuku_forme_line = ""
+
+try:
+    _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
+    _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
+
+    if len(_rec_seq) >= 3:
+        _axis_car = int(_rec_seq[0])
+        _remain_cars = [int(x) for x in _rec_seq[1:] if int(x) != _axis_car]
+
+        st.markdown("#### 現時点での推奨フォメ")
+        st.caption("2列目・3列目をチェック。反映計算してもチェック状態は保持されます。")
+
+        # 初期値：2列目は評価2・3、3列目は評価2〜5
+        # ただし一度チェックを触った後は session_state を優先する
+        default_second = set(_remain_cars[:2])
+        default_third = set(_remain_cars[:4])
+
+        for _c in _remain_cars:
+            st.session_state.setdefault(
+                f"sanpuku_col2_{_c}",
+                bool(_c in default_second)
+            )
+            st.session_state.setdefault(
+                f"sanpuku_col3_{_c}",
+                bool(_c in default_third)
+            )
+
+        st.markdown(f"**軸：{_axis_car}**")
+
+        _head2, _head3 = st.columns(2)
+        with _head2:
+            st.markdown("**2列目**")
+        with _head3:
+            st.markdown("**3列目**")
+
+        selected_col2 = []
+        selected_col3 = []
+
+        for _c in _remain_cars:
+            _c2, _c3 = st.columns(2)
+
+            with _c2:
+                if st.checkbox(
+                    f"{_axis_car}-{_c}",
+                    key=f"sanpuku_col2_{_c}"
+                ):
+                    selected_col2.append(_c)
+
+            with _c3:
+                if st.checkbox(
+                    f"{_c}",
+                    key=f"sanpuku_col3_{_c}"
+                ):
+                    selected_col3.append(_c)
+
+        # 3列目には2列目の車も自動で含める
+        # 例：2列目=24、3列目=37 → 1-24-2347
+        selected_col2_sorted = sorted(set(selected_col2))
+        selected_col3_merged = sorted(set(selected_col2 + selected_col3))
+
+        _col2_text = "".join(str(x) for x in selected_col2_sorted)
+        _col3_text = "".join(str(x) for x in selected_col3_merged)
+
+        if ai_axis_status == "ケン推奨":
+            sanpuku_forme_line = "推奨三連複フォメ：ケン推奨"
+        elif selected_col2_sorted and selected_col3_merged:
+            sanpuku_forme_line = (
+                f"推奨三連複フォメ{ai_axis_badge}： "
+                f"{_axis_car}-{_col2_text}-{_col3_text}"
+            )
+        else:
+            sanpuku_forme_line = "推奨三連複フォメ：未選択"
+
+        st.info(sanpuku_forme_line)
+
+    else:
+        sanpuku_forme_line = "推奨三連複フォメ：生成不可"
+
+except Exception as _e:
+    sanpuku_forme_line = f"推奨三連複フォメ：生成不可（{_e}）"
+    st.caption(sanpuku_forme_line)
 
 
 def _apply_ai_badge_to_axis_line(text: str, badge: str, status: str) -> str:
@@ -6557,41 +6645,6 @@ def _apply_ai_badge_to_axis_line(text: str, badge: str, status: str) -> str:
     )
 
 
-def _make_sanpuku_forme_from_copy_line(text: str, badge: str, status: str) -> str:
-    """
-    コピー用：1672543
-    から
-    推奨三連複フォメ☆☆：
-    1-6-7
-    1-6-2
-    を自動生成する。
-    未チェックなら 推奨三連複フォメ：ケン推奨
-    """
-    import re
-
-    m = re.search(r"コピー用：([1-9]{3,9})", text)
-    if not m:
-        return ""
-
-    seq = m.group(1)
-    if len(seq) < 4:
-        return ""
-
-    if status == "ケン推奨":
-        return "\n推奨三連複フォメ：ケン推奨\n"
-
-    a = seq[0]
-    b = seq[1]
-    c = seq[2]
-    d = seq[3]
-
-    return (
-        f"\n推奨三連複フォメ{badge}：\n"
-        f"{a}-{b}-{c}\n"
-        f"{a}-{b}-{d}\n"
-    )
-
-
 # 軸評価にAI印を反映
 note_text = _apply_ai_badge_to_axis_line(
     note_text,
@@ -6599,21 +6652,34 @@ note_text = _apply_ai_badge_to_axis_line(
     ai_axis_status
 )
 
-# コピー用の直後に推奨三連複フォメを差し込む
-_sanpuku_forme_text = _make_sanpuku_forme_from_copy_line(
+# 旧形式の推奨三連複フォメが残っている場合は削除
+# 例：
+# 推奨三連複フォメ☆：
+# 1-4-3
+# 1-4-2
+note_text = re.sub(
+    r"\n*推奨三連複フォメ(?:☆☆|☆)?：.*?(?=\n\n|$)",
+    "",
     note_text,
-    ai_axis_badge,
-    ai_axis_status
+    flags=re.DOTALL
 )
 
-if _sanpuku_forme_text and "推奨三連複フォメ" not in note_text:
-    note_text = note_text.replace(
-        re.search(r"コピー用：[1-9]{3,9}", note_text).group(0),
-        re.search(r"コピー用：[1-9]{3,9}", note_text).group(0) + "\n" + _sanpuku_forme_text
-    )
+# コピー用の直後に新形式の推奨三連複フォメを差し込む
+try:
+    _m_copy = re.search(r"コピー用：[1-9]{3,9}", note_text)
+
+    if sanpuku_forme_line and _m_copy:
+        note_text = note_text.replace(
+            _m_copy.group(0),
+            _m_copy.group(0) + "\n\n" + sanpuku_forme_line
+        )
+    elif sanpuku_forme_line:
+        note_text = sanpuku_forme_line + "\n\n" + note_text
+
+except Exception:
+    pass
 
 st.text_area("ここを選択してコピー", note_text, height=620)
-# =========================
 # =========================
 
 
