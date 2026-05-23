@@ -6510,6 +6510,29 @@ else:
     ai_axis_badge = ""
     ai_axis_status = "ケン推奨"
 
+# -----------------------------------------
+# 画面確認用：推奨戦法とメイン着順予想を表示
+# -----------------------------------------
+try:
+    _rec_style = globals().get("RECOMMENDED_STYLE", "")
+    _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
+    _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
+
+    if _rec_style and _rec_seq:
+        _rec_display_seq = " → ".join(
+            str(int(x)) for x in _rec_seq if str(x).isdigit()
+        )
+
+        st.markdown(f"✅ 推奨戦法：{_rec_style}")
+        st.markdown(f"**【{_rec_style}メイン着順予想】**")
+        st.markdown(_rec_display_seq)
+
+        if _rec_copy:
+            st.caption(f"コピー用：{_rec_copy}")
+
+except Exception as _e:
+    st.caption(f"推奨戦法表示生成不可：{_e}")
+
 
 def _apply_ai_badge_to_axis_line(text: str, badge: str, status: str) -> str:
     """
