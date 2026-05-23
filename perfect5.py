@@ -5498,28 +5498,6 @@ try:
             "逆流": [int(x) for x in (out_u or []) if str(x).isdigit()],
         }
 
-        note_sections.append(f"✅ 推奨戦法：{recommend_style}")
-        note_sections.append("")
-
-        style_rows = [
-            ("順流", out_j),
-            ("渦", out_v),
-            ("逆流", out_u),
-        ]
-
-        for _style_name, _style_seq in style_rows:
-            if _style_name != recommend_style:
-                continue
-
-            note_sections.append(f"【{_style_name}メイン着順予想】")
-            note_sections.append(_fmt_seq(_style_seq))
-
-            copy_seq = "".join(
-                str(x) for x in (_style_seq or [])
-                if str(x).isdigit()
-            )
-            note_sections.append(f"コピー用：{copy_seq}")
-            note_sections.append("")
 
     _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
     # ここまでで note_sections を確実に保持
@@ -5994,6 +5972,45 @@ try:
         recommend_lines.append(
             f"推奨戦法：{recommend_style}"
         )
+
+        # =====================================================
+        # 買い間違い防止：推奨戦法の着順予想だけを強調表示
+        #   目視用：7 → 1 → 5 ...
+        #   コピー用：7152364
+        # =====================================================
+        try:
+            _style_seq_map_for_display = globals().get("STYLE_SEQ_MAP", {})
+            _recommended_seq = _style_seq_map_for_display.get(recommend_style, [])
+
+            if not _recommended_seq:
+                # 保険：STYLE_SEQ_MAPが空の場合は、直前で作った各戦法順から拾う
+                _fallback_map = {
+                    "順流": [int(x) for x in (out_j or []) if str(x).isdigit()],
+                    "渦":   [int(x) for x in (out_v or []) if str(x).isdigit()],
+                    "逆流": [int(x) for x in (out_u or []) if str(x).isdigit()],
+                }
+                _recommended_seq = _fallback_map.get(recommend_style, [])
+
+            if _recommended_seq:
+                _display_seq = " → ".join(str(int(x)) for x in _recommended_seq if str(x).isdigit())
+                _copy_seq = "".join(str(int(x)) for x in _recommended_seq if str(x).isdigit())
+
+                recommend_lines.append("")
+                recommend_lines.append(f"✅ 推奨戦法：{recommend_style}")
+                recommend_lines.append("")
+                recommend_lines.append(f"【{recommend_style}メイン着順予想】")
+                recommend_lines.append(_display_seq)
+                recommend_lines.append("")
+                recommend_lines.append(f"コピー用：{_copy_seq}")
+                recommend_lines.append("")
+
+                # st.markdown表示時に強調しやすいよう、HTML版も保持しておく
+                globals()["RECOMMENDED_STYLE"] = recommend_style
+                globals()["RECOMMENDED_STYLE_SEQ"] = _recommended_seq
+                globals()["RECOMMENDED_STYLE_COPY"] = _copy_seq
+        except Exception as _e:
+            recommend_lines.append(f"推奨戦法表示生成不可（{_e}）")
+            recommend_lines.append("")
 
         # =====================================================
         # 2車複 評価1軸候補
