@@ -6534,8 +6534,9 @@ except Exception as _e:
 
 
 # -----------------------------------------
-# 推奨三連複フォメ：手動チェック欄
-# 例：1-24-2347
+# 推奨三連複フォメ：評価順位チェック欄
+# 例：評価1軸 - 評価2/4 - 評価2/3/4/5
+# 表示は実車番に変換して 1-24-2347 の形にする
 # 反映計算ボタンを押しても session_state で保持
 # -----------------------------------------
 sanpuku_forme_line = ""
@@ -6545,28 +6546,40 @@ try:
     _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
 
     if len(_rec_seq) >= 3:
+        # 評価1の実車番
         _axis_car = int(_rec_seq[0])
-        _remain_cars = [int(x) for x in _rec_seq[1:] if int(x) != _axis_car]
+
+        # 評価順位 → 実車番 の対応
+        # 例：_rec_seq = [1,4,3,2,7,6,5]
+        # 評価2=4, 評価3=3, 評価4=2...
+        rank_to_car = {
+            rank: int(_rec_seq[rank - 1])
+            for rank in range(1, len(_rec_seq) + 1)
+        }
+
+        # チェック対象は評価2〜評価7
+        selectable_ranks = list(range(2, len(_rec_seq) + 1))
 
         st.markdown("#### 現時点での推奨評価順フォメ")
-        st.caption("2列目・3列目をチェック。反映計算してもチェック状態は保持されます。")
+        st.caption("評価順位で2列目・3列目を選択。出力は実車番に変換されます。")
 
-        # 初期値：2列目は評価2・3、3列目は評価2〜5
-        # ただし一度チェックを触った後は session_state を優先する
-        default_second = set(_remain_cars[:2])
-        default_third = set(_remain_cars[:4])
+        # 初期値：
+        # 2列目 = 評価2・評価3
+        # 3列目 = 評価2〜評価5
+        default_second_ranks = {2, 3}
+        default_third_ranks = {2, 3, 4, 5}
 
-        for _c in _remain_cars:
+        for _rank in selectable_ranks:
             st.session_state.setdefault(
-                f"sanpuku_col2_{_c}",
-                bool(_c in default_second)
+                f"sanpuku_rank_col2_{_rank}",
+                bool(_rank in default_second_ranks)
             )
             st.session_state.setdefault(
-                f"sanpuku_col3_{_c}",
-                bool(_c in default_third)
+                f"sanpuku_rank_col3_{_rank}",
+                bool(_rank in default_third_ranks)
             )
 
-        st.markdown(f"**軸：{_axis_car}**")
+        st.markdown(f"**軸：評価1（{_axis_car}）**")
 
         _head2, _head3 = st.columns(2)
         with _head2:
@@ -6574,37 +6587,52 @@ try:
         with _head3:
             st.markdown("**3列目**")
 
-        selected_col2 = []
-        selected_col3 = []
+        selected_col2_ranks = []
+        selected_col3_ranks = []
 
-        for _c in _remain_cars:
+        for _rank in selectable_ranks:
+            _car = rank_to_car.get(_rank)
+
             _c2, _c3 = st.columns(2)
 
             with _c2:
                 if st.checkbox(
-                    f"{_c}",
-                    key=f"sanpuku_col2_{_c}"
+                    f"評価{_rank}",
+                    key=f"sanpuku_rank_col2_{_rank}"
                 ):
-                    selected_col2.append(_c)
+                    selected_col2_ranks.append(_rank)
 
             with _c3:
                 if st.checkbox(
-                    f"{_c}",
-                    key=f"sanpuku_col3_{_c}"
+                    f"評価{_rank}",
+                    key=f"sanpuku_rank_col3_{_rank}"
                 ):
-                    selected_col3.append(_c)
+                    selected_col3_ranks.append(_rank)
 
-        # 3列目には2列目の車も自動で含める
-        # 例：2列目=24、3列目=37 → 1-24-2347
-        selected_col2_sorted = sorted(set(selected_col2))
-        selected_col3_merged = sorted(set(selected_col2 + selected_col3))
+        # 3列目には2列目の評価順位も自動で含める
+        selected_col3_ranks_merged = sorted(
+            set(selected_col2_ranks + selected_col3_ranks)
+        )
 
-        _col2_text = "".join(str(x) for x in selected_col2_sorted)
-        _col3_text = "".join(str(x) for x in selected_col3_merged)
+        # 評価順位 → 実車番に変換
+        selected_col2_cars = [
+            rank_to_car[r] for r in selected_col2_ranks if r in rank_to_car
+        ]
+        selected_col3_cars = [
+            rank_to_car[r] for r in selected_col3_ranks_merged if r in rank_to_car
+        ]
+
+        # 出力は実車番を数字順で整える
+        # 例：評価2=4、評価4=2 → 24
+        selected_col2_cars_sorted = sorted(set(selected_col2_cars))
+        selected_col3_cars_sorted = sorted(set(selected_col3_cars))
+
+        _col2_text = "".join(str(x) for x in selected_col2_cars_sorted)
+        _col3_text = "".join(str(x) for x in selected_col3_cars_sorted)
 
         if ai_axis_status == "ケン推奨":
             sanpuku_forme_line = "推奨三連複フォメ：ケン推奨"
-        elif selected_col2_sorted and selected_col3_merged:
+        elif selected_col2_cars_sorted and selected_col3_cars_sorted:
             sanpuku_forme_line = (
                 f"推奨三連複フォメ{ai_axis_badge}： "
                 f"{_axis_car}-{_col2_text}-{_col3_text}"
@@ -6620,7 +6648,6 @@ try:
 except Exception as _e:
     sanpuku_forme_line = f"推奨三連複フォメ：生成不可（{_e}）"
     st.caption(sanpuku_forme_line)
-
 
 def _apply_ai_badge_to_axis_line(text: str, badge: str, status: str) -> str:
     """
