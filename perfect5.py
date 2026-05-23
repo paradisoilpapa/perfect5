@@ -1208,67 +1208,67 @@ def format_rank_all(score_map: Dict[int, float], P_floor_val: Optional[float] = 
 
 # ==============================
 # 風の自動取得（Open-Meteo / 時刻固定）
+# 風向は手入力運用のため、APIでは風速だけ取得する軽量版
 # ==============================
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_openmeteo_hour(lat, lon, target_dt_naive):
+    """
+    Open-Meteoから風速だけ取得する軽量版。
+    風向きはVeloBi側で手入力する前提なので取得しない。
+    同じ場・同じ日時は1時間キャッシュして429を避ける。
+    """
     import numpy as np
+
     d = target_dt_naive.strftime("%Y-%m-%d")
     base = "https://api.open-meteo.com/v1/forecast"
-    urls = [
-        (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
-         "&hourly=wind_speed_10m,wind_direction_10m,precipitation,weather_code"
-         "&timezone=Asia%2FTokyo"
-         "&windspeed_unit=ms"
-         f"&start_date={d}&end_date={d}", True),
-        (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
-         "&hourly=wind_speed_10m,precipitation,weather_code"
-         "&timezone=Asia%2FTokyo"
-         "&windspeed_unit=ms"
-         f"&start_date={d}&end_date={d}", False),
-        (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
-         "&hourly=wind_speed_10m,wind_direction_10m,precipitation,weather_code"
-         "&timezone=Asia%2FTokyo"
-         "&windspeed_unit=ms"
-         "&past_days=2&forecast_days=2", True),
-        (f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
-         "&hourly=wind_speed_10m,precipitation,weather_code"
-         "&timezone=Asia%2FTokyo"
-         "&windspeed_unit=ms"
-         "&past_days=2&forecast_days=2", False),
-    ]
-    last_err = None
-    for url, with_dir in urls:
-        try:
-            r = requests.get(url, timeout=15)
-            r.raise_for_status()
-            j = r.json().get("hourly", {})
-            times = [datetime.fromisoformat(t) for t in j.get("time", [])]
-            if not times:
-                raise RuntimeError("empty hourly times")
-            diffs = [abs((t - target_dt_naive).total_seconds()) for t in times]
-            k = int(np.argmin(diffs))
-            sp = j.get("wind_speed_10m", [])
-            di = j.get("wind_direction_10m", []) if with_dir else []
-            pr = j.get("precipitation", [])
-            wc = j.get("weather_code", [])
 
-            speed = float(sp[k]) if k < len(sp) else float("nan")
-            deg = float(di[k]) if with_dir and k < len(di) and di[k] is not None else None
-            precip = float(pr[k]) if k < len(pr) and pr[k] is not None else 0.0
-            weather_code = int(wc[k]) if k < len(wc) and wc[k] is not None else None
+    url = (
+        f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
+        "&hourly=wind_speed_10m,precipitation,weather_code"
+        "&timezone=Asia%2FTokyo"
+        "&windspeed_unit=ms"
+        f"&start_date={d}&end_date={d}"
+    )
 
-            return {
-                "time": times[k],
-                "speed_ms": speed,
-                "deg": deg,
-                "precipitation": precip,
-                "weather_code": weather_code,
-                "diff_min": diffs[k] / 60.0,
-             }
-        except Exception as e:
-            last_err = e
-            continue
-    raise RuntimeError(f"Open-Meteo取得失敗（最後のエラー: {last_err}）")
+    try:
+        r = requests.get(url, timeout=15)
+        r.raise_for_status()
 
+        j = r.json().get("hourly", {})
+        times = [datetime.fromisoformat(t) for t in j.get("time", [])]
+
+        if not times:
+            raise RuntimeError("empty hourly times")
+
+        diffs = [abs((t - target_dt_naive).total_seconds()) for t in times]
+        k = int(np.argmin(diffs))
+
+        sp = j.get("wind_speed_10m", [])
+        pr = j.get("precipitation", [])
+        wc = j.get("weather_code", [])
+
+        speed = float(sp[k]) if k < len(sp) and sp[k] is not None else float("nan")
+        precip = float(pr[k]) if k < len(pr) and pr[k] is not None else 0.0
+        weather_code = int(wc[k]) if k < len(wc) and wc[k] is not None else None
+
+        return {
+            "time": times[k],
+            "speed_ms": speed,
+            "deg": None,
+            "precipitation": precip,
+            "weather_code": weather_code,
+            "diff_min": diffs[k] / 60.0,
+        }
+
+    except requests.exceptions.HTTPError as e:
+        if getattr(e.response, "status_code", None) == 429:
+            raise RuntimeError(
+                "Open-Meteoの取得制限中です。少し時間を空けるか、手入力の風速を使ってください。"
+            )
+        raise RuntimeError(f"Open-Meteo取得失敗：{e}")
+
+    except Exception as e:
+        raise RuntimeError(f"Open-Meteo取得失敗：{e}")
 
 # ==============================
 # サイドバー：開催情報 / バンク・風・頭数
