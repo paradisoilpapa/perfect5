@@ -5498,6 +5498,29 @@ try:
             "逆流": [int(x) for x in (out_u or []) if str(x).isdigit()],
         }
 
+        # ======================================================
+        # 戦法別着順予想を全表示
+        # ※ここでは推奨戦法がまだ確定していないため、強調はしない。
+        #   後段で「推奨戦法＋コピー用」を別枠表示する。
+        # ======================================================
+        try:
+            def _fmt_seq_full(_seq):
+                _xs = [int(x) for x in (_seq or []) if str(x).isdigit()]
+                return " → ".join(str(x) for x in _xs) if _xs else "—"
+
+            note_sections.append("【順流メイン着順予想】")
+            note_sections.append(_fmt_seq_full(out_j))
+            note_sections.append("")
+            note_sections.append("【渦メイン着順予想】")
+            note_sections.append(_fmt_seq_full(out_v))
+            note_sections.append("")
+            note_sections.append("【逆流メイン着順予想】")
+            note_sections.append(_fmt_seq_full(out_u))
+            note_sections.append("")
+        except Exception as _e:
+            note_sections.append(f"※戦法別着順予想表示エラー：{_e}")
+            note_sections.append("")
+
 
     _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
     # ここまでで note_sections を確実に保持
