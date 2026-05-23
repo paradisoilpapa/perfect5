@@ -6511,7 +6511,7 @@ else:
     ai_axis_status = "ケン推奨"
 
 # -----------------------------------------
-# 画面確認用：推奨戦法とメイン着順予想を表示
+# 画面確認用：推奨戦法とメイン着順予想を箱で強調表示
 # -----------------------------------------
 try:
     _rec_style = globals().get("RECOMMENDED_STYLE", "")
@@ -6523,12 +6523,12 @@ try:
             str(int(x)) for x in _rec_seq if str(x).isdigit()
         )
 
-        st.markdown(f"✅ 推奨戦法：{_rec_style}")
-        st.markdown(f"**【{_rec_style}メイン着順予想】**")
-        st.markdown(_rec_display_seq)
-
-        if _rec_copy:
-            st.caption(f"コピー用：{_rec_copy}")
+        st.info(
+            f"✅ 推奨戦法：{_rec_style}\n\n"
+            f"【{_rec_style}メイン着順予想】\n"
+            f"{_rec_display_seq}\n\n"
+            f"コピー用：{_rec_copy}"
+        )
 
 except Exception as _e:
     st.caption(f"推奨戦法表示生成不可：{_e}")
