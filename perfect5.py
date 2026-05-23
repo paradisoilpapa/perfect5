@@ -5498,15 +5498,28 @@ try:
             "逆流": [int(x) for x in (out_u or []) if str(x).isdigit()],
         }
 
-        note_sections.append("【順流メイン着順予想】")
-        note_sections.append(_fmt_seq(out_j))
+        note_sections.append(f"✅ 推奨戦法：{recommend_style}")
         note_sections.append("")
-        note_sections.append("【渦メイン着順予想】")
-        note_sections.append(_fmt_seq(out_v))
-        note_sections.append("")
-        note_sections.append("【逆流メイン着順予想】")
-        note_sections.append(_fmt_seq(out_u))
-        note_sections.append("")
+
+        style_rows = [
+            ("順流", out_j),
+            ("渦", out_v),
+            ("逆流", out_u),
+        ]
+
+        for _style_name, _style_seq in style_rows:
+            if _style_name != recommend_style:
+                continue
+
+            note_sections.append(f"【{_style_name}メイン着順予想】")
+            note_sections.append(_fmt_seq(_style_seq))
+
+            copy_seq = "".join(
+                str(x) for x in (_style_seq or [])
+                if str(x).isdigit()
+            )
+            note_sections.append(f"コピー用：{copy_seq}")
+            note_sections.append("")
 
     _append_ko_queue_predictions(note_sections, all_lines, score_map, FR_line, VTX_line, U_line, _lfr)
     # ここまでで note_sections を確実に保持
@@ -5974,49 +5987,6 @@ try:
         except Exception:
             pass
 
-        # =====================================================
-        # 買い間違い防止：推奨戦法と一致する戦法別着順予想を強調
-        # =====================================================
-        try:
-            globals()["RECOMMENDED_STYLE"] = str(recommend_style)
-            globals()["RECOMMENDED_CONFIDENCE"] = str(confidence)
-
-            _style_seq_map_for_highlight = globals().get("STYLE_SEQ_MAP", {})
-            _rec_seq_for_highlight = _style_seq_map_for_highlight.get(str(recommend_style), [])
-
-            if _rec_seq_for_highlight:
-                _rec_order_text = " → ".join(
-                    str(int(x)) for x in _rec_seq_for_highlight
-                    if str(x).isdigit()
-                )
-            else:
-                _rec_order_text = ""
-
-            globals()["RECOMMENDED_STYLE_ORDER_TEXT"] = _rec_order_text
-
-            _style_title_map = {
-                "順流": "【順流メイン着順予想】",
-                "渦": "【渦メイン着順予想】",
-                "逆流": "【逆流メイン着順予想】",
-            }
-            _rec_title = _style_title_map.get(str(recommend_style), "")
-
-            if _rec_title:
-                for _i in range(0, max(0, len(note_sections) - 1)):
-                    _line = str(note_sections[_i]).strip()
-
-                    if _line == _rec_title:
-                        note_sections[_i] = f"✅ **{_rec_title}**"
-                        note_sections[_i + 1] = f"**{str(note_sections[_i + 1]).strip()}**"
-
-                    elif _line in _style_title_map.values():
-                        # 非推奨側に過去の強調が残っても戻す
-                        note_sections[_i] = _line.replace("✅", "").replace("**", "").strip()
-                        note_sections[_i + 1] = str(note_sections[_i + 1]).replace("**", "").strip()
-
-        except Exception:
-            pass
-
                # =====================================================
         # 推奨戦法を＜短評＞の上に表示
         # =====================================================
@@ -6465,38 +6435,6 @@ except Exception as _e:
 
     except Exception:
         pass
-
-# =========================
-# 買い間違い防止：推奨戦法ハイライト表示
-# =========================
-try:
-    _rec_style = str(globals().get("RECOMMENDED_STYLE", "") or "").strip()
-    _rec_order_text = str(globals().get("RECOMMENDED_STYLE_ORDER_TEXT", "") or "").strip()
-    _rec_conf = str(globals().get("RECOMMENDED_CONFIDENCE", "") or "").strip()
-
-    if _rec_style and _rec_order_text:
-        _conf_part = f"［信頼度{_rec_conf}］" if _rec_conf else ""
-        st.markdown("### ✅ 推奨戦法ハイライト")
-        st.markdown(
-            f"""
-            <div style="
-                border: 2px solid #d97706;
-                background-color: #fff7ed;
-                padding: 12px 16px;
-                border-radius: 10px;
-                margin: 8px 0 16px 0;
-                font-weight: 700;
-                line-height: 1.7;
-            ">
-                推奨戦法：{_rec_style}{_conf_part}<br>
-                【{_rec_style}メイン着順予想】<br>
-                { _rec_order_text }
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-except Exception:
-    pass
 
 # =========================
 note_text = "\n".join(note_sections)
