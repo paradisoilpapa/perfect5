@@ -4902,7 +4902,9 @@ try:
         _before_map = globals().get("score_map_before_last_half", {})
         _after_map = globals().get("score_map_last_half_applied", {})
 
-        if isinstance(_lh_bonus_map, dict) and _lh_bonus_map:
+        SHOW_LAST_HALF_DETAIL_IN_NOTE = False  # 通常表示では非表示。詳細検証したい時だけ True
+
+        if SHOW_LAST_HALF_DETAIL_IN_NOTE and isinstance(_lh_bonus_map, dict) and _lh_bonus_map:
             note_sections.append("【ラスト半周補正】")
 
             _lh_pairs = sorted(
@@ -6454,8 +6456,18 @@ try:
     except Exception:
         pass
 
-    note_sections.extend(recommend_lines)
-    note_sections.extend(lines_out)
+    # 通常表示では、2車複候補・2車単仮想単勝・短評は出さない。
+    # AXIS_EVAL_TOP_LINE / RECOMMENDED_STYLE_* は上部サマリー生成に使うため、
+    # recommend_lines自体は生成するが、note_sectionsには追加しない。
+    SHOW_BET_DETAIL_IN_NOTE = False
+    SHOW_SHORT_COMMENT_IN_NOTE = False
+
+    if SHOW_BET_DETAIL_IN_NOTE:
+        note_sections.extend(recommend_lines)
+
+    if SHOW_SHORT_COMMENT_IN_NOTE:
+        note_sections.extend(lines_out)
+
     note_sections.append("")
     globals()["note_sections"] = note_sections
 
@@ -6693,7 +6705,7 @@ note_text = re.sub(
 
 # -----------------------------------------
 # note上部に実戦用サマリーを差し込む
-# ※後半詳細は絶対に削らない
+# ※通常表示は実戦用に整理する
 # -----------------------------------------
 try:
     _rec_style = globals().get("RECOMMENDED_STYLE", "")
@@ -6717,7 +6729,7 @@ try:
 
     # -----------------------------------------
     # 旧形式の推奨三連複フォメだけ削除
-    # ※詳細後半は削らない
+    # ※詳細後半は別フラグで管理する
     # -----------------------------------------
     note_text = re.sub(
         r"\n*推奨三連複フォメ(?:☆☆|☆)?：.*",
