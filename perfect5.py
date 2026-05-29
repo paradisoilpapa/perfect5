@@ -6534,246 +6534,145 @@ except Exception as _e:
 
 
 # -----------------------------------------
-# 役割フォメ：2車単 12→123 / 三連複 12-123-12345
-# 1 = 軸
-# 2 = 安定差1位
-# 3 = 1・2を除いた評価上位
-# 4 = 安定差2位
-# 5 = 1・2・3・4を除いた次の評価上位
-#
-# 既存と同じく、出力は実車番に変換する。
-# 役割2・4は安定差表を見て手動で選ぶ運用にして、
-# 評価順だけへ戻る事故を防ぐ。
+# 推奨フォメ：12→123 / 12-123-12345 チェック欄
+# 表示は実車番に変換する。
+# 例：_rec_seq = [2,7,4,3,1,5,6]
+#   2車単：27→247
+#   三連複：27-247-12347
+# 反映計算ボタンを押しても session_state で保持
 # -----------------------------------------
-nitan_forme_line = ""
+nishatan_forme_line = ""
 sanpuku_forme_line = ""
 
 try:
     _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
     _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
 
-    def _car_text(_cars):
-        """実車番表示用。重複削除後、数字順で 247 のように返す。"""
-        xs = []
-        seen = set()
-        for x in (_cars or []):
-            try:
-                c = int(x)
-            except Exception:
-                continue
-            if c not in seen:
-                seen.add(c)
-                xs.append(c)
-        return "".join(str(x) for x in sorted(xs))
-
-    def _first_eval_top_not_in(_seq, _used):
-        used = {int(x) for x in (_used or []) if str(x).isdigit()}
-        for x in (_seq or []):
-            try:
-                c = int(x)
-            except Exception:
-                continue
-            if c not in used:
-                return c
-        return None
-
-    if len(_rec_seq) >= 3:
-        _axis_car = int(_rec_seq[0])
-        _candidate_cars = [int(x) for x in _rec_seq]
-
-        # 初期値：安定差欄をまだ選んでいない場合だけ、評価順で仮置きする。
-        # 実運用ではここを画面の安定差1位・2位に合わせて変更する。
-        _role2_default = int(_rec_seq[1]) if len(_rec_seq) >= 2 else _axis_car
-        _role4_default = int(_rec_seq[2]) if len(_rec_seq) >= 3 else _role2_default
-
-        st.markdown("#### 現時点での役割フォメ")
-        st.caption(
-            "1=軸／2=安定差1位／3=1・2を除いた評価上位／"
-            "4=安定差2位／5=1・2・3・4を除いた次の評価上位"
-        )
-
-        _rcol1, _rcol2 = st.columns(2)
-        with _rcol1:
-            st.markdown(f"**1：軸（{_axis_car}）**")
-            role2_car = st.selectbox(
-                "2：安定差1位",
-                _candidate_cars,
-                index=_candidate_cars.index(_role2_default) if _role2_default in _candidate_cars else 0,
-                key="role_forme_role2_car",
-            )
-        with _rcol2:
-            st.markdown("**3・5：評価順で自動補充**")
-            role4_car = st.selectbox(
-                "4：安定差2位",
-                _candidate_cars,
-                index=_candidate_cars.index(_role4_default) if _role4_default in _candidate_cars else 0,
-                key="role_forme_role4_car",
-            )
-
-        # 役割3：1・2を除いた評価上位
-        role3_car = _first_eval_top_not_in(_rec_seq, [_axis_car, role2_car])
-        # 役割5：1・2・3・4を除いた次の評価上位
-        role5_car = _first_eval_top_not_in(_rec_seq, [_axis_car, role2_car, role3_car, role4_car])
-
-        role_map = {
-            1: int(_axis_car),
-            2: int(role2_car),
-            3: int(role3_car) if role3_car is not None else None,
-            4: int(role4_car) if role4_car is not None else None,
-            5: int(role5_car) if role5_car is not None else None,
+    if len(_rec_seq) >= 5:
+        # 評価順位 → 実車番 の対応
+        # 例：_rec_seq = [2,7,4,3,1,5,6]
+        # 評価1=2, 評価2=7, 評価3=4...
+        rank_to_car = {
+            rank: int(_rec_seq[rank - 1])
+            for rank in range(1, len(_rec_seq) + 1)
         }
-        role_map = {k: v for k, v in role_map.items() if v is not None}
 
+        selectable_ranks = list(range(1, len(_rec_seq) + 1))
+
+        st.markdown("#### 現時点での推奨フォメ")
         st.caption(
-            "役割対応："
-            + " ／ ".join(f"{k}={v}" for k, v in role_map.items())
+            "評価順位で1列目・2列目・3列目を選択。"
+            "初期値は 2車単=12→123、三連複=12-123-12345。出力は実車番に変換されます。"
         )
 
-        # -------------------------------------------------
-        # 2車単：12→123
-        # 重複除外後の実車番フォメを出す。
-        # -------------------------------------------------
-        nitan_col1_roles_default = {1, 2}
-        nitan_col2_roles_default = {1, 2, 3}
+        # 初期値：
+        # 1列目 = 評価1・評価2
+        # 2列目 = 評価1・評価2・評価3
+        # 3列目 = 評価1〜評価5
+        default_col1_ranks = {1, 2}
+        default_col2_ranks = {1, 2, 3}
+        default_col3_ranks = {1, 2, 3, 4, 5}
 
-        st.markdown("##### 2車単フォメ")
-        st.caption("基本形：12→123。チェックを外せば縮小できます。")
-
-        _nhead1, _nhead2 = st.columns(2)
-        with _nhead1:
-            st.markdown("**1着**")
-        with _nhead2:
-            st.markdown("**2着**")
-
-        selected_nitan_col1_roles = []
-        selected_nitan_col2_roles = []
-
-        for _role in [1, 2, 3]:
-            if _role not in role_map:
-                continue
+        for _rank in selectable_ranks:
             st.session_state.setdefault(
-                f"nitan_role_col1_{_role}",
-                bool(_role in nitan_col1_roles_default)
+                f"forme_rank_col1_{_rank}",
+                bool(_rank in default_col1_ranks)
             )
             st.session_state.setdefault(
-                f"nitan_role_col2_{_role}",
-                bool(_role in nitan_col2_roles_default)
+                f"forme_rank_col2_{_rank}",
+                bool(_rank in default_col2_ranks)
+            )
+            st.session_state.setdefault(
+                f"forme_rank_col3_{_rank}",
+                bool(_rank in default_col3_ranks)
             )
 
-            _c1, _c2 = st.columns(2)
-            with _c1:
-                if st.checkbox(
-                    f"役割{_role}（{role_map[_role]}）",
-                    key=f"nitan_role_col1_{_role}"
-                ):
-                    selected_nitan_col1_roles.append(_role)
-            with _c2:
-                if st.checkbox(
-                    f"役割{_role}（{role_map[_role]}）",
-                    key=f"nitan_role_col2_{_role}"
-                ):
-                    selected_nitan_col2_roles.append(_role)
-
-        selected_nitan_col1_cars = [role_map[r] for r in selected_nitan_col1_roles if r in role_map]
-        selected_nitan_col2_cars = [role_map[r] for r in selected_nitan_col2_roles if r in role_map]
-
-        _nitan_col1_text = _car_text(selected_nitan_col1_cars)
-        _nitan_col2_text = _car_text(selected_nitan_col2_cars)
-
-        if ai_axis_status == "ケン推奨":
-            nitan_forme_line = "推奨2車単フォメ：ケン推奨"
-        elif _nitan_col1_text and _nitan_col2_text:
-            nitan_forme_line = (
-                f"推奨2車単フォメ{ai_axis_badge}： "
-                f"{_nitan_col1_text}→{_nitan_col2_text}"
-            )
-        else:
-            nitan_forme_line = "推奨2車単フォメ：未選択"
-
-        st.info(nitan_forme_line)
-
-        # -------------------------------------------------
-        # 三連複：12-123-12345
-        # 既存同様、チェックボックスで2列目・3列目を調整可能。
-        # 1列目は12固定にする。
-        # -------------------------------------------------
-        st.markdown("##### 三連複フォメ")
-        st.caption("基本形：12-123-12345。1列目は12固定、2・3列目はチェックで調整できます。")
-
-        sanpuku_col1_roles = [1, 2]
-        sanpuku_col2_roles_default = {1, 2, 3}
-        sanpuku_col3_roles_default = {1, 2, 3, 4, 5}
-
-        _shead2, _shead3 = st.columns(2)
-        with _shead2:
+        _head1, _head2, _head3 = st.columns(3)
+        with _head1:
+            st.markdown("**1列目**")
+        with _head2:
             st.markdown("**2列目**")
-        with _shead3:
+        with _head3:
             st.markdown("**3列目**")
 
-        selected_sanpuku_col2_roles = []
-        selected_sanpuku_col3_roles = []
+        selected_col1_ranks = []
+        selected_col2_ranks = []
+        selected_col3_ranks = []
 
-        for _role in [1, 2, 3, 4, 5]:
-            if _role not in role_map:
-                continue
+        for _rank in selectable_ranks:
+            _car = rank_to_car.get(_rank)
+            _label = f"評価{_rank}（{_car}）"
 
-            st.session_state.setdefault(
-                f"sanpuku_role_col2_{_role}",
-                bool(_role in sanpuku_col2_roles_default)
-            )
-            st.session_state.setdefault(
-                f"sanpuku_role_col3_{_role}",
-                bool(_role in sanpuku_col3_roles_default)
-            )
+            _c1, _c2, _c3 = st.columns(3)
 
-            _c2, _c3 = st.columns(2)
+            with _c1:
+                if st.checkbox(
+                    _label,
+                    key=f"forme_rank_col1_{_rank}"
+                ):
+                    selected_col1_ranks.append(_rank)
+
             with _c2:
                 if st.checkbox(
-                    f"役割{_role}（{role_map[_role]}）",
-                    key=f"sanpuku_role_col2_{_role}"
+                    _label,
+                    key=f"forme_rank_col2_{_rank}"
                 ):
-                    selected_sanpuku_col2_roles.append(_role)
+                    selected_col2_ranks.append(_rank)
+
             with _c3:
                 if st.checkbox(
-                    f"役割{_role}（{role_map[_role]}）",
-                    key=f"sanpuku_role_col3_{_role}"
+                    _label,
+                    key=f"forme_rank_col3_{_rank}"
                 ):
-                    selected_sanpuku_col3_roles.append(_role)
+                    selected_col3_ranks.append(_rank)
 
-        # 3列目には2列目も自動で含める。1列目12も含める。
-        selected_sanpuku_col2_roles_merged = sorted(set(selected_sanpuku_col2_roles))
-        selected_sanpuku_col3_roles_merged = sorted(
-            set(sanpuku_col1_roles + selected_sanpuku_col2_roles + selected_sanpuku_col3_roles)
-        )
+        # 12→123 / 12-123-12345 の器を崩さないため、
+        # 2列目には1列目、3列目には2列目を自動で含める。
+        selected_col2_ranks_merged = sorted(set(selected_col1_ranks + selected_col2_ranks))
+        selected_col3_ranks_merged = sorted(set(selected_col2_ranks_merged + selected_col3_ranks))
 
-        selected_sanpuku_col1_cars = [role_map[r] for r in sanpuku_col1_roles if r in role_map]
-        selected_sanpuku_col2_cars = [role_map[r] for r in selected_sanpuku_col2_roles_merged if r in role_map]
-        selected_sanpuku_col3_cars = [role_map[r] for r in selected_sanpuku_col3_roles_merged if r in role_map]
+        selected_col1_cars = [rank_to_car[r] for r in selected_col1_ranks if r in rank_to_car]
+        selected_col2_cars = [rank_to_car[r] for r in selected_col2_ranks_merged if r in rank_to_car]
+        selected_col3_cars = [rank_to_car[r] for r in selected_col3_ranks_merged if r in rank_to_car]
 
-        _sanpuku_col1_text = _car_text(selected_sanpuku_col1_cars)
-        _sanpuku_col2_text = _car_text(selected_sanpuku_col2_cars)
-        _sanpuku_col3_text = _car_text(selected_sanpuku_col3_cars)
+        # 出力は実車番を数字順で整える
+        selected_col1_cars_sorted = sorted(set(selected_col1_cars))
+        selected_col2_cars_sorted = sorted(set(selected_col2_cars))
+        selected_col3_cars_sorted = sorted(set(selected_col3_cars))
+
+        _col1_text = "".join(str(x) for x in selected_col1_cars_sorted)
+        _col2_text = "".join(str(x) for x in selected_col2_cars_sorted)
+        _col3_text = "".join(str(x) for x in selected_col3_cars_sorted)
 
         if ai_axis_status == "ケン推奨":
+            nishatan_forme_line = "推奨2車単フォメ：ケン推奨"
             sanpuku_forme_line = "推奨三連複フォメ：ケン推奨"
-        elif _sanpuku_col1_text and _sanpuku_col2_text and _sanpuku_col3_text:
-            sanpuku_forme_line = (
-                f"推奨三連複フォメ{ai_axis_badge}： "
-                f"{_sanpuku_col1_text}-{_sanpuku_col2_text}-{_sanpuku_col3_text}"
+        elif selected_col1_cars_sorted and selected_col2_cars_sorted:
+            nishatan_forme_line = (
+                f"推奨2車単フォメ{ai_axis_badge}： "
+                f"{_col1_text}→{_col2_text}"
             )
+            if selected_col3_cars_sorted:
+                sanpuku_forme_line = (
+                    f"推奨三連複フォメ{ai_axis_badge}： "
+                    f"{_col1_text}-{_col2_text}-{_col3_text}"
+                )
+            else:
+                sanpuku_forme_line = "推奨三連複フォメ：未選択"
         else:
+            nishatan_forme_line = "推奨2車単フォメ：未選択"
             sanpuku_forme_line = "推奨三連複フォメ：未選択"
 
-        st.info(sanpuku_forme_line)
+        st.info(nishatan_forme_line + "\n" + sanpuku_forme_line)
 
     else:
-        nitan_forme_line = "推奨2車単フォメ：生成不可"
+        nishatan_forme_line = "推奨2車単フォメ：生成不可"
         sanpuku_forme_line = "推奨三連複フォメ：生成不可"
 
 except Exception as _e:
-    nitan_forme_line = f"推奨2車単フォメ：生成不可（{_e}）"
+    nishatan_forme_line = f"推奨2車単フォメ：生成不可（{_e}）"
     sanpuku_forme_line = f"推奨三連複フォメ：生成不可（{_e}）"
-    st.caption(nitan_forme_line)
+    st.caption(nishatan_forme_line)
     st.caption(sanpuku_forme_line)
 
 def _apply_ai_badge_to_axis_line(text: str, badge: str, status: str) -> str:
@@ -6812,7 +6711,7 @@ note_text = _apply_ai_badge_to_axis_line(
 # 1-4-3
 # 1-4-2
 note_text = re.sub(
-    r"\n*推奨三連複フォメ(?:☆☆|☆)?：.*?(?=\n\n|$)",
+    r"\n*推奨(?:2車単|三連複)フォメ(?:☆☆|☆)?：.*?(?=\n\n|$)",
     "",
     note_text,
     flags=re.DOTALL
@@ -6847,7 +6746,7 @@ try:
     # ※詳細後半は削らない
     # -----------------------------------------
     note_text = re.sub(
-        r"\n*推奨三連複フォメ(?:☆☆|☆)?：.*",
+        r"\n*推奨(?:2車単|三連複)フォメ(?:☆☆|☆)?：.*",
         "",
         note_text
     )
@@ -6857,7 +6756,7 @@ try:
     # ※「デイ／ナイター／ミッドナイト／モーニング」以降は絶対に残す
     # -----------------------------------------
     note_text = re.sub(
-        r"\n*✅ 推奨戦法：.*?コピー用：[1-9]{3,9}\n*(?:推奨三連複フォメ(?:☆☆|☆)?：.*)?\n*",
+        r"\n*✅ 推奨戦法：.*?コピー用：[1-9]{3,9}\n*(?:推奨2車単フォメ(?:☆☆|☆)?：.*\n*)?(?:推奨三連複フォメ(?:☆☆|☆)?：.*)?\n*",
         "\n",
         note_text,
         count=1,
