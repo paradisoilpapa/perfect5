@@ -1583,44 +1583,52 @@ if len(active_cars_live) != int(n_cars):
 # -----------------------------------------
 # 市場印入力（計算反映前）
 # ※期待値軸・2列目繰り上げ・フォメ生成に使うため、反映ボタンより前に置く
-# ※反映前は評価順が未確定なので、車番の降順で固定表示
+# ※反映前は評価順が未確定なので、車番の昇順で固定表示
+# ※1印につき1車だけなので、チェックボックスではなく横並びラジオで誤入力を防ぐ
 # -----------------------------------------
-_market_options_live = ["—"] + [str(x) for x in sorted(active_cars_live, reverse=True)]
+_market_options_live = ["—"] + [str(x) for x in sorted(active_cars_live)]
 
 st.caption("市場印入力（計算反映前）")
-_m_col1, _m_col2, _m_col3, _m_col4 = st.columns(4)
+st.caption("各印の車番を選択してください（未選択は —）。車番は昇順表示です。")
 
-with _m_col1:
-    market_honmei_raw_live = st.selectbox(
-        "◎ 車番",
-        _market_options_live,
-        index=0,
-        key=f"market_honmei_car_r{race_no}",
-    )
+market_honmei_raw_live = st.radio(
+    "◎",
+    _market_options_live,
+    index=0,
+    horizontal=True,
+    key=f"market_honmei_car_r{race_no}",
+)
+market_taikou_raw_live = st.radio(
+    "〇",
+    _market_options_live,
+    index=0,
+    horizontal=True,
+    key=f"market_taikou_car_r{race_no}",
+)
+market_tan_raw_live = st.radio(
+    "△",
+    _market_options_live,
+    index=0,
+    horizontal=True,
+    key=f"market_tan_car_r{race_no}",
+)
+market_batsu_raw_live = st.radio(
+    "×",
+    _market_options_live,
+    index=0,
+    horizontal=True,
+    key=f"market_batsu_car_r{race_no}",
+)
 
-with _m_col2:
-    market_taikou_raw_live = st.selectbox(
-        "〇 車番",
-        _market_options_live,
-        index=0,
-        key=f"market_taikou_car_r{race_no}",
-    )
-
-with _m_col3:
-    market_tan_raw_live = st.selectbox(
-        "△ 車番",
-        _market_options_live,
-        index=0,
-        key=f"market_tan_car_r{race_no}",
-    )
-
-with _m_col4:
-    market_batsu_raw_live = st.selectbox(
-        "× 車番",
-        _market_options_live,
-        index=0,
-        key=f"market_batsu_car_r{race_no}",
-    )
+_market_selected_live = [
+    ("◎", market_honmei_raw_live),
+    ("〇", market_taikou_raw_live),
+    ("△", market_tan_raw_live),
+    ("×", market_batsu_raw_live),
+]
+_market_selected_cars_live = [v for _, v in _market_selected_live if str(v) != "—"]
+if len(_market_selected_cars_live) != len(set(_market_selected_cars_live)):
+    st.warning("同じ車番が複数の印に入っています。上位印（◎→〇→△→×）を優先して処理します。")
 
 # ←←← ここに入れる
 def input_float_text(label: str, key: str, placeholder: str = ""):
