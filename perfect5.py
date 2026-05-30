@@ -6618,6 +6618,29 @@ def _find_line_members_of_car(line_def_obj, car):
     return []
 
 
+def _find_line_members_of_car_from_note_text(note_text_obj, car):
+    """
+    line_def が globals に無い/取れない場合の保険。
+    note本文の「ライン　73　16　524」から評価1の所属ラインを復元する。
+    """
+    try:
+        car = int(car)
+        txt = str(note_text_obj or "")
+        m = re.search(r"^ライン\s+(.+)$", txt, flags=re.MULTILINE)
+        if not m:
+            return []
+        part = m.group(1).strip()
+        # 全角スペース・半角スペースで分割。数字以外は落とす。
+        chunks = re.split(r"[\s　]+", part)
+        for ch in chunks:
+            nums = [int(x) for x in re.findall(r"\d", ch)]
+            if car in nums:
+                return nums
+    except Exception:
+        pass
+    return []
+
+
 def _pick_eval1_line_promote_car(eval1_line_members, current_col2, mark_map):
     """
     評価1ライン内の印付き未採用車を、2列目へ1車だけ繰り上げる。
@@ -6828,6 +6851,9 @@ try:
         # 評価1ライン内に印付き未採用車がいれば、1車だけ2列目へ繰り上げる。
         # 例：57142 / 評価1ライン524 / 2に印 → 57→572、3列目は57214。
         eval1_line_members = _find_line_members_of_car(_line_def, role1)
+        if not eval1_line_members:
+            eval1_line_members = _find_line_members_of_car_from_note_text(note_text, role1)
+
         promote_car = _pick_eval1_line_promote_car(eval1_line_members, col2_base, market_mark_map)
 
         if promote_car is not None:
@@ -6865,6 +6891,8 @@ try:
             f"{sanpuku_forme_line}\n"
             f"{sanrentan_forme_line}"
         )
+        if promote_car is not None:
+            st.caption(f"2列目繰り上げ：{role1}ライン内の印付き車 {promote_car} を反映")
 
     else:
         nishatan_forme_line = "推奨2車単フォメ：生成不可"
@@ -6943,4 +6971,3 @@ st.text_area("ここを選択してコピー", note_text, height=620)
 # =========================
 #  一括置換ブロック ここまで
 # =========================
-
