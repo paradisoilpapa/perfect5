@@ -1580,6 +1580,48 @@ if len(active_cars_live) != int(n_cars):
         " ライン入力漏れを確認してください。"
     )
 
+# -----------------------------------------
+# 市場印入力（計算反映前）
+# ※期待値軸・2列目繰り上げ・フォメ生成に使うため、反映ボタンより前に置く
+# ※反映前は評価順が未確定なので、車番の降順で固定表示
+# -----------------------------------------
+_market_options_live = ["—"] + [str(x) for x in sorted(active_cars_live, reverse=True)]
+
+st.caption("市場印入力（計算反映前）")
+_m_col1, _m_col2, _m_col3, _m_col4 = st.columns(4)
+
+with _m_col1:
+    market_honmei_raw_live = st.selectbox(
+        "◎ 車番",
+        _market_options_live,
+        index=0,
+        key=f"market_honmei_car_r{race_no}",
+    )
+
+with _m_col2:
+    market_taikou_raw_live = st.selectbox(
+        "〇 車番",
+        _market_options_live,
+        index=0,
+        key=f"market_taikou_car_r{race_no}",
+    )
+
+with _m_col3:
+    market_tan_raw_live = st.selectbox(
+        "△ 車番",
+        _market_options_live,
+        index=0,
+        key=f"market_tan_car_r{race_no}",
+    )
+
+with _m_col4:
+    market_batsu_raw_live = st.selectbox(
+        "× 車番",
+        _market_options_live,
+        index=0,
+        key=f"market_batsu_car_r{race_no}",
+    )
+
 # ←←← ここに入れる
 def input_float_text(label: str, key: str, placeholder: str = ""):
     s = st.text_input(label, value=st.session_state.get(key, ""), key=key, placeholder=placeholder)
@@ -1670,6 +1712,11 @@ if apply_input:
         "line_def": {g: list(mem) for g, mem in line_def_live.items()},
         "car_to_group": dict(car_to_group_live),
         "active_cars": list(active_cars_live),
+
+        "market_honmei_raw": market_honmei_raw_live,
+        "market_taikou_raw": market_taikou_raw_live,
+        "market_tan_raw": market_tan_raw_live,
+        "market_batsu_raw": market_batsu_raw_live,
 
         "ratings": dict(ratings_live),
         "S": dict(S_live),
@@ -6489,49 +6536,12 @@ st.markdown("### 📋 note用（コピーエリア）")
 # ※公開コピーには、市場名・外部名は出さない
 # ※入力された印は「当たりやすさ」ではなく、市場人気による期待値減衰として扱う
 # -----------------------------------------
-try:
-    _rec_seq_for_market = globals().get("RECOMMENDED_STYLE_SEQ", [])
-    _rec_seq_for_market = [int(x) for x in (_rec_seq_for_market or []) if str(x).isdigit()]
-except Exception:
-    _rec_seq_for_market = []
-
-_market_options = ["—"] + [str(x) for x in _rec_seq_for_market]
-
-st.caption("期待値軸判定用：◎〇△× 車番入力")
-_m_col1, _m_col2, _m_col3, _m_col4 = st.columns(4)
-
-with _m_col1:
-    market_honmei_raw = st.selectbox(
-        "◎ 車番",
-        _market_options,
-        index=0,
-        key="market_honmei_car",
-    )
-
-with _m_col2:
-    market_taikou_raw = st.selectbox(
-        "〇 車番",
-        _market_options,
-        index=0,
-        key="market_taikou_car",
-    )
-
-with _m_col3:
-    market_tan_raw = st.selectbox(
-        "△ 車番",
-        _market_options,
-        index=0,
-        key="market_tan_car",
-    )
-
-with _m_col4:
-    market_batsu_raw = st.selectbox(
-        "× 車番",
-        _market_options,
-        index=0,
-        key="market_batsu_car",
-    )
-
+# 期待値軸判定用の市場印は、計算反映前に snapshot へ固定済み。
+# ここでは再入力させず、反映済み値だけを使う。
+market_honmei_raw = snapshot.get("market_honmei_raw", "—")
+market_taikou_raw = snapshot.get("market_taikou_raw", "—")
+market_tan_raw = snapshot.get("market_tan_raw", "—")
+market_batsu_raw = snapshot.get("market_batsu_raw", "—")
 
 def _to_car_int_or_none(v):
     try:
