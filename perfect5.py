@@ -6485,8 +6485,9 @@ note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
 
 # -----------------------------------------
-# 期待値軸判定用：◎〇 車番入力
+# 期待値軸判定用：◎〇△× 車番入力
 # ※公開コピーには、市場名・外部名は出さない
+# ※入力された印は「当たりやすさ」ではなく、市場人気による期待値減衰として扱う
 # -----------------------------------------
 try:
     _rec_seq_for_market = globals().get("RECOMMENDED_STYLE_SEQ", [])
@@ -6496,8 +6497,8 @@ except Exception:
 
 _market_options = ["—"] + [str(x) for x in _rec_seq_for_market]
 
-st.caption("期待値軸判定用：◎〇 車番入力")
-_m_col1, _m_col2 = st.columns(2)
+st.caption("期待値軸判定用：◎〇△× 車番入力")
+_m_col1, _m_col2, _m_col3, _m_col4 = st.columns(4)
 
 with _m_col1:
     market_honmei_raw = st.selectbox(
@@ -6515,6 +6516,22 @@ with _m_col2:
         key="market_taikou_car",
     )
 
+with _m_col3:
+    market_tan_raw = st.selectbox(
+        "△ 車番",
+        _market_options,
+        index=0,
+        key="market_tan_car",
+    )
+
+with _m_col4:
+    market_batsu_raw = st.selectbox(
+        "× 車番",
+        _market_options,
+        index=0,
+        key="market_batsu_car",
+    )
+
 
 def _to_car_int_or_none(v):
     try:
@@ -6529,7 +6546,20 @@ def _to_car_int_or_none(v):
 
 market_honmei = _to_car_int_or_none(market_honmei_raw)
 market_taikou = _to_car_int_or_none(market_taikou_raw)
-market_core = {x for x in [market_honmei, market_taikou] if x is not None}
+market_tan = _to_car_int_or_none(market_tan_raw)
+market_batsu = _to_car_int_or_none(market_batsu_raw)
+
+# 車番→印。重複入力時は強い印を優先する。
+market_mark_map = {}
+for _car, _mark in [
+    (market_honmei, "◎"),
+    (market_taikou, "〇"),
+    (market_tan, "△"),
+    (market_batsu, "×"),
+]:
+    if _car is None:
+        continue
+    market_mark_map.setdefault(int(_car), _mark)
 
 
 def _uniq_keep(seq):
@@ -6588,32 +6618,61 @@ def _find_line_members_of_car(line_def_obj, car):
     return []
 
 
-def _calc_expect_axis_label(role1, role2, role3, market_set):
+def _calc_expect_axis_score_label(role1, role2, role3, mark_map):
     """
-    期待値軸の表示ロジック。
-    AA：役割1・2が◎〇に入る
-    A ：役割1が◎〇に入る
-    高：役割1は◎〇から外れ、役割2・3が◎〇に入る
-    B ：役割2が◎〇に入る
-    C ：上記以外
+    期待値軸を点数化する。
+
+    基本思想：
+    ・WinTicket系の印が濃いほど市場人気に寄り、期待値は下がりやすい。
+    ・ただし評価1が無印なら、市場とズレるため期待値妙味を加点する。
+    ・点数が高すぎる場合は市場から外れすぎなので「荒」とし、実戦上は買わない領域にする。
+
+    期待値点 = 10
+      - 印減点(評価1) × 1.0
+      - 印減点(評価2) × 0.8
+      - 印減点(評価3) × 0.6
+      + 評価1印補正
     """
     try:
-        r1 = int(role1)
-        r2 = int(role2)
-        r3 = int(role3)
-        ms = {int(x) for x in (market_set or []) if x is not None}
+        roles = [int(role1), int(role2), int(role3)]
+        mark_map = {int(k): str(v) for k, v in (mark_map or {}).items()}
 
-        if r1 in ms and r2 in ms:
-            return "AA"
-        if r1 in ms:
-            return "A"
-        if (r1 not in ms) and (r2 in ms) and (r3 in ms):
-            return "高"
-        if r2 in ms:
-            return "B"
-        return "C"
+        mark_penalty = {"◎": 4.0, "〇": 3.0, "△": 2.0, "×": 1.0, "無印": 0.0}
+        rank_weight = [1.0, 0.8, 0.6]
+
+        score = 10.0
+        role_marks = []
+        for car, w in zip(roles, rank_weight):
+            mk = mark_map.get(int(car), "無印")
+            role_marks.append(mk)
+            score -= mark_penalty.get(mk, 0.0) * float(w)
+
+        # 評価1の印による補正。
+        # 無印は期待値妙味、◎〇は市場人気寄りとして減点。
+        r1_mark = role_marks[0] if role_marks else "無印"
+        r1_bonus_map = {"無印": 1.0, "×": 0.5, "△": 0.0, "〇": -0.5, "◎": -1.0}
+        score += r1_bonus_map.get(r1_mark, 0.0)
+
+        # 表示レンジは0〜10に丸める
+        score = max(0.0, min(10.0, float(score)))
+
+        if score >= 7.5:
+            label = "荒"
+        elif score >= 6.0:
+            label = "AA"
+        elif score >= 5.0:
+            label = "A"
+        elif score >= 4.0:
+            label = "B"
+        elif score >= 3.0:
+            label = "C"
+        else:
+            label = "低"
+
+        return label, round(score, 1), role_marks
+
     except Exception:
-        return "C"
+        return "C", None, []
 
 
 def _replace_axis_line_to_expect(text: str, label: str) -> str:
@@ -6704,6 +6763,8 @@ nishatan_forme_line = ""
 sanpuku_forme_line = ""
 sanrentan_forme_line = ""
 expect_axis_label = "C"
+expect_axis_score = None
+expect_axis_role_marks = []
 
 try:
     _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
@@ -6715,7 +6776,7 @@ try:
         role2 = int(_rec_seq[1])
         role3 = int(_rec_seq[2])
 
-        expect_axis_label = _calc_expect_axis_label(role1, role2, role3, market_core)
+        expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(role1, role2, role3, market_mark_map)
 
         col1_cars = _uniq_keep([role1, role2])
         col2_cars = _uniq_keep([role1, role2, role3])
@@ -6737,8 +6798,10 @@ try:
         sanpuku_forme_line = f"推奨三連複フォメ：{col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
         sanrentan_forme_line = f"推奨3連単フォメ：{col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
 
+        _expect_score_line = "" if expect_axis_score is None else f"期待値点：{expect_axis_score:.1f}\n"
         st.info(
             f"期待値軸：{expect_axis_label}\n"
+            f"{_expect_score_line}"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
             f"{sanrentan_forme_line}"
@@ -6782,6 +6845,7 @@ try:
             f"{_rec_display_seq}\n\n"
             f"コピー用：{_rec_copy}\n\n"
             f"期待値軸：{expect_axis_label}\n"
+            f"{'' if expect_axis_score is None else f'期待値点：{expect_axis_score:.1f}\n'}"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
             f"{sanrentan_forme_line}\n"
@@ -6789,6 +6853,7 @@ try:
     else:
         summary_block = (
             f"\n\n期待値軸：{expect_axis_label}\n"
+            f"{'' if expect_axis_score is None else f'期待値点：{expect_axis_score:.1f}\n'}"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
             f"{sanrentan_forme_line}\n"
@@ -6796,7 +6861,7 @@ try:
 
     # 最初の期待値軸行の直後にだけ挿入
     _m_axis = re.search(
-        r"期待値軸：(?:AA|A|B|高|C)（軸想定2着内率\s*\d+%）",
+        r"期待値軸：(?:AA|A|B|C|荒|低)（軸想定2着内率\s*\d+%）",
         note_text
     )
 
