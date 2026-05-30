@@ -6895,9 +6895,22 @@ try:
 
         expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(col1_cars, col2_cars, role1, market_mark_map)
 
-        # 3列目：組み替え後の上位5車＋評価1ライン全車を必ず反映
-        base_top5 = rec_order_for_forme[:5] if len(rec_order_for_forme) >= 5 else list(rec_order_for_forme)
-        col3_cars = _uniq_keep(base_top5 + eval1_line_members)
+        # 3列目：原則5車に収める。
+        # ただし「評価1ライン全車」は必ず優先反映する。
+        # 例：7325461 / 評価1ライン571 / 5を2列目繰り上げ
+        #   NG: 735241（6車）
+        #   OK: 73521（5車。評価1ライン571を全員保持し、低優先の4を落とす）
+        col3_mandatory = _uniq_keep(col2_cars + eval1_line_members)
+        col3_cars = list(col3_mandatory)
+        for _c in rec_order_for_forme:
+            if _c not in col3_cars:
+                col3_cars.append(_c)
+            if len(col3_cars) >= 5:
+                break
+
+        # 通常は5車まで。評価1ライン＋2列目だけで5車を超える特殊ケースのみ超過を許容。
+        if len(col3_mandatory) <= 5:
+            col3_cars = col3_cars[:5]
 
         col1_text = _fmt_cars(col1_cars)
         col2_text = _fmt_cars(col2_cars)
