@@ -6618,45 +6618,91 @@ def _find_line_members_of_car(line_def_obj, car):
     return []
 
 
-def _calc_expect_axis_score_label(role1, role2, role3, mark_map):
+def _pick_eval1_line_promote_car(eval1_line_members, current_col2, mark_map):
+    """
+    評価1ライン内の印付き未採用車を、2列目へ1車だけ繰り上げる。
+
+    目的：
+    ・評価1を頭に置くなら、評価1ライン内の番手/後続が2着に残る筋を拾う。
+    ・ただし点数増を避けるため、繰り上げは1車だけ。
+    ・◎〇△×の順で優先し、同格ならライン順（番手優先）にする。
+    """
+    try:
+        line = [int(x) for x in (eval1_line_members or []) if str(x).isdigit()]
+        already = {int(x) for x in (current_col2 or []) if str(x).isdigit()}
+        mark_map = {int(k): str(v) for k, v in (mark_map or {}).items()}
+        mark_rank = {"◎": 4, "〇": 3, "△": 2, "×": 1}
+
+        candidates = []
+        for idx, car in enumerate(line):
+            if int(car) in already:
+                continue
+            mk = mark_map.get(int(car), "無印")
+            if mk not in mark_rank:
+                continue
+            candidates.append((mark_rank[mk], -idx, int(car)))
+
+        if not candidates:
+            return None
+
+        candidates.sort(reverse=True)
+        return int(candidates[0][2])
+
+    except Exception:
+        return None
+
+
+def _calc_expect_axis_score_label(col1_cars, col2_cars, role1, mark_map):
     """
     期待値軸を点数化する。
 
     基本思想：
-    ・WinTicket系の印が濃いほど市場人気に寄り、期待値は下がりやすい。
-    ・ただし評価1が無印なら、市場とズレるため期待値妙味を加点する。
-    ・点数が高すぎる場合は市場から外れすぎなので「荒」とし、実戦上は買わない領域にする。
+    ・信頼度ではなく、市場印とのズレによる配当妙味を見る。
+    ・2車単フォメを基準に、1列目候補と2列目専用候補を分けて評価する。
+    ・1列目に市場印が付くほど人気寄りで期待値は下がりやすい。
+    ・2列目だけの市場印は、相手人気として軽く減点する。
+    ・評価1が無印なら、市場からズレた期待値妙味として加点する。
 
     期待値点 = 10
-      - 印減点(評価1) × 1.0
-      - 印減点(評価2) × 0.8
-      - 印減点(評価3) × 0.6
+      - 1列目印減点
+      - 2列目専用印減点
       + 評価1印補正
     """
     try:
-        roles = [int(role1), int(role2), int(role3)]
+        col1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
+        col2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
+        r1 = int(role1)
         mark_map = {int(k): str(v) for k, v in (mark_map or {}).items()}
 
-        mark_penalty = {"◎": 4.0, "〇": 3.0, "△": 2.0, "×": 1.0, "無印": 0.0}
-        rank_weight = [1.0, 0.8, 0.6]
+        head_penalty = {"◎": 4.0, "〇": 3.0, "△": 1.5, "×": 0.75, "無印": 0.0}
+        tail_penalty = {"◎": 2.0, "〇": 1.5, "△": 0.75, "×": 0.40, "無印": 0.0}
 
         score = 10.0
         role_marks = []
-        for car, w in zip(roles, rank_weight):
+
+        # 1列目候補は頭として市場に売れやすいため強めに減点
+        for car in col1:
             mk = mark_map.get(int(car), "無印")
             role_marks.append(mk)
-            score -= mark_penalty.get(mk, 0.0) * float(w)
+            score -= head_penalty.get(mk, 0.0)
 
-        # 評価1の印による補正。
-        # 無印は期待値妙味、◎〇は市場人気寄りとして減点。
-        r1_mark = role_marks[0] if role_marks else "無印"
+        # 2列目だけの候補は相手人気なので軽めに減点
+        col1_set = set(col1)
+        for car in col2:
+            if int(car) in col1_set:
+                continue
+            mk = mark_map.get(int(car), "無印")
+            role_marks.append(mk)
+            score -= tail_penalty.get(mk, 0.0)
+
+        # 評価1の印による補正。信頼度ではなく、市場とのズレを表す。
+        r1_mark = mark_map.get(r1, "無印")
         r1_bonus_map = {"無印": 1.0, "×": 0.5, "△": 0.0, "〇": -0.5, "◎": -1.0}
         score += r1_bonus_map.get(r1_mark, 0.0)
 
-        # 表示レンジは0〜10に丸める
         score = max(0.0, min(10.0, float(score)))
 
-        if score >= 7.5:
+        if score >= 8.0:
             label = "荒"
         elif score >= 6.0:
             label = "AA"
@@ -6774,16 +6820,29 @@ try:
     if len(_rec_seq) >= 3:
         role1 = int(_rec_seq[0])
         role2 = int(_rec_seq[1])
-        role3 = int(_rec_seq[2])
-
-        expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(role1, role2, role3, market_mark_map)
+        role3_original = int(_rec_seq[2])
 
         col1_cars = _uniq_keep([role1, role2])
+        col2_base = _uniq_keep([role1, role2, role3_original])
+
+        # 評価1ライン内に印付き未採用車がいれば、1車だけ2列目へ繰り上げる。
+        # 例：57142 / 評価1ライン524 / 2に印 → 57→572、3列目は57214。
+        eval1_line_members = _find_line_members_of_car(_line_def, role1)
+        promote_car = _pick_eval1_line_promote_car(eval1_line_members, col2_base, market_mark_map)
+
+        if promote_car is not None:
+            # 元の3は繰り下げ、点数を増やさず役割順だけ組み替える
+            rec_order_for_forme = _uniq_keep([role1, role2, promote_car, role3_original] + list(_rec_seq[3:]))
+        else:
+            rec_order_for_forme = list(_rec_seq)
+
+        role3 = int(rec_order_for_forme[2]) if len(rec_order_for_forme) >= 3 else role3_original
         col2_cars = _uniq_keep([role1, role2, role3])
 
-        # 3列目：基本上位5車＋評価1ライン全車を必ず反映
-        base_top5 = _rec_seq[:5] if len(_rec_seq) >= 5 else list(_rec_seq)
-        eval1_line_members = _find_line_members_of_car(_line_def, role1)
+        expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(col1_cars, col2_cars, role1, market_mark_map)
+
+        # 3列目：組み替え後の上位5車＋評価1ライン全車を必ず反映
+        base_top5 = rec_order_for_forme[:5] if len(rec_order_for_forme) >= 5 else list(rec_order_for_forme)
         col3_cars = _uniq_keep(base_top5 + eval1_line_members)
 
         col1_text = _fmt_cars(col1_cars)
