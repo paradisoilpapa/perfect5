@@ -6477,7 +6477,7 @@ except Exception as _e:
         pass
 
 # =========================
-# note用コピーエリア：WinTicket AI軸チェック連動
+# note用コピーエリア：期待値軸＋実車番フォーメーション
 # =========================
 
 note_text = "\n".join(note_sections)
@@ -6485,29 +6485,134 @@ note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
 
 # -----------------------------------------
-# WinTicket AI：VeloBi評価1軸の許可フィルター
-# ◎なら☆☆、〇なら☆、未チェックならケン推奨
+# 市場◎〇入力
+# ※公開コピーには「市場」「WinTicket」などの文言は出さない。
+#   ここでは期待値軸の内部判定にだけ使う。
 # -----------------------------------------
-st.caption("WinTicket AI：VeloBi評価1軸チェック")
+try:
+    _rec_seq_for_market = globals().get("RECOMMENDED_STYLE_SEQ", [])
+    _rec_seq_for_market = [int(x) for x in (_rec_seq_for_market or []) if str(x).isdigit()]
+except Exception:
+    _rec_seq_for_market = []
 
-_ai_col1, _ai_col2 = st.columns(2)
+_market_options = ["—"] + [str(x) for x in _rec_seq_for_market]
 
-with _ai_col1:
-    ai_axis_honmei = st.checkbox("AI◎", value=False, key="ai_axis_honmei")
+st.caption("期待値軸判定用：◎〇 車番入力")
+_m_col1, _m_col2 = st.columns(2)
 
-with _ai_col2:
-    ai_axis_taikou = st.checkbox("AI〇", value=False, key="ai_axis_taikou")
+with _m_col1:
+    market_honmei_raw = st.selectbox(
+        "◎ 車番",
+        _market_options,
+        index=0,
+        key="market_honmei_car",
+    )
 
-# ◎優先。両方チェックされた場合も◎扱い
-if ai_axis_honmei:
-    ai_axis_badge = "☆☆"
-    ai_axis_status = "購入許可"
-elif ai_axis_taikou:
-    ai_axis_badge = "☆"
-    ai_axis_status = "購入許可"
-else:
-    ai_axis_badge = ""
-    ai_axis_status = "ケン推奨"
+with _m_col2:
+    market_taikou_raw = st.selectbox(
+        "〇 車番",
+        _market_options,
+        index=0,
+        key="market_taikou_car",
+    )
+
+def _to_car_int_or_none(v):
+    try:
+        s = str(v).strip()
+        if not s or s == "—":
+            return None
+        x = int(s)
+        return x if 1 <= x <= 9 else None
+    except Exception:
+        return None
+
+market_honmei = _to_car_int_or_none(market_honmei_raw)
+market_taikou = _to_car_int_or_none(market_taikou_raw)
+market_core = {x for x in [market_honmei, market_taikou] if x is not None}
+
+
+def _uniq_keep(seq):
+    out = []
+    seen = set()
+    for x in seq:
+        try:
+            xi = int(x)
+        except Exception:
+            continue
+        if xi not in seen:
+            out.append(xi)
+            seen.add(xi)
+    return out
+
+
+def _fmt_cars(seq):
+    return "".join(str(int(x)) for x in seq if str(x).isdigit())
+
+
+def _count_nishatan(col1, col2):
+    return sum(1 for a in col1 for b in col2 if int(a) != int(b))
+
+
+def _count_sanrentan(col1, col2, col3):
+    return sum(
+        1
+        for a in col1
+        for b in col2
+        for c in col3
+        if len({int(a), int(b), int(c)}) == 3
+    )
+
+
+def _count_sanpuku(col1, col2, col3):
+    combos = set()
+    for a in col1:
+        for b in col2:
+            for c in col3:
+                s = tuple(sorted([int(a), int(b), int(c)]))
+                if len(set(s)) == 3:
+                    combos.add(s)
+    return len(combos)
+
+
+def _find_line_members_of_car(line_def_obj, car):
+    try:
+        car = int(car)
+        if isinstance(line_def_obj, dict):
+            for _, mem in line_def_obj.items():
+                mm = [int(x) for x in (mem or []) if str(x).isdigit()]
+                if car in mm:
+                    return mm
+    except Exception:
+        pass
+    return []
+
+
+def _calc_expect_axis_label(role1, role2, role3, market_set):
+    """
+    期待値軸の表示ロジック。
+    AA：役割1・2が◎〇に入る
+    A ：役割1が◎〇に入る
+    高：役割1は◎〇から外れ、役割2・3が◎〇に入る
+    B ：役割2が◎〇に入る
+    C ：上記以外
+    """
+    try:
+        r1 = int(role1)
+        r2 = int(role2)
+        r3 = int(role3)
+        ms = {int(x) for x in (market_set or []) if x is not None}
+
+        if r1 in ms and r2 in ms:
+            return "AA"
+        if r1 in ms:
+            return "A"
+        if (r1 not in ms) and (r2 in ms) and (r3 in ms):
+            return "高"
+        if r2 in ms:
+            return "B"
+        return "C"
+    except Exception:
+        return "C"
 
 
 # -----------------------------------------
@@ -6534,184 +6639,100 @@ except Exception as _e:
 
 
 # -----------------------------------------
-# 推奨フォメ：12→123 / 12-123-12345 チェック欄
-# 表示は実車番に変換する。
-# 例：_rec_seq = [2,7,4,3,1,5,6]
-#   2車単：27→247
-#   三連複：27-247-12347
-# 反映計算ボタンを押しても session_state で保持
+# 期待値軸＋実車番フォーメーション自動生成
+#
+# 基本形：
+#   2車単：12→123
+#   三連複：12-123-12345
+#   3連単：12→123→12345
+#
+# ただし3列目は、評価1ライン全車を必ず反映する。
+# 表示は役割番号ではなく実車番。
 # -----------------------------------------
 nishatan_forme_line = ""
 sanpuku_forme_line = ""
+sanrentan_forme_line = ""
+expect_axis_label = "C"
 
 try:
     _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
     _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
+    _line_def = globals().get("line_def", {})
 
-    if len(_rec_seq) >= 5:
-        # 評価順位 → 実車番 の対応
-        # 例：_rec_seq = [2,7,4,3,1,5,6]
-        # 評価1=2, 評価2=7, 評価3=4...
-        rank_to_car = {
-            rank: int(_rec_seq[rank - 1])
-            for rank in range(1, len(_rec_seq) + 1)
-        }
+    if len(_rec_seq) >= 3:
+        role1 = int(_rec_seq[0])
+        role2 = int(_rec_seq[1])
+        role3 = int(_rec_seq[2])
 
-        selectable_ranks = list(range(1, len(_rec_seq) + 1))
+        # 期待値軸
+        expect_axis_label = _calc_expect_axis_label(role1, role2, role3, market_core)
 
-        st.markdown("#### 現時点での推奨フォメ")
-        st.caption(
-            "評価順位で1列目・2列目・3列目を選択。"
-            "初期値は 2車単=12→123、三連複=12-123-12345。出力は実車番に変換されます。"
+        # 1列目・2列目
+        col1_cars = _uniq_keep([role1, role2])
+        col2_cars = _uniq_keep([role1, role2, role3])
+
+        # 3列目：評価1ライン全車を必ず反映
+        base_top5 = _rec_seq[:5] if len(_rec_seq) >= 5 else list(_rec_seq)
+        eval1_line_members = _find_line_members_of_car(_line_def, role1)
+
+        col3_cars = _uniq_keep(base_top5 + eval1_line_members)
+
+        col1_text = _fmt_cars(col1_cars)
+        col2_text = _fmt_cars(col2_cars)
+        col3_text = _fmt_cars(col3_cars)
+
+        nishatan_points = _count_nishatan(col1_cars, col2_cars)
+        sanpuku_points = _count_sanpuku(col1_cars, col2_cars, col3_cars)
+        sanrentan_points = _count_sanrentan(col1_cars, col2_cars, col3_cars)
+
+        nishatan_forme_line = (
+            f"推奨2車単フォメ：{col1_text}→{col2_text}（{nishatan_points}点）"
+        )
+        sanpuku_forme_line = (
+            f"推奨三連複フォメ：{col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
+        )
+        sanrentan_forme_line = (
+            f"推奨3連単フォメ：{col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
         )
 
-        # 初期値：
-        # 1列目 = 評価1・評価2
-        # 2列目 = 評価1・評価2・評価3
-        # 3列目 = 評価1〜評価5
-        default_col1_ranks = {1, 2}
-        default_col2_ranks = {1, 2, 3}
-        default_col3_ranks = {1, 2, 3, 4, 5}
-
-        for _rank in selectable_ranks:
-            st.session_state.setdefault(
-                f"forme_rank_col1_{_rank}",
-                bool(_rank in default_col1_ranks)
-            )
-            st.session_state.setdefault(
-                f"forme_rank_col2_{_rank}",
-                bool(_rank in default_col2_ranks)
-            )
-            st.session_state.setdefault(
-                f"forme_rank_col3_{_rank}",
-                bool(_rank in default_col3_ranks)
-            )
-
-        _head1, _head2, _head3 = st.columns(3)
-        with _head1:
-            st.markdown("**1列目**")
-        with _head2:
-            st.markdown("**2列目**")
-        with _head3:
-            st.markdown("**3列目**")
-
-        selected_col1_ranks = []
-        selected_col2_ranks = []
-        selected_col3_ranks = []
-
-        for _rank in selectable_ranks:
-            _car = rank_to_car.get(_rank)
-            _label = f"評価{_rank}（{_car}）"
-
-            _c1, _c2, _c3 = st.columns(3)
-
-            with _c1:
-                if st.checkbox(
-                    _label,
-                    key=f"forme_rank_col1_{_rank}"
-                ):
-                    selected_col1_ranks.append(_rank)
-
-            with _c2:
-                if st.checkbox(
-                    _label,
-                    key=f"forme_rank_col2_{_rank}"
-                ):
-                    selected_col2_ranks.append(_rank)
-
-            with _c3:
-                if st.checkbox(
-                    _label,
-                    key=f"forme_rank_col3_{_rank}"
-                ):
-                    selected_col3_ranks.append(_rank)
-
-        # 12→123 / 12-123-12345 の器を崩さないため、
-        # 2列目には1列目、3列目には2列目を自動で含める。
-        selected_col2_ranks_merged = sorted(set(selected_col1_ranks + selected_col2_ranks))
-        selected_col3_ranks_merged = sorted(set(selected_col2_ranks_merged + selected_col3_ranks))
-
-        selected_col1_cars = [rank_to_car[r] for r in selected_col1_ranks if r in rank_to_car]
-        selected_col2_cars = [rank_to_car[r] for r in selected_col2_ranks_merged if r in rank_to_car]
-        selected_col3_cars = [rank_to_car[r] for r in selected_col3_ranks_merged if r in rank_to_car]
-
-        # 出力は実車番を数字順で整える
-        selected_col1_cars_sorted = sorted(set(selected_col1_cars))
-        selected_col2_cars_sorted = sorted(set(selected_col2_cars))
-        selected_col3_cars_sorted = sorted(set(selected_col3_cars))
-
-        _col1_text = "".join(str(x) for x in selected_col1_cars_sorted)
-        _col2_text = "".join(str(x) for x in selected_col2_cars_sorted)
-        _col3_text = "".join(str(x) for x in selected_col3_cars_sorted)
-
-        if ai_axis_status == "ケン推奨":
-            nishatan_forme_line = "推奨2車単フォメ：ケン推奨"
-            sanpuku_forme_line = "推奨三連複フォメ：ケン推奨"
-        elif selected_col1_cars_sorted and selected_col2_cars_sorted:
-            nishatan_forme_line = (
-                f"推奨2車単フォメ{ai_axis_badge}： "
-                f"{_col1_text}→{_col2_text}"
-            )
-            if selected_col3_cars_sorted:
-                sanpuku_forme_line = (
-                    f"推奨三連複フォメ{ai_axis_badge}： "
-                    f"{_col1_text}-{_col2_text}-{_col3_text}"
-                )
-            else:
-                sanpuku_forme_line = "推奨三連複フォメ：未選択"
-        else:
-            nishatan_forme_line = "推奨2車単フォメ：未選択"
-            sanpuku_forme_line = "推奨三連複フォメ：未選択"
-
-        st.info(nishatan_forme_line + "\n" + sanpuku_forme_line)
+        st.info(
+            f"期待値軸：{expect_axis_label}\n"
+            f"{nishatan_forme_line}\n"
+            f"{sanpuku_forme_line}\n"
+            f"{sanrentan_forme_line}"
+        )
 
     else:
         nishatan_forme_line = "推奨2車単フォメ：生成不可"
         sanpuku_forme_line = "推奨三連複フォメ：生成不可"
+        sanrentan_forme_line = "推奨3連単フォメ：生成不可"
 
 except Exception as _e:
     nishatan_forme_line = f"推奨2車単フォメ：生成不可（{_e}）"
     sanpuku_forme_line = f"推奨三連複フォメ：生成不可（{_e}）"
+    sanrentan_forme_line = f"推奨3連単フォメ：生成不可（{_e}）"
     st.caption(nishatan_forme_line)
     st.caption(sanpuku_forme_line)
+    st.caption(sanrentan_forme_line)
 
-def _apply_ai_badge_to_axis_line(text: str, badge: str, status: str) -> str:
-    """
-    軸評価：A［買い候補強］
-    → 軸評価：A☆☆［買い候補強］
-    未チェックなら
-    → 軸評価：A［ケン推奨］
-    """
-    import re
 
-    if status == "ケン推奨":
-        return re.sub(
-            r"軸評価：([A-E])(?:☆☆|☆)?［[^］]*］",
-            r"軸評価：\1［ケン推奨］",
-            text
-        )
-
-    return re.sub(
-        r"軸評価：([A-E])(?:☆☆|☆)?［",
-        rf"軸評価：\1{badge}［",
-        text
+# -----------------------------------------
+# note本文の「軸評価」を「期待値軸」へ置換
+# ※買い候補/ケン推奨の文言は表に出さない
+# -----------------------------------------
+try:
+    note_text = re.sub(
+        r"軸評価：[A-E](?:☆☆|☆)?［[^］]*］",
+        f"期待値軸：{expect_axis_label}",
+        note_text
     )
+except Exception:
+    pass
 
 
-# 軸評価にAI印を反映
-note_text = _apply_ai_badge_to_axis_line(
-    note_text,
-    ai_axis_badge,
-    ai_axis_status
-)
-
-# 旧形式の推奨三連複フォメが残っている場合は削除
-# 例：
-# 推奨三連複フォメ☆：
-# 1-4-3
-# 1-4-2
+# 旧形式の推奨フォメが残っている場合は削除
 note_text = re.sub(
-    r"\n*推奨(?:2車単|三連複)フォメ(?:☆☆|☆)?：.*?(?=\n\n|$)",
+    r"\n*推奨(?:2車単|三連複|3連単)フォメ(?:☆☆|☆)?：.*?(?=\n\n|$)",
     "",
     note_text,
     flags=re.DOTALL
@@ -6736,38 +6757,32 @@ try:
             f"【{_rec_style}メイン着順予想】\n"
             f"{_rec_display_seq}\n\n"
             f"コピー用：{_rec_copy}\n\n"
+            f"期待値軸：{expect_axis_label}\n"
+            f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
+            f"{sanrentan_forme_line}\n"
         )
     else:
-        summary_block = f"\n\n{sanpuku_forme_line}\n"
+        summary_block = (
+            f"\n\n期待値軸：{expect_axis_label}\n"
+            f"{nishatan_forme_line}\n"
+            f"{sanpuku_forme_line}\n"
+            f"{sanrentan_forme_line}\n"
+        )
 
-    # -----------------------------------------
-    # 旧形式の推奨三連複フォメだけ削除
-    # ※詳細後半は削らない
-    # -----------------------------------------
-    note_text = re.sub(
-        r"\n*推奨(?:2車単|三連複)フォメ(?:☆☆|☆)?：.*",
-        "",
-        note_text
-    )
-
-    # -----------------------------------------
-    # 既に上部サマリーがある場合だけ削除
+    # 旧形式の上部サマリーだけ削除
     # ※「デイ／ナイター／ミッドナイト／モーニング」以降は絶対に残す
-    # -----------------------------------------
     note_text = re.sub(
-        r"\n*✅ 推奨戦法：.*?コピー用：[1-9]{3,9}\n*(?:推奨2車単フォメ(?:☆☆|☆)?：.*\n*)?(?:推奨三連複フォメ(?:☆☆|☆)?：.*)?\n*",
+        r"\n*✅ 推奨戦法：.*?コピー用：[1-9]{3,9}\n*(?:期待値軸：.*\n*)?(?:推奨2車単フォメ：.*\n*)?(?:推奨三連複フォメ：.*\n*)?(?:推奨3連単フォメ：.*\n*)?\n*",
         "\n",
         note_text,
         count=1,
         flags=re.DOTALL
     )
 
-    # -----------------------------------------
-    # 最初の軸評価行の直後にサマリーを差し込む
-    # -----------------------------------------
+    # 最初の期待値軸行の直後にサマリーを差し込む
     _m_axis = re.search(
-        r"軸評価：[A-E](?:☆☆|☆)?［[^］]*］（軸想定2着内率\s*\d+%）",
+        r"期待値軸：(?:AA|A|B|高|C)（軸想定2着内率\s*\d+%）",
         note_text
     )
 
