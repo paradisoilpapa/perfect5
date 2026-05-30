@@ -6743,15 +6743,18 @@ def _calc_expect_axis_score_label(col1_cars, col2_cars, role1, mark_map):
 
         score = max(0.0, min(10.0, float(score)))
 
+        # 表示ランクだけを調整。
+        # 6.6点のような「期待値はあるが荒れ寄り」の形をAAに上げすぎない。
+        # 8.0以上はズレすぎの荒領域として扱う。
         if score >= 8.0:
             label = "荒"
-        elif score >= 6.0:
+        elif score >= 6.8:
             label = "AA"
-        elif score >= 5.0:
+        elif score >= 5.5:
             label = "A"
-        elif score >= 4.0:
+        elif score >= 4.5:
             label = "B"
-        elif score >= 3.0:
+        elif score >= 3.5:
             label = "C"
         else:
             label = "低"
