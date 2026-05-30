@@ -6485,9 +6485,8 @@ note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
 
 # -----------------------------------------
-# 市場◎〇入力
-# ※公開コピーには「市場」「WinTicket」などの文言は出さない。
-#   ここでは期待値軸の内部判定にだけ使う。
+# 期待値軸判定用：◎〇 車番入力
+# ※公開コピーには、市場名・外部名は出さない
 # -----------------------------------------
 try:
     _rec_seq_for_market = globals().get("RECOMMENDED_STYLE_SEQ", [])
@@ -6516,6 +6515,7 @@ with _m_col2:
         key="market_taikou_car",
     )
 
+
 def _to_car_int_or_none(v):
     try:
         s = str(v).strip()
@@ -6525,6 +6525,7 @@ def _to_car_int_or_none(v):
         return x if 1 <= x <= 9 else None
     except Exception:
         return None
+
 
 market_honmei = _to_car_int_or_none(market_honmei_raw)
 market_taikou = _to_car_int_or_none(market_taikou_raw)
@@ -6615,6 +6616,64 @@ def _calc_expect_axis_label(role1, role2, role3, market_set):
         return "C"
 
 
+def _replace_axis_line_to_expect(text: str, label: str) -> str:
+    """
+    note本文の最初の軸評価行を期待値軸へ置換する。
+    軸想定2着内率は残す。
+    """
+    pat = r"軸評価：[A-E](?:☆☆|☆)?［[^］]*］（軸想定2着内率\s*\d+%）"
+
+    def repl(m):
+        s = m.group(0)
+        rate = re.search(r"（軸想定2着内率\s*\d+%）", s)
+        return f"期待値軸：{label}" + (rate.group(0) if rate else "")
+
+    return re.sub(pat, repl, text, count=1)
+
+
+def _strip_existing_top_summary(text: str) -> str:
+    """
+    既存の上部サマリーだけ削除する。
+    詳細部（デイ/ナイター/ミッドナイト/モーニング 以降）は絶対に残す。
+    """
+    lines = text.splitlines()
+    if not lines:
+        return text
+
+    axis_idx = None
+    for i, line in enumerate(lines):
+        if re.match(r"^(軸評価|期待値軸)：", line):
+            axis_idx = i
+            break
+
+    if axis_idx is None:
+        return text
+
+    # 軸行直後の空行を飛ばす
+    s = axis_idx + 1
+    while s < len(lines) and lines[s].strip() == "":
+        s += 1
+
+    # 既存サマリーがないなら何もしない
+    if s >= len(lines) or not lines[s].startswith("✅ 推奨戦法："):
+        return text
+
+    # 詳細部の開催区分行までをサマリーとみなして削除
+    e = s
+    detail_pat = re.compile(r"^(モーニング|デイ|ナイター|ミッドナイト)\s")
+    while e < len(lines):
+        if detail_pat.match(lines[e]):
+            break
+        e += 1
+
+    if e >= len(lines):
+        # 詳細部が見つからない時は危険なので削らない
+        return text
+
+    new_lines = lines[:s] + lines[e:]
+    return "\n".join(new_lines)
+
+
 # -----------------------------------------
 # 推奨戦法とメイン着順予想を箱で強調表示
 # -----------------------------------------
@@ -6640,14 +6699,6 @@ except Exception as _e:
 
 # -----------------------------------------
 # 期待値軸＋実車番フォーメーション自動生成
-#
-# 基本形：
-#   2車単：12→123
-#   三連複：12-123-12345
-#   3連単：12→123→12345
-#
-# ただし3列目は、評価1ライン全車を必ず反映する。
-# 表示は役割番号ではなく実車番。
 # -----------------------------------------
 nishatan_forme_line = ""
 sanpuku_forme_line = ""
@@ -6664,17 +6715,14 @@ try:
         role2 = int(_rec_seq[1])
         role3 = int(_rec_seq[2])
 
-        # 期待値軸
         expect_axis_label = _calc_expect_axis_label(role1, role2, role3, market_core)
 
-        # 1列目・2列目
         col1_cars = _uniq_keep([role1, role2])
         col2_cars = _uniq_keep([role1, role2, role3])
 
-        # 3列目：評価1ライン全車を必ず反映
+        # 3列目：基本上位5車＋評価1ライン全車を必ず反映
         base_top5 = _rec_seq[:5] if len(_rec_seq) >= 5 else list(_rec_seq)
         eval1_line_members = _find_line_members_of_car(_line_def, role1)
-
         col3_cars = _uniq_keep(base_top5 + eval1_line_members)
 
         col1_text = _fmt_cars(col1_cars)
@@ -6685,15 +6733,9 @@ try:
         sanpuku_points = _count_sanpuku(col1_cars, col2_cars, col3_cars)
         sanrentan_points = _count_sanrentan(col1_cars, col2_cars, col3_cars)
 
-        nishatan_forme_line = (
-            f"推奨2車単フォメ：{col1_text}→{col2_text}（{nishatan_points}点）"
-        )
-        sanpuku_forme_line = (
-            f"推奨三連複フォメ：{col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
-        )
-        sanrentan_forme_line = (
-            f"推奨3連単フォメ：{col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
-        )
+        nishatan_forme_line = f"推奨2車単フォメ：{col1_text}→{col2_text}（{nishatan_points}点）"
+        sanpuku_forme_line = f"推奨三連複フォメ：{col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
+        sanrentan_forme_line = f"推奨3連単フォメ：{col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
 
         st.info(
             f"期待値軸：{expect_axis_label}\n"
@@ -6717,41 +6759,23 @@ except Exception as _e:
 
 
 # -----------------------------------------
-# note本文の「軸評価」を「期待値軸」へ置換
-# ※買い候補/ケン推奨の文言は表に出さない
-# -----------------------------------------
-try:
-    note_text = re.sub(
-        r"軸評価：[A-E](?:☆☆|☆)?［[^］]*］",
-        f"期待値軸：{expect_axis_label}",
-        note_text
-    )
-except Exception:
-    pass
-
-
-# 旧形式の推奨フォメが残っている場合は削除
-note_text = re.sub(
-    r"\n*推奨(?:2車単|三連複|3連単)フォメ(?:☆☆|☆)?：.*?(?=\n\n|$)",
-    "",
-    note_text,
-    flags=re.DOTALL
-)
-
-# -----------------------------------------
 # note上部に実戦用サマリーを差し込む
-# ※後半詳細は絶対に削らない
+# 詳細部は行単位で保存する
 # -----------------------------------------
 try:
     _rec_style = globals().get("RECOMMENDED_STYLE", "")
     _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
     _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
-
     _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
+
+    # まず軸評価行を期待値軸へ置換
+    note_text = _replace_axis_line_to_expect(note_text, expect_axis_label)
+
+    # 既存の上部サマリーだけを削除
+    note_text = _strip_existing_top_summary(note_text)
 
     if _rec_style and _rec_seq:
         _rec_display_seq = " → ".join(str(int(x)) for x in _rec_seq)
-
         summary_block = (
             f"\n\n✅ 推奨戦法：{_rec_style}\n\n"
             f"【{_rec_style}メイン着順予想】\n"
@@ -6770,17 +6794,7 @@ try:
             f"{sanrentan_forme_line}\n"
         )
 
-    # 旧形式の上部サマリーだけ削除
-    # ※「デイ／ナイター／ミッドナイト／モーニング」以降は絶対に残す
-    note_text = re.sub(
-        r"\n*✅ 推奨戦法：.*?コピー用：[1-9]{3,9}\n*(?:期待値軸：.*\n*)?(?:推奨2車単フォメ：.*\n*)?(?:推奨三連複フォメ：.*\n*)?(?:推奨3連単フォメ：.*\n*)?\n*",
-        "\n",
-        note_text,
-        count=1,
-        flags=re.DOTALL
-    )
-
-    # 最初の期待値軸行の直後にサマリーを差し込む
+    # 最初の期待値軸行の直後にだけ挿入
     _m_axis = re.search(
         r"期待値軸：(?:AA|A|B|高|C)（軸想定2着内率\s*\d+%）",
         note_text
