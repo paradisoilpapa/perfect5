@@ -6850,9 +6850,16 @@ try:
 
         # 評価1ライン内に印付き未採用車がいれば、1車だけ2列目へ繰り上げる。
         # 例：57142 / 評価1ライン524 / 2に印 → 57→572、3列目は57214。
-        eval1_line_members = _find_line_members_of_car(_line_def, role1)
-        if not eval1_line_members:
-            eval1_line_members = _find_line_members_of_car_from_note_text(note_text, role1)
+        # 評価1ラインは、globals の line_def よりも note本文の「ライン」表示を優先する。
+        # 理由：note用コピーエリアでは line_def がスコープ外・旧値・未更新になる場合があるため。
+        # 例：ライン 73 16 524 / 評価1=5 なら、必ず 524 を拾う。
+        eval1_line_members_text = _find_line_members_of_car_from_note_text(note_text, role1)
+        eval1_line_members_global = _find_line_members_of_car(_line_def, role1)
+
+        if eval1_line_members_text and int(role1) in [int(x) for x in eval1_line_members_text]:
+            eval1_line_members = eval1_line_members_text
+        else:
+            eval1_line_members = eval1_line_members_global
 
         promote_car = _pick_eval1_line_promote_car(eval1_line_members, col2_base, market_mark_map)
 
