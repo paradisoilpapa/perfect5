@@ -6889,19 +6889,19 @@ def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, 
         three.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[3], 99)))
         three = three[:max_3kei]
 
-        lines = ["【妙味ピックアップ】", ""]
+        lines = [f"【妙味ピックアップ｜基準{threshold:.1f}pt以上】", ""]
         lines.append("2車系：")
         if two:
-            for _, a, b in two:
-                lines.append(f"{a}-{b}")
+            for sc, a, b in two:
+                lines.append(f"{a}-{b}　{sc:.1f}pt")
         else:
             lines.append("該当なし")
 
         lines.append("")
         lines.append("3連系：")
         if three:
-            for _, a, b, c in three:
-                lines.append(f"{a}-{b}-{c}")
+            for sc, a, b, c in three:
+                lines.append(f"{a}-{b}-{c}　{sc:.1f}pt")
         else:
             lines.append("該当なし")
 
