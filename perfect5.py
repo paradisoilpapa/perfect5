@@ -1582,43 +1582,71 @@ if len(active_cars_live) != int(n_cars):
 
 # -----------------------------------------
 # 市場印入力（計算反映前）
-# ※期待値軸・2列目繰り上げ・フォメ生成に使うため、反映ボタンより前に置く
-# ※反映前は評価順が未確定なので、車番の昇順で固定表示
-# ※1印につき1車だけなので、チェックボックスではなく横並びラジオで誤入力を防ぐ
+# ※全体妙味・2列目繰り上げ・フォメ生成に使うため、反映ボタンより前に置く
+# ※出走表を見たまま入力できるように「車番ごとに印を選ぶ」形式にする
+# ※内部では従来通り market_honmei_raw / market_taikou_raw / market_tan_raw / market_batsu_raw に変換する
 # -----------------------------------------
-_market_options_live = ["—"] + [str(x) for x in sorted(active_cars_live)]
-
 st.caption("市場印入力（計算反映前）")
-st.caption("各印の車番を選択してください（未選択は —）。車番は昇順表示です。")
+st.caption("各車番ごとにWINTICKET印を選択してください（未選択は —）。")
 
-market_honmei_raw_live = st.radio(
-    "◎",
-    _market_options_live,
-    index=0,
-    horizontal=True,
-    key=f"market_honmei_car_r{race_no}",
-)
-market_taikou_raw_live = st.radio(
-    "〇",
-    _market_options_live,
-    index=0,
-    horizontal=True,
-    key=f"market_taikou_car_r{race_no}",
-)
-market_tan_raw_live = st.radio(
-    "△",
-    _market_options_live,
-    index=0,
-    horizontal=True,
-    key=f"market_tan_car_r{race_no}",
-)
-market_batsu_raw_live = st.radio(
-    "×",
-    _market_options_live,
-    index=0,
-    horizontal=True,
-    key=f"market_batsu_car_r{race_no}",
-)
+_market_mark_options_live = ["—", "◎", "〇", "△", "×"]
+
+# 旧UIで選んでいた値が残っている場合は、初期表示に引き継ぐ
+_old_mark_by_car_live = {}
+_old_pairs_live = [
+    ("◎", st.session_state.get(f"market_honmei_car_r{race_no}", "—")),
+    ("〇", st.session_state.get(f"market_taikou_car_r{race_no}", "—")),
+    ("△", st.session_state.get(f"market_tan_car_r{race_no}", "—")),
+    ("×", st.session_state.get(f"market_batsu_car_r{race_no}", "—")),
+]
+for _mk, _car in _old_pairs_live:
+    if str(_car) != "—":
+        _old_mark_by_car_live[str(_car)] = _mk
+
+market_mark_by_car_live = {}
+
+# 1行目：見出し
+_header_cols = st.columns([0.9, 1, 1, 1, 1, 1])
+_header_cols[0].markdown("**車番**")
+for _i, _label in enumerate(_market_mark_options_live, start=1):
+    _header_cols[_i].markdown(f"**{_label}**")
+
+# 車番ごとに印を選択
+for no in sorted(active_cars_live):
+    no_str = str(no)
+    default_mark = _old_mark_by_car_live.get(no_str, "—")
+    default_idx = _market_mark_options_live.index(default_mark) if default_mark in _market_mark_options_live else 0
+
+    row_cols = st.columns([0.9, 5])
+    row_cols[0].markdown(f"**{no}番**")
+    with row_cols[1]:
+        market_mark_by_car_live[no] = st.radio(
+            f"{no}番の市場印",
+            _market_mark_options_live,
+            index=default_idx,
+            horizontal=True,
+            key=f"market_mark_by_car_r{race_no}_{no}",
+            label_visibility="collapsed",
+        )
+
+# 車番→印を、従来形式（印→車番）へ変換
+_mark_to_cars_live = {"◎": [], "〇": [], "△": [], "×": []}
+for no in sorted(active_cars_live):
+    mk = market_mark_by_car_live.get(no, "—")
+    if mk in _mark_to_cars_live:
+        _mark_to_cars_live[mk].append(str(no))
+
+_duplicate_marks_live = [mk for mk, cars in _mark_to_cars_live.items() if len(cars) >= 2]
+if _duplicate_marks_live:
+    st.warning(
+        "同じ印が複数の車番に入っています。"
+        "各印は1車だけにしてください。計算上は車番昇順で先頭の車を採用します。"
+    )
+
+market_honmei_raw_live = _mark_to_cars_live["◎"][0] if _mark_to_cars_live["◎"] else "—"
+market_taikou_raw_live = _mark_to_cars_live["〇"][0] if _mark_to_cars_live["〇"] else "—"
+market_tan_raw_live    = _mark_to_cars_live["△"][0] if _mark_to_cars_live["△"] else "—"
+market_batsu_raw_live  = _mark_to_cars_live["×"][0] if _mark_to_cars_live["×"] else "—"
 
 _market_selected_live = [
     ("◎", market_honmei_raw_live),
@@ -1626,9 +1654,10 @@ _market_selected_live = [
     ("△", market_tan_raw_live),
     ("×", market_batsu_raw_live),
 ]
-_market_selected_cars_live = [v for _, v in _market_selected_live if str(v) != "—"]
-if len(_market_selected_cars_live) != len(set(_market_selected_cars_live)):
-    st.warning("同じ車番が複数の印に入っています。上位印（◎→〇→△→×）を優先して処理します。")
+_market_summary_live = "　".join(
+    f"{mk}{car}" for mk, car in _market_selected_live if str(car) != "—"
+)
+st.caption(f"入力印：{_market_summary_live if _market_summary_live else 'なし'}")
 
 # ←←← ここに入れる
 def input_float_text(label: str, key: str, placeholder: str = ""):
