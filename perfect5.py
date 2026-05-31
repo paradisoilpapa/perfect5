@@ -7005,6 +7005,82 @@ try:
 except Exception as _e:
     st.caption(f"note上部サマリー生成不可：{_e}")
 
+
+
+# -----------------------------------------
+# noteコピー表示整理（表示だけ。計算・順位・フォメ生成には触らない）
+# 削除対象：
+# ・ラスト半周補正ブロック
+# ・下部の重複した推奨戦法〜コピー用
+# ・軸評価〜2車複候補〜絞り推奨買目〜仮想単勝
+# 残す対象：
+# ・上部サマリー
+# ・ライン評価グループ
+# ・KO使用スコア
+# ・順流/渦/逆流メイン着順予想
+# ・短評
+# -----------------------------------------
+def _clean_note_copy_display_only(text: str) -> str:
+    try:
+        lines = str(text).splitlines()
+        out = []
+        i = 0
+        n = len(lines)
+
+        while i < n:
+            line = lines[i]
+            s = line.strip()
+
+            # 1) ラスト半周補正ブロックを削除
+            if s == "【ラスト半周補正】":
+                i += 1
+                # 次の空行まで飛ばす
+                while i < n and lines[i].strip() != "":
+                    i += 1
+                # 空行も1つ飛ばす
+                while i < n and lines[i].strip() == "":
+                    i += 1
+                continue
+
+            # 2) 下部の重複した推奨戦法〜仮想単勝まで削除
+            #    戦法別着順予想の後に出る plain な「推奨戦法：」から始まるブロックだけ対象。
+            if re.match(r"^推奨戦法：", s):
+                i += 1
+                # ＜短評＞直前まで飛ばす
+                while i < n and lines[i].strip() != "＜短評＞":
+                    i += 1
+                # ＜短評＞は残すので continue せず、次ループで処理
+                continue
+
+            # 3) 念のため、軸評価から始まってしまった下部買い目ブロックも削除
+            if re.match(r"^軸評価：", s):
+                i += 1
+                while i < n and lines[i].strip() != "＜短評＞":
+                    i += 1
+                continue
+
+            out.append(line)
+            i += 1
+
+        # 連続空行を最大2行に抑える
+        cleaned = []
+        blank = 0
+        for line in out:
+            if line.strip() == "":
+                blank += 1
+                if blank <= 2:
+                    cleaned.append(line)
+            else:
+                blank = 0
+                cleaned.append(line)
+
+        return "\n".join(cleaned).strip() + "\n"
+
+    except Exception:
+        return text
+
+note_text = _clean_note_copy_display_only(note_text)
+
 st.text_area("ここを選択してコピー", note_text, height=620)
 # =========================
 
