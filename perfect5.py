@@ -6767,7 +6767,7 @@ def _calc_expect_axis_score_label(col1_cars, col2_cars, role1, mark_map):
 
 def _replace_axis_line_to_expect(text: str, label: str) -> str:
     """
-    note本文の最初の軸評価行を期待値軸へ置換する。
+    note本文の最初の軸評価行を全体妙味へ置換する。
     軸想定2着内率は残す。
     """
     pat = r"軸評価：[A-E](?:☆☆|☆)?［[^］]*］（軸想定2着内率\s*\d+%）"
@@ -6775,7 +6775,7 @@ def _replace_axis_line_to_expect(text: str, label: str) -> str:
     def repl(m):
         s = m.group(0)
         rate = re.search(r"（軸想定2着内率\s*\d+%）", s)
-        return f"期待値軸：{label}" + (rate.group(0) if rate else "")
+        return f"全体妙味：{label}" + (rate.group(0) if rate else "")
 
     return re.sub(pat, repl, text, count=1)
 
@@ -6791,7 +6791,7 @@ def _strip_existing_top_summary(text: str) -> str:
 
     axis_idx = None
     for i, line in enumerate(lines):
-        if re.match(r"^(軸評価|期待値軸)：", line):
+        if re.match(r"^(軸評価|期待値軸|全体妙味)：", line):
             axis_idx = i
             break
 
@@ -6847,7 +6847,7 @@ except Exception as _e:
 
 
 # -----------------------------------------
-# 期待値軸＋実車番フォーメーション自動生成
+# 全体妙味＋実車番フォーメーション自動生成
 # -----------------------------------------
 nishatan_forme_line = ""
 sanpuku_forme_line = ""
@@ -6920,33 +6920,29 @@ try:
         sanpuku_points = _count_sanpuku(col1_cars, col2_cars, col3_cars)
         sanrentan_points = _count_sanrentan(col1_cars, col2_cars, col3_cars)
 
-        nishatan_forme_line = f"推奨2車単フォメ：{col1_text}→{col2_text}（{nishatan_points}点）"
-        sanpuku_forme_line = f"推奨三連複フォメ：{col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
-        sanrentan_forme_line = f"推奨3連単フォメ：{col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
+        nishatan_forme_line = f"2車系フォメ：{col1_text}→{col2_text} / {col1_text}={col2_text}（{nishatan_points}点）"
+        sanpuku_forme_line = f"三連複フォメ：{col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
+        sanrentan_forme_line = f"3連単フォメ：{col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
 
-        _expect_score_line = "" if expect_axis_score is None else f"期待値点：{expect_axis_score:.1f}\n"
         st.info(
-            f"期待値軸：{expect_axis_label}\n"
-            f"{_expect_score_line}"
+            f"全体妙味：{expect_axis_label}\n"
             f"{nishatan_forme_line}\n"
-            f"{sanpuku_forme_line}\n"
-            f"{sanrentan_forme_line}"
+            f"{sanpuku_forme_line}"
         )
         if promote_car is not None:
             st.caption(f"2列目繰り上げ：{role1}ライン内の印付き車 {promote_car} を反映")
 
     else:
-        nishatan_forme_line = "推奨2車単フォメ：生成不可"
-        sanpuku_forme_line = "推奨三連複フォメ：生成不可"
-        sanrentan_forme_line = "推奨3連単フォメ：生成不可"
+        nishatan_forme_line = "2車系フォメ：生成不可"
+        sanpuku_forme_line = "三連複フォメ：生成不可"
+        sanrentan_forme_line = "3連単フォメ：生成不可"
 
 except Exception as _e:
-    nishatan_forme_line = f"推奨2車単フォメ：生成不可（{_e}）"
-    sanpuku_forme_line = f"推奨三連複フォメ：生成不可（{_e}）"
-    sanrentan_forme_line = f"推奨3連単フォメ：生成不可（{_e}）"
+    nishatan_forme_line = f"2車系フォメ：生成不可（{_e}）"
+    sanpuku_forme_line = f"三連複フォメ：生成不可（{_e}）"
+    sanrentan_forme_line = f"3連単フォメ：生成不可（{_e}）"
     st.caption(nishatan_forme_line)
     st.caption(sanpuku_forme_line)
-    st.caption(sanrentan_forme_line)
 
 
 # -----------------------------------------
@@ -6959,7 +6955,7 @@ try:
     _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
     _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
 
-    # まず軸評価行を期待値軸へ置換
+    # まず軸評価行を全体妙味へ置換
     note_text = _replace_axis_line_to_expect(note_text, expect_axis_label)
 
     # 既存の上部サマリーだけを削除
@@ -6972,24 +6968,20 @@ try:
             f"【{_rec_style}メイン着順予想】\n"
             f"{_rec_display_seq}\n\n"
             f"コピー用：{_rec_copy}\n\n"
-            f"期待値軸：{expect_axis_label}\n"
-            f"{'' if expect_axis_score is None else f'期待値点：{expect_axis_score:.1f}\n'}"
+            f"全体妙味：{expect_axis_label}\n"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
-            f"{sanrentan_forme_line}\n"
         )
     else:
         summary_block = (
-            f"\n\n期待値軸：{expect_axis_label}\n"
-            f"{'' if expect_axis_score is None else f'期待値点：{expect_axis_score:.1f}\n'}"
+            f"\n\n全体妙味：{expect_axis_label}\n"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
-            f"{sanrentan_forme_line}\n"
         )
 
-    # 最初の期待値軸行の直後にだけ挿入
+    # 最初の全体妙味行の直後にだけ挿入
     _m_axis = re.search(
-        r"期待値軸：(?:AA|A|B|C|荒|低)（軸想定2着内率\s*\d+%）",
+        r"全体妙味：(?:AA|A|B|C|荒|低)（軸想定2着内率\s*\d+%）",
         note_text
     )
 
