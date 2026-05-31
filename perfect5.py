@@ -7199,7 +7199,65 @@ def _clean_note_copy_display_only(text: str) -> str:
     except Exception:
         return text
 
+
+
+# -----------------------------------------
+# 短評をアプリ向け定型コメントへ置換（表示だけ。計算・順位・フォメ生成には触らない）
+# -----------------------------------------
+def _replace_tanpyou_with_simple_comment(text: str) -> str:
+    try:
+        txt = str(text)
+
+        # 全体妙味を取得
+        m_myoumi = re.search(r"全体妙味：([^\s（]+)", txt)
+        myoumi = m_myoumi.group(1).strip() if m_myoumi else "未判定"
+
+        # 順当度を旧短評から取得
+        m_jundo = re.search(r"・順当度：([^［\n]+)", txt)
+        jundo = m_jundo.group(1).strip() if m_jundo else "未判定"
+
+        # 推奨戦法を取得
+        m_style = re.search(r"✅\s*推奨戦法：([^\n]+)", txt)
+        style = m_style.group(1).strip() if m_style else "推奨戦法"
+
+        # 全体妙味コメント
+        if myoumi in ("低", "C"):
+            line1 = f"・全体妙味：{myoumi}。市場評価と近い構成。"
+        elif myoumi == "B":
+            line1 = "・全体妙味：B。市場評価とのズレは中間。"
+        elif myoumi in ("A", "AA"):
+            line1 = f"・全体妙味：{myoumi}。市場評価と適度にズレあり。"
+        elif myoumi == "荒":
+            line1 = "・全体妙味：荒。ズレが大きく見送り寄り。"
+        else:
+            line1 = "・全体妙味：未判定。"
+
+        # 展開コメント
+        if jundo and jundo != "未判定":
+            line2 = f"・展開は{jundo}。"
+        else:
+            line2 = "・展開は未判定。"
+
+        # 戦法コメント
+        if style in ("順流", "渦", "逆流"):
+            line3 = f"・{style}メインで確認。"
+        else:
+            line3 = "・推奨戦法を中心に確認。"
+
+        new_block = "＜短評＞\n" + "\n".join([line1, line2, line3])
+
+        # ＜短評＞以降を定型コメントに差し替える
+        if "＜短評＞" in txt:
+            txt = re.sub(r"＜短評＞[\s\S]*$", new_block + "\n", txt)
+        else:
+            txt = txt.rstrip() + "\n\n" + new_block + "\n"
+
+        return txt
+    except Exception:
+        return text
+
 note_text = _clean_note_copy_display_only(note_text)
+note_text = _replace_tanpyou_with_simple_comment(note_text)
 
 st.text_area("ここを選択してコピー", note_text, height=620)
 # =========================
