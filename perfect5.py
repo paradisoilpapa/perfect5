@@ -6532,8 +6532,12 @@ except Exception as _e:
         pass
 
 # =========================
-# note用コピーエリア：全体妙味＋券種別ピックアップ
+# note用コピーエリア：全体妙味＋妙味ピックアップ（安全版）
 # =========================
+
+# 重要：ここから下は表示・コピー文生成だけ。
+# 推奨戦法・順流/渦/逆流順位・KOスコア等の計算本体には触れない。
+# 既存 note_sections に出ている推奨順（コピー用）を最優先で使う。
 
 note_text_src = "\n".join(note_sections)
 
@@ -6552,48 +6556,41 @@ market_batsu_raw = snapshot.get("market_batsu_raw", "—")
 def _to_car_int_or_none(v):
     try:
         s = str(v).strip()
-        if not s or s == "—":
+        if s in ("", "—", "-", "None", "nan"):
             return None
-        x = int(s)
+        m = re.search(r"\d", s)
+        if not m:
+            return None
+        x = int(m.group(0))
         return x if 1 <= x <= 9 else None
     except Exception:
         return None
 
 
-market_honmei = _to_car_int_or_none(market_honmei_raw)
-market_taikou = _to_car_int_or_none(market_taikou_raw)
-market_tan = _to_car_int_or_none(market_tan_raw)
-market_batsu = _to_car_int_or_none(market_batsu_raw)
-
-# 車番→印。重複入力時は強い印を優先する。
 market_mark_map = {}
-for _car, _mark in [
-    (market_honmei, "◎"),
-    (market_taikou, "〇"),
-    (market_tan, "△"),
-    (market_batsu, "×"),
-]:
-    if _car is None:
-        continue
-    market_mark_map.setdefault(int(_car), _mark)
+for _mk, _raw in [("◎", market_honmei_raw), ("〇", market_taikou_raw), ("△", market_tan_raw), ("×", market_batsu_raw)]:
+    _c = _to_car_int_or_none(_raw)
+    if _c is not None:
+        market_mark_map[int(_c)] = _mk
 
 
+# -----------------------------------------
+# 共通ヘルパー
+# -----------------------------------------
 def _uniq_keep(seq):
     out = []
-    seen = set()
     for x in seq:
         try:
             xi = int(x)
         except Exception:
             continue
-        if xi not in seen:
+        if xi not in out:
             out.append(xi)
-            seen.add(xi)
     return out
 
 
 def _fmt_cars(seq):
-    return "".join(str(int(x)) for x in seq if str(x).isdigit())
+    return "".join(str(int(x)) for x in seq)
 
 
 def _count_nishatan(col1, col2):
@@ -6624,11 +6621,10 @@ def _count_sanpuku(col1, col2, col3):
 def _find_line_members_of_car(line_def_obj, car):
     try:
         car = int(car)
-        if isinstance(line_def_obj, dict):
-            for _, mem in line_def_obj.items():
-                mm = [int(x) for x in (mem or []) if str(x).isdigit()]
-                if car in mm:
-                    return mm
+        for _, mem in (line_def_obj or {}).items():
+            arr = [int(x) for x in (mem or []) if str(x).isdigit()]
+            if car in arr:
+                return arr
     except Exception:
         pass
     return []
@@ -6641,8 +6637,7 @@ def _find_line_members_of_car_from_note_text(note_text_obj, car):
     """
     try:
         car = int(car)
-        txt = str(note_text_obj or "")
-        m = re.search(r"^ライン\s+(.+)$", txt, flags=re.MULTILINE)
+        m = re.search(r"^ライン\s+(.+)$", str(note_text_obj), flags=re.MULTILINE)
         if not m:
             return []
         part = m.group(1).strip()
@@ -6663,31 +6658,29 @@ def _pick_eval1_line_promote_car(eval1_line_members, current_col2, mark_map):
     """
     try:
         line = [int(x) for x in (eval1_line_members or []) if str(x).isdigit()]
-        already = {int(x) for x in (current_col2 or []) if str(x).isdigit()}
+        cur = {int(x) for x in (current_col2 or []) if str(x).isdigit()}
         mark_map = {int(k): str(v) for k, v in (mark_map or {}).items()}
-        mark_rank = {"◎": 4, "〇": 3, "△": 2, "×": 1}
+        priority = {"◎": 4, "〇": 3, "△": 2, "×": 1}
 
         candidates = []
         for idx, car in enumerate(line):
-            if int(car) in already:
+            if car in cur:
                 continue
             mk = mark_map.get(int(car), "無印")
-            if mk not in mark_rank:
-                continue
-            candidates.append((mark_rank[mk], -idx, int(car)))
+            if mk in priority:
+                candidates.append((priority[mk], -idx, car))
 
         if not candidates:
             return None
-
         candidates.sort(reverse=True)
         return int(candidates[0][2])
     except Exception:
         return None
 
 
-# -------------------------
-# 妙味スコア共通部品
-# -------------------------
+# -----------------------------------------
+# 妙味スコア部品
+# -----------------------------------------
 _HEAD_PENALTY = {"◎": 4.0, "〇": 3.0, "△": 1.5, "×": 0.75, "無印": 0.0}
 _TAIL_PENALTY = {"◎": 2.0, "〇": 1.5, "△": 0.75, "×": 0.40, "無印": 0.0}
 _THIRD_PENALTY = {"◎": 1.0, "〇": 0.75, "△": 0.40, "×": 0.20, "無印": 0.0}
@@ -6702,7 +6695,7 @@ def _mark_of(car, mark_map):
 
 
 def _whole_label_from_score(score):
-    """レース全体の妙味ランク。低=人気寄り、荒=ズレすぎ。"""
+    """全体妙味ランク。低=市場寄り、荒=ズレすぎ。"""
     try:
         score = float(score)
     except Exception:
@@ -6723,8 +6716,8 @@ def _whole_label_from_score(score):
 def _pickup_label_from_score(score):
     """
     個別買い目の妙味ランク。
-    8.0以上はズレすぎのためピックアップ対象外。
-    数値は表示せず、AA/A/Bだけを出す。
+    数値はオッズと誤解されるため表示しない。
+    8.0以上はズレすぎとしてピックアップ対象外。
     """
     try:
         score = float(score)
@@ -6801,7 +6794,7 @@ def _score_sanpuku_assignment(a, b, c, role1, mark_map):
         return 0.0
 
 
-def _make_nishakei_pickups(col1, col2, role1, mark_map, max_items=3):
+def _make_nishakei_pickups(col1, col2, role1, mark_map, max_items=2):
     rows = []
     try:
         for a in col1:
@@ -6882,6 +6875,39 @@ def _extract_race_title(text):
     return ""
 
 
+def _extract_axis_rate(text):
+    try:
+        m = re.search(r"軸想定2着内率\s*\d+%", str(text or ""))
+        return m.group(0) if m else ""
+    except Exception:
+        return ""
+
+
+def _extract_recommended_style_from_text(text):
+    """
+    既存note本文に表示済みの推奨戦法・着順・コピー用を最優先で取る。
+    これにより、note表示生成が本体の推奨順を変えないようにする。
+    """
+    try:
+        s = str(text or "")
+        m_style = re.search(r"✅\s*推奨戦法：\s*(\S+)", s)
+        style = m_style.group(1).strip() if m_style else str(globals().get("RECOMMENDED_STYLE", ""))
+
+        m_copy = re.search(r"コピー用：\s*([1-9]{3,9})", s)
+        copy = m_copy.group(1).strip() if m_copy else str(globals().get("RECOMMENDED_STYLE_COPY", ""))
+
+        if copy:
+            seq = [int(ch) for ch in copy if ch.isdigit()]
+        else:
+            seq = [int(x) for x in (globals().get("RECOMMENDED_STYLE_SEQ", []) or []) if str(x).isdigit()]
+            copy = "".join(str(x) for x in seq)
+
+        return style, seq, copy
+    except Exception:
+        seq = [int(x) for x in (globals().get("RECOMMENDED_STYLE_SEQ", []) or []) if str(x).isdigit()]
+        return str(globals().get("RECOMMENDED_STYLE", "")), seq, "".join(str(x) for x in seq)
+
+
 def _make_fixed_short_comment(total_label, tenkai_label, has_nisha, has_sanpuku):
     comments = []
     if total_label in ("低", "C"):
@@ -6913,15 +6939,10 @@ def _make_fixed_short_comment(total_label, tenkai_label, has_nisha, has_sanpuku)
 
 
 # -----------------------------------------
-# 推奨戦法とメイン着順予想を箱で強調表示
+# 上部：推奨戦法を画面にも表示
 # -----------------------------------------
 try:
-    _rec_style = globals().get("RECOMMENDED_STYLE", "")
-    _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
-    _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
-
-    _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
-
+    _rec_style, _rec_seq, _rec_copy = _extract_recommended_style_from_text(note_text_src)
     if _rec_style and _rec_seq:
         _rec_display_seq = " → ".join(str(int(x)) for x in _rec_seq)
         st.info(
@@ -6943,13 +6964,11 @@ whole_myoumi_score = None  # 内部用。表示しない。
 nisha_pickup_text = "該当なし"
 sanpuku_pickup_text = "該当なし"
 short_comment_text = ""
-col1_text = col2_text = col3_text = ""
 promote_car = None
+col1_text = col2_text = col3_text = ""
 
 try:
-    _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
-    _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
-    _line_def = globals().get("line_def", {})
+    _rec_style, _rec_seq, _rec_copy = _extract_recommended_style_from_text(note_text_src)
 
     if len(_rec_seq) >= 3:
         role1 = int(_rec_seq[0])
@@ -6959,8 +6978,10 @@ try:
         col1_cars = _uniq_keep([role1, role2])
         col2_base = _uniq_keep([role1, role2, role3_original])
 
+        _line_def = globals().get("line_def", globals().get("LINE_DEF", {}))
         eval1_line_members_text = _find_line_members_of_car_from_note_text(note_text_src, role1)
         eval1_line_members_global = _find_line_members_of_car(_line_def, role1)
+
         if eval1_line_members_text and int(role1) in [int(x) for x in eval1_line_members_text]:
             eval1_line_members = eval1_line_members_text
         else:
@@ -6999,7 +7020,7 @@ try:
         nishakei_forme_line = f"2車系フォメ：{col1_text}→{col2_text} / {col1_text}={col2_text}"
         sanpuku_forme_line = f"三連複フォメ：{col1_text}-{col2_text}-{col3_text}"
 
-        nisha_pickups = _make_nishakei_pickups(col1_cars, col2_cars, role1, market_mark_map, max_items=3)
+        nisha_pickups = _make_nishakei_pickups(col1_cars, col2_cars, role1, market_mark_map, max_items=2)
         sanpuku_pickups = _make_sanpuku_pickups(col1_cars, col2_cars, col3_cars, role1, market_mark_map, max_items=3)
         nisha_pickup_text = _format_nishakei_pickups(nisha_pickups)
         sanpuku_pickup_text = _format_sanpuku_pickups(sanpuku_pickups)
@@ -7040,13 +7061,10 @@ except Exception as _e:
 # 後半の重複詳細、3連単通常フォメ、期待値点は出さない。
 # -----------------------------------------
 try:
-    _rec_style = globals().get("RECOMMENDED_STYLE", "")
-    _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
-    _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
-    _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
-
+    _rec_style, _rec_seq, _rec_copy = _extract_recommended_style_from_text(note_text_src)
     race_title = _extract_race_title(note_text_src)
     tenkai_label = _extract_first_line_value(note_text_src, "展開評価")
+    axis_rate = _extract_axis_rate(note_text_src)
     rec_display_seq = " → ".join(str(int(x)) for x in _rec_seq) if _rec_seq else "—"
 
     note_parts = []
@@ -7055,7 +7073,11 @@ try:
 
     if tenkai_label:
         note_parts.append(f"展開評価：{tenkai_label}")
-    note_parts.append(f"全体妙味：{whole_myoumi_label}")
+
+    total_line = f"全体妙味：{whole_myoumi_label}"
+    if axis_rate:
+        total_line += f"（{axis_rate}）"
+    note_parts.append(total_line)
 
     if _rec_style:
         note_parts.append(f"✅ 推奨戦法：{_rec_style}")
