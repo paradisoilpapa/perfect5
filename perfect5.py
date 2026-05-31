@@ -6796,7 +6796,13 @@ def _calc_expect_axis_score_label(col1_cars, col2_cars, role1, mark_map):
 
 
 def _myoumi_mark_penalty(mark: str, role: str) -> float:
-    """妙味ピックアップ用の印減点。"""
+    """
+    妙味ピックアップ用の印減点。
+    思想：
+    ・WINTICKET印とVeloBi買い目構造が被るほど、市場評価と一致して妙味は下がる。
+    ・1列目の印被りは強く減点、2列目は中、3列目は軽く減点。
+    ・無印は減点しない。×は軽い減点に留める。
+    """
     mark = str(mark or "無印")
     if role == "head":
         return {"◎": 4.0, "〇": 3.0, "△": 1.5, "×": 0.75, "無印": 0.0}.get(mark, 0.0)
@@ -6808,7 +6814,10 @@ def _myoumi_mark_penalty(mark: str, role: str) -> float:
 
 
 def _myoumi_eval1_bonus(car: int, role1: int, mark_map: dict) -> float:
-    """評価1を頭に置く場合だけ、市場ズレを内部基準に反映する。"""
+    """
+    評価1を1列目に置く場合だけ、市場ズレを内部基準に反映する。
+    評価1が無印・×なら妙味を上げ、◎なら市場評価と一致しているので下げる。
+    """
     try:
         if int(car) != int(role1):
             return 0.0
@@ -6818,24 +6827,90 @@ def _myoumi_eval1_bonus(car: int, role1: int, mark_map: dict) -> float:
         return 0.0
 
 
+def _myoumi_market_pair_penalty(marks) -> float:
+    """
+    2車系用の本線ペア追加減点。
+    ◎〇のように市場評価ど真ん中の組み合わせは、的中候補ではあっても妙味候補ではないため強く落とす。
+    """
+    ms = {str(x or "無印") for x in marks}
+    if "◎" in ms and "〇" in ms:
+        return 1.5
+    if "◎" in ms and "△" in ms:
+        return 0.8
+    if "〇" in ms and "△" in ms:
+        return 0.6
+    if "◎" in ms and "×" in ms:
+        return 0.3
+    if "〇" in ms and "×" in ms:
+        return 0.2
+    return 0.0
+
+
+def _myoumi_market_trio_penalty(marks) -> float:
+    """
+    3連系用の本線構成追加減点。
+    ◎〇△が同居するほど、市場本線寄りとして妙味を下げる。
+    """
+    ms = {str(x or "無印") for x in marks}
+    pen = 0.0
+
+    # ◎〇同居は強い市場本線扱い
+    if "◎" in ms and "〇" in ms:
+        pen += 1.0
+
+    # ◎〇△が揃う場合はさらに本線寄り
+    if {"◎", "〇", "△"}.issubset(ms):
+        pen += 1.0
+    elif "◎" in ms and "△" in ms:
+        pen += 0.4
+    elif "〇" in ms and "△" in ms:
+        pen += 0.3
+
+    # 印付き3車で固まりすぎる場合は軽く追加減点
+    marked_count = sum(1 for m in marks if str(m or "無印") in {"◎", "〇", "△", "×"})
+    if marked_count >= 3:
+        pen += 0.3
+
+    return pen
+
+
 def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
-    """2車系ピックアップ用。a-b の順番はフォメ列順を保持する。"""
+    """
+    2車系ピックアップ用。
+    a-b の順番はフォメ列順を保持する。
+    実オッズではなく、WINTICKET印との被りから見た内部妙味pt。
+    """
     mm = {int(k): str(v) for k, v in (mark_map or {}).items()}
+    ma = mm.get(int(a), "無印")
+    mb = mm.get(int(b), "無印")
+
     score = 10.0
-    score -= _myoumi_mark_penalty(mm.get(int(a), "無印"), "head")
-    score -= _myoumi_mark_penalty(mm.get(int(b), "無印"), "tail")
+    score -= _myoumi_mark_penalty(ma, "head")
+    score -= _myoumi_mark_penalty(mb, "tail")
+    score -= _myoumi_market_pair_penalty([ma, mb])
     score += _myoumi_eval1_bonus(int(a), int(role1), mm)
+
     return round(max(0.0, min(10.0, score)), 1)
 
 
 def _myoumi_score_3kei(a: int, b: int, c: int, role1: int, mark_map: dict) -> float:
-    """3連系ピックアップ用。a-b-c の順番はフォメ列順を保持する。"""
+    """
+    3連系ピックアップ用。
+    a-b-c の順番はフォメ列順を保持する。
+    実オッズではなく、WINTICKET印との被りから見た内部妙味pt。
+    """
     mm = {int(k): str(v) for k, v in (mark_map or {}).items()}
+    ma = mm.get(int(a), "無印")
+    mb = mm.get(int(b), "無印")
+    mc = mm.get(int(c), "無印")
+
     score = 10.0
-    score -= _myoumi_mark_penalty(mm.get(int(a), "無印"), "head")
-    score -= _myoumi_mark_penalty(mm.get(int(b), "無印"), "tail")
-    score -= _myoumi_mark_penalty(mm.get(int(c), "無印"), "third")
+    score -= _myoumi_mark_penalty(ma, "head")
+    score -= _myoumi_mark_penalty(mb, "tail")
+    score -= _myoumi_mark_penalty(mc, "third")
+    score -= _myoumi_market_trio_penalty([ma, mb, mc])
     score += _myoumi_eval1_bonus(int(a), int(role1), mm)
+
     return round(max(0.0, min(10.0, score)), 1)
 
 
@@ -6843,6 +6918,10 @@ def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, 
     """
     既存フォメから、妙味基準を超えた買い目だけを抽出する。
     順位生成・フォメ生成には触らず、表示にだけ使う。
+
+    基準：
+    ・5.0ptちょうどは境界扱いとして表示しない。
+    ・5.0pt超だけを表示する。
     """
     try:
         threshold = 5.0
@@ -6865,7 +6944,7 @@ def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, 
                 if int(a) == int(b):
                     continue
                 sc = _myoumi_score_2kei(a, b, r1, mark_map)
-                if sc >= threshold:
+                if sc > threshold:
                     two.append((sc, int(a), int(b)))
 
         two.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[2], 99)))
@@ -6883,13 +6962,13 @@ def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, 
                         continue
                     seen_ordered.add(key)
                     sc = _myoumi_score_3kei(a, b, c, r1, mark_map)
-                    if sc >= threshold:
+                    if sc > threshold:
                         three.append((sc, int(a), int(b), int(c)))
 
         three.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[3], 99)))
         three = three[:max_3kei]
 
-        lines = [f"【妙味ピックアップ｜基準{threshold:.1f}pt以上】", ""]
+        lines = ["【妙味ピックアップ｜基準5.0pt超】", ""]
         lines.append("2車系：")
         if two:
             for sc, a, b in two:
