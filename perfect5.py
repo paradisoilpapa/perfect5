@@ -6532,24 +6532,22 @@ except Exception as _e:
         pass
 
 # =========================
-# note用コピーエリア：期待値軸＋実車番フォーメーション
+# note用コピーエリア：全体妙味＋券種別ピックアップ
 # =========================
 
-note_text = "\n".join(note_sections)
+note_text_src = "\n".join(note_sections)
 
 st.markdown("### 📋 note用（コピーエリア）")
 
 # -----------------------------------------
-# 期待値軸判定用：◎〇△× 車番入力
-# ※公開コピーには、市場名・外部名は出さない
-# ※入力された印は「当たりやすさ」ではなく、市場人気による期待値減衰として扱う
+# 市場印：計算反映前に snapshot へ固定済み
+# ※市場印は「信頼度加点」ではなく、世間評価との被りによる妙味減衰として扱う
 # -----------------------------------------
-# 期待値軸判定用の市場印は、計算反映前に snapshot へ固定済み。
-# ここでは再入力させず、反映済み値だけを使う。
 market_honmei_raw = snapshot.get("market_honmei_raw", "—")
 market_taikou_raw = snapshot.get("market_taikou_raw", "—")
 market_tan_raw = snapshot.get("market_tan_raw", "—")
 market_batsu_raw = snapshot.get("market_batsu_raw", "—")
+
 
 def _to_car_int_or_none(v):
     try:
@@ -6602,14 +6600,14 @@ def _count_nishatan(col1, col2):
     return sum(1 for a in col1 for b in col2 if int(a) != int(b))
 
 
-def _count_sanrentan(col1, col2, col3):
-    return sum(
-        1
-        for a in col1
-        for b in col2
-        for c in col3
-        if len({int(a), int(b), int(c)}) == 3
-    )
+def _count_nifuku(col1, col2):
+    pairs = set()
+    for a in col1:
+        for b in col2:
+            if int(a) == int(b):
+                continue
+            pairs.add(tuple(sorted([int(a), int(b)])))
+    return len(pairs)
 
 
 def _count_sanpuku(col1, col2, col3):
@@ -6638,8 +6636,8 @@ def _find_line_members_of_car(line_def_obj, car):
 
 def _find_line_members_of_car_from_note_text(note_text_obj, car):
     """
-    line_def が globals に無い/取れない場合の保険。
     note本文の「ライン　73　16　524」から評価1の所属ラインを復元する。
+    line_def がスコープ外・旧値・未更新になった時の保険。
     """
     try:
         car = int(car)
@@ -6648,7 +6646,6 @@ def _find_line_members_of_car_from_note_text(note_text_obj, car):
         if not m:
             return []
         part = m.group(1).strip()
-        # 全角スペース・半角スペースで分割。数字以外は落とす。
         chunks = re.split(r"[\s　]+", part)
         for ch in chunks:
             nums = [int(x) for x in re.findall(r"\d", ch)]
@@ -6662,11 +6659,7 @@ def _find_line_members_of_car_from_note_text(note_text_obj, car):
 def _pick_eval1_line_promote_car(eval1_line_members, current_col2, mark_map):
     """
     評価1ライン内の印付き未採用車を、2列目へ1車だけ繰り上げる。
-
-    目的：
-    ・評価1を頭に置くなら、評価1ライン内の番手/後続が2着に残る筋を拾う。
-    ・ただし点数増を避けるため、繰り上げは1車だけ。
-    ・◎〇△×の順で優先し、同格ならライン順（番手優先）にする。
+    ◎〇△×の順で優先し、同格ならライン順（番手優先）。
     """
     try:
         line = [int(x) for x in (eval1_line_members or []) if str(x).isdigit()]
@@ -6688,26 +6681,71 @@ def _pick_eval1_line_promote_car(eval1_line_members, current_col2, mark_map):
 
         candidates.sort(reverse=True)
         return int(candidates[0][2])
-
     except Exception:
         return None
 
 
-def _calc_expect_axis_score_label(col1_cars, col2_cars, role1, mark_map):
+# -------------------------
+# 妙味スコア共通部品
+# -------------------------
+_HEAD_PENALTY = {"◎": 4.0, "〇": 3.0, "△": 1.5, "×": 0.75, "無印": 0.0}
+_TAIL_PENALTY = {"◎": 2.0, "〇": 1.5, "△": 0.75, "×": 0.40, "無印": 0.0}
+_THIRD_PENALTY = {"◎": 1.0, "〇": 0.75, "△": 0.40, "×": 0.20, "無印": 0.0}
+_ROLE1_BONUS = {"無印": 1.0, "×": 0.5, "△": 0.0, "〇": -0.5, "◎": -1.0}
+
+
+def _mark_of(car, mark_map):
+    try:
+        return str((mark_map or {}).get(int(car), "無印"))
+    except Exception:
+        return "無印"
+
+
+def _whole_label_from_score(score):
+    """レース全体の妙味ランク。低=人気寄り、荒=ズレすぎ。"""
+    try:
+        score = float(score)
+    except Exception:
+        return "C"
+    if score >= 8.0:
+        return "荒"
+    if score >= 6.8:
+        return "AA"
+    if score >= 5.5:
+        return "A"
+    if score >= 4.5:
+        return "B"
+    if score >= 3.5:
+        return "C"
+    return "低"
+
+
+def _pickup_label_from_score(score):
     """
-    期待値軸を点数化する。
+    個別買い目の妙味ランク。
+    8.0以上はズレすぎのためピックアップ対象外。
+    数値は表示せず、AA/A/Bだけを出す。
+    """
+    try:
+        score = float(score)
+    except Exception:
+        return None
+    if score >= 8.0:
+        return None
+    if score >= 6.5:
+        return "AA"
+    if score >= 5.8:
+        return "A"
+    if score >= 5.0:
+        return "B"
+    return None
 
-    基本思想：
-    ・信頼度ではなく、市場印とのズレによる配当妙味を見る。
-    ・2車単フォメを基準に、1列目候補と2列目専用候補を分けて評価する。
-    ・1列目に市場印が付くほど人気寄りで期待値は下がりやすい。
-    ・2列目だけの市場印は、相手人気として軽く減点する。
-    ・評価1が無印なら、市場からズレた期待値妙味として加点する。
 
-    期待値点 = 10
-      - 1列目印減点
-      - 2列目専用印減点
-      + 評価1印補正
+def _calc_whole_score_label(col1_cars, col2_cars, role1, mark_map):
+    """
+    全体妙味を点数化する。
+    信頼度ではなく、WINTICKET印との被りによる世間評価との近さ/ズレを見る。
+    表示では点数を出さず、全体妙味ラベルだけ使う。
     """
     try:
         col1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
@@ -6715,112 +6753,163 @@ def _calc_expect_axis_score_label(col1_cars, col2_cars, role1, mark_map):
         r1 = int(role1)
         mark_map = {int(k): str(v) for k, v in (mark_map or {}).items()}
 
-        head_penalty = {"◎": 4.0, "〇": 3.0, "△": 1.5, "×": 0.75, "無印": 0.0}
-        tail_penalty = {"◎": 2.0, "〇": 1.5, "△": 0.75, "×": 0.40, "無印": 0.0}
-
         score = 10.0
-        role_marks = []
-
-        # 1列目候補は頭として市場に売れやすいため強めに減点
         for car in col1:
-            mk = mark_map.get(int(car), "無印")
-            role_marks.append(mk)
-            score -= head_penalty.get(mk, 0.0)
+            score -= _HEAD_PENALTY.get(_mark_of(car, mark_map), 0.0)
 
-        # 2列目だけの候補は相手人気なので軽めに減点
         col1_set = set(col1)
         for car in col2:
             if int(car) in col1_set:
                 continue
-            mk = mark_map.get(int(car), "無印")
-            role_marks.append(mk)
-            score -= tail_penalty.get(mk, 0.0)
+            score -= _TAIL_PENALTY.get(_mark_of(car, mark_map), 0.0)
 
-        # 評価1の印による補正。信頼度ではなく、市場とのズレを表す。
-        r1_mark = mark_map.get(r1, "無印")
-        r1_bonus_map = {"無印": 1.0, "×": 0.5, "△": 0.0, "〇": -0.5, "◎": -1.0}
-        score += r1_bonus_map.get(r1_mark, 0.0)
-
+        score += _ROLE1_BONUS.get(_mark_of(r1, mark_map), 0.0)
         score = max(0.0, min(10.0, float(score)))
-
-        # 表示ランクだけを調整。
-        # 6.6点のような「期待値はあるが荒れ寄り」の形をAAに上げすぎない。
-        # 8.0以上はズレすぎの荒領域として扱う。
-        if score >= 8.0:
-            label = "荒"
-        elif score >= 6.8:
-            label = "AA"
-        elif score >= 5.5:
-            label = "A"
-        elif score >= 4.5:
-            label = "B"
-        elif score >= 3.5:
-            label = "C"
-        else:
-            label = "低"
-
-        return label, round(score, 1), role_marks
-
+        return _whole_label_from_score(score), round(score, 1)
     except Exception:
-        return "C", None, []
+        return "C", None
 
 
-def _replace_axis_line_to_expect(text: str, label: str) -> str:
-    """
-    note本文の最初の軸評価行を期待値軸へ置換する。
-    軸想定2着内率は残す。
-    """
-    pat = r"軸評価：[A-E](?:☆☆|☆)?［[^］]*］（軸想定2着内率\s*\d+%）"
+def _score_nishakei_pick(a, b, role1, mark_map):
+    """2車単/2車複の個別妙味スコア。"""
+    try:
+        a = int(a); b = int(b); role1 = int(role1)
+        mark_map = {int(k): str(v) for k, v in (mark_map or {}).items()}
+        score = 10.0
+        score -= _HEAD_PENALTY.get(_mark_of(a, mark_map), 0.0)
+        score -= _TAIL_PENALTY.get(_mark_of(b, mark_map), 0.0)
+        if a == role1:
+            score += _ROLE1_BONUS.get(_mark_of(role1, mark_map), 0.0)
+        return max(0.0, min(10.0, float(score)))
+    except Exception:
+        return 0.0
 
-    def repl(m):
-        s = m.group(0)
-        rate = re.search(r"（軸想定2着内率\s*\d+%）", s)
-        return f"期待値軸：{label}" + (rate.group(0) if rate else "")
 
-    return re.sub(pat, repl, text, count=1)
+def _score_sanpuku_assignment(a, b, c, role1, mark_map):
+    """三連複の1つの列割当に対する妙味スコア。"""
+    try:
+        a = int(a); b = int(b); c = int(c); role1 = int(role1)
+        mark_map = {int(k): str(v) for k, v in (mark_map or {}).items()}
+        score = 10.0
+        score -= _HEAD_PENALTY.get(_mark_of(a, mark_map), 0.0)
+        score -= _TAIL_PENALTY.get(_mark_of(b, mark_map), 0.0)
+        score -= _THIRD_PENALTY.get(_mark_of(c, mark_map), 0.0)
+        if a == role1:
+            score += _ROLE1_BONUS.get(_mark_of(role1, mark_map), 0.0)
+        return max(0.0, min(10.0, float(score)))
+    except Exception:
+        return 0.0
 
 
-def _strip_existing_top_summary(text: str) -> str:
-    """
-    既存の上部サマリーだけ削除する。
-    詳細部（デイ/ナイター/ミッドナイト/モーニング 以降）は絶対に残す。
-    """
-    lines = text.splitlines()
-    if not lines:
-        return text
+def _make_nishakei_pickups(col1, col2, role1, mark_map, max_items=3):
+    rows = []
+    try:
+        for a in col1:
+            for b in col2:
+                if int(a) == int(b):
+                    continue
+                score = _score_nishakei_pick(a, b, role1, mark_map)
+                label = _pickup_label_from_score(score)
+                if not label:
+                    continue
+                rows.append({"a": int(a), "b": int(b), "score": score, "label": label})
+        rows.sort(key=lambda r: (-r["score"], r["a"], r["b"]))
+        return rows[:int(max_items)]
+    except Exception:
+        return []
 
-    axis_idx = None
-    for i, line in enumerate(lines):
-        if re.match(r"^(軸評価|期待値軸)：", line):
-            axis_idx = i
-            break
 
-    if axis_idx is None:
-        return text
+def _make_sanpuku_pickups(col1, col2, col3, role1, mark_map, max_items=3):
+    best = {}
+    try:
+        for a in col1:
+            for b in col2:
+                for c in col3:
+                    if len({int(a), int(b), int(c)}) != 3:
+                        continue
+                    combo = tuple(sorted([int(a), int(b), int(c)]))
+                    score = _score_sanpuku_assignment(a, b, c, role1, mark_map)
+                    if combo not in best or score > best[combo]:
+                        best[combo] = score
 
-    # 軸行直後の空行を飛ばす
-    s = axis_idx + 1
-    while s < len(lines) and lines[s].strip() == "":
-        s += 1
+        rows = []
+        for combo, score in best.items():
+            label = _pickup_label_from_score(score)
+            if not label:
+                continue
+            rows.append({"combo": combo, "score": score, "label": label})
 
-    # 既存サマリーがないなら何もしない
-    if s >= len(lines) or not lines[s].startswith("✅ 推奨戦法："):
-        return text
+        rows.sort(key=lambda r: (-r["score"], r["combo"]))
+        return rows[:int(max_items)]
+    except Exception:
+        return []
 
-    # 詳細部の開催区分行までをサマリーとみなして削除
-    e = s
-    detail_pat = re.compile(r"^(モーニング|デイ|ナイター|ミッドナイト)\s")
-    while e < len(lines):
-        if detail_pat.match(lines[e]):
-            break
-        e += 1
 
-    if e >= len(lines):
-        # 詳細部が見つからない時は危険なので削らない
-        return text
+def _format_nishakei_pickups(rows):
+    if not rows:
+        return "該当なし"
+    return "\n".join(
+        f"{r['a']}→{r['b']} / {r['a']}={r['b']}　{r['label']}"
+        for r in rows
+    )
 
-    new_lines = lines[:s] + lines[e:]
-    return "\n".join(new_lines)
+
+def _format_sanpuku_pickups(rows):
+    if not rows:
+        return "該当なし"
+    return "\n".join(
+        f"{'-'.join(str(x) for x in r['combo'])}　{r['label']}"
+        for r in rows
+    )
+
+
+def _extract_first_line_value(text, label):
+    try:
+        m = re.search(rf"^{re.escape(label)}：(.+)$", str(text or ""), flags=re.MULTILINE)
+        return m.group(1).strip() if m else ""
+    except Exception:
+        return ""
+
+
+def _extract_race_title(text):
+    try:
+        for ln in str(text or "").splitlines():
+            s = ln.strip()
+            if s:
+                return s
+    except Exception:
+        pass
+    return ""
+
+
+def _make_fixed_short_comment(total_label, tenkai_label, has_nisha, has_sanpuku):
+    comments = []
+    if total_label in ("低", "C"):
+        comments.append(f"全体妙味：{total_label}。市場評価と近い構成。")
+    elif total_label in ("A", "AA"):
+        comments.append(f"全体妙味：{total_label}。市場評価と適度にズレあり。")
+    elif total_label == "B":
+        comments.append("全体妙味：B。人気寄りと妙味の中間。")
+    elif total_label == "荒":
+        comments.append("全体妙味：荒。ズレが大きく見送り寄り。")
+    else:
+        comments.append(f"全体妙味：{total_label}。")
+
+    if has_nisha and has_sanpuku:
+        comments.append("2車系・三連複ともに妙味候補あり。")
+    elif has_nisha:
+        comments.append("2車系に妙味候補あり。")
+    elif has_sanpuku:
+        comments.append("三連複に妙味候補あり。")
+    else:
+        comments.append("妙味ピックアップは該当なし。")
+
+    if "混戦" in str(tenkai_label):
+        comments.append("混戦のため小点数確認。")
+    elif ("優位" in str(tenkai_label)) or ("順当" in str(tenkai_label)):
+        comments.append("フォメ構造は比較的素直。")
+
+    return "\n".join(comments)
 
 
 # -----------------------------------------
@@ -6835,26 +6924,27 @@ try:
 
     if _rec_style and _rec_seq:
         _rec_display_seq = " → ".join(str(int(x)) for x in _rec_seq)
-
         st.info(
             f"✅ 推奨戦法：{_rec_style}\n\n"
             f"【{_rec_style}メイン着順予想】　{_rec_display_seq}\n\n"
             f"コピー用：{_rec_copy}"
         )
-
 except Exception as _e:
     st.caption(f"推奨戦法表示生成不可：{_e}")
 
 
 # -----------------------------------------
-# 期待値軸＋実車番フォーメーション自動生成
+# 全体妙味＋2車系/三連複フォメ＋妙味ピックアップ生成
 # -----------------------------------------
-nishatan_forme_line = ""
+nishakei_forme_line = ""
 sanpuku_forme_line = ""
-sanrentan_forme_line = ""
-expect_axis_label = "C"
-expect_axis_score = None
-expect_axis_role_marks = []
+whole_myoumi_label = "C"
+whole_myoumi_score = None  # 内部用。表示しない。
+nisha_pickup_text = "該当なし"
+sanpuku_pickup_text = "該当なし"
+short_comment_text = ""
+col1_text = col2_text = col3_text = ""
+promote_car = None
 
 try:
     _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
@@ -6869,23 +6959,15 @@ try:
         col1_cars = _uniq_keep([role1, role2])
         col2_base = _uniq_keep([role1, role2, role3_original])
 
-        # 評価1ライン内に印付き未採用車がいれば、1車だけ2列目へ繰り上げる。
-        # 例：57142 / 評価1ライン524 / 2に印 → 57→572、3列目は57214。
-        # 評価1ラインは、globals の line_def よりも note本文の「ライン」表示を優先する。
-        # 理由：note用コピーエリアでは line_def がスコープ外・旧値・未更新になる場合があるため。
-        # 例：ライン 73 16 524 / 評価1=5 なら、必ず 524 を拾う。
-        eval1_line_members_text = _find_line_members_of_car_from_note_text(note_text, role1)
+        eval1_line_members_text = _find_line_members_of_car_from_note_text(note_text_src, role1)
         eval1_line_members_global = _find_line_members_of_car(_line_def, role1)
-
         if eval1_line_members_text and int(role1) in [int(x) for x in eval1_line_members_text]:
             eval1_line_members = eval1_line_members_text
         else:
             eval1_line_members = eval1_line_members_global
 
         promote_car = _pick_eval1_line_promote_car(eval1_line_members, col2_base, market_mark_map)
-
         if promote_car is not None:
-            # 元の3は繰り下げ、点数を増やさず役割順だけ組み替える
             rec_order_for_forme = _uniq_keep([role1, role2, promote_car, role3_original] + list(_rec_seq[3:]))
         else:
             rec_order_for_forme = list(_rec_seq)
@@ -6893,13 +6975,9 @@ try:
         role3 = int(rec_order_for_forme[2]) if len(rec_order_for_forme) >= 3 else role3_original
         col2_cars = _uniq_keep([role1, role2, role3])
 
-        expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(col1_cars, col2_cars, role1, market_mark_map)
+        whole_myoumi_label, whole_myoumi_score = _calc_whole_score_label(col1_cars, col2_cars, role1, market_mark_map)
 
-        # 3列目：原則5車に収める。
-        # ただし「評価1ライン全車」は必ず優先反映する。
-        # 例：7325461 / 評価1ライン571 / 5を2列目繰り上げ
-        #   NG: 735241（6車）
-        #   OK: 73521（5車。評価1ライン571を全員保持し、低優先の4を落とす）
+        # 3列目：原則5車に収める。ただし評価1ライン全車は必ず優先反映。
         col3_mandatory = _uniq_keep(col2_cars + eval1_line_members)
         col3_cars = list(col3_mandatory)
         for _c in rec_order_for_forme:
@@ -6907,8 +6985,6 @@ try:
                 col3_cars.append(_c)
             if len(col3_cars) >= 5:
                 break
-
-        # 通常は5車まで。評価1ライン＋2列目だけで5車を超える特殊ケースのみ超過を許容。
         if len(col3_mandatory) <= 5:
             col3_cars = col3_cars[:5]
 
@@ -6917,41 +6993,51 @@ try:
         col3_text = _fmt_cars(col3_cars)
 
         nishatan_points = _count_nishatan(col1_cars, col2_cars)
+        nifuku_points = _count_nifuku(col1_cars, col2_cars)
         sanpuku_points = _count_sanpuku(col1_cars, col2_cars, col3_cars)
-        sanrentan_points = _count_sanrentan(col1_cars, col2_cars, col3_cars)
 
-        nishatan_forme_line = f"推奨2車単フォメ：{col1_text}→{col2_text}（{nishatan_points}点）"
-        sanpuku_forme_line = f"推奨三連複フォメ：{col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
-        sanrentan_forme_line = f"推奨3連単フォメ：{col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
+        nishakei_forme_line = f"2車系フォメ：{col1_text}→{col2_text} / {col1_text}={col2_text}"
+        sanpuku_forme_line = f"三連複フォメ：{col1_text}-{col2_text}-{col3_text}"
 
-        _expect_score_line = "" if expect_axis_score is None else f"期待値点：{expect_axis_score:.1f}\n"
+        nisha_pickups = _make_nishakei_pickups(col1_cars, col2_cars, role1, market_mark_map, max_items=3)
+        sanpuku_pickups = _make_sanpuku_pickups(col1_cars, col2_cars, col3_cars, role1, market_mark_map, max_items=3)
+        nisha_pickup_text = _format_nishakei_pickups(nisha_pickups)
+        sanpuku_pickup_text = _format_sanpuku_pickups(sanpuku_pickups)
+
+        tenkai_label = _extract_first_line_value(note_text_src, "展開評価")
+        short_comment_text = _make_fixed_short_comment(
+            whole_myoumi_label,
+            tenkai_label,
+            has_nisha=bool(nisha_pickups),
+            has_sanpuku=bool(sanpuku_pickups),
+        )
+
         st.info(
-            f"期待値軸：{expect_axis_label}\n"
-            f"{_expect_score_line}"
-            f"{nishatan_forme_line}\n"
-            f"{sanpuku_forme_line}\n"
-            f"{sanrentan_forme_line}"
+            f"全体妙味：{whole_myoumi_label}\n"
+            f"{nishakei_forme_line}\n"
+            f"{sanpuku_forme_line}\n\n"
+            f"【妙味ピックアップ】\n"
+            f"2車単 / 2車複：\n{nisha_pickup_text}\n\n"
+            f"三連複：\n{sanpuku_pickup_text}"
         )
         if promote_car is not None:
             st.caption(f"2列目繰り上げ：{role1}ライン内の印付き車 {promote_car} を反映")
-
     else:
-        nishatan_forme_line = "推奨2車単フォメ：生成不可"
-        sanpuku_forme_line = "推奨三連複フォメ：生成不可"
-        sanrentan_forme_line = "推奨3連単フォメ：生成不可"
+        nishakei_forme_line = "2車系フォメ：生成不可"
+        sanpuku_forme_line = "三連複フォメ：生成不可"
+        short_comment_text = "妙味ピックアップは生成不可。"
 
 except Exception as _e:
-    nishatan_forme_line = f"推奨2車単フォメ：生成不可（{_e}）"
-    sanpuku_forme_line = f"推奨三連複フォメ：生成不可（{_e}）"
-    sanrentan_forme_line = f"推奨3連単フォメ：生成不可（{_e}）"
-    st.caption(nishatan_forme_line)
+    nishakei_forme_line = f"2車系フォメ：生成不可（{_e}）"
+    sanpuku_forme_line = f"三連複フォメ：生成不可（{_e}）"
+    short_comment_text = f"妙味ピックアップ生成不可：{_e}"
+    st.caption(nishakei_forme_line)
     st.caption(sanpuku_forme_line)
-    st.caption(sanrentan_forme_line)
 
 
 # -----------------------------------------
-# note上部に実戦用サマリーを差し込む
-# 詳細部は行単位で保存する
+# note用の短縮コピー本文を生成
+# 後半の重複詳細、3連単通常フォメ、期待値点は出さない。
 # -----------------------------------------
 try:
     _rec_style = globals().get("RECOMMENDED_STYLE", "")
@@ -6959,53 +7045,45 @@ try:
     _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
     _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
 
-    # まず軸評価行を期待値軸へ置換
-    note_text = _replace_axis_line_to_expect(note_text, expect_axis_label)
+    race_title = _extract_race_title(note_text_src)
+    tenkai_label = _extract_first_line_value(note_text_src, "展開評価")
+    rec_display_seq = " → ".join(str(int(x)) for x in _rec_seq) if _rec_seq else "—"
 
-    # 既存の上部サマリーだけを削除
-    note_text = _strip_existing_top_summary(note_text)
+    note_parts = []
+    if race_title:
+        note_parts.append(race_title)
 
-    if _rec_style and _rec_seq:
-        _rec_display_seq = " → ".join(str(int(x)) for x in _rec_seq)
-        summary_block = (
-            f"\n\n✅ 推奨戦法：{_rec_style}\n\n"
-            f"【{_rec_style}メイン着順予想】\n"
-            f"{_rec_display_seq}\n\n"
-            f"コピー用：{_rec_copy}\n\n"
-            f"期待値軸：{expect_axis_label}\n"
-            f"{'' if expect_axis_score is None else f'期待値点：{expect_axis_score:.1f}\n'}"
-            f"{nishatan_forme_line}\n"
-            f"{sanpuku_forme_line}\n"
-            f"{sanrentan_forme_line}\n"
-        )
-    else:
-        summary_block = (
-            f"\n\n期待値軸：{expect_axis_label}\n"
-            f"{'' if expect_axis_score is None else f'期待値点：{expect_axis_score:.1f}\n'}"
-            f"{nishatan_forme_line}\n"
-            f"{sanpuku_forme_line}\n"
-            f"{sanrentan_forme_line}\n"
-        )
+    if tenkai_label:
+        note_parts.append(f"展開評価：{tenkai_label}")
+    note_parts.append(f"全体妙味：{whole_myoumi_label}")
 
-    # 最初の期待値軸行の直後にだけ挿入
-    _m_axis = re.search(
-        r"期待値軸：(?:AA|A|B|C|荒|低)（軸想定2着内率\s*\d+%）",
-        note_text
-    )
+    if _rec_style:
+        note_parts.append(f"✅ 推奨戦法：{_rec_style}")
 
-    if _m_axis:
-        note_text = note_text.replace(
-            _m_axis.group(0),
-            _m_axis.group(0) + summary_block,
-            1
-        )
-    else:
-        note_text = summary_block + "\n\n" + note_text
+    note_parts.append(f"【{_rec_style or '推奨'}メイン着順予想】")
+    note_parts.append(rec_display_seq)
+
+    if _rec_copy:
+        note_parts.append(f"コピー用：{_rec_copy}")
+
+    note_parts.append(nishakei_forme_line)
+    note_parts.append(sanpuku_forme_line)
+
+    note_parts.append("【妙味ピックアップ】")
+    note_parts.append("2車単 / 2車複：")
+    note_parts.append(nisha_pickup_text)
+    note_parts.append("三連複：")
+    note_parts.append(sanpuku_pickup_text)
+
+    note_parts.append("短評：")
+    note_parts.append(short_comment_text)
+
+    note_text = "\n\n".join(note_parts)
 
 except Exception as _e:
-    st.caption(f"note上部サマリー生成不可：{_e}")
+    note_text = f"note用コピー生成不可：{_e}"
 
-st.text_area("ここを選択してコピー", note_text, height=620)
+st.text_area("ここを選択してコピー", note_text, height=520)
 # =========================
 
 
