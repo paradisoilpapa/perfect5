@@ -6765,6 +6765,122 @@ def _calc_expect_axis_score_label(col1_cars, col2_cars, role1, mark_map):
         return "C", None, []
 
 
+
+def _myoumi_mark_penalty(mark: str, role: str) -> float:
+    """妙味ピックアップ用の印減点。"""
+    mark = str(mark or "無印")
+    if role == "head":
+        return {"◎": 4.0, "〇": 3.0, "△": 1.5, "×": 0.75, "無印": 0.0}.get(mark, 0.0)
+    if role == "tail":
+        return {"◎": 2.0, "〇": 1.5, "△": 0.75, "×": 0.40, "無印": 0.0}.get(mark, 0.0)
+    if role == "third":
+        return {"◎": 1.0, "〇": 0.75, "△": 0.40, "×": 0.20, "無印": 0.0}.get(mark, 0.0)
+    return 0.0
+
+
+def _myoumi_eval1_bonus(car: int, role1: int, mark_map: dict) -> float:
+    """評価1を頭に置く場合だけ、市場ズレを内部基準に反映する。"""
+    try:
+        if int(car) != int(role1):
+            return 0.0
+        mk = {int(k): str(v) for k, v in (mark_map or {}).items()}.get(int(role1), "無印")
+        return {"無印": 1.0, "×": 0.5, "△": 0.0, "〇": -0.5, "◎": -1.0}.get(mk, 0.0)
+    except Exception:
+        return 0.0
+
+
+def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
+    """2車系ピックアップ用。a-b の順番はフォメ列順を保持する。"""
+    mm = {int(k): str(v) for k, v in (mark_map or {}).items()}
+    score = 10.0
+    score -= _myoumi_mark_penalty(mm.get(int(a), "無印"), "head")
+    score -= _myoumi_mark_penalty(mm.get(int(b), "無印"), "tail")
+    score += _myoumi_eval1_bonus(int(a), int(role1), mm)
+    return round(max(0.0, min(10.0, score)), 1)
+
+
+def _myoumi_score_3kei(a: int, b: int, c: int, role1: int, mark_map: dict) -> float:
+    """3連系ピックアップ用。a-b-c の順番はフォメ列順を保持する。"""
+    mm = {int(k): str(v) for k, v in (mark_map or {}).items()}
+    score = 10.0
+    score -= _myoumi_mark_penalty(mm.get(int(a), "無印"), "head")
+    score -= _myoumi_mark_penalty(mm.get(int(b), "無印"), "tail")
+    score -= _myoumi_mark_penalty(mm.get(int(c), "無印"), "third")
+    score += _myoumi_eval1_bonus(int(a), int(role1), mm)
+    return round(max(0.0, min(10.0, score)), 1)
+
+
+def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
+    """
+    既存フォメから、妙味基準を超えた買い目だけを抽出する。
+    順位生成・フォメ生成には触らず、表示にだけ使う。
+    """
+    try:
+        threshold = 5.0
+        max_2kei = 3
+        max_3kei = 3
+
+        c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
+        c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
+        c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
+        r1 = int(role1)
+
+        rec_order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
+        rec_rank = {int(c): i for i, c in enumerate(rec_order)}
+        c1_rank = {int(c): i for i, c in enumerate(c1)}
+        c2_rank = {int(c): i for i, c in enumerate(c2)}
+
+        two = []
+        for a in c1:
+            for b in c2:
+                if int(a) == int(b):
+                    continue
+                sc = _myoumi_score_2kei(a, b, r1, mark_map)
+                if sc >= threshold:
+                    two.append((sc, int(a), int(b)))
+
+        two.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[2], 99)))
+        two = two[:max_2kei]
+
+        three = []
+        seen_ordered = set()
+        for a in c1:
+            for b in c2:
+                for c in c3:
+                    if len({int(a), int(b), int(c)}) != 3:
+                        continue
+                    key = (int(a), int(b), int(c))
+                    if key in seen_ordered:
+                        continue
+                    seen_ordered.add(key)
+                    sc = _myoumi_score_3kei(a, b, c, r1, mark_map)
+                    if sc >= threshold:
+                        three.append((sc, int(a), int(b), int(c)))
+
+        three.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[3], 99)))
+        three = three[:max_3kei]
+
+        lines = ["【妙味ピックアップ】", ""]
+        lines.append("2車系：")
+        if two:
+            for _, a, b in two:
+                lines.append(f"{a}-{b}")
+        else:
+            lines.append("該当なし")
+
+        lines.append("")
+        lines.append("3連系：")
+        if three:
+            for _, a, b, c in three:
+                lines.append(f"{a}-{b}-{c}")
+        else:
+            lines.append("該当なし")
+
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def _replace_axis_line_to_expect(text: str, label: str) -> str:
     """
     note本文の最初の軸評価行を全体妙味へ置換する。
@@ -6852,6 +6968,7 @@ except Exception as _e:
 nishatan_forme_line = ""
 sanpuku_forme_line = ""
 sanrentan_forme_line = ""
+myoumi_pickup_block = ""
 expect_axis_label = "C"
 expect_axis_score = None
 expect_axis_role_marks = []
@@ -6923,11 +7040,20 @@ try:
         nishatan_forme_line = f"2車系フォメ：{col1_text}→{col2_text} / {col1_text}={col2_text}（{nishatan_points}点）"
         sanpuku_forme_line = f"三連複フォメ：{col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
         sanrentan_forme_line = f"3連単フォメ：{col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
+        myoumi_pickup_block = _make_myoumi_pickup_block(
+            col1_cars,
+            col2_cars,
+            col3_cars,
+            role1,
+            market_mark_map,
+            rec_order_for_forme,
+        )
 
         st.info(
             f"全体妙味：{expect_axis_label}\n"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}"
+            + (f"\n\n{myoumi_pickup_block}" if myoumi_pickup_block else "")
         )
         if promote_car is not None:
             st.caption(f"2列目繰り上げ：{role1}ライン内の印付き車 {promote_car} を反映")
@@ -6971,12 +7097,14 @@ try:
             f"全体妙味：{expect_axis_label}\n"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
+            + (f"\n{myoumi_pickup_block}\n" if myoumi_pickup_block else "")
         )
     else:
         summary_block = (
             f"\n\n全体妙味：{expect_axis_label}\n"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
+            + (f"\n{myoumi_pickup_block}\n" if myoumi_pickup_block else "")
         )
 
     # 最初の全体妙味行の直後にだけ挿入
