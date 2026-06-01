@@ -7009,6 +7009,111 @@ def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, 
         return ""
 
 
+
+def _myoumi_zone_label(score: float, threshold: float = 5.0) -> str:
+    """
+    妙味ポイントの表示区分。
+    5.0pt超はピックアップ基準通過、5.0pt以下は参考扱い。
+    """
+    try:
+        sc = float(score)
+    except Exception:
+        sc = 0.0
+    return "通過" if sc > float(threshold) else "参考"
+
+
+def _all_2kei_point_items(col1_cars, col2_cars, role1, mark_map):
+    """
+    2車系フォメ内の全2車複候補を、妙味pt付きで返す。
+    同一2車複が複数方向で出る場合は、ptが高い方向を採用する。
+    例：1-2 と 2-1 が両方ある場合、高い方の列順で表示する。
+    """
+    c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
+    c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
+    best = {}
+    order = []
+
+    for i, a in enumerate(c1):
+        for j, b in enumerate(c2):
+            if int(a) == int(b):
+                continue
+            key = tuple(sorted((int(a), int(b))))
+            sc = _myoumi_score_2kei(int(a), int(b), int(role1), mark_map)
+            item = (float(sc), int(a), int(b), i, j)
+            if key not in best:
+                best[key] = item
+                order.append(key)
+            else:
+                old = best[key]
+                # pt優先。同点なら先にフォメで出た方向を残す。
+                if (item[0], -item[3], -item[4]) > (old[0], -old[3], -old[4]):
+                    best[key] = item
+
+    items = [best[k] for k in order if k in best]
+    items.sort(key=lambda x: (-x[0], x[3], x[4], x[1], x[2]))
+    return [(sc, a, b) for sc, a, b, _, _ in items]
+
+
+def _all_3kei_point_items(col1_cars, col2_cars, col3_cars, role1, mark_map):
+    """
+    三連複フォメ内の全候補を、妙味pt付きで返す。
+    三連複は重複なし3車として扱い、初回発生のフォメ列順で表示する。
+    """
+    c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
+    c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
+    c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
+    items = []
+    seen = set()
+
+    for i, a in enumerate(c1):
+        for j, b in enumerate(c2):
+            for k, c in enumerate(c3):
+                if len({int(a), int(b), int(c)}) != 3:
+                    continue
+                key = tuple(sorted((int(a), int(b), int(c))))
+                if key in seen:
+                    continue
+                seen.add(key)
+                sc = _myoumi_score_3kei(int(a), int(b), int(c), int(role1), mark_map)
+                items.append((float(sc), int(a), int(b), int(c), i, j, k))
+
+    items.sort(key=lambda x: (-x[0], x[4], x[5], x[6], x[1], x[2], x[3]))
+    return [(sc, a, b, c) for sc, a, b, c, _, _, _ in items]
+
+
+def _make_myoumi_point_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
+    """
+    検算用の妙味ポイント一覧。
+    買い目を直接決める欄ではなく、ヴェロビ的買目の根拠確認用として、
+    2車複・三連複のフォメ内候補をすべてpt表示する。
+    """
+    try:
+        threshold = 5.0
+        two_all = _all_2kei_point_items(col1_cars, col2_cars, role1, mark_map)
+        three_all = _all_3kei_point_items(col1_cars, col2_cars, col3_cars, role1, mark_map)
+
+        lines = ["【妙味ポイント｜基準5.0pt超】", ""]
+
+        lines.append("2車複：")
+        if two_all:
+            for sc, a, b in two_all:
+                lines.append(f"{a}-{b}　{sc:.1f}pt［{_myoumi_zone_label(sc, threshold)}］")
+        else:
+            lines.append("該当なし")
+
+        lines.append("")
+        lines.append("三連複：")
+        if three_all:
+            for sc, a, b, c in three_all:
+                lines.append(f"{a}-{b}-{c}　{sc:.1f}pt［{_myoumi_zone_label(sc, threshold)}］")
+        else:
+            lines.append("該当なし")
+
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def _nishafuku_pairs_from_forme(col1_cars, col2_cars):
     """
     2車系フォメ col1=col2 を2車複の重複なしペアへ変換する。
@@ -7113,7 +7218,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
                     c2_pair_keys.add(tuple(sorted((int(a), int(b)))))
 
         c2_set = set(c2)
-        lines = ["【買い目整理】"]
+        lines = ["【ヴェロビ的買目】"]
 
         # --------------------------------------------------
         # 0点：2車複で芯が作れないので、三連複フォメ全体で受ける
@@ -7397,13 +7502,21 @@ try:
             market_mark_map,
             rec_order_for_forme,
         )
+        myoumi_point_block = _make_myoumi_point_block(
+            col1_cars,
+            col2_cars,
+            col3_cars,
+            role1,
+            market_mark_map,
+            rec_order_for_forme,
+        )
 
         st.info(
             f"全体妙味：{expect_axis_label}\n"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}"
-            + (f"\n\n{myoumi_pickup_block}" if myoumi_pickup_block else "")
             + (f"\n\n{rule_buy_block}" if rule_buy_block else "")
+            + (f"\n\n{myoumi_point_block}" if myoumi_point_block else "")
         )
         if promote_car is not None:
             st.caption(f"2列目繰り上げ：{role1}ライン内の印付き車 {promote_car} を反映")
@@ -7419,6 +7532,7 @@ except Exception as _e:
     sanrentan_forme_line = f"3連単フォメ：生成不可（{_e}）"
     myoumi_pickup_block = ""
     rule_buy_block = ""
+    myoumi_point_block = ""
     st.caption(nishatan_forme_line)
     st.caption(sanpuku_forme_line)
 
@@ -7449,16 +7563,16 @@ try:
             f"全体妙味：{expect_axis_label}\n"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
-            + (f"\n{myoumi_pickup_block}\n" if myoumi_pickup_block else "")
             + (f"\n{rule_buy_block}\n" if rule_buy_block else "")
+            + (f"\n{myoumi_point_block}\n" if myoumi_point_block else "")
         )
     else:
         summary_block = (
             f"\n\n全体妙味：{expect_axis_label}\n"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
-            + (f"\n{myoumi_pickup_block}\n" if myoumi_pickup_block else "")
             + (f"\n{rule_buy_block}\n" if rule_buy_block else "")
+            + (f"\n{myoumi_point_block}\n" if myoumi_point_block else "")
         )
 
     # 最初の全体妙味行の直後にだけ挿入
