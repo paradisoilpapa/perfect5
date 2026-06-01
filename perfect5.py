@@ -6914,6 +6914,61 @@ def _myoumi_score_3kei(a: int, b: int, c: int, role1: int, mark_map: dict) -> fl
     return round(max(0.0, min(10.0, score)), 1)
 
 
+
+def _collect_myoumi_pickups(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
+    """
+    既存フォメから妙味ピックアップ候補を内部データとして返す。
+    戻り値：
+      two   = [(score, a, b), ...]          # フォメ列順を保持
+      three = [(score, a, b, c), ...]       # フォメ列順を保持
+    """
+    threshold = 5.0
+    max_2kei = 3
+    max_3kei = 3
+
+    c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
+    c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
+    c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
+    r1 = int(role1)
+
+    rec_order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
+    rec_rank = {int(c): i for i, c in enumerate(rec_order)}
+    c1_rank = {int(c): i for i, c in enumerate(c1)}
+    c2_rank = {int(c): i for i, c in enumerate(c2)}
+
+    two = []
+    for a in c1:
+        for b in c2:
+            if int(a) == int(b):
+                continue
+            sc = _myoumi_score_2kei(a, b, r1, mark_map)
+            if sc > threshold:
+                two.append((sc, int(a), int(b)))
+
+    two.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[2], 99)))
+    two = two[:max_2kei]
+
+    three = []
+    seen_ordered = set()
+    for a in c1:
+        for b in c2:
+            for c in c3:
+                if len({int(a), int(b), int(c)}) != 3:
+                    continue
+                key = (int(a), int(b), int(c))
+                if key in seen_ordered:
+                    continue
+                seen_ordered.add(key)
+                sc = _myoumi_score_3kei(a, b, c, r1, mark_map)
+                if sc > threshold:
+                    three.append((sc, int(a), int(b), int(c)))
+
+    three.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[3], 99)))
+    three = three[:max_3kei]
+
+    return two, three
+
+
 def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
     """
     既存フォメから、妙味基準を超えた買い目だけを抽出する。
@@ -6924,49 +6979,14 @@ def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, 
     ・5.0pt超だけを表示する。
     """
     try:
-        threshold = 5.0
-        max_2kei = 3
-        max_3kei = 3
-
-        c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
-        c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
-        c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
-        r1 = int(role1)
-
-        rec_order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
-        rec_rank = {int(c): i for i, c in enumerate(rec_order)}
-        c1_rank = {int(c): i for i, c in enumerate(c1)}
-        c2_rank = {int(c): i for i, c in enumerate(c2)}
-
-        two = []
-        for a in c1:
-            for b in c2:
-                if int(a) == int(b):
-                    continue
-                sc = _myoumi_score_2kei(a, b, r1, mark_map)
-                if sc > threshold:
-                    two.append((sc, int(a), int(b)))
-
-        two.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[2], 99)))
-        two = two[:max_2kei]
-
-        three = []
-        seen_ordered = set()
-        for a in c1:
-            for b in c2:
-                for c in c3:
-                    if len({int(a), int(b), int(c)}) != 3:
-                        continue
-                    key = (int(a), int(b), int(c))
-                    if key in seen_ordered:
-                        continue
-                    seen_ordered.add(key)
-                    sc = _myoumi_score_3kei(a, b, c, r1, mark_map)
-                    if sc > threshold:
-                        three.append((sc, int(a), int(b), int(c)))
-
-        three.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[3], 99)))
-        three = three[:max_3kei]
+        two, three = _collect_myoumi_pickups(
+            col1_cars,
+            col2_cars,
+            col3_cars,
+            role1,
+            mark_map,
+            rec_order_for_forme,
+        )
 
         lines = ["【妙味ピックアップ｜基準5.0pt超】", ""]
         lines.append("2車系：")
@@ -6988,6 +7008,219 @@ def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, 
     except Exception:
         return ""
 
+
+def _nishafuku_pairs_from_forme(col1_cars, col2_cars):
+    """
+    2車系フォメ col1=col2 を2車複の重複なしペアへ変換する。
+    例：17=174 → 1-7 / 1-4 / 7-4
+    """
+    pairs = []
+    seen = set()
+    c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
+    c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
+
+    for a in c1:
+        for b in c2:
+            if int(a) == int(b):
+                continue
+            key = tuple(sorted((int(a), int(b))))
+            if key in seen:
+                continue
+            seen.add(key)
+            # 表示はフォメに出た順を優先する
+            pairs.append((int(a), int(b)))
+
+    return pairs
+
+
+def _sanpuku_triples_from_forme(col1_cars, col2_cars, col3_cars):
+    """
+    三連複フォメ col1-col2-col3 を重複なし3車へ変換する。
+    表示は最初にフォメで発生した列順を保持する。
+    """
+    triples = []
+    seen = set()
+    c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
+    c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
+    c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
+
+    for a in c1:
+        for b in c2:
+            for c in c3:
+                if len({int(a), int(b), int(c)}) != 3:
+                    continue
+                key = tuple(sorted((int(a), int(b), int(c))))
+                if key in seen:
+                    continue
+                seen.add(key)
+                triples.append((int(a), int(b), int(c)))
+
+    return triples
+
+
+def _fmt_pair(a, b):
+    return f"{int(a)}-{int(b)}"
+
+
+def _fmt_triple(a, b, c):
+    return f"{int(a)}-{int(b)}-{int(c)}"
+
+
+def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
+    """
+    現在の実戦ルールに基づく買い目整理。
+    予想・フォメ生成には触らず、既存フォメと妙味ピックアップから表示だけを作る。
+
+    ルール：
+    0点：2車複で芯が作れない → 三連複フォメ全体で受ける
+    1点：2車複1点 + 三連複補完
+         ※1・2列目内で完結する中心三連複は必ず残す
+    2点：2車複2点 + 残った弱い2車筋を三連複で底上げ
+         例：12-123-12345で 2-13 なら、三連複は 1-2-3 / 1-3-4 / 1-3-5
+    3点以上：2車複で完結。三連複は原則なし
+    """
+    try:
+        c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
+        c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
+        c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
+
+        if not c1 or not c2:
+            return ""
+
+        two, three = _collect_myoumi_pickups(
+            c1, c2, c3, role1, mark_map, rec_order_for_forme
+        )
+
+        all_pairs = _nishafuku_pairs_from_forme(c1, c2)
+        all_triples = _sanpuku_triples_from_forme(c1, c2, c3)
+
+        # 2車系ピックアップを2車複ペアへ重複整理する。
+        # 表示順はピックアップ順を優先し、同一組み合わせは1回だけ。
+        pickup_pairs = []
+        pickup_pair_keys = set()
+        for _, a, b in two:
+            key = tuple(sorted((int(a), int(b))))
+            if key not in pickup_pair_keys:
+                pickup_pair_keys.add(key)
+                pickup_pairs.append((int(a), int(b)))
+
+        # 2列目内の中心ペア。
+        # 例：12-123-12345なら、中心三連複 1-2-3 を作るための母集団。
+        c2_pair_keys = set()
+        for i, a in enumerate(c2):
+            for b in c2[i + 1:]:
+                if int(a) != int(b):
+                    c2_pair_keys.add(tuple(sorted((int(a), int(b)))))
+
+        c2_set = set(c2)
+        lines = ["【買い目整理】"]
+
+        # --------------------------------------------------
+        # 0点：2車複で芯が作れないので、三連複フォメ全体で受ける
+        # --------------------------------------------------
+        if len(pickup_pairs) == 0:
+            lines.append("")
+            lines.append("2車複：")
+            lines.append("該当なし")
+            lines.append("")
+            lines.append("三連複：")
+            if all_triples:
+                for a, b, c in all_triples:
+                    lines.append(_fmt_triple(a, b, c))
+            else:
+                lines.append("該当なし")
+            return "\n".join(lines)
+
+        # --------------------------------------------------
+        # 1点：その2車複を芯にしつつ、三連複補完を残す
+        # --------------------------------------------------
+        if len(pickup_pairs) == 1:
+            pa, pb = pickup_pairs[0]
+            pkey = tuple(sorted((pa, pb)))
+
+            sanpuku_keep = []
+            for tri in all_triples:
+                tset = set(tri)
+
+                # 1・2列目で完結する中心三連複は必ず残す。
+                # 例：12-123-12345 → 1-2-3
+                # 例：31-314-31425 → 1-3-4
+                if tset.issubset(c2_set):
+                    sanpuku_keep.append(tri)
+                    continue
+
+                # ピックアップ2車複で吸収できる枝は切る。
+                # 例：1-2を2車複で買うなら 1-2-4 / 1-2-5 は切る。
+                if set(pkey).issubset(tset):
+                    continue
+
+                # それ以外のフォメ内三連複は補完として残す。
+                sanpuku_keep.append(tri)
+
+            lines.append("")
+            lines.append("2車複：")
+            lines.append(_fmt_pair(pa, pb))
+            lines.append("")
+            lines.append("三連複：")
+            if sanpuku_keep:
+                for a, b, c in sanpuku_keep:
+                    lines.append(_fmt_triple(a, b, c))
+            else:
+                lines.append("該当なし")
+            return "\n".join(lines)
+
+        # --------------------------------------------------
+        # 2点：2車複2点 + 残った弱い2車筋を三連複で底上げ
+        # --------------------------------------------------
+        if len(pickup_pairs) == 2:
+            weak_pair_keys = c2_pair_keys - pickup_pair_keys
+
+            sanpuku_keep = []
+            for tri in all_triples:
+                tset = set(tri)
+
+                # 1・2列目内で完結する中心三連複は必ず残す。
+                if tset.issubset(c2_set):
+                    sanpuku_keep.append(tri)
+                    continue
+
+                # 残った弱い2車筋を含む三連複だけを底上げとして残す。
+                # 例：pickup=1-2,2-3なら weak=1-3 → 1-3-4 / 1-3-5
+                keep = False
+                for wk in weak_pair_keys:
+                    if set(wk).issubset(tset):
+                        keep = True
+                        break
+                if keep:
+                    sanpuku_keep.append(tri)
+
+            lines.append("")
+            lines.append("2車複：")
+            for a, b in pickup_pairs:
+                lines.append(_fmt_pair(a, b))
+            lines.append("")
+            lines.append("三連複：")
+            if sanpuku_keep:
+                for a, b, c in sanpuku_keep:
+                    lines.append(_fmt_triple(a, b, c))
+            else:
+                lines.append("該当なし")
+            return "\n".join(lines)
+
+        # --------------------------------------------------
+        # 3点以上：2車複で完結。三連複は原則なし
+        # --------------------------------------------------
+        lines.append("")
+        lines.append("2車複：")
+        for a, b in pickup_pairs:
+            lines.append(_fmt_pair(a, b))
+        lines.append("")
+        lines.append("三連複：")
+        lines.append("該当なし")
+        return "\n".join(lines)
+
+    except Exception:
+        return ""
 
 def _replace_axis_line_to_expect(text: str, label: str) -> str:
     """
@@ -7156,12 +7389,21 @@ try:
             market_mark_map,
             rec_order_for_forme,
         )
+        rule_buy_block = _make_rule_buy_block(
+            col1_cars,
+            col2_cars,
+            col3_cars,
+            role1,
+            market_mark_map,
+            rec_order_for_forme,
+        )
 
         st.info(
             f"全体妙味：{expect_axis_label}\n"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}"
             + (f"\n\n{myoumi_pickup_block}" if myoumi_pickup_block else "")
+            + (f"\n\n{rule_buy_block}" if rule_buy_block else "")
         )
         if promote_car is not None:
             st.caption(f"2列目繰り上げ：{role1}ライン内の印付き車 {promote_car} を反映")
@@ -7175,6 +7417,8 @@ except Exception as _e:
     nishatan_forme_line = f"2車系フォメ：生成不可（{_e}）"
     sanpuku_forme_line = f"三連複フォメ：生成不可（{_e}）"
     sanrentan_forme_line = f"3連単フォメ：生成不可（{_e}）"
+    myoumi_pickup_block = ""
+    rule_buy_block = ""
     st.caption(nishatan_forme_line)
     st.caption(sanpuku_forme_line)
 
@@ -7206,6 +7450,7 @@ try:
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
             + (f"\n{myoumi_pickup_block}\n" if myoumi_pickup_block else "")
+            + (f"\n{rule_buy_block}\n" if rule_buy_block else "")
         )
     else:
         summary_block = (
@@ -7213,6 +7458,7 @@ try:
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
             + (f"\n{myoumi_pickup_block}\n" if myoumi_pickup_block else "")
+            + (f"\n{rule_buy_block}\n" if rule_buy_block else "")
         )
 
     # 最初の全体妙味行の直後にだけ挿入
