@@ -7432,11 +7432,13 @@ try:
         col1_cars = _uniq_keep([role1, role2])
         col2_base = _uniq_keep([role1, role2, role3_original])
 
-        # 評価1ライン内に印付き未採用車がいれば、1車だけ2列目へ繰り上げる。
-        # 例：57142 / 評価1ライン524 / 2に印 → 57→572、3列目は57214。
         # 評価1ラインは、globals の line_def よりも note本文の「ライン」表示を優先する。
         # 理由：note用コピーエリアでは line_def がスコープ外・旧値・未更新になる場合があるため。
-        # 例：ライン 73 16 524 / 評価1=5 なら、必ず 524 を拾う。
+        #
+        # 重要：2列目はメイン順の1〜3位で固定する。
+        # 以前は「評価1ライン内の印付き未採用車」を2列目へ繰り上げていたが、
+        # 例：メイン順 2→1→7→6→5→3→4 で 21→213 になるような崩れが出る。
+        # 評価1ライン全車は3列目で拾うため、2列目では差し替えない。
         eval1_line_members_text = _find_line_members_of_car_from_note_text(note_text, role1)
         eval1_line_members_global = _find_line_members_of_car(_line_def, role1)
 
@@ -7445,13 +7447,8 @@ try:
         else:
             eval1_line_members = eval1_line_members_global
 
-        promote_car = _pick_eval1_line_promote_car(eval1_line_members, col2_base, market_mark_map)
-
-        if promote_car is not None:
-            # 元の3は繰り下げ、点数を増やさず役割順だけ組み替える
-            rec_order_for_forme = _uniq_keep([role1, role2, promote_car, role3_original] + list(_rec_seq[3:]))
-        else:
-            rec_order_for_forme = list(_rec_seq)
+        promote_car = None
+        rec_order_for_forme = list(_rec_seq)
 
         role3 = int(rec_order_for_forme[2]) if len(rec_order_for_forme) >= 3 else role3_original
         col2_cars = _uniq_keep([role1, role2, role3])
@@ -7518,9 +7515,6 @@ try:
             + (f"\n\n{rule_buy_block}" if rule_buy_block else "")
             + (f"\n\n{myoumi_point_block}" if myoumi_point_block else "")
         )
-        if promote_car is not None:
-            st.caption(f"2列目繰り上げ：{role1}ライン内の印付き車 {promote_car} を反映")
-
     else:
         nishatan_forme_line = "2車系フォメ：生成不可"
         sanpuku_forme_line = "三連複フォメ：生成不可"
