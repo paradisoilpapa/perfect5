@@ -7393,11 +7393,6 @@ try:
 
         # 評価1ラインは、globals の line_def よりも note本文の「ライン」表示を優先する。
         # 理由：note用コピーエリアでは line_def がスコープ外・旧値・未更新になる場合があるため。
-        #
-        # 重要：2列目はメイン順の1〜3位で固定する。
-        # 以前は「評価1ライン内の印付き未採用車」を2列目へ繰り上げていたが、
-        # 例：メイン順 2→1→7→6→5→3→4 で 21→213 になるような崩れが出る。
-        # 評価1ライン全車は3列目で拾うため、2列目では差し替えない。
         eval1_line_members_text = _find_line_members_of_car_from_note_text(note_text, role1)
         eval1_line_members_global = _find_line_members_of_car(_line_def, role1)
 
@@ -7409,7 +7404,27 @@ try:
         promote_car = None
         rec_order_for_forme = list(_rec_seq)
 
+        # 重要：2列目には、評価1ラインから role1 以外の車を最低1車入れる。
+        # 例：評価1ライン 3574 / メイン順 3→1→6→5→4→2→7 の場合、
+        #     NG: 31→316（評価1ラインの追加車が2列目にいない）
+        #     OK: 31→315（評価1ラインから5を2列目へ入れる）
+        # ただし role2 または role3_original が既に評価1ラインなら差し替えない。
         role3 = int(rec_order_for_forme[2]) if len(rec_order_for_forme) >= 3 else role3_original
+        eval1_set = {int(x) for x in (eval1_line_members or []) if str(x).isdigit()}
+
+        if eval1_set:
+            base_line_count = sum(1 for x in [role1, role2, role3] if int(x) in eval1_set)
+            if base_line_count < 2:
+                for cand in list(rec_order_for_forme) + list(eval1_line_members or []):
+                    try:
+                        cand = int(cand)
+                    except Exception:
+                        continue
+                    if cand in eval1_set and cand not in {int(role1), int(role2)}:
+                        promote_car = cand
+                        role3 = cand
+                        break
+
         col2_cars = _uniq_keep([role1, role2, role3])
 
         expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(col1_cars, col2_cars, role1, market_mark_map)
