@@ -7239,8 +7239,17 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         ev_triples = []
         ev_seen = set()
 
-        if pickup_pair_keys and three:
-            for sc, a, b, c in three:
+        # 期待値推奨は「通過したものを全表示」する検算枠。
+        # _collect_myoumi_pickups() の3連系は旧ピックアップ用に上位3点へ制限されるため、
+        # ここでは全候補を返す _all_3kei_point_items() を使い、表示漏れを防ぐ。
+        threshold = 5.0
+        ev_source_triples = _all_3kei_point_items(c1, c2, c3, role1, mark_map)
+
+        if pickup_pair_keys and ev_source_triples:
+            for sc, a, b, c in ev_source_triples:
+                if float(sc) <= threshold:
+                    continue
+
                 tri = (int(a), int(b), int(c))
                 tset = set(tri)
                 tkey = tuple(sorted(tri))
