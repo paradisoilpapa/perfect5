@@ -6981,6 +6981,15 @@ def _myoumi_score_3kei(a: int, b: int, c: int, role1: int, mark_map: dict) -> fl
     return round(max(0.0, min(10.0, score)), 1)
 
 
+# ==============================
+# 妙味pt 通過基準
+# ==============================
+# 5.0pt基準では候補が広がりすぎるため、実戦買目の通過基準を引き上げる。
+# 2車複は7.0pt以上、三連複は8.0pt以上を標準にする。
+MYOUMI_PASS_THRESHOLD_2KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 7.0))
+MYOUMI_PASS_THRESHOLD_3KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_3KEI", 8.0))
+# ワイドは現時点では未採用。2車複と三連複だけで表示する。
+
 
 def _collect_myoumi_pickups(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
     """
@@ -6989,7 +6998,8 @@ def _collect_myoumi_pickups(col1_cars, col2_cars, col3_cars, role1, mark_map, re
       two   = [(score, a, b), ...]          # フォメ列順を保持
       three = [(score, a, b, c), ...]       # フォメ列順を保持
     """
-    threshold = 5.0
+    threshold_2kei = MYOUMI_PASS_THRESHOLD_2KEI
+    threshold_3kei = MYOUMI_PASS_THRESHOLD_3KEI
     max_2kei = 3
     max_3kei = 3
 
@@ -7009,7 +7019,7 @@ def _collect_myoumi_pickups(col1_cars, col2_cars, col3_cars, role1, mark_map, re
             if int(a) == int(b):
                 continue
             sc = _myoumi_score_2kei(a, b, r1, mark_map)
-            if sc > threshold:
+            if sc >= threshold_2kei:
                 two.append((sc, int(a), int(b)))
 
     two.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[2], 99)))
@@ -7027,7 +7037,7 @@ def _collect_myoumi_pickups(col1_cars, col2_cars, col3_cars, role1, mark_map, re
                     continue
                 seen_ordered.add(key)
                 sc = _myoumi_score_3kei(a, b, c, r1, mark_map)
-                if sc > threshold:
+                if sc >= threshold_3kei:
                     three.append((sc, int(a), int(b), int(c)))
 
     three.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[3], 99)))
@@ -7042,8 +7052,8 @@ def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, 
     順位生成・フォメ生成には触らず、表示にだけ使う。
 
     基準：
-    ・5.0ptちょうどは境界扱いとして表示しない。
-    ・5.0pt超だけを表示する。
+    ・実戦買目の通過基準は MYOUMI_PASS_THRESHOLD_* を使う。
+    ・2車複は7.0pt以上、三連複は8.0pt以上を標準にする。
     """
     try:
         two, three = _collect_myoumi_pickups(
@@ -7055,7 +7065,7 @@ def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, 
             rec_order_for_forme,
         )
 
-        lines = ["【妙味ピックアップ｜基準5.0pt超】", ""]
+        lines = [f"【妙味ピックアップ｜2車{MYOUMI_PASS_THRESHOLD_2KEI:.1f}pt以上／三連複{MYOUMI_PASS_THRESHOLD_3KEI:.1f}pt以上】", ""]
         lines.append("2車系：")
         if two:
             for sc, a, b in two:
@@ -7077,16 +7087,16 @@ def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, 
 
 
 
-def _myoumi_zone_label(score: float, threshold: float = 5.0) -> str:
+def _myoumi_zone_label(score: float, threshold: float = 7.5) -> str:
     """
     妙味ポイントの表示区分。
-    5.0pt超はピックアップ基準通過、5.0pt以下は参考扱い。
+    threshold以上は通過、それ未満は参考扱い。
     """
     try:
         sc = float(score)
     except Exception:
         sc = 0.0
-    return "通過" if sc > float(threshold) else "参考"
+    return "通過" if sc >= float(threshold) else "参考"
 
 
 def _all_2kei_point_items(col1_cars, col2_cars, role1, mark_map):
@@ -7155,16 +7165,17 @@ def _make_myoumi_point_block(col1_cars, col2_cars, col3_cars, role1, mark_map, r
     2車複・三連複のフォメ内候補をすべてpt表示する。
     """
     try:
-        threshold = 5.0
+        threshold_2kei = MYOUMI_PASS_THRESHOLD_2KEI
+        threshold_3kei = MYOUMI_PASS_THRESHOLD_3KEI
         two_all = _all_2kei_point_items(col1_cars, col2_cars, role1, mark_map)
         three_all = _all_3kei_point_items(col1_cars, col2_cars, col3_cars, role1, mark_map)
 
-        lines = ["【妙味ポイント｜基準5.0pt超】", ""]
+        lines = [f"【妙味ポイント｜2車{threshold_2kei:.1f}pt以上／三連複{threshold_3kei:.1f}pt以上】", ""]
 
         lines.append("2車複：")
         if two_all:
             for sc, a, b in two_all:
-                lines.append(f"{a}-{b}　{sc:.1f}pt［{_myoumi_zone_label(sc, threshold)}］")
+                lines.append(f"{a}-{b}　{sc:.1f}pt［{_myoumi_zone_label(sc, threshold_2kei)}］")
         else:
             lines.append("該当なし")
 
@@ -7172,7 +7183,7 @@ def _make_myoumi_point_block(col1_cars, col2_cars, col3_cars, role1, mark_map, r
         lines.append("三連複：")
         if three_all:
             for sc, a, b, c in three_all:
-                lines.append(f"{a}-{b}-{c}　{sc:.1f}pt［{_myoumi_zone_label(sc, threshold)}］")
+                lines.append(f"{a}-{b}-{c}　{sc:.1f}pt［{_myoumi_zone_label(sc, threshold_3kei)}］")
         else:
             lines.append("該当なし")
 
@@ -7244,9 +7255,10 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
     予想・フォメ生成には触らず、既存フォメと妙味ポイントから表示だけを作る。
 
     方針：
-    ・【ヴェロビ的買目】の三連複は、メイン順123の中心1点だけに固定する。
-    ・2車複は、妙味ptが基準5.0pt超で通過したペアだけを表示する。
-    ・2車複通過ペアを含み、かつ三連複妙味ptも基準5.0pt超で通過したものは、
+    ・【ヴェロビ的買目】の通常三連複は出さない。
+      上位123評価をそのまま三連複にする買目は、列評価の根拠と整合しないため廃止する。
+    ・2車複は、妙味ptが通過基準以上のペアだけを表示する。
+    ・2車複通過ペアを含み、かつ三連複妙味ptも通過基準以上のものは、
       【期待値推奨｜的中率低想定】として別枠に出す。
     ・期待値推奨は検討枠であり、通常の三連複推奨とは混ぜない。
     """
@@ -7272,30 +7284,12 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
                 pickup_pair_keys.add(key)
                 pickup_pairs.append((int(a), int(b)))
 
-        # ヴェロビ的買目の中心三連複を1点だけ作る。
-        # 列評価導入後の通常三連複は、必ず「1列目-2列目-3列目」で作る。
-        # 2列目だけで作る 1-3-2 はNG。
-        # 例：col1=4, col2=1・3・2・6, col3=3・6・7・5 → 4-1-3。
+        # ヴェロビ的買目の通常三連複は廃止。
+        # 理由：4-1-3 のような「上位123評価そのまま」は根拠が薄く、
+        # 列評価導入後の役割分担とも整合しない。
+        # 三連複は下の【期待値推奨｜的中率低想定】だけで扱う。
         center_triples = []
-        if c1 and c2 and c3:
-            axis = int(c1[0])
-            b = None
-            c = None
-            for x in c2:
-                x = int(x)
-                if x != axis:
-                    b = x
-                    break
-            if b is not None:
-                for x in c3:
-                    x = int(x)
-                    if x != axis and x != b:
-                        c = x
-                        break
-            if b is not None and c is not None:
-                center_triples.append((axis, b, c))
-
-        center_keys = {tuple(sorted(t)) for t in center_triples}
+        center_keys = set()
 
         lines = ["【ヴェロビ的買目】"]
 
@@ -7318,7 +7312,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         # --------------------------------------------------
         # 期待値推奨：
         # 2車複通過ペアを含む三連複のうち、
-        # 三連複側の妙味ptも5.0pt超で通過したものだけ。
+        # 三連複側の妙味ptも通過基準以上のものだけ。
         # --------------------------------------------------
         ev_triples = []
         ev_seen = set()
@@ -7326,19 +7320,19 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         # 期待値推奨は「通過したものを全表示」する検算枠。
         # _collect_myoumi_pickups() の3連系は旧ピックアップ用に上位3点へ制限されるため、
         # ここでは全候補を返す _all_3kei_point_items() を使い、表示漏れを防ぐ。
-        threshold = 5.0
+        threshold_3kei = MYOUMI_PASS_THRESHOLD_3KEI
         ev_source_triples = _all_3kei_point_items(c1, c2, c3, role1, mark_map)
 
         if pickup_pair_keys and ev_source_triples:
             for sc, a, b, c in ev_source_triples:
-                if float(sc) <= threshold:
+                if float(sc) < threshold_3kei:
                     continue
 
                 tri = (int(a), int(b), int(c))
                 tset = set(tri)
                 tkey = tuple(sorted(tri))
 
-                # 123中心三連複は本線枠で表示済みなので重複させない
+                # 通常三連複は廃止済みだが、将来 center_triples を復活させた場合の重複防止。
                 if tkey in center_keys:
                     continue
 
@@ -7359,7 +7353,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
 
         if ev_triples:
             lines.append("")
-            lines.append("【期待値推奨｜的中率低想定】")
+            lines.append(f"【期待値推奨｜的中率低想定｜三連複{MYOUMI_PASS_THRESHOLD_3KEI:.1f}pt以上】")
             lines.append("")
             lines.append("三連複：")
             for sc, (a, b, c) in ev_triples:
@@ -7561,7 +7555,7 @@ try:
 
         expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(col1_cars, col2_cars, role1, market_mark_map)
 
-        # 3列目：三連複・ワイド候補
+        # 3列目：三連複候補
         # 1) 順流3番手を最優先で入れる（通常123を組めるようにする）
         # 2) 主導ライン3番手を入れる（穴が出やすい位置）
         # 3) 各ラインの残りをライン順位順に入れる
@@ -7619,7 +7613,7 @@ try:
             "【VeloBi列評価】\n"
             f"1列目｜軸候補：{col1_text}\n"
             f"2列目｜2車複ヒモ候補：{col2_text}\n"
-            f"3列目｜三連複・ワイド候補：{col3_text}"
+            f"3列目｜三連複候補：{col3_text}"
         )
 
         nishatan_points = _count_nishatan(col1_cars, col2_cars)
