@@ -7010,10 +7010,10 @@ MYOUMI_PASS_THRESHOLD_2KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 7
 MYOUMI_PASS_THRESHOLD_3KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_3KEI", 8.0))
 # ワイドは現時点では未採用。2車複と三連複だけで表示する。
 
-# 評価重複枠：妙味通過ではないが、外部印とVeloBi評価上位が重なる本線寄りの2車複。
+# 評価重複枠：妙味通過ではないが、外部印とVeloBi評価上位が「同じ車で」重なる本線寄りの買目。
 # ここは「当たりやすいが安い」確認枠。
-# 2車複は「外部印＋VeloBi評価1〜4」を採用する。
-# 片方が無印でも、もう片方が外部印付きで、相手がVeloBi評価1〜4なら評価重複として扱う。
+# 2車複は2車とも「外部印あり＋順流評価1〜4」を満たす場合だけ採用する。
+# 片方が無印、または片方が順流評価外なら評価重複には含めない。
 EVAL_OVERLAP_MIN_2KEI = float(globals().get("EVAL_OVERLAP_MIN_2KEI", 5.0))
 EVAL_OVERLAP_MAX_2KEI = int(globals().get("EVAL_OVERLAP_MAX_2KEI", 3))
 # v19修正：三連複は表示順と印・順流順位の注記順を必ず一致させる。
@@ -7085,11 +7085,11 @@ def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_ke
       ・1列目-2列目の2車複候補
       ・妙味通過枠に既に出ていない
       ・5.0pt以上
-      ・外部印付きの車と、VeloBi評価1〜4の車の組み合わせ
+      ・2車とも、同じ車に「外部印＋順流評価1〜4」が重なる組み合わせ
 
     位置づけ：
       妙味ではなく、的中率を支える安い本線確認枠。
-      外部印同士だけに限定しない。外部印＋VeloBi上位評価の重なりを見る。
+      単なる外部印同士でもなく、単なる順流上位同士でもなく、印と順流評価が同じ車で重なるものだけを見る。
     """
     try:
         exclude_keys = set(exclude_keys or set())
@@ -7121,10 +7121,10 @@ def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_ke
             a_top = int(a) in velobi_top4
             b_top = int(b) in velobi_top4
 
-            # 2車複の評価重複は「外部印＋VeloBi評価1〜4」。
-            # 外部印同士だけに限定しない。
-            # 例：4-2 が 〇/無印 でも、2がVeloBi評価1〜4なら採用する。
-            if not ((ma and b_top) or (mb and a_top)):
+            # 2車複の評価重複は、同じ車に「外部印＋順流評価1〜4」が重なることを条件にする。
+            # したがって2車とも、外部印あり かつ 順流評価1〜4でなければ出さない。
+            # 例：◎・順流1位 / 〇・順流3位 のような形だけを評価重複とする。
+            if not (ma and mb and a_top and b_top):
                 continue
 
             marked_count = int(ma) + int(mb)
@@ -7145,11 +7145,11 @@ def _collect_eval_overlap_3kei(col1_cars, col2_cars, col3_cars, role1, mark_map,
     条件：
       ・1列目-2列目-3列目の三連複候補
       ・通常の上位123固定ではなく、列評価の構造を通す
-      ・外部印とVeloBi評価1〜4が重なる組み合わせを優先
+      ・3車すべてで、外部印と順流評価1〜4が同じ車に重なる組み合わせだけを採用
 
     重要：
       評価重複三連複は「妙味ptが高い買目」ではない。
-      外部印とVeloBi列評価が重なっている、的中率補助の安い本線候補。
+      外部印と順流評価が同じ車で重なっている、的中率補助の安い本線候補。
       そのため、妙味ptの通過基準では切らない。
       表示では、無印の代わりに順流順位などVeloBi側の根拠を出す。
     """
@@ -7198,10 +7198,10 @@ def _collect_eval_overlap_3kei(col1_cars, col2_cars, col3_cars, role1, mark_map,
                         if str(m) in MARKED_SET and int(x) in velobi_top4
                     )
 
-                    # 三連複の評価重複は「外部印＋VeloBi評価1〜4」。
-                    # 外部印2車以上だけに限定しない。
-                    # ただし外部印ゼロ、またはVeloBi評価上位ゼロは除外。
-                    if marked_count < 1 or top_count < 1:
+                    # 三連複の評価重複は、3車すべてが
+                    # 「外部印あり＋順流評価1〜4」を満たす場合だけ採用する。
+                    # 例：◎・順流1位 / 〇・順流3位 / △・順流2位 のような形だけ。
+                    if both_count < 3:
                         continue
 
                     sc3 = _myoumi_score_3kei(a, b, c, int(role1), mark_map)
@@ -7559,7 +7559,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             lines.append("該当なし")
 
         lines.append("")
-        lines.append(f"2車複｜評価重複（外部印＋順流評価1〜4・{EVAL_OVERLAP_MIN_2KEI:.1f}pt以上）：")
+        lines.append(f"2車複｜評価重複（外部印＋順流評価1〜4が両車・{EVAL_OVERLAP_MIN_2KEI:.1f}pt以上）：")
         if overlap_pairs:
             for sc, a, b, marked_count, top_count in overlap_pairs:
                 note_a = _overlap_note_for_car(a, mark_map, rec_order_for_forme, top_n=4)
@@ -7579,7 +7579,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             lines.append("該当なし")
 
         lines.append("")
-        lines.append("三連複｜評価重複（外部印＋順流評価1〜4＋列評価）：")
+        lines.append("三連複｜評価重複（外部印＋順流評価1〜4が3車）：")
         if overlap_triples:
             for sc, a, b, c, marks, marked_count, top_count, both_count in overlap_triples:
                 mark_note = _triple_overlap_note(a, b, c, mark_map, rec_order_for_forme, top_n=4)
