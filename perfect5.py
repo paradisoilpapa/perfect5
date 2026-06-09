@@ -7171,6 +7171,130 @@ def _fmt_triple(a, b, c):
     return f"{int(a)}-{int(b)}-{int(c)}"
 
 
+# =====================================================
+# VeloBi列評価（買目変換用レイヤー）
+# =====================================================
+def _velobi_role_label(role: str) -> str:
+    return {
+        "head": "先頭",
+        "second": "番手",
+        "thirdplus": "3番手",
+        "single": "単騎",
+    }.get(str(role), str(role))
+
+
+def _make_velobi_column_eval(rec_seq, line_def, role1, mark_map, max_col2=3, max_col3=5):
+    """
+    順位表をそのまま買目にせず、買目変換用に
+    1列目・2列目・3列目へ振り分ける。
+
+    基本思想：
+    ・1列目：軸候補。原則、推奨戦法の1位を置く。
+    ・2列目：2車複のヒモ候補。期待値チェッカーと展開順を優先。
+    ・3列目：3着・穴候補。ライン3番手はここを初期配置にする。
+
+    注意：
+    ・3番手は3列目スタート。
+    ・ただし2車複ptが6.0以上なら2列目へ昇格できる。
+    ・列は評価番号固定ではない。買目変換用の実戦配置。
+    """
+    rec = [int(x) for x in (rec_seq or []) if str(x).isdigit()]
+    if not rec:
+        return [], [], [], {}
+
+    role1 = int(role1)
+    col1 = _uniq_keep([role1])
+
+    role_map = {int(c): role_in_line(int(c), line_def) for c in rec}
+
+    # 2列目候補を作る。
+    # 妙味ptを主、推奨順・ライン役割を補助にする。
+    scored = []
+    n = max(1, len(rec))
+    for idx, c in enumerate(rec):
+        c = int(c)
+        if c == role1:
+            continue
+        try:
+            pt = float(_myoumi_score_2kei(role1, c, role1, mark_map))
+        except Exception:
+            pt = 0.0
+
+        r = role_map.get(c, "single")
+        order_bonus = (n - idx) * 0.08
+        role_bonus = {"second": 0.25, "head": 0.10, "single": 0.05, "thirdplus": -0.80}.get(r, 0.0)
+        score = pt + order_bonus + role_bonus
+        scored.append((score, pt, idx, c, r))
+
+    scored.sort(key=lambda x: (-x[0], -x[1], x[2], x[3]))
+
+    col2 = []
+    # まず、2車複pt通過・準通過を優先する。
+    for score, pt, idx, c, r in scored:
+        if len(col2) >= int(max_col2):
+            break
+        if r == "thirdplus" and pt < 6.0:
+            continue
+        if pt > 5.0 or (idx <= 3 and r != "thirdplus"):
+            col2.append(c)
+
+    # 最低2車は確保。ヒモが薄すぎると2車複候補が出ないため。
+    for score, pt, idx, c, r in scored:
+        if len(col2) >= min(2, int(max_col2)):
+            break
+        if c not in col2 and not (r == "thirdplus" and pt < 6.0):
+            col2.append(c)
+
+    col2 = _uniq_keep(col2)[:int(max_col2)]
+
+    # 3列目：2列目を含めた上で、ライン3番手を優先追加。
+    # これにより 1列目-2列目-3列目 で、2列目同士の三連複も作れる。
+    col3 = _uniq_keep(col2)
+
+    thirdplus_cars = [c for c in rec if role_map.get(int(c)) == "thirdplus" and int(c) not in col1]
+    for c in thirdplus_cars:
+        if c not in col3:
+            col3.append(c)
+
+    for c in rec:
+        if int(c) == role1:
+            continue
+        if int(c) not in col3:
+            col3.append(int(c))
+        if len(col3) >= int(max_col3):
+            break
+
+    col3 = _uniq_keep(col3)[:int(max_col3)]
+    return col1, col2, col3, role_map
+
+
+def _make_velobi_column_block(col1_cars, col2_cars, col3_cars, role_map=None, role1=None, mark_map=None):
+    """アプリ表示用の列評価ブロック。"""
+    role_map = role_map or {}
+    lines = ["【VeloBi列評価】", ""]
+
+    def _row(c):
+        c = int(c)
+        r = _velobi_role_label(role_map.get(c, ""))
+        pt = ""
+        try:
+            if role1 is not None and mark_map is not None and int(c) != int(role1):
+                pt = f"　2車pt={_myoumi_score_2kei(int(role1), c, int(role1), mark_map):.1f}"
+        except Exception:
+            pt = ""
+        return f"{c}（{r}{pt}）" if r else f"{c}{pt}"
+
+    lines.append("1列目｜軸候補")
+    lines.append("　" + (" / ".join(_row(c) for c in col1_cars) if col1_cars else "該当なし"))
+    lines.append("")
+    lines.append("2列目｜連対・ヒモ候補")
+    lines.append("　" + (" / ".join(_row(c) for c in col2_cars) if col2_cars else "該当なし"))
+    lines.append("")
+    lines.append("3列目｜3着・穴候補")
+    lines.append("　" + (" / ".join(_row(c) for c in col3_cars) if col3_cars else "該当なし"))
+    return "\n".join(lines)
+
+
 def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
     """
     現在の実戦ルールに基づく買い目整理。
@@ -7206,9 +7330,12 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
                 pickup_pairs.append((int(a), int(b)))
 
         # メイン順123の中心三連複を1点だけ作る。
-        # col2_cars はメイン順1〜3位を保持している前提。
+        # 列評価ではcol2が「ヒモ候補」になるため、中心123はrec_order_for_formeを優先する。
         center_triples = []
-        if len(c2) >= 3:
+        _rec_for_center = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
+        if len(_rec_for_center) >= 3:
+            center_triples.append((int(_rec_for_center[0]), int(_rec_for_center[1]), int(_rec_for_center[2])))
+        elif len(c2) >= 3:
             center_triples.append((int(c2[0]), int(c2[1]), int(c2[2])))
 
         center_keys = {tuple(sorted(t)) for t in center_triples}
@@ -7388,63 +7515,20 @@ try:
         role2 = int(_rec_seq[1])
         role3_original = int(_rec_seq[2])
 
-        col1_cars = _uniq_keep([role1, role2])
-        col2_base = _uniq_keep([role1, role2, role3_original])
-
-        # 評価1ラインは、globals の line_def よりも note本文の「ライン」表示を優先する。
-        # 理由：note用コピーエリアでは line_def がスコープ外・旧値・未更新になる場合があるため。
-        eval1_line_members_text = _find_line_members_of_car_from_note_text(note_text, role1)
-        eval1_line_members_global = _find_line_members_of_car(_line_def, role1)
-
-        if eval1_line_members_text and int(role1) in [int(x) for x in eval1_line_members_text]:
-            eval1_line_members = eval1_line_members_text
-        else:
-            eval1_line_members = eval1_line_members_global
-
-        promote_car = None
         rec_order_for_forme = list(_rec_seq)
 
-        # 重要：2列目には、評価1ラインから role1 以外の車を最低1車入れる。
-        # 例：評価1ライン 3574 / メイン順 3→1→6→5→4→2→7 の場合、
-        #     NG: 31→316（評価1ラインの追加車が2列目にいない）
-        #     OK: 31→315（評価1ラインから5を2列目へ入れる）
-        # ただし role2 または role3_original が既に評価1ラインなら差し替えない。
-        role3 = int(rec_order_for_forme[2]) if len(rec_order_for_forme) >= 3 else role3_original
-        eval1_set = {int(x) for x in (eval1_line_members or []) if str(x).isdigit()}
-
-        if eval1_set:
-            base_line_count = sum(1 for x in [role1, role2, role3] if int(x) in eval1_set)
-            if base_line_count < 2:
-                for cand in list(rec_order_for_forme) + list(eval1_line_members or []):
-                    try:
-                        cand = int(cand)
-                    except Exception:
-                        continue
-                    if cand in eval1_set and cand not in {int(role1), int(role2)}:
-                        promote_car = cand
-                        role3 = cand
-                        break
-
-        col2_cars = _uniq_keep([role1, role2, role3])
+        # VeloBi列評価：評価順位をそのまま買目にせず、
+        # 1列目・2列目・3列目に振り分けてから券種へ変換する。
+        col1_cars, col2_cars, col3_cars, column_role_map = _make_velobi_column_eval(
+            rec_order_for_forme,
+            _line_def,
+            role1,
+            market_mark_map,
+            max_col2=3,
+            max_col3=5,
+        )
 
         expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(col1_cars, col2_cars, role1, market_mark_map)
-
-        # 3列目：原則5車に収める。
-        # ただし「評価1ライン全車」は必ず優先反映する。
-        # 例：7325461 / 評価1ライン571 / 5を2列目繰り上げ
-        #   NG: 735241（6車）
-        #   OK: 73521（5車。評価1ライン571を全員保持し、低優先の4を落とす）
-        col3_mandatory = _uniq_keep(col2_cars + eval1_line_members)
-        col3_cars = list(col3_mandatory)
-        for _c in rec_order_for_forme:
-            if _c not in col3_cars:
-                col3_cars.append(_c)
-            if len(col3_cars) >= 5:
-                break
-
-        # 通常は5車まで。評価1ライン＋2列目だけで5車を超える特殊ケースのみ超過を許容。
-        if len(col3_mandatory) <= 5:
-            col3_cars = col3_cars[:5]
 
         col1_text = _fmt_cars(col1_cars)
         col2_text = _fmt_cars(col2_cars)
@@ -7454,8 +7538,11 @@ try:
         sanpuku_points = _count_sanpuku(col1_cars, col2_cars, col3_cars)
         sanrentan_points = _count_sanrentan(col1_cars, col2_cars, col3_cars)
 
-        nishatan_forme_line = f"2車系フォメ：{col1_text}→{col2_text} / {col1_text}={col2_text}（{nishatan_points}点）"
-        sanpuku_forme_line = f"三連複フォメ：{col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
+        nishatan_forme_line = f"2車系フォメ：1列目→2列目 {col1_text}→{col2_text} / {col1_text}={col2_text}（{nishatan_points}点）"
+        sanpuku_forme_line = f"三連複フォメ：1列目-2列目-3列目 {col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
+        column_eval_block = _make_velobi_column_block(
+            col1_cars, col2_cars, col3_cars, column_role_map, role1, market_mark_map
+        )
         sanrentan_forme_line = f"3連単フォメ：{col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
         myoumi_pickup_block = _make_myoumi_pickup_block(
             col1_cars,
@@ -7486,6 +7573,7 @@ try:
             f"全体妙味：{expect_axis_label}\n"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}"
+            + (f"\n\n{column_eval_block}" if column_eval_block else "")
             + (f"\n\n{rule_buy_block}" if rule_buy_block else "")
             + (f"\n\n{myoumi_point_block}" if myoumi_point_block else "")
         )
@@ -7702,4 +7790,3 @@ st.text_area("ここを選択してコピー", note_text, height=620)
 # =========================
 #  一括置換ブロック ここまで
 # =========================
-
