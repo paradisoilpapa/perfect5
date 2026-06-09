@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# v22: 2車複｜評価重複は妙味ptで足切りしない
+# v23: 評価重複はVeloBi順に並べ替え、単系参考（2車単/3連単）として表示
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7491,6 +7491,55 @@ def _fmt_triple_display(a, b, c):
     x, y, z = _triple_display_order(a, b, c)
     return f"{x}-{y}-{z}"
 
+def _velobi_rank_index(car: int, rec_order_for_forme=None) -> int:
+    """順流メイン順のindex。見つからない車は後ろへ回す。"""
+    try:
+        order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
+        c = int(car)
+        if c in order:
+            return order.index(c)
+    except Exception:
+        pass
+    return 999
+
+
+def _velobi_ordered_cars(cars, rec_order_for_forme=None):
+    """評価重複の単系参考用に、車番ではなくVeloBi順流順位で並べる。"""
+    try:
+        return sorted([int(x) for x in cars], key=lambda x: (_velobi_rank_index(x, rec_order_for_forme), int(x)))
+    except Exception:
+        return [int(x) for x in cars]
+
+
+def _fmt_nitan_reference(a, b, rec_order_for_forme=None):
+    """2車複の評価重複を、VeloBi順の2車単参考表記に変換する。"""
+    x, y = _velobi_ordered_cars([a, b], rec_order_for_forme)
+    return f"{x}→{y}"
+
+
+def _fmt_santan_reference(a, b, c, rec_order_for_forme=None):
+    """三連複の評価重複を、VeloBi順の3連単参考表記に変換する。"""
+    x, y, z = _velobi_ordered_cars([a, b, c], rec_order_for_forme)
+    return f"{x}→{y}→{z}"
+
+
+def _pair_overlap_note_ordered(a, b, mark_map, rec_order_for_forme=None, top_n: int = 4):
+    """2車単参考表記の順番に合わせて注記を並べる。"""
+    cars = _velobi_ordered_cars([a, b], rec_order_for_forme)
+    return "/".join([
+        _overlap_note_for_car(x, mark_map, rec_order_for_forme, top_n=top_n)
+        for x in cars
+    ])
+
+
+def _triple_overlap_note_ordered(a, b, c, mark_map, rec_order_for_forme=None, top_n: int = 4):
+    """3連単参考表記の順番に合わせて注記を並べる。"""
+    cars = _velobi_ordered_cars([a, b, c], rec_order_for_forme)
+    return "/".join([
+        _overlap_note_for_car(x, mark_map, rec_order_for_forme, top_n=top_n)
+        for x in cars
+    ])
+
 
 def _triple_overlap_note(a, b, c, mark_map, rec_order_for_forme=None, top_n: int = 4):
     """三連複の表示順と注記順を必ず一致させる。"""
@@ -7559,13 +7608,11 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             lines.append("該当なし")
 
         lines.append("")
-        lines.append("2車複｜評価重複（外部印＋順流評価1〜4が両車）：")
+        lines.append("2車複’｜評価重複（2車単参考・VeloBi順）：")
         if overlap_pairs:
             for sc, a, b, marked_count, top_count in overlap_pairs:
-                note_a = _overlap_note_for_car(a, mark_map, rec_order_for_forme, top_n=4)
-                note_b = _overlap_note_for_car(b, mark_map, rec_order_for_forme, top_n=4)
-                mark_note = f"{note_a}/{note_b}"
-                lines.append(f"{_fmt_pair(a, b)}　{sc:.1f}pt［評価重複｜{mark_note}］")
+                mark_note = _pair_overlap_note_ordered(a, b, mark_map, rec_order_for_forme, top_n=4)
+                lines.append(f"{_fmt_nitan_reference(a, b, rec_order_for_forme)}　{sc:.1f}pt［評価重複｜{mark_note}］")
         else:
             lines.append("該当なし")
 
@@ -7579,11 +7626,11 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             lines.append("該当なし")
 
         lines.append("")
-        lines.append("三連複｜評価重複（外部印＋順流評価1〜4が3車）：")
+        lines.append("三連複’｜評価重複（3連単参考・VeloBi順）：")
         if overlap_triples:
             for sc, a, b, c, marks, marked_count, top_count, both_count in overlap_triples:
-                mark_note = _triple_overlap_note(a, b, c, mark_map, rec_order_for_forme, top_n=4)
-                lines.append(f"{_fmt_triple_display(a, b, c)}　{sc:.1f}pt［評価重複｜{mark_note}］")
+                mark_note = _triple_overlap_note_ordered(a, b, c, mark_map, rec_order_for_forme, top_n=4)
+                lines.append(f"{_fmt_santan_reference(a, b, c, rec_order_for_forme)}　{sc:.1f}pt［評価重複｜{mark_note}］")
         else:
             lines.append("該当なし")
 
