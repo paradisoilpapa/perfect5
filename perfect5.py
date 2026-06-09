@@ -6990,6 +6990,65 @@ MYOUMI_PASS_THRESHOLD_2KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 7
 MYOUMI_PASS_THRESHOLD_3KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_3KEI", 8.0))
 # ワイドは現時点では未採用。2車複と三連複だけで表示する。
 
+# 評価重複枠：妙味通過ではないが、VeloBi列評価とWINTICKET市場印が重なる本線寄りの2車複。
+# ここは「当たりやすいが安い」確認枠。買いすぎ防止のため、5.0pt以上・最大3点に絞る。
+EVAL_OVERLAP_MIN_2KEI = float(globals().get("EVAL_OVERLAP_MIN_2KEI", 5.0))
+EVAL_OVERLAP_MAX_2KEI = int(globals().get("EVAL_OVERLAP_MAX_2KEI", 3))
+MARKED_SET = {"◎", "〇", "○", "△", "×"}
+
+
+def _is_market_marked(car: int, mark_map: dict) -> bool:
+    try:
+        mk = {int(k): str(v) for k, v in (mark_map or {}).items()}.get(int(car), "無印")
+        return mk in MARKED_SET
+    except Exception:
+        return False
+
+
+def _market_mark_label(car: int, mark_map: dict) -> str:
+    try:
+        return {int(k): str(v) for k, v in (mark_map or {}).items()}.get(int(car), "無印")
+    except Exception:
+        return "無印"
+
+
+def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_keys=None):
+    """
+    評価重複2車複を集める。
+    条件：
+      ・1列目-2列目の2車複候補
+      ・妙味通過枠に既に出ていない
+      ・5.0pt以上
+      ・WINTICKET印が片方以上、できれば両方にある
+
+    位置づけ：
+      妙味ではなく、的中率を支える安い本線確認枠。
+    """
+    try:
+        exclude_keys = set(exclude_keys or set())
+        all_items = _all_2kei_point_items(col1_cars, col2_cars, role1, mark_map)
+        out = []
+        for sc, a, b in all_items:
+            key = tuple(sorted((int(a), int(b))))
+            if key in exclude_keys:
+                continue
+            if float(sc) < EVAL_OVERLAP_MIN_2KEI:
+                continue
+
+            ma = _is_market_marked(a, mark_map)
+            mb = _is_market_marked(b, mark_map)
+            if not (ma or mb):
+                continue
+
+            marked_count = int(ma) + int(mb)
+            # 両方印付き＞片方印付き、次にpt順。
+            out.append((marked_count, float(sc), int(a), int(b)))
+
+        out.sort(key=lambda x: (-x[0], -x[1], x[2], x[3]))
+        return [(sc, a, b, marked_count) for marked_count, sc, a, b in out[:EVAL_OVERLAP_MAX_2KEI]]
+    except Exception:
+        return []
+
 
 def _collect_myoumi_pickups(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
     """
@@ -7252,15 +7311,16 @@ def _fmt_triple(a, b, c):
 def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
     """
     現在の実戦ルールに基づく買い目整理。
-    予想・フォメ生成には触らず、既存フォメと妙味ポイントから表示だけを作る。
 
     方針：
-    ・【ヴェロビ的買目】の通常三連複は出さない。
-      上位123評価をそのまま三連複にする買目は、列評価の根拠と整合しないため廃止する。
-    ・2車複は、妙味ptが通過基準以上のペアだけを表示する。
-    ・2車複通過ペアを含み、かつ三連複妙味ptも通過基準以上のものは、
-      【期待値推奨｜的中率低想定】として別枠に出す。
-    ・期待値推奨は検討枠であり、通常の三連複推奨とは混ぜない。
+    ・2車複は2層表示にする。
+        1) 妙味通過：7.0pt以上。回収率狙い。
+        2) 評価重複：WINTICKET印とVeloBi列評価が重なる5.0pt以上。的中率補助。
+    ・通常三連複は出さない。
+      4-1-3 のような上位123評価そのままの買目は、根拠が薄いため廃止。
+    ・三連複は、2車複の妙味通過ペアを含み、かつ三連複8.0pt以上のものだけを
+      【期待値推奨｜的中率低想定】として別枠表示する。
+    ・ワイドは現時点では未採用。
     """
     try:
         c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
@@ -7274,8 +7334,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             c1, c2, c3, role1, mark_map, rec_order_for_forme
         )
 
-        # 2車系ピックアップを2車複ペアへ重複整理する。
-        # 表示順はピックアップ順を優先し、同一組み合わせは1回だけ。
+        # 妙味通過2車複
         pickup_pairs = []
         pickup_pair_keys = set()
         for _, a, b in two:
@@ -7284,20 +7343,33 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
                 pickup_pair_keys.add(key)
                 pickup_pairs.append((int(a), int(b)))
 
-        # ヴェロビ的買目の通常三連複は廃止。
-        # 理由：4-1-3 のような「上位123評価そのまま」は根拠が薄く、
-        # 列評価導入後の役割分担とも整合しない。
-        # 三連複は下の【期待値推奨｜的中率低想定】だけで扱う。
+        # 評価重複2車複（妙味通過とは別枠）
+        overlap_pairs = _collect_eval_overlap_2kei(
+            c1, c2, int(role1), mark_map, exclude_keys=pickup_pair_keys
+        )
+
+        # 通常三連複は廃止。
         center_triples = []
         center_keys = set()
 
         lines = ["【ヴェロビ的買目】"]
 
         lines.append("")
-        lines.append("2車複：")
+        lines.append(f"2車複｜妙味通過（{MYOUMI_PASS_THRESHOLD_2KEI:.1f}pt以上）：")
         if pickup_pairs:
             for a, b in pickup_pairs:
                 lines.append(_fmt_pair(a, b))
+        else:
+            lines.append("該当なし")
+
+        lines.append("")
+        lines.append(f"2車複｜評価重複（WINTICKET印被り・{EVAL_OVERLAP_MIN_2KEI:.1f}pt以上）：")
+        if overlap_pairs:
+            for sc, a, b, marked_count in overlap_pairs:
+                ma = _market_mark_label(a, mark_map)
+                mb = _market_mark_label(b, mark_map)
+                mark_note = f"{ma}/{mb}"
+                lines.append(f"{_fmt_pair(a, b)}　{sc:.1f}pt［評価重複｜{mark_note}］")
         else:
             lines.append("該当なし")
 
@@ -7313,13 +7385,11 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         # 期待値推奨：
         # 2車複通過ペアを含む三連複のうち、
         # 三連複側の妙味ptも通過基準以上のものだけ。
+        # 評価重複ペアは「安い本線」なので、期待値三連複の起点にはしない。
         # --------------------------------------------------
         ev_triples = []
         ev_seen = set()
 
-        # 期待値推奨は「通過したものを全表示」する検算枠。
-        # _collect_myoumi_pickups() の3連系は旧ピックアップ用に上位3点へ制限されるため、
-        # ここでは全候補を返す _all_3kei_point_items() を使い、表示漏れを防ぐ。
         threshold_3kei = MYOUMI_PASS_THRESHOLD_3KEI
         ev_source_triples = _all_3kei_point_items(c1, c2, c3, role1, mark_map)
 
@@ -7332,7 +7402,6 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
                 tset = set(tri)
                 tkey = tuple(sorted(tri))
 
-                # 通常三連複は廃止済みだが、将来 center_triples を復活させた場合の重複防止。
                 if tkey in center_keys:
                     continue
 
