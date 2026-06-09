@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v22: 2車複｜評価重複は妙味ptで足切りしない
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7084,8 +7085,8 @@ def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_ke
     条件：
       ・1列目-2列目の2車複候補
       ・妙味通過枠に既に出ていない
-      ・5.0pt以上
       ・2車とも、同じ車に「外部印＋順流評価1〜4」が重なる組み合わせ
+      ・評価重複は的中率補助枠なので、妙味ptでは足切りしない
 
     位置づけ：
       妙味ではなく、的中率を支える安い本線確認枠。
@@ -7113,9 +7114,8 @@ def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_ke
             key = tuple(sorted((int(a), int(b))))
             if key in exclude_keys:
                 continue
-            if float(sc) < EVAL_OVERLAP_MIN_2KEI:
-                continue
-
+            # 評価重複は「印と順流評価の重なり」を見る枠。
+            # 妙味ptは表示・並び順の参考に使うが、足切りには使わない。
             ma = _is_market_marked(a, mark_map)
             mb = _is_market_marked(b, mark_map)
             a_top = int(a) in velobi_top4
@@ -7559,7 +7559,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             lines.append("該当なし")
 
         lines.append("")
-        lines.append(f"2車複｜評価重複（外部印＋順流評価1〜4が両車・{EVAL_OVERLAP_MIN_2KEI:.1f}pt以上）：")
+        lines.append("2車複｜評価重複（外部印＋順流評価1〜4が両車）：")
         if overlap_pairs:
             for sc, a, b, marked_count, top_count in overlap_pairs:
                 note_a = _overlap_note_for_car(a, mark_map, rec_order_for_forme, top_n=4)
