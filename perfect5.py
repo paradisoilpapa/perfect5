@@ -7374,6 +7374,7 @@ nishatan_forme_line = ""
 sanpuku_forme_line = ""
 sanrentan_forme_line = ""
 myoumi_pickup_block = ""
+column_eval_block = ""
 expect_axis_label = "C"
 expect_axis_score = None
 expect_axis_role_marks = []
@@ -7388,75 +7389,112 @@ try:
         role2 = int(_rec_seq[1])
         role3_original = int(_rec_seq[2])
 
-        col1_cars = _uniq_keep([role1, role2])
-        col2_base = _uniq_keep([role1, role2, role3_original])
-
-        # 評価1ラインは、globals の line_def よりも note本文の「ライン」表示を優先する。
-        # 理由：note用コピーエリアでは line_def がスコープ外・旧値・未更新になる場合があるため。
-        eval1_line_members_text = _find_line_members_of_car_from_note_text(note_text, role1)
-        eval1_line_members_global = _find_line_members_of_car(_line_def, role1)
-
-        if eval1_line_members_text and int(role1) in [int(x) for x in eval1_line_members_text]:
-            eval1_line_members = eval1_line_members_text
-        else:
-            eval1_line_members = eval1_line_members_global
-
-        promote_car = None
+        # =====================================================
+        # VeloBi列評価 v6
+        # 理論の柱：
+        #   1列目 = 勝ち負けの軸
+        #   2列目 = 2着以内に入る相手
+        #   3列目 = 3着内・穴・ライン残り
+        #
+        # 重要：
+        #   ・評価順位をそのまま列にしない
+        #   ・妙味ptだけで列を入れ替えない
+        #   ・妙味ptは後段の買う/切る検算に使う
+        #   ・主導ライン3番手は穴が出やすいので、
+        #     2列目の穴ヒモにも、3列目の穴候補にも重複配置する
+        # =====================================================
         rec_order_for_forme = list(_rec_seq)
 
-        # 重要：2列目には、評価1ラインから role1 以外の車を最低1車入れる。
-        # 例：評価1ライン 3574 / メイン順 3→1→6→5→4→2→7 の場合、
-        #     NG: 31→316（評価1ラインの追加車が2列目にいない）
-        #     OK: 31→315（評価1ラインから5を2列目へ入れる）
-        # ただし role2 または role3_original が既に評価1ラインなら差し替えない。
-        role3 = int(rec_order_for_forme[2]) if len(rec_order_for_forme) >= 3 else role3_original
-        eval1_set = {int(x) for x in (eval1_line_members or []) if str(x).isdigit()}
+        eval1_line_members_text = _find_line_members_of_car_from_note_text(note_text, role1)
+        eval1_line_members_global = _find_line_members_of_car(_line_def, role1)
+        if eval1_line_members_text and int(role1) in [int(x) for x in eval1_line_members_text]:
+            eval1_line_members = [int(x) for x in eval1_line_members_text]
+        else:
+            eval1_line_members = [int(x) for x in (eval1_line_members_global or [])]
 
-        if eval1_set:
-            base_line_count = sum(1 for x in [role1, role2, role3] if int(x) in eval1_set)
-            if base_line_count < 2:
-                for cand in list(rec_order_for_forme) + list(eval1_line_members or []):
-                    try:
-                        cand = int(cand)
-                    except Exception:
-                        continue
-                    if cand in eval1_set and cand not in {int(role1), int(role2)}:
-                        promote_car = cand
-                        role3 = cand
-                        break
+        eval1_thirdplus = []
+        if eval1_line_members and len(eval1_line_members) >= 3:
+            eval1_thirdplus = [int(x) for x in eval1_line_members[2:]]
 
-        col2_cars = _uniq_keep([role1, role2, role3])
+        col1_cars = _uniq_keep([role1])
+
+        # 2列目：2車複ヒモ候補
+        # 本線は順流上位から拾う。
+        # ただし主導ライン3番手は穴が出やすいため、除外しない。
+        # 順流上位3車に入らない場合でも「ライン3番手穴枠」として末尾に保証する。
+        col2_cars = []
+        for cand in rec_order_for_forme[1:]:
+            try:
+                cand = int(cand)
+            except Exception:
+                continue
+            if cand in col1_cars:
+                continue
+            if cand not in col2_cars:
+                col2_cars.append(cand)
+            if len(col2_cars) >= 3:
+                break
+
+        # 主導ライン3番手以降は、穴ヒモ枠として2列目にも残す
+        for cand in eval1_thirdplus:
+            try:
+                cand = int(cand)
+            except Exception:
+                continue
+            if cand in col1_cars:
+                continue
+            if cand not in col2_cars:
+                col2_cars.append(cand)
+
+        # 通常3車＋ライン3番手穴枠で最大4車まで
+        col2_cars = _uniq_keep(col2_cars[:4])
 
         expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(col1_cars, col2_cars, role1, market_mark_map)
 
-        # 3列目：原則5車に収める。
-        # ただし「評価1ライン全車」は必ず優先反映する。
-        # 例：7325461 / 評価1ライン571 / 5を2列目繰り上げ
-        #   NG: 735241（6車）
-        #   OK: 73521（5車。評価1ライン571を全員保持し、低優先の4を落とす）
-        col3_mandatory = _uniq_keep(col2_cars + eval1_line_members)
-        col3_cars = list(col3_mandatory)
-        for _c in rec_order_for_forme:
-            if _c not in col3_cars:
-                col3_cars.append(_c)
-            if len(col3_cars) >= 5:
-                break
+        col3_cars = []
+        # 主導ライン3番手は3列目の筆頭。
+        # 2列目に穴ヒモとして入っていても、三連複・ワイド用に重複して残す。
+        for cand in eval1_thirdplus:
+            try:
+                cand = int(cand)
+            except Exception:
+                continue
+            if cand not in col1_cars and cand not in col3_cars:
+                col3_cars.append(cand)
 
-        # 通常は5車まで。評価1ライン＋2列目だけで5車を超える特殊ケースのみ超過を許容。
-        if len(col3_mandatory) <= 5:
-            col3_cars = col3_cars[:5]
+        # 残りを順流メイン順で穴・3着候補に追加。
+        # ここは2車複ヒモ候補と分ける。
+        # ただし主導ライン3番手だけは上で重複配置済み。
+        for cand in rec_order_for_forme[1:]:
+            try:
+                cand = int(cand)
+            except Exception:
+                continue
+            if cand in col1_cars or cand in col2_cars or cand in col3_cars:
+                continue
+            col3_cars.append(cand)
+            if len(col3_cars) >= 3:
+                break
+        col3_cars = _uniq_keep(col3_cars[:3])
 
         col1_text = _fmt_cars(col1_cars)
         col2_text = _fmt_cars(col2_cars)
         col3_text = _fmt_cars(col3_cars)
 
+        column_eval_block = (
+            "【VeloBi列評価】\n"
+            f"1列目｜軸候補：{col1_text}\n"
+            f"2列目｜2車複ヒモ候補：{col2_text}\n"
+            f"3列目｜三連複・ワイド候補：{col3_text}"
+        )
+
         nishatan_points = _count_nishatan(col1_cars, col2_cars)
         sanpuku_points = _count_sanpuku(col1_cars, col2_cars, col3_cars)
         sanrentan_points = _count_sanrentan(col1_cars, col2_cars, col3_cars)
 
-        nishatan_forme_line = f"2車系フォメ：{col1_text}→{col2_text} / {col1_text}={col2_text}（{nishatan_points}点）"
-        sanpuku_forme_line = f"三連複フォメ：{col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
-        sanrentan_forme_line = f"3連単フォメ：{col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
+        nishatan_forme_line = f"2車系フォメ：1列目→2列目 {col1_text}→{col2_text} / {col1_text}={col2_text}（{nishatan_points}点）"
+        sanpuku_forme_line = f"三連複フォメ：1列目-2列目-3列目 {col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
+        sanrentan_forme_line = f"3連単フォメ：1列目→2列目→3列目 {col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
         myoumi_pickup_block = _make_myoumi_pickup_block(
             col1_cars,
             col2_cars,
@@ -7482,34 +7520,6 @@ try:
             rec_order_for_forme,
         )
 
-        # -----------------------------------------
-        # VeloBi列評価：画面上で独立して見える3列UI
-        # ※ここでは買目生成ロジックは変えず、既存の col1/col2/col3 を見える化するだけ
-        # -----------------------------------------
-        column_eval_block = (
-            "【VeloBi列評価】\n"
-            f"1列目｜軸・準軸候補：{col1_text}\n"
-            f"2列目｜連対・ヒモ候補：{col2_text}\n"
-            f"3列目｜3着・穴候補：{col3_text}"
-        )
-
-        st.markdown("### 【VeloBi列評価】")
-        _c1, _c2, _c3 = st.columns(3)
-        with _c1:
-            st.markdown("**1列目｜軸・準軸候補**")
-            st.markdown(f"### {col1_text}")
-        with _c2:
-            st.markdown("**2列目｜連対・ヒモ候補**")
-            st.markdown(f"### {col2_text}")
-        with _c3:
-            st.markdown("**3列目｜3着・穴候補**")
-            st.markdown(f"### {col3_text}")
-
-        st.caption(
-            "列評価は買目変換用の確認欄です。"
-            "2車系は1列目→2列目、三連複は1列目-2列目-3列目で確認します。"
-        )
-
         st.info(
             f"全体妙味：{expect_axis_label}\n\n"
             f"{column_eval_block}\n\n"
@@ -7530,6 +7540,7 @@ except Exception as _e:
     myoumi_pickup_block = ""
     rule_buy_block = ""
     myoumi_point_block = ""
+    column_eval_block = ""
     st.caption(nishatan_forme_line)
     st.caption(sanpuku_forme_line)
 
