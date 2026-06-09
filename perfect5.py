@@ -7205,11 +7205,22 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
                 pickup_pair_keys.add(key)
                 pickup_pairs.append((int(a), int(b)))
 
-        # メイン順123の中心三連複を1点だけ作る。
-        # col2_cars はメイン順1〜3位を保持している前提。
+        # ヴェロビ的買目の中心三連複を1点だけ作る。
+        # 列評価導入後も、通常三連複は必ず1列目の軸を含める。
+        # NG例：c2だけで作る 1-3-2 のような三連複。
+        # OK例：col1=4, col2=1・3・2... → 4-1-3。
         center_triples = []
-        if len(c2) >= 3:
-            center_triples.append((int(c2[0]), int(c2[1]), int(c2[2])))
+        if c1 and len(c2) >= 2:
+            axis = int(c1[0])
+            mates = []
+            for x in c2:
+                x = int(x)
+                if x != axis and x not in mates:
+                    mates.append(x)
+                if len(mates) >= 2:
+                    break
+            if len(mates) >= 2:
+                center_triples.append((axis, mates[0], mates[1]))
 
         center_keys = {tuple(sorted(t)) for t in center_triples}
 
