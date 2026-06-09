@@ -7450,15 +7450,6 @@ try:
         col2_text = _fmt_cars(col2_cars)
         col3_text = _fmt_cars(col3_cars)
 
-        # 画面確認用：列評価を独立ブロックとして必ず表示する
-        # ここでは買目生成ロジックは変えず、まず「どの車が何列目か」を見える化する。
-        column_eval_block = (
-            "【VeloBi列評価】\n"
-            f"1列目｜軸・準軸候補\n{col1_text}\n\n"
-            f"2列目｜連対・ヒモ候補\n{col2_text}\n\n"
-            f"3列目｜3着・穴候補\n{col3_text}"
-        )
-
         nishatan_points = _count_nishatan(col1_cars, col2_cars)
         sanpuku_points = _count_sanpuku(col1_cars, col2_cars, col3_cars)
         sanrentan_points = _count_sanrentan(col1_cars, col2_cars, col3_cars)
@@ -7489,6 +7480,34 @@ try:
             role1,
             market_mark_map,
             rec_order_for_forme,
+        )
+
+        # -----------------------------------------
+        # VeloBi列評価：画面上で独立して見える3列UI
+        # ※ここでは買目生成ロジックは変えず、既存の col1/col2/col3 を見える化するだけ
+        # -----------------------------------------
+        column_eval_block = (
+            "【VeloBi列評価】\n"
+            f"1列目｜軸・準軸候補：{col1_text}\n"
+            f"2列目｜連対・ヒモ候補：{col2_text}\n"
+            f"3列目｜3着・穴候補：{col3_text}"
+        )
+
+        st.markdown("### 【VeloBi列評価】")
+        _c1, _c2, _c3 = st.columns(3)
+        with _c1:
+            st.markdown("**1列目｜軸・準軸候補**")
+            st.markdown(f"### {col1_text}")
+        with _c2:
+            st.markdown("**2列目｜連対・ヒモ候補**")
+            st.markdown(f"### {col2_text}")
+        with _c3:
+            st.markdown("**3列目｜3着・穴候補**")
+            st.markdown(f"### {col3_text}")
+
+        st.caption(
+            "列評価は買目変換用の確認欄です。"
+            "2車系は1列目→2列目、三連複は1列目-2列目-3列目で確認します。"
         )
 
         st.info(
