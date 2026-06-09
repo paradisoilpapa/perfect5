@@ -6990,9 +6990,10 @@ MYOUMI_PASS_THRESHOLD_2KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 7
 MYOUMI_PASS_THRESHOLD_3KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_3KEI", 8.0))
 # ワイドは現時点では未採用。2車複と三連複だけで表示する。
 
-# 評価重複枠：妙味通過ではないが、VeloBi列評価と外部印が重なる本線寄りの2車複。
+# 評価重複枠：妙味通過ではないが、外部印とVeloBi評価上位が重なる本線寄りの2車複。
 # ここは「当たりやすいが安い」確認枠。
-# 2車複は両方が外部印付きの場合だけ採用する。片方が無印なら評価重複とは扱わない。
+# 2車複は「外部印＋VeloBi評価1〜4」を採用する。
+# 片方が無印でも、もう片方が外部印付きで、相手がVeloBi評価1〜4なら評価重複として扱う。
 EVAL_OVERLAP_MIN_2KEI = float(globals().get("EVAL_OVERLAP_MIN_2KEI", 5.0))
 EVAL_OVERLAP_MAX_2KEI = int(globals().get("EVAL_OVERLAP_MAX_2KEI", 3))
 # 評価重複三連複：1列目-2列目-3列目の中で外部印が重なる三連複。
@@ -7017,22 +7018,36 @@ def _market_mark_label(car: int, mark_map: dict) -> str:
         return "無印"
 
 
-def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_keys=None):
+def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_keys=None, rec_order_for_forme=None):
     """
     評価重複2車複を集める。
     条件：
       ・1列目-2列目の2車複候補
       ・妙味通過枠に既に出ていない
       ・5.0pt以上
-      ・2車とも外部印付きである
-      ・片方が無印なら評価重複とは扱わない
+      ・外部印付きの車と、VeloBi評価1〜4の車の組み合わせ
 
     位置づけ：
       妙味ではなく、的中率を支える安い本線確認枠。
+      外部印同士だけに限定しない。外部印＋VeloBi上位評価の重なりを見る。
     """
     try:
         exclude_keys = set(exclude_keys or set())
         all_items = _all_2kei_point_items(col1_cars, col2_cars, role1, mark_map)
+        rec_order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
+        if rec_order:
+            velobi_top4 = set(rec_order[:4])
+        else:
+            # 念のためのフォールバック：列評価の前方から4車
+            tmp = []
+            for x in list(col1_cars or []) + list(col2_cars or []):
+                try:
+                    xi = int(x)
+                    if xi not in tmp:
+                        tmp.append(xi)
+                except Exception:
+                    pass
+            velobi_top4 = set(tmp[:4])
         out = []
         for sc, a, b in all_items:
             key = tuple(sorted((int(a), int(b))))
@@ -7043,17 +7058,21 @@ def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_ke
 
             ma = _is_market_marked(a, mark_map)
             mb = _is_market_marked(b, mark_map)
+            a_top = int(a) in velobi_top4
+            b_top = int(b) in velobi_top4
 
-            # 2車複の評価重複は「外部印同士」だけ。
-            # 片方が無印なら、表示ラベルの意味とズレるため採用しない。
-            if not (ma and mb):
+            # 2車複の評価重複は「外部印＋VeloBi評価1〜4」。
+            # 外部印同士だけに限定しない。
+            # 例：4-2 が 〇/無印 でも、2がVeloBi評価1〜4なら採用する。
+            if not ((ma and b_top) or (mb and a_top)):
                 continue
 
-            marked_count = 2
-            out.append((marked_count, float(sc), int(a), int(b)))
+            marked_count = int(ma) + int(mb)
+            top_count = int(a_top) + int(b_top)
+            out.append((marked_count, top_count, float(sc), int(a), int(b)))
 
-        out.sort(key=lambda x: (-x[1], x[2], x[3]))
-        return [(sc, a, b, marked_count) for marked_count, sc, a, b in out[:EVAL_OVERLAP_MAX_2KEI]]
+        out.sort(key=lambda x: (-x[2], -x[0], -x[1], x[3], x[4]))
+        return [(sc, a, b, marked_count, top_count) for marked_count, top_count, sc, a, b in out[:EVAL_OVERLAP_MAX_2KEI]]
     except Exception:
         return []
 
@@ -7415,7 +7434,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
 
         # 評価重複2車複（妙味通過とは別枠）
         overlap_pairs = _collect_eval_overlap_2kei(
-            c1, c2, int(role1), mark_map, exclude_keys=pickup_pair_keys
+            c1, c2, int(role1), mark_map, exclude_keys=pickup_pair_keys, rec_order_for_forme=rec_order_for_forme
         )
 
         # 通常三連複は廃止。
@@ -7435,9 +7454,9 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             lines.append("該当なし")
 
         lines.append("")
-        lines.append(f"2車複｜評価重複（外部印同士・{EVAL_OVERLAP_MIN_2KEI:.1f}pt以上）：")
+        lines.append(f"2車複｜評価重複（外部印＋VeloBi評価1〜4・{EVAL_OVERLAP_MIN_2KEI:.1f}pt以上）：")
         if overlap_pairs:
-            for sc, a, b, marked_count in overlap_pairs:
+            for sc, a, b, marked_count, top_count in overlap_pairs:
                 ma = _market_mark_label(a, mark_map)
                 mb = _market_mark_label(b, mark_map)
                 mark_note = f"{ma}/{mb}"
