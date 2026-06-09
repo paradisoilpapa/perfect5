@@ -6688,6 +6688,73 @@ def _find_line_members_of_car_from_note_text(note_text_obj, car):
     return []
 
 
+
+def _parse_line_members_from_note_text(note_text_obj):
+    """
+    note本文の「ライン　416　27　3　5」から、ライン配列を復元する。
+    返り値例：[[4,1,6], [2,7], [3], [5]]
+    """
+    try:
+        txt = str(note_text_obj or "")
+        m = re.search(r"^ライン\s+(.+)$", txt, flags=re.MULTILINE)
+        if not m:
+            return []
+        part = m.group(1).strip()
+        chunks = re.split(r"[\s　]+", part)
+        out = []
+        for ch in chunks:
+            nums = []
+            for x in re.findall(r"\d", ch):
+                xi = int(x)
+                if 1 <= xi <= 9 and xi not in nums:
+                    nums.append(xi)
+            if nums:
+                out.append(nums)
+        return out
+    except Exception:
+        return []
+
+
+def _line_members_list_from_line_def(line_def_obj):
+    """
+    globals の line_def からライン配列を作る保険。
+    """
+    try:
+        if isinstance(line_def_obj, dict):
+            out = []
+            for _, mem in line_def_obj.items():
+                nums = []
+                for x in (mem or []):
+                    if str(x).isdigit():
+                        xi = int(x)
+                        if 1 <= xi <= 9 and xi not in nums:
+                            nums.append(xi)
+                if nums:
+                    out.append(nums)
+            return out
+    except Exception:
+        pass
+    return []
+
+
+def _rank_lines_by_order(line_members_list, order_seq):
+    """
+    各ラインを、推奨順/KO順で一番早く出る車を代表順位として並べる。
+    評価順そのものではなく、ライン単位で列へ割り振るための基礎。
+    """
+    order = [int(x) for x in (order_seq or []) if str(x).isdigit()]
+    pos = {car: i for i, car in enumerate(order)}
+
+    def key(mem):
+        best = min([pos.get(int(c), 999) for c in mem] or [999])
+        # 同順位の保険として、ライン先頭の推奨位置も見る
+        head_pos = pos.get(int(mem[0]), 999) if mem else 999
+        return (best, head_pos, len(mem))
+
+    return sorted([list(map(int, mem)) for mem in (line_members_list or []) if mem], key=key)
+
+
+
 def _pick_eval1_line_promote_car(eval1_line_members, current_col2, mark_map):
     """
     評価1ライン内の印付き未採用車を、2列目へ1車だけ繰り上げる。
@@ -7206,21 +7273,27 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
                 pickup_pairs.append((int(a), int(b)))
 
         # ヴェロビ的買目の中心三連複を1点だけ作る。
-        # 列評価導入後も、通常三連複は必ず1列目の軸を含める。
-        # NG例：c2だけで作る 1-3-2 のような三連複。
-        # OK例：col1=4, col2=1・3・2... → 4-1-3。
+        # 列評価導入後の通常三連複は、必ず「1列目-2列目-3列目」で作る。
+        # 2列目だけで作る 1-3-2 はNG。
+        # 例：col1=4, col2=1・3・2・6, col3=3・6・7・5 → 4-1-3。
         center_triples = []
-        if c1 and len(c2) >= 2:
+        if c1 and c2 and c3:
             axis = int(c1[0])
-            mates = []
+            b = None
+            c = None
             for x in c2:
                 x = int(x)
-                if x != axis and x not in mates:
-                    mates.append(x)
-                if len(mates) >= 2:
+                if x != axis:
+                    b = x
                     break
-            if len(mates) >= 2:
-                center_triples.append((axis, mates[0], mates[1]))
+            if b is not None:
+                for x in c3:
+                    x = int(x)
+                    if x != axis and x != b:
+                        c = x
+                        break
+            if b is not None and c is not None:
+                center_triples.append((axis, b, c))
 
         center_keys = {tuple(sorted(t)) for t in center_triples}
 
@@ -7401,21 +7474,28 @@ try:
         role3_original = int(_rec_seq[2])
 
         # =====================================================
-        # VeloBi列評価 v6
+        # VeloBi列評価 v8：ライン順位割り振り型
         # 理論の柱：
         #   1列目 = 勝ち負けの軸
         #   2列目 = 2着以内に入る相手
         #   3列目 = 3着内・穴・ライン残り
         #
         # 重要：
-        #   ・評価順位をそのまま列にしない
-        #   ・妙味ptだけで列を入れ替えない
-        #   ・妙味ptは後段の買う/切る検算に使う
-        #   ・主導ライン3番手は穴が出やすいので、
-        #     2列目の穴ヒモにも、3列目の穴候補にも重複配置する
+        #   ・評価上位123をそのまま2列目に押し込まない
+        #   ・各ラインを推奨順で順位付けし、ライン単位で2列目/3列目へ割り振る
+        #   ・通常三連複123を組めるよう、順流3番手は3列目にも残す
+        #   ・主導ライン3番手は穴が出やすいので、例外的に2列目にも入れてよい
+        #   ・妙味ptは列を壊すためではなく、後段の買う/切る検算に使う
         # =====================================================
         rec_order_for_forme = list(_rec_seq)
 
+        # ライン配列は、コピー欄の「ライン ...」を優先して復元する。
+        line_members_all = _parse_line_members_from_note_text(note_text)
+        if not line_members_all:
+            line_members_all = _line_members_list_from_line_def(_line_def)
+        ranked_lines = _rank_lines_by_order(line_members_all, rec_order_for_forme)
+
+        # 軸が所属する主導ライン
         eval1_line_members_text = _find_line_members_of_car_from_note_text(note_text, role1)
         eval1_line_members_global = _find_line_members_of_car(_line_def, role1)
         if eval1_line_members_text and int(role1) in [int(x) for x in eval1_line_members_text]:
@@ -7423,38 +7503,57 @@ try:
         else:
             eval1_line_members = [int(x) for x in (eval1_line_members_global or [])]
 
+        # 保険：ranked_lines側にも軸所属ラインがあればそちらを優先
+        for mem in ranked_lines:
+            if int(role1) in [int(x) for x in mem]:
+                eval1_line_members = [int(x) for x in mem]
+                break
+
+        eval1_second = []
         eval1_thirdplus = []
+        if eval1_line_members and len(eval1_line_members) >= 2:
+            eval1_second = [int(eval1_line_members[1])]
         if eval1_line_members and len(eval1_line_members) >= 3:
             eval1_thirdplus = [int(x) for x in eval1_line_members[2:]]
 
         col1_cars = _uniq_keep([role1])
 
-        # 2列目：2車複ヒモ候補
-        # 本線は順流上位から拾う。
-        # ただし主導ライン3番手は穴が出やすいため、除外しない。
-        # 順流上位3車に入らない場合でも「ライン3番手穴枠」として末尾に保証する。
+        # 2列目：ライン単位の連対候補
+        # 1) 主導ライン番手
+        # 2) 他ラインの代表車（単騎は本人、複数ラインは先頭）をライン順位順に追加
+        # 3) 主導ライン3番手以降は穴ヒモとして例外的に追加
         col2_cars = []
-        for cand in rec_order_for_forme[1:]:
-            try:
-                cand = int(cand)
-            except Exception:
-                continue
-            if cand in col1_cars:
-                continue
-            if cand not in col2_cars:
+        for cand in eval1_second:
+            if cand not in col1_cars and cand not in col2_cars:
                 col2_cars.append(cand)
+
+        for mem in ranked_lines:
+            mem = [int(x) for x in mem]
+            if not mem:
+                continue
+            if int(role1) in mem:
+                continue
+
+            # そのライン内で推奨順が最も高い車を代表にする。
+            # 先頭固定にすると単騎・別線評価ズレを拾い損ねるため。
+            rep = None
+            for cand in rec_order_for_forme:
+                cand = int(cand)
+                if cand in mem:
+                    rep = cand
+                    break
+            if rep is None:
+                rep = int(mem[0])
+
+            if rep not in col1_cars and rep not in col2_cars:
+                col2_cars.append(rep)
             if len(col2_cars) >= 3:
                 break
 
         # 主導ライン3番手以降は、穴ヒモ枠として2列目にも残す
         for cand in eval1_thirdplus:
-            try:
-                cand = int(cand)
-            except Exception:
-                continue
-            if cand in col1_cars:
-                continue
-            if cand not in col2_cars:
+            cand = int(cand)
+            if cand not in col1_cars and cand not in col2_cars:
                 col2_cars.append(cand)
 
         # 通常3車＋ライン3番手穴枠で最大4車まで
@@ -7462,31 +7561,55 @@ try:
 
         expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(col1_cars, col2_cars, role1, market_mark_map)
 
+        # 3列目：三連複・ワイド候補
+        # 1) 順流3番手を最優先で入れる（通常123を組めるようにする）
+        # 2) 主導ライン3番手を入れる（穴が出やすい位置）
+        # 3) 各ラインの残りをライン順位順に入れる
         col3_cars = []
-        # 主導ライン3番手は3列目の筆頭。
-        # 2列目に穴ヒモとして入っていても、三連複・ワイド用に重複して残す。
-        for cand in eval1_thirdplus:
-            try:
-                cand = int(cand)
-            except Exception:
-                continue
+        for cand in [role3_original]:
+            cand = int(cand)
             if cand not in col1_cars and cand not in col3_cars:
                 col3_cars.append(cand)
 
-        # 残りを順流メイン順で穴・3着候補に追加。
-        # ここは2車複ヒモ候補と分ける。
-        # ただし主導ライン3番手だけは上で重複配置済み。
-        for cand in rec_order_for_forme[1:]:
-            try:
+        for cand in eval1_thirdplus:
+            cand = int(cand)
+            if cand not in col1_cars and cand not in col3_cars:
+                col3_cars.append(cand)
+
+        for mem in ranked_lines:
+            mem = [int(x) for x in mem]
+            if not mem:
+                continue
+            if int(role1) in mem:
+                # 主導ラインは3番手以降だけを追加済み
+                rest = [int(x) for x in mem[2:]]
+            else:
+                # 他ラインは代表以外の後位を3列目へ。単騎は本人を3列目にも置く。
+                rep = None
+                for cand in rec_order_for_forme:
+                    cand = int(cand)
+                    if cand in mem:
+                        rep = cand
+                        break
+                if rep is None:
+                    rep = int(mem[0])
+                if len(mem) == 1:
+                    rest = [rep]
+                else:
+                    rest = [int(x) for x in mem if int(x) != int(rep)]
+
+            for cand in rest:
                 cand = int(cand)
-            except Exception:
-                continue
-            if cand in col1_cars or cand in col2_cars or cand in col3_cars:
-                continue
-            col3_cars.append(cand)
-            if len(col3_cars) >= 3:
+                if cand not in col1_cars and cand not in col3_cars:
+                    col3_cars.append(cand)
+                if len(col3_cars) >= 4:
+                    break
+            if len(col3_cars) >= 4:
                 break
-        col3_cars = _uniq_keep(col3_cars[:3])
+
+        # なお、2列目との重複は許可する。
+        # 例：単騎3は2車複ヒモにも三連複3列目にもなり得る。
+        col3_cars = _uniq_keep(col3_cars[:4])
 
         col1_text = _fmt_cars(col1_cars)
         col2_text = _fmt_cars(col2_cars)
