@@ -7825,21 +7825,35 @@ try:
                 eval1_line_members = [int(x) for x in mem]
                 break
 
-        eval1_second = []
+        # 軸所属ラインの扱いを修正。
+        # 以前は「軸がライン先頭」と決め打ちして mem[1] を番手扱いにしていたため、
+        # 別府4Rの 124 のように軸2が番手の場合、スコア2位の1が2列目から落ちていた。
+        # 列評価では、軸所属ラインのうち軸以外で順流順位が最も高い車を
+        # まず2列目の本線相手として入れる。残りは穴ヒモ/三列目候補に回す。
+        eval1_line_others = []
+        if eval1_line_members:
+            eval1_line_others = [int(x) for x in eval1_line_members if int(x) != int(role1)]
+
+        rec_pos_map = {int(c): i for i, c in enumerate(rec_order_for_forme)}
+        eval1_line_others_sorted = sorted(
+            eval1_line_others,
+            key=lambda x: (rec_pos_map.get(int(x), 999), eval1_line_members.index(int(x)) if int(x) in eval1_line_members else 999, int(x))
+        )
+
+        eval1_partner = []
         eval1_thirdplus = []
-        if eval1_line_members and len(eval1_line_members) >= 2:
-            eval1_second = [int(eval1_line_members[1])]
-        if eval1_line_members and len(eval1_line_members) >= 3:
-            eval1_thirdplus = [int(x) for x in eval1_line_members[2:]]
+        if eval1_line_others_sorted:
+            eval1_partner = [int(eval1_line_others_sorted[0])]
+            eval1_thirdplus = [int(x) for x in eval1_line_others_sorted[1:]]
 
         col1_cars = _uniq_keep([role1])
 
         # 2列目：ライン単位の連対候補
-        # 1) 主導ライン番手
-        # 2) 他ラインの代表車（単騎は本人、複数ラインは先頭）をライン順位順に追加
-        # 3) 主導ライン3番手以降は穴ヒモとして例外的に追加
+        # 1) 軸所属ラインの相方（軸が番手なら先頭、軸が先頭なら番手）
+        # 2) 他ラインの代表車（単騎は本人、複数ラインは推奨順最上位）
+        # 3) 軸所属ラインの残り後位は穴ヒモとして例外的に追加
         col2_cars = []
-        for cand in eval1_second:
+        for cand in eval1_partner:
             if cand not in col1_cars and cand not in col2_cars:
                 col2_cars.append(cand)
 
@@ -7851,7 +7865,6 @@ try:
                 continue
 
             # そのライン内で推奨順が最も高い車を代表にする。
-            # 先頭固定にすると単騎・別線評価ズレを拾い損ねるため。
             rep = None
             for cand in rec_order_for_forme:
                 cand = int(cand)
@@ -7866,13 +7879,13 @@ try:
             if len(col2_cars) >= 3:
                 break
 
-        # 主導ライン3番手以降は、穴ヒモ枠として2列目にも残す
+        # 軸所属ラインの残りは、穴ヒモ枠として2列目にも残す
         for cand in eval1_thirdplus:
             cand = int(cand)
             if cand not in col1_cars and cand not in col2_cars:
                 col2_cars.append(cand)
 
-        # 通常3車＋ライン3番手穴枠で最大4車まで
+        # 通常3車＋同ライン穴枠で最大4車まで
         col2_cars = _uniq_keep(col2_cars[:4])
 
         expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(col1_cars, col2_cars, role1, market_mark_map)
