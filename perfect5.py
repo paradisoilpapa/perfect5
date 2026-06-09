@@ -6991,7 +6991,8 @@ MYOUMI_PASS_THRESHOLD_3KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_3KEI", 8
 # ワイドは現時点では未採用。2車複と三連複だけで表示する。
 
 # 評価重複枠：妙味通過ではないが、VeloBi列評価と外部印が重なる本線寄りの2車複。
-# ここは「当たりやすいが安い」確認枠。買いすぎ防止のため、5.0pt以上・最大3点に絞る。
+# ここは「当たりやすいが安い」確認枠。
+# 2車複は両方が外部印付きの場合だけ採用する。片方が無印なら評価重複とは扱わない。
 EVAL_OVERLAP_MIN_2KEI = float(globals().get("EVAL_OVERLAP_MIN_2KEI", 5.0))
 EVAL_OVERLAP_MAX_2KEI = int(globals().get("EVAL_OVERLAP_MAX_2KEI", 3))
 # 評価重複三連複：1列目-2列目-3列目の中で外部印が重なる三連複。
@@ -7023,7 +7024,8 @@ def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_ke
       ・1列目-2列目の2車複候補
       ・妙味通過枠に既に出ていない
       ・5.0pt以上
-      ・外部印が片方以上、できれば両方にある
+      ・2車とも外部印付きである
+      ・片方が無印なら評価重複とは扱わない
 
     位置づけ：
       妙味ではなく、的中率を支える安い本線確認枠。
@@ -7041,14 +7043,16 @@ def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_ke
 
             ma = _is_market_marked(a, mark_map)
             mb = _is_market_marked(b, mark_map)
-            if not (ma or mb):
+
+            # 2車複の評価重複は「外部印同士」だけ。
+            # 片方が無印なら、表示ラベルの意味とズレるため採用しない。
+            if not (ma and mb):
                 continue
 
-            marked_count = int(ma) + int(mb)
-            # 両方印付き＞片方印付き、次にpt順。
+            marked_count = 2
             out.append((marked_count, float(sc), int(a), int(b)))
 
-        out.sort(key=lambda x: (-x[0], -x[1], x[2], x[3]))
+        out.sort(key=lambda x: (-x[1], x[2], x[3]))
         return [(sc, a, b, marked_count) for marked_count, sc, a, b in out[:EVAL_OVERLAP_MAX_2KEI]]
     except Exception:
         return []
@@ -7383,9 +7387,9 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         2) 評価重複：外部印とVeloBi列評価が重なる5.0pt以上。的中率補助。
     ・通常三連複は出さない。
       4-1-3 のような上位123評価そのままの買目は、根拠が薄いため廃止。
-    ・三連複は2層表示にする。
-        1) 評価重複：2車複の評価重複ペア＋3列目候補。的中率補助の上乗せ候補。
-        2) 期待値推奨：2車複の妙味通過ペアを含み、かつ三連複8.0pt以上。
+    ・三連複も2車複と同じ配列で2層表示にする。
+        1) 妙味通過：8.0pt以上。回収率狙い。該当なしでも必ず表示。
+        2) 評価重複：外部印とVeloBi列評価が重なる的中率補助。
     ・ワイドは現時点では未採用。
     """
     try:
@@ -7431,13 +7435,22 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             lines.append("該当なし")
 
         lines.append("")
-        lines.append(f"2車複｜評価重複（外部印被り・{EVAL_OVERLAP_MIN_2KEI:.1f}pt以上）：")
+        lines.append(f"2車複｜評価重複（外部印同士・{EVAL_OVERLAP_MIN_2KEI:.1f}pt以上）：")
         if overlap_pairs:
             for sc, a, b, marked_count in overlap_pairs:
                 ma = _market_mark_label(a, mark_map)
                 mb = _market_mark_label(b, mark_map)
                 mark_note = f"{ma}/{mb}"
                 lines.append(f"{_fmt_pair(a, b)}　{sc:.1f}pt［評価重複｜{mark_note}］")
+        else:
+            lines.append("該当なし")
+
+        # 2車複と同じ配列で、三連複も「妙味通過」→「評価重複」の順に必ず表示する。
+        lines.append("")
+        lines.append(f"三連複｜妙味通過（{MYOUMI_PASS_THRESHOLD_3KEI:.1f}pt以上）：")
+        if three:
+            for sc, a, b, c in three:
+                lines.append(f"{_fmt_triple(a, b, c)}　{sc:.1f}pt［通過］")
         else:
             lines.append("該当なし")
 
