@@ -1754,6 +1754,10 @@ if apply_input:
         "market_taikou_raw": market_taikou_raw_live,
         "market_tan_raw": market_tan_raw_live,
         "market_batsu_raw": market_batsu_raw_live,
+        # v20: 車番ごとの外部印をそのまま保存する。
+        # ここを保存しないと、後段で印→車番の圧縮値から復元するため、
+        # 表示上の車番と印がズレる原因になる。
+        "market_mark_by_car": {int(k): str(v) for k, v in market_mark_by_car_live.items()},
 
         "ratings": dict(ratings_live),
         "S": dict(S_live),
@@ -6596,17 +6600,33 @@ market_taikou = _to_car_int_or_none(market_taikou_raw)
 market_tan = _to_car_int_or_none(market_tan_raw)
 market_batsu = _to_car_int_or_none(market_batsu_raw)
 
-# 車番→印。重複入力時は強い印を優先する。
+# 車番→印。
+# v20: 原則として、入力画面の「車番ごとの外部印」をそのまま使う。
+# 以前は ◎/〇/△/× から車番へ圧縮した値だけで復元していたため、
+# 三連複の評価重複欄で「車番1が無印なのに◎/〇になる」などのズレが起き得た。
+_market_mark_snapshot = snapshot.get("market_mark_by_car", {})
+_VALID_MARKS_LOCAL = {"◎", "〇", "○", "△", "×"}
 market_mark_map = {}
-for _car, _mark in [
-    (market_honmei, "◎"),
-    (market_taikou, "〇"),
-    (market_tan, "△"),
-    (market_batsu, "×"),
-]:
-    if _car is None:
-        continue
-    market_mark_map.setdefault(int(_car), _mark)
+if isinstance(_market_mark_snapshot, dict) and _market_mark_snapshot:
+    for _car, _mark in _market_mark_snapshot.items():
+        try:
+            _ci = int(_car)
+        except Exception:
+            continue
+        _mk = str(_mark)
+        if _mk in _VALID_MARKS_LOCAL:
+            market_mark_map[_ci] = _mk
+else:
+    # 旧snapshot用フォールバック
+    for _car, _mark in [
+        (market_honmei, "◎"),
+        (market_taikou, "〇"),
+        (market_tan, "△"),
+        (market_batsu, "×"),
+    ]:
+        if _car is None:
+            continue
+        market_mark_map.setdefault(int(_car), _mark)
 
 
 def _uniq_keep(seq):
@@ -6996,6 +7016,7 @@ MYOUMI_PASS_THRESHOLD_3KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_3KEI", 8
 # 片方が無印でも、もう片方が外部印付きで、相手がVeloBi評価1〜4なら評価重複として扱う。
 EVAL_OVERLAP_MIN_2KEI = float(globals().get("EVAL_OVERLAP_MIN_2KEI", 5.0))
 EVAL_OVERLAP_MAX_2KEI = int(globals().get("EVAL_OVERLAP_MAX_2KEI", 3))
+# v19修正：三連複は表示順と印・順流順位の注記順を必ず一致させる。
 # 評価重複三連複：1列目-2列目-3列目の中で外部印が重なる三連複。
 # ここは妙味ではなく「評価がかぶる安い本線寄り」の確認枠なので、妙味ptでは切らない。
 EVAL_OVERLAP_MIN_3KEI = float(globals().get("EVAL_OVERLAP_MIN_3KEI", 5.0))
@@ -7281,7 +7302,7 @@ def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, 
         lines.append("3連系：")
         if three:
             for sc, a, b, c in three:
-                lines.append(f"{a}-{b}-{c}　{sc:.1f}pt")
+                lines.append(f"{_fmt_triple_display(a, b, c)}　{sc:.1f}pt")
         else:
             lines.append("該当なし")
 
@@ -7387,7 +7408,7 @@ def _make_myoumi_point_block(col1_cars, col2_cars, col3_cars, role1, mark_map, r
         lines.append("三連複：")
         if three_all:
             for sc, a, b, c in three_all:
-                lines.append(f"{a}-{b}-{c}　{sc:.1f}pt［{_myoumi_zone_label(sc, threshold_3kei)}］")
+                lines.append(f"{_fmt_triple_display(a, b, c)}　{sc:.1f}pt［{_myoumi_zone_label(sc, threshold_3kei)}］")
         else:
             lines.append("該当なし")
 
@@ -7451,6 +7472,33 @@ def _fmt_pair(a, b):
 
 def _fmt_triple(a, b, c):
     return f"{int(a)}-{int(b)}-{int(c)}"
+
+
+def _triple_display_order(a, b, c):
+    """
+    三連複は組み合わせ券なので、表示は車番昇順に統一する。
+    重要：印・順流順位の注記も、この表示順に合わせて出す。
+    これをやらないと、1-7-4 のような列順表示と、
+    画面側の 1-4-7 表示を見比べた時に、印と順位がズレて見える。
+    """
+    try:
+        return sorted([int(a), int(b), int(c)])
+    except Exception:
+        return [int(a), int(b), int(c)]
+
+
+def _fmt_triple_display(a, b, c):
+    x, y, z = _triple_display_order(a, b, c)
+    return f"{x}-{y}-{z}"
+
+
+def _triple_overlap_note(a, b, c, mark_map, rec_order_for_forme=None, top_n: int = 4):
+    """三連複の表示順と注記順を必ず一致させる。"""
+    cars = _triple_display_order(a, b, c)
+    return "/".join([
+        _overlap_note_for_car(x, mark_map, rec_order_for_forme, top_n=top_n)
+        for x in cars
+    ])
 
 
 def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
@@ -7526,7 +7574,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         lines.append(f"三連複｜妙味通過（{MYOUMI_PASS_THRESHOLD_3KEI:.1f}pt以上）：")
         if three:
             for sc, a, b, c in three:
-                lines.append(f"{_fmt_triple(a, b, c)}　{sc:.1f}pt［通過］")
+                lines.append(f"{_fmt_triple_display(a, b, c)}　{sc:.1f}pt［通過］")
         else:
             lines.append("該当なし")
 
@@ -7534,11 +7582,8 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         lines.append("三連複｜評価重複（外部印＋順流評価1〜4＋列評価）：")
         if overlap_triples:
             for sc, a, b, c, marks, marked_count, top_count, both_count in overlap_triples:
-                note_a = _overlap_note_for_car(a, mark_map, rec_order_for_forme, top_n=4)
-                note_b = _overlap_note_for_car(b, mark_map, rec_order_for_forme, top_n=4)
-                note_c = _overlap_note_for_car(c, mark_map, rec_order_for_forme, top_n=4)
-                mark_note = "/".join([note_a, note_b, note_c])
-                lines.append(f"{_fmt_triple(a, b, c)}　{sc:.1f}pt［評価重複｜{mark_note}］")
+                mark_note = _triple_overlap_note(a, b, c, mark_map, rec_order_for_forme, top_n=4)
+                lines.append(f"{_fmt_triple_display(a, b, c)}　{sc:.1f}pt［評価重複｜{mark_note}］")
         else:
             lines.append("該当なし")
 
@@ -7587,7 +7632,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             lines.append("")
             lines.append("三連複：")
             for sc, (a, b, c) in ev_triples:
-                lines.append(f"{_fmt_triple(a, b, c)}　{sc:.1f}pt［通過］")
+                lines.append(f"{_fmt_triple_display(a, b, c)}　{sc:.1f}pt［通過］")
 
         return "\n".join(lines)
 
