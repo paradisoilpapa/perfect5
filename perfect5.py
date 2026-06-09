@@ -7018,6 +7018,45 @@ def _market_mark_label(car: int, mark_map: dict) -> str:
         return "無印"
 
 
+def _rank_label_from_order(car: int, rec_order_for_forme=None) -> str:
+    """順流メイン順の順位ラベルを返す。例：順流3位"""
+    try:
+        order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
+        c = int(car)
+        if c in order:
+            return f"順流{order.index(c) + 1}位"
+    except Exception:
+        pass
+    return ""
+
+
+def _overlap_note_for_car(car: int, mark_map: dict, rec_order_for_forme=None, top_n: int = 4) -> str:
+    """
+    評価重複欄の1車分ラベル。
+    外部印とVeloBi評価が両方ある場合は両方出す。
+    無印は表示せず、順流順位などVeloBi側の根拠を出す。
+    例：〇・順流1位 / 順流3位
+    """
+    mk = _market_mark_label(int(car), mark_map)
+    rank = _rank_label_from_order(int(car), rec_order_for_forme)
+    parts = []
+    if str(mk) in MARKED_SET:
+        parts.append(str(mk))
+    try:
+        order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
+        if int(car) in order and order.index(int(car)) < int(top_n):
+            parts.append(rank)
+        elif rank and not parts:
+            # top_n外でも、無印だけで終わらせないため順流順位を表示
+            parts.append(rank)
+    except Exception:
+        if rank:
+            parts.append(rank)
+    if not parts:
+        return "列評価"
+    return "・".join(parts)
+
+
 def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_keys=None, rec_order_for_forme=None):
     """
     評価重複2車複を集める。
@@ -7078,19 +7117,20 @@ def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_ke
 
 
 
-def _collect_eval_overlap_3kei(col1_cars, col2_cars, col3_cars, role1, mark_map):
+def _collect_eval_overlap_3kei(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
     """
     評価重複三連複を集める。
 
     条件：
       ・1列目-2列目-3列目の三連複候補
       ・通常の上位123固定ではなく、列評価の構造を通す
-      ・外部印付きが2車以上ある組み合わせを優先
+      ・外部印とVeloBi評価1〜4が重なる組み合わせを優先
 
     重要：
       評価重複三連複は「妙味ptが高い買目」ではない。
       外部印とVeloBi列評価が重なっている、的中率補助の安い本線候補。
       そのため、妙味ptの通過基準では切らない。
+      表示では、無印の代わりに順流順位などVeloBi側の根拠を出す。
     """
     try:
         c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
@@ -7098,6 +7138,16 @@ def _collect_eval_overlap_3kei(col1_cars, col2_cars, col3_cars, role1, mark_map)
         c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
         if not c1 or not c2 or not c3:
             return []
+
+        rec_order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
+        if rec_order:
+            velobi_top4 = set(rec_order[:4])
+        else:
+            tmp = []
+            for x in c1 + c2 + c3:
+                if int(x) not in tmp:
+                    tmp.append(int(x))
+            velobi_top4 = set(tmp[:4])
 
         out = []
         seen = set()
@@ -7120,20 +7170,27 @@ def _collect_eval_overlap_3kei(col1_cars, col2_cars, col3_cars, role1, mark_map)
                         _market_mark_label(c, mark_map),
                     ]
                     marked_count = sum(1 for m in marks if str(m) in MARKED_SET)
+                    top_count = sum(1 for x in (a, b, c) if int(x) in velobi_top4)
+                    both_count = sum(
+                        1
+                        for x, m in zip((a, b, c), marks)
+                        if str(m) in MARKED_SET and int(x) in velobi_top4
+                    )
 
-                    # 評価重複なので、外部印が2車以上重なるものだけ。
-                    # 1車だけなら「評価重複三連複」としては弱い。
-                    if marked_count < 2:
+                    # 三連複の評価重複は「外部印＋VeloBi評価1〜4」。
+                    # 外部印2車以上だけに限定しない。
+                    # ただし外部印ゼロ、またはVeloBi評価上位ゼロは除外。
+                    if marked_count < 1 or top_count < 1:
                         continue
 
                     sc3 = _myoumi_score_3kei(a, b, c, int(role1), mark_map)
 
                     # 評価重複は安い本線寄りなので、妙味ptの低さで落とさない。
-                    # ソートは「印被り数」→「列順」→「妙味pt」の順。
-                    out.append((marked_count, i, j, k, float(sc3), a, b, c, marks))
+                    # ソートは「印×評価の重複数」→「印数」→「VeloBi上位数」→「列順」→「妙味pt」。
+                    out.append((both_count, marked_count, top_count, i, j, k, float(sc3), a, b, c, marks))
 
-        out.sort(key=lambda x: (-x[0], x[1], x[2], x[3], -x[4], x[5], x[6], x[7]))
-        return [(sc3, a, b, c, marks, marked_count) for marked_count, _, _, _, sc3, a, b, c, marks in out[:EVAL_OVERLAP_MAX_3KEI]]
+        out.sort(key=lambda x: (-x[0], -x[1], -x[2], x[3], x[4], x[5], -x[6], x[7], x[8], x[9]))
+        return [(sc3, a, b, c, marks, marked_count, top_count, both_count) for both_count, marked_count, top_count, _, _, _, sc3, a, b, c, marks in out[:EVAL_OVERLAP_MAX_3KEI]]
     except Exception:
         return []
 
@@ -7441,7 +7498,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         # 代わりに、1列目-2列目-3列目の中で「評価がかぶる三連複」だけを別枠で出す。
         center_triples = []
         center_keys = set()
-        overlap_triples = _collect_eval_overlap_3kei(c1, c2, c3, int(role1), mark_map)
+        overlap_triples = _collect_eval_overlap_3kei(c1, c2, c3, int(role1), mark_map, rec_order_for_forme)
 
         lines = ["【ヴェロビ的買目】"]
 
@@ -7454,12 +7511,12 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             lines.append("該当なし")
 
         lines.append("")
-        lines.append(f"2車複｜評価重複（外部印＋VeloBi評価1〜4・{EVAL_OVERLAP_MIN_2KEI:.1f}pt以上）：")
+        lines.append(f"2車複｜評価重複（外部印＋順流評価1〜4・{EVAL_OVERLAP_MIN_2KEI:.1f}pt以上）：")
         if overlap_pairs:
             for sc, a, b, marked_count, top_count in overlap_pairs:
-                ma = _market_mark_label(a, mark_map)
-                mb = _market_mark_label(b, mark_map)
-                mark_note = f"{ma}/{mb}"
+                note_a = _overlap_note_for_car(a, mark_map, rec_order_for_forme, top_n=4)
+                note_b = _overlap_note_for_car(b, mark_map, rec_order_for_forme, top_n=4)
+                mark_note = f"{note_a}/{note_b}"
                 lines.append(f"{_fmt_pair(a, b)}　{sc:.1f}pt［評価重複｜{mark_note}］")
         else:
             lines.append("該当なし")
@@ -7474,10 +7531,13 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             lines.append("該当なし")
 
         lines.append("")
-        lines.append("三連複｜評価重複（外部印2車以上＋列評価）：")
+        lines.append("三連複｜評価重複（外部印＋順流評価1〜4＋列評価）：")
         if overlap_triples:
-            for sc, a, b, c, marks, marked_count in overlap_triples:
-                mark_note = "/".join(str(x) for x in marks)
+            for sc, a, b, c, marks, marked_count, top_count, both_count in overlap_triples:
+                note_a = _overlap_note_for_car(a, mark_map, rec_order_for_forme, top_n=4)
+                note_b = _overlap_note_for_car(b, mark_map, rec_order_for_forme, top_n=4)
+                note_c = _overlap_note_for_car(c, mark_map, rec_order_for_forme, top_n=4)
+                mark_note = "/".join([note_a, note_b, note_c])
                 lines.append(f"{_fmt_triple(a, b, c)}　{sc:.1f}pt［評価重複｜{mark_note}］")
         else:
             lines.append("該当なし")
