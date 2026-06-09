@@ -7557,7 +7557,8 @@ try:
             f"【{_rec_style}メイン着順予想】\n"
             f"{_rec_display_seq}\n\n"
             f"コピー用：{_rec_copy}\n\n"
-            f"全体妙味：{expect_axis_label}\n"
+            f"全体妙味：{expect_axis_label}\n\n"
+            f"{column_eval_block}\n\n"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
             + (f"\n{rule_buy_block}\n" if rule_buy_block else "")
@@ -7565,7 +7566,8 @@ try:
         )
     else:
         summary_block = (
-            f"\n\n全体妙味：{expect_axis_label}\n"
+            f"\n\n全体妙味：{expect_axis_label}\n\n"
+            f"{column_eval_block}\n\n"
             f"{nishatan_forme_line}\n"
             f"{sanpuku_forme_line}\n"
             + (f"\n{rule_buy_block}\n" if rule_buy_block else "")
