@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # v35: 評価重複のみの場合、2列目は低pt重複2車複の2セットまで。残り重複と軸ライン残りを3列目へ回す
 # v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
+# v39: 三連複柱ありで2列目を低pt2セットに絞る場合、2セット目以降のライン残りも3列目へ補正。全候補が基本3列目内なら基本3列目順を優先。
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7899,10 +7900,33 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                 if C is not None and int(C) != int(A):
                     third_pool.append(int(C))
 
-                # 軸ラインの残りは3着側へ残す（基本フォメ列に無くても許容）
+                # 軸ラインの残りは3着側へ残す（基本フォメ列に無くても許容）。
+                # ただし柱Bそのものは「2着柱」なので、基本3列目に無い限り3列目へ回さない。
                 for x in a_line_others:
-                    if int(x) != int(A):
-                        third_pool.append(int(x))
+                    xi = int(x)
+                    if xi == int(A):
+                        continue
+                    if xi == int(B) and xi not in c3:
+                        continue
+                    third_pool.append(xi)
+
+                # v39:
+                # 2列目を「低pt評価重複2車複 最大2セット」に絞った場合、
+                # 1セット目（柱B）のライン残りは足しすぎ防止で原則足さない。
+                # 2セット目以降の相手については、その同ライン残りが基本3列目にあれば3列目へ残す。
+                # 例：静岡1R 4→3 / 4→2、ライン341/25、基本3列目215
+                #   2列目=3,2。2セット目の2のライン残り5を3列目へ足し、4-32-215。
+                try:
+                    for y in list(pair_ranked or [])[1:]:
+                        y_line = _line_members_for_car_from_members(line_members_all, y)
+                        for yy in y_line:
+                            yi = int(yy)
+                            if yi in (int(A), int(y)):
+                                continue
+                            if yi in c3:
+                                third_pool.append(yi)
+                except Exception:
+                    pass
 
             # 余った評価重複相手は、基本フォメ3列目にあれば3着へ回す
             if overlap_pairs:
@@ -7927,11 +7951,18 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                 except Exception:
                     pass
 
-            # 表示順。通常はVeloBi順。
-            # ただしv37の1セット補正ケースは、軸ライン残り→柱Cの順を守る。
+            # 表示順。
+            # v37の1セット補正ケースは、軸ライン残り→柱Cの順を守る。
+            # v39: 候補が全て基本3列目に存在する場合は、基本3列目の順を優先する。
+            #      例：静岡1R 基本3列目=215 なら 4-32-215。
+            #      軸ライン残りなどで基本3列目外の候補が混じる場合はVeloBi順。
             third_pool = [x for i, x in enumerate(third_pool) if x not in third_pool[:i] and int(x) != int(A)]
             if not locals().get("one_pair_case", False):
-                third_pool = sorted(third_pool, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
+                if third_pool and all(int(z) in c3 for z in third_pool):
+                    c3_order = {int(v): i for i, v in enumerate(c3)}
+                    third_pool = sorted(third_pool, key=lambda z: (c3_order.get(int(z), 999), _velobi_rank_index(z, rec_order_for_forme), z))
+                else:
+                    third_pool = sorted(third_pool, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
             for x in third_pool:
                 if int(x) not in third_candidates:
                     third_candidates.append(int(x))
