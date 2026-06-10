@@ -2,6 +2,7 @@
 # v35: 評価重複のみの場合、2列目は低pt重複2車複の2セットまで。残り重複と軸ライン残りを3列目へ回す
 # v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
 # v52: 妙味2車複が複数ある時、軸ライン残りを無条件で3列目へ入れず、採用2着候補のライン残り＋評価重複相手だけを3列目へ回す。
+# v53: 妙味2車複が1点だけの場合、評価重複を足す前に「軸ライン相手」が基本2列目にあれば2列目へ優先採用する。
 # v39: 三連複柱ありで2列目を低pt2セットに絞る場合、2セット目以降のライン残りも3列目へ補正。全候補が基本3列目内なら基本3列目順を優先。
 # v42: 基本三連複フォメの3列目で、2列目採用車の同ライン残りを必ず残す（例：5を2列目なら52の2を3列目へ）。
 # v44: 三連複妙味ptをVeloBi順位寄りに再調整。外部印ズレの10点張り付きと同一三連複の重複表示を抑制。
@@ -7942,12 +7943,25 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                     keep_set.add(int(y))
                     third_seed.add(int(y))
 
-            # 妙味が1点だけの場合は、最低ptの評価重複2車複を合成する。
-            # v51:
-            #   合成に使う評価重複は2列目へ1セットだけ足す。
-            #   ただし、残りの評価重複相手が基本3列目に存在するなら、3列目へ回す。
-            #   例：静岡6R 妙味=6-5、評価重複=6→3/6→1、基本=6-315-13524
-            #      -> 2列目=3,5 ／ 余り1は3列目へ -> 6-35-351
+            # 妙味が1点だけの場合は、2列目が薄くなりやすい。
+            # v53:
+            #   まず「軸Aのライン相手」が基本2列目にいるなら、評価重複より優先して2列目へ足す。
+            #   そのうえでまだ2列目が1車だけなら、最低ptの評価重複2車複を合成する。
+            #   例：静岡9R 妙味=5-2、軸ライン=51、基本2列目=132
+            #      -> 2列目は 1・2 を優先し、5-12-... にする（5-32 にはしない）。
+            if len(myoumi_second_ranked) <= 1:
+                # 軸ライン相手を2列目へ優先採用（基本2列目にある場合のみ）。
+                for xi in a_line_others:
+                    xi = int(xi)
+                    if xi != int(A) and xi in c2 and xi not in second_seed:
+                        keep_set.add(xi)
+                        second_seed.add(xi)
+                        # 軸ライン相手は2着候補。3着側へは基本フォメにある場合だけ控えめに残す。
+                        if xi in c3:
+                            third_seed.add(xi)
+                        if len(second_seed) >= 2:
+                            break
+
             if len(myoumi_second_ranked) <= 1 and overlap_pairs:
                 def _pair_key2(item):
                     try:
@@ -7970,7 +7984,8 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
 
                 added_overlap_second = False
                 for yi in ranked_overlap_ys:
-                    if yi not in second_seed and not added_overlap_second:
+                    # 軸ライン相手で2列目が2車に達している場合は、評価重複は2列目へ足さず3列目候補へ回す。
+                    if yi not in second_seed and not added_overlap_second and len(second_seed) < 2:
                         keep_set.add(yi)
                         second_seed.add(yi)
                         added_overlap_second = True
