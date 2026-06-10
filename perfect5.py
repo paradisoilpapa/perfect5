@@ -5,6 +5,7 @@
 # v53: 妙味2車複が1点だけの場合、評価重複を足す前に「軸ライン相手」が基本2列目にあれば2列目へ優先採用する。
 # v39: 三連複柱ありで2列目を低pt2セットに絞る場合、2セット目以降のライン残りも3列目へ補正。全候補が基本3列目内なら基本3列目順を優先。
 # v54: ライン補正フォメの3列目は、採用2着候補の同ライン全員ではなく「直近の相手」まで。ライン末尾・4番手格は3列目から落とす。
+# v56: 4列目の定義を修正。単なるライン末尾ではなく、4車ライン、または軸ではない3車以上ラインの「ライン内VeloBi評価3番手以降」を4列目へ分離する。
 # v42: 基本三連複フォメの3列目で、2列目採用車の同ライン残りを必ず残す（例：5を2列目なら52の2を3列目へ）。
 # v44: 三連複妙味ptをVeloBi順位寄りに再調整。外部印ズレの10点張り付きと同一三連複の重複表示を抑制。
 # v45: 三連複妙味ptで軸の市場印を上限キャップ化。評価1が△/〇/◎なら10点張り付きさせない。
@@ -8777,9 +8778,61 @@ try:
         # 例：2着候補でも、三連複の3列目残りにもなり得る。
         col3_cars = _uniq_keep(col3_cars[:5])
 
+        # v56：4列目を作る。
+        # 目的：フォーメーションは「全部を3列目に入れる」ものではない。
+        # 4車ライン、または軸ではない3車以上ラインで、ライン内VeloBi評価3番手以降まで
+        # 3列目へ一律に残すと、今回のように無駄な買い目が増える。
+        # そこで、ライン内の評価順位で3番手以降は4列目へ分離する。
+        # 例：1753で軸1なら、ライン内VeloBi順が 1,7,3,5 の場合、3・5は4列目寄り。
+        #     426なら、ライン内VeloBi順が 4,2,6 の場合、6は4列目寄り。
+        # ただし2車ライン・単騎は対象外。
+        col4_cars = []
+
+        def _line_velobi_depth_for_col4(cand):
+            try:
+                ci = int(cand)
+                for mem in ranked_lines:
+                    xs = [int(x) for x in mem]
+                    if ci not in xs or len(xs) < 3:
+                        continue
+
+                    # ライン内のVeloBi評価順。rec_order_for_formeに出る順を優先し、
+                    # 同順・欠落時はライン入力順で補正する。
+                    line_pos = {int(x): i for i, x in enumerate(xs)}
+                    xs_eval = sorted(xs, key=lambda z: (rec_pos_map.get(int(z), 999), line_pos.get(int(z), 999), int(z)))
+                    if ci not in xs_eval:
+                        continue
+                    depth = xs_eval.index(ci) + 1
+                    axis_in_line = int(role1) in xs
+
+                    # 4車ラインは軸ラインでも深い。評価3番手以降は4列目へ。
+                    if len(xs) >= 4 and depth >= 3:
+                        return True
+
+                    # 軸ではない3車以上ラインは、評価3番手以降を4列目へ。
+                    if (not axis_in_line) and len(xs) >= 3 and depth >= 3:
+                        return True
+            except Exception:
+                pass
+            return False
+
+        col3_main = []
+        for cand in col3_cars:
+            ci = int(cand)
+            if _line_velobi_depth_for_col4(ci):
+                if ci not in col4_cars:
+                    col4_cars.append(ci)
+            else:
+                if ci not in col3_main:
+                    col3_main.append(ci)
+
+        col3_cars = _uniq_keep(col3_main)
+        col4_cars = _uniq_keep(col4_cars)
+
         col1_text = _fmt_cars(col1_cars)
         col2_text = _fmt_cars(col2_cars)
         col3_text = _fmt_cars(col3_cars)
+        col4_text = _fmt_cars(col4_cars)
 
         column_eval_block = (
             "【VeloBi列評価】\n"
@@ -8787,6 +8840,8 @@ try:
             f"2列目｜2車複ヒモ候補：{col2_text}\n"
             f"3列目｜三連複候補：{col3_text}"
         )
+        if col4_cars:
+            column_eval_block += f"\n4列目｜薄目・4着寄り候補：{col4_text}"
 
         nishatan_points = _count_nishatan(col1_cars, col2_cars)
         sanpuku_points = _count_sanpuku(col1_cars, col2_cars, col3_cars)
@@ -8794,6 +8849,8 @@ try:
 
         nishatan_forme_line = f"2車系フォメ：1列目→2列目 {col1_text}→{col2_text} / {col1_text}={col2_text}（{nishatan_points}点）"
         sanpuku_forme_line = f"三連複フォメ：1列目-2列目-3列目 {col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
+        if col4_cars:
+            sanpuku_forme_line += f" / 4列目薄目：{col4_text}"
         sanrentan_forme_line = f"3連単フォメ：1列目→2列目→3列目 {col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
         myoumi_pickup_block = _make_myoumi_pickup_block(
             col1_cars,
