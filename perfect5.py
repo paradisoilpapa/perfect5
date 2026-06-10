@@ -11,8 +11,6 @@
 # v59: 推奨ライン補正フォメでも4列目候補を3列目へ戻さない。基本フォメで4列目に落とした車は、ライン補正のextras/third_seedから除外する。
 # v60: 妙味2車複が複数ある時も、軸ラインの直近相手は3列目へ残す。ライン相手を消して補正フォメが崩れるのを防ぐ。
 # v61: 妙味2車複が複数ある時、軸ライン相手が基本2列目にいるなら2列目へ優先採用し、押し出された妙味相手は3列目へ回す。
-# v62: 補正フォメを固定仕様へ整理。2列目最大2車、2車ラインの軸相手のみ強制優先、3列目は採用2着候補の直近非軸ライン相手・押し出し妙味・評価重複残りだけ。4列目は戻さない。
-# v63: v62で推奨フォメブロックが消える不具合を修正。妙味起点時にA/B/C・ライン情報・直近ライン相手関数を先に初期化してから補正フォメ生成する。
 # v42: 基本三連複フォメの3列目で、2列目採用車の同ライン残りを必ず残す（例：5を2列目なら52の2を3列目へ）。
 # v44: 三連複妙味ptをVeloBi順位寄りに再調整。外部印ズレの10点張り付きと同一三連複の重複表示を抑制。
 # v45: 三連複妙味ptで軸の市場印を上限キャップ化。評価1が△/〇/◎なら10点張り付きさせない。
@@ -7838,178 +7836,19 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
         # 無い場合は、評価重複2車複 A→B を柱にし、3列目はライン補正と基本フォメから作る。
         has_triple_pillar = (not has_myoumi_pillar) and bool(overlap_triples)
 
-        # v63: 妙味起点でも、先に A/B/C とライン補正用ヘルパを作る。
-        # v62ではこの初期化より前に A や _line_nearest_third_partners を参照し、
-        # 推奨フォメブロック自体が消えるケースがあった。
-        sc = 0.0
-        A = B = C = None
-
-        def _myoumi_init_key(item):
-            try:
-                scx, ax, bx = float(item[0]), int(item[1]), int(item[2])
-                ox = _velobi_ordered_cars([ax, bx], rec_order_for_forme)
-                return (-scx, [_velobi_rank_index(z, rec_order_for_forme) for z in ox], ox)
-            except Exception:
-                return (999.0, [999, 999], [9, 9])
-
         if has_myoumi_pillar:
-            _base = sorted(myoumi_pairs, key=_myoumi_init_key)[0]
-            sc, a0, b0 = float(_base[0]), int(_base[1]), int(_base[2])
+            def _myoumi_key(item):
+                try:
+                    sc, a, b = float(item[0]), int(item[1]), int(item[2])
+                    # 妙味は高いものを優先。列順は元の出力順を尊重。
+                    return (-sc, _velobi_rank_index(a, rec_order_for_forme), _velobi_rank_index(b, rec_order_for_forme), a, b)
+                except Exception:
+                    return (999.0, 999, 999, 9, 9)
+
+            pillar = sorted(myoumi_pairs, key=_myoumi_key)[0]
+            sc, a0, b0 = float(pillar[0]), int(pillar[1]), int(pillar[2])
             A, B = _velobi_ordered_cars([a0, b0], rec_order_for_forme)
             C = None
-
-        note_text_obj = globals().get("note_text", "")
-        line_members_all = _parse_line_members_from_note_text(note_text_obj)
-        if not line_members_all:
-            line_members_all = _line_members_list_from_line_def(globals().get("line_def", {}))
-
-        a_line = _line_members_for_car_from_members(line_members_all, A) if A is not None else []
-        a_line_others = [int(x) for x in a_line if A is not None and int(x) != int(A)]
-
-        def _line_nearest_third_partners(car):
-            """採用した2着候補の直近の非軸ライン相手だけを返す。"""
-            try:
-                line = [int(x) for x in _line_members_for_car_from_members(line_members_all, car)]
-                ci = int(car)
-                if A is None or ci not in line:
-                    return []
-                idx = line.index(ci)
-                for j in range(idx + 1, len(line)):
-                    x = int(line[j])
-                    if x != int(A) and x != ci:
-                        return [x]
-                for j in range(idx - 1, -1, -1):
-                    x = int(line[j])
-                    if x != int(A) and x != ci:
-                        return [x]
-                return []
-            except Exception:
-                return []
-
-        if has_myoumi_pillar:
-            # v62 固定仕様：
-            # ・2列目は最大2車。
-            # ・妙味2車複を起点にするが、2車ラインの軸ライン相手だけは強制優先できる。
-            #   4車ライン/3車ラインの奥まで「軸ラインだから」で優先しない。
-            # ・押し出された妙味相手、評価重複残り、採用2着候補の直近非軸ライン相手だけを3列目へ。
-            # ・4列目へ分離した車は推奨3列目へ戻さない。
-            keep_set = set()
-            second_seed = set()
-            third_seed = set()
-
-            def _add_unique(lst, x):
-                try:
-                    xi = int(x)
-                    if xi != int(A) and xi not in lst:
-                        lst.append(xi)
-                except Exception:
-                    pass
-
-            def _myoumi_pair_rank(item):
-                try:
-                    scx, ax, bx = float(item[0]), int(item[1]), int(item[2])
-                    ox = _velobi_ordered_cars([ax, bx], rec_order_for_forme)
-                    return (-scx, [_velobi_rank_index(z, rec_order_for_forme) for z in ox], ox)
-                except Exception:
-                    return (999.0, [999, 999], [9, 9])
-
-            def _overlap_pair_rank(item):
-                try:
-                    scx, ax, bx = float(item[0]), int(item[1]), int(item[2])
-                    ox = _velobi_ordered_cars([ax, bx], rec_order_for_forme)
-                    return (scx, [_velobi_rank_index(z, rec_order_for_forme) for z in ox], ox)
-                except Exception:
-                    return (999.0, [999, 999], [9, 9])
-
-            myoumi_ys = []
-            for item in sorted(myoumi_pairs, key=_myoumi_pair_rank):
-                try:
-                    _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
-                    x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
-                    if int(x) == int(A):
-                        _add_unique(myoumi_ys, y)
-                except Exception:
-                    pass
-
-            overlap_ys = []
-            if overlap_pairs:
-                for item in sorted(overlap_pairs, key=_overlap_pair_rank):
-                    try:
-                        _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
-                        x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
-                        if int(x) == int(A):
-                            _add_unique(overlap_ys, y)
-                    except Exception:
-                        pass
-
-            # 2車ラインの軸相手だけは、妙味よりも「形」を優先して2列目へ入れる候補。
-            axis_line_partner = None
-            try:
-                a_line_xs = [int(x) for x in a_line]
-                if len(a_line_xs) == 2:
-                    other = [int(x) for x in a_line_xs if int(x) != int(A)]
-                    if other and other[0] in c2:
-                        axis_line_partner = int(other[0])
-            except Exception:
-                axis_line_partner = None
-
-            second_list = []
-            displaced_for_third = []
-
-            # まず最上位の妙味を1点採用。
-            if myoumi_ys:
-                _add_unique(second_list, myoumi_ys[0])
-
-            # 2車ラインの軸相手がいれば2列目へ優先採用。
-            if axis_line_partner is not None and axis_line_partner not in second_list:
-                _add_unique(second_list, axis_line_partner)
-
-            # 残り枠は妙味、なければ評価重複で埋める。
-            for y in myoumi_ys[1:]:
-                if len(second_list) >= 2:
-                    _add_unique(displaced_for_third, y)
-                else:
-                    _add_unique(second_list, y)
-            if len(second_list) < 2:
-                for y in overlap_ys:
-                    if len(second_list) >= 2:
-                        break
-                    _add_unique(second_list, y)
-
-            # 2列目の表示順は基本2列目の順に合わせる。
-            second_list = [int(x) for x in c2 if int(x) in set(second_list)][:2]
-
-            for y in second_list:
-                keep_set.add(int(y))
-                second_seed.add(int(y))
-                # 採用2着候補自身が基本3列目にもあるなら、入替3着として残す。
-                if int(y) in c3 and int(y) not in third_exclude:
-                    third_seed.add(int(y))
-                # 採用2着候補の直近非軸ライン相手を3列目へ。
-                for z in _line_nearest_third_partners(y):
-                    zi = int(z)
-                    if zi in c3 and zi not in third_exclude:
-                        keep_set.add(zi)
-                        third_seed.add(zi)
-
-            # 押し出された妙味相手は、基本3列目にいる場合のみ3列目へ。
-            for y in displaced_for_third:
-                yi = int(y)
-                if yi in c3 and yi not in third_exclude:
-                    keep_set.add(yi)
-                    third_seed.add(yi)
-
-            # 2列目に採用しなかった評価重複相手は、基本3列目にいる場合のみ3列目へ。
-            for y in overlap_ys:
-                yi = int(y)
-                if yi not in second_seed and yi in c3 and yi not in third_exclude:
-                    keep_set.add(yi)
-                    third_seed.add(yi)
-
-            # 3列目は基本3列目順、最大4車まで。4列目候補は戻さない。
-            third_seed = set(int(x) for x in third_seed if int(x) in c3 and int(x) not in third_exclude)
-            if len(third_seed) > 4:
-                third_seed = set([int(x) for x in c3 if int(x) in third_seed][:4])
 
         elif has_triple_pillar:
             def _key(item):
@@ -8054,12 +7893,13 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
 
         def _line_nearest_third_partners(car):
             """
-            v62: 採用した2着候補の「直近の非軸ライン相手」だけを3列目へ返す。
-            ライン全員は入れない。隣が軸なら、そのさらに隣の非軸車を1車だけ見る。
-            例：246で2を2列目 -> 4のみ（6は奥）
-                52で5を2列目 -> 2
-                146で6を2列目・軸4 -> 1
-                416で4を2列目・軸7 -> 1
+            v54: ライン補正フォメ用。
+            2列目に採用した車の同ライン残りを3列目へ入れる時、
+            ライン全員を足すと末尾・4番手格まで入って買い目が膨らむ。
+            そのため、採用車の直近の相手だけを3列目候補にする。
+            例：246で2を2列目に採用 -> 4のみ（6は実質4列目扱いで除外）
+                52で5を採用 -> 2
+                146で6を採用 -> 1
             """
             try:
                 line = [int(x) for x in _line_members_for_car_from_members(line_members_all, car)]
@@ -8067,20 +7907,14 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                 if ci not in line:
                     return []
                 idx = line.index(ci)
-
-                # 後ろ方向を優先。軸は飛ばして、最初の非軸を1車だけ。
-                for j in range(idx + 1, len(line)):
-                    x = int(line[j])
-                    if x != int(A) and x != ci:
-                        return [x]
-
-                # 後ろに非軸がなければ前方向。軸は飛ばして、最初の非軸を1車だけ。
-                for j in range(idx - 1, -1, -1):
-                    x = int(line[j])
-                    if x != int(A) and x != ci:
-                        return [x]
-
-                return []
+                out = []
+                # 基本はラインの後ろ（次位）を優先。
+                if idx + 1 < len(line):
+                    out.append(line[idx + 1])
+                # 末尾なら直前を使う。
+                elif idx - 1 >= 0:
+                    out.append(line[idx - 1])
+                return [x for x in out if int(x) != int(A) and int(x) != ci]
             except Exception:
                 return []
 
