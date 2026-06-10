@@ -5,6 +5,7 @@
 # v42: 基本三連複フォメの3列目で、2列目採用車の同ライン残りを必ず残す（例：5を2列目なら52の2を3列目へ）。
 # v44: 三連複妙味ptをVeloBi順位寄りに再調整。外部印ズレの10点張り付きと同一三連複の重複表示を抑制。
 # v45: 三連複妙味ptで軸の市場印を上限キャップ化。評価1が△/〇/◎なら10点張り付きさせない。
+# v46: 2車複妙味ptにも軸の市場印キャップを適用。軸が△/〇/◎なら2車複も10点張り付きさせない。
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6972,6 +6973,10 @@ def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
     2車系ピックアップ用。
     a-b の順番はフォメ列順を保持する。
     実オッズではなく、外部印との被りから見た内部妙味pt。
+
+    v46方針：
+    ・2車複も三連複と同じく、1列目軸の市場印を上限キャップとして扱う。
+    ・VeloBi軸が市場でも△/〇/◎なら、ズレ妙味はあっても10.0には張り付かせない。
     """
     mm = {int(k): str(v) for k, v in (mark_map or {}).items()}
     ma = mm.get(int(a), "無印")
@@ -6983,6 +6988,22 @@ def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
     score -= _myoumi_market_pair_penalty([ma, mb])
     score += _myoumi_eval1_bonus(int(a), int(role1), mm)
 
+    # v46: 2車複も「軸が市場にどれだけ拾われているか」で上限をかける。
+    # 例：VeloBi軸4が市場△なら、4-6/4-5が外部ズレで上がっても10.0にはしない。
+    head_cap = {
+        "◎": 5.6,
+        "〇": 6.4,
+        "○": 6.4,
+        "△": 7.6,
+        "×": 8.5,
+        "無印": 10.0,
+    }.get(str(ma or "無印"), 10.0)
+
+    # 相手にも市場印があるなら、市場本線寄りとして少しだけ上限を下げる。
+    if str(mb or "無印") in MARKED_SET:
+        head_cap -= 0.35
+
+    score = min(score, head_cap)
     return round(max(0.0, min(10.0, score)), 1)
 
 
