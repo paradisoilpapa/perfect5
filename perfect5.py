@@ -7,6 +7,7 @@
 # v45: 三連複妙味ptで軸の市場印を上限キャップ化。評価1が△/〇/◎なら10点張り付きさせない。
 # v46: 2車複妙味ptにも軸の市場印キャップを適用。軸が△/〇/◎なら2車複も10点張り付きさせない。
 # v47: 市場印snapshotが—入りでfallbackされない問題を修正。2車複の軸印キャップも通過基準未満へ強化。
+# v48: snapshotだけでなく現在のst.session_state上の車番別市場印も後段で再取得し、2車複ptへ確実に反映。
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6637,7 +6638,25 @@ if isinstance(_market_mark_snapshot, dict) and _market_mark_snapshot:
         if _mk in _VALID_MARKS_LOCAL:
             market_mark_map[_ci] = _mk
 
+# v48: 後段計算時点でも、現在のst.session_state上の車番別市場印を再取得して上書きする。
+# Streamlitのrerunや古いsnapshotの影響で、snapshot側が「—」のまま残ると、
+# 4が△なのに内部では無印扱いになり、2車複ptが10.0に張り付くため。
+try:
+    _active_for_marks = snapshot.get("active_cars", []) or list(range(1, 10))
+    for _no in _active_for_marks:
+        try:
+            _ci = int(_no)
+        except Exception:
+            continue
+        _mk_live = _normalize_market_mark_local(st.session_state.get(f"market_mark_by_car_r{race_no}_{_ci}", "—"))
+        if _mk_live in _VALID_MARKS_LOCAL:
+            market_mark_map[_ci] = _mk_live
+except Exception:
+    pass
+
 # 旧snapshot用・または market_mark_by_car が「—」だけだった時の補完。
+# ここは setdefault ではなく、有効な旧rawがある場合は上書きする。
+# ただし上の車番別radioが有効なら同じ内容になる。
 for _car, _mark in [
     (market_honmei, "◎"),
     (market_taikou, "〇"),
@@ -6646,7 +6665,10 @@ for _car, _mark in [
 ]:
     if _car is None:
         continue
-    market_mark_map.setdefault(int(_car), _mark)
+    try:
+        market_mark_map[int(_car)] = _mark
+    except Exception:
+        pass
 
 
 def _uniq_keep(seq):
