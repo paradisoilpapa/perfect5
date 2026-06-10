@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# v28: 柱三連単ライン補正フォメは、柱＋ライン補正で残す車番を作り、基本三連複フォメの各列に存在するものだけを列ごとに残す
+# v29: 推奨三連単＆三連複ライン補正フォメをnote上部（順流予想直後・コピー用前）に移動表示
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7712,6 +7712,8 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         2) 評価重複：外部印とVeloBi列評価が重なる的中率補助。
     ・ワイドは現時点では未採用。
     """
+    globals()["PILLAR_LINE_FORME_BLOCK"] = ""
+
     try:
         c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
         c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
@@ -7781,14 +7783,18 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         else:
             lines.append("該当なし")
 
-        # 評価重複の柱から、ライン補正した3連単フォメを追加表示する。
-        # 例：柱 7→5→3、7の同ライン2が2列目にいる場合 → 7-25-3
+        # 評価重複の柱から、ライン補正した3連単フォメを作る。
+        # v29では「ヴェロビ的買目」の中ではなく、note上部（推奨順流予想の直後）に表示する。
+        globals()["PILLAR_LINE_FORME_BLOCK"] = ""
         pillar_forme = _make_pillar_santan_line_forme(overlap_triples, c2, c3, rec_order_for_forme)
         if pillar_forme:
-            lines.append("")
-            lines.append("柱三連単｜ライン補正フォメ：")
-            lines.append(f"{pillar_forme['forme']}　［柱 {pillar_forme['pillar']}・{pillar_forme['score']:.1f}pt］")
-            lines.append("展開：" + " / ".join(pillar_forme.get("expanded", [])))
+            _pillar_lines = []
+            _pillar_lines.append("【推奨三連単＆三連複｜ライン補正フォメ】")
+            _pillar_lines.append("")
+            _pillar_lines.append(f"{pillar_forme['forme']}　")
+            _pillar_lines.append("")
+            _pillar_lines.append("展開：" + " / ".join(pillar_forme.get("expanded", [])))
+            globals()["PILLAR_LINE_FORME_BLOCK"] = "\n".join(_pillar_lines)
 
         # --------------------------------------------------
         # 期待値推奨：
@@ -8186,7 +8192,8 @@ try:
             f"\n\n✅ 推奨戦法：{_rec_style}\n\n"
             f"【{_rec_style}メイン着順予想】\n"
             f"{_rec_display_seq}\n\n"
-            f"コピー用：{_rec_copy}\n\n"
+            + (("＊＊＊＊\n" + globals().get("PILLAR_LINE_FORME_BLOCK", "") + "\n＊＊＊＊\n\n") if globals().get("PILLAR_LINE_FORME_BLOCK", "") else "")
+            + f"コピー用：{_rec_copy}\n\n"
             f"全体妙味：{expect_axis_label}\n\n"
             f"{column_eval_block}\n\n"
             f"{nishatan_forme_line}\n"
