@@ -7,6 +7,7 @@
 # v45: 三連複妙味ptで軸の市場印を上限キャップ化。評価1が△/〇/◎なら10点張り付きさせない。
 # v46: 2車複妙味ptにも軸の市場印キャップを適用。軸が△/〇/◎なら2車複も10点張り付きさせない。
 # v49: v46〜v48のキャップが強すぎたため撤廃。市場印は減点として反映し、VeloBi筋の妙味は残す。
+# v50: 2車複妙味ptの市場印取得と相手印評価を修正。軸印より相手印の濃淡を強く反映し、◎軸×無印相手と◎軸×△相手を同点にしない。
 # v47: 市場印snapshotが—入りでfallbackされない問題を修正。2車複の軸印キャップも通過基準未満へ強化。
 # v48: snapshotだけでなく現在のst.session_state上の車番別市場印も後段で再取得し、2車複ptへ確実に反映。
 import streamlit as st
@@ -6975,6 +6976,79 @@ def _myoumi_market_pair_penalty(marks) -> float:
         return 0.2
     return 0.0
 
+def _resolve_market_mark_for_car_myoumi(car: int, mark_map: dict) -> str:
+    """
+    妙味計算専用の市場印取得。
+
+    v50:
+    v46〜v49では「点数式を直しても表示が変わらない」ケースがあった。
+    原因は、mark_map へ現在の車番別市場印が渡っていない/古いraw値だけが残る場合。
+    ここで mark_map → session_state の車番別radio → 旧raw値の順で再解決する。
+    """
+    try:
+        c = int(car)
+    except Exception:
+        return "無印"
+
+    valid = {"◎", "〇", "○", "△", "▲", "×"}
+
+    def norm(v):
+        mk = str(v or "").strip()
+        if mk == "○":
+            mk = "〇"
+        if mk == "▲":
+            mk = "△"
+        if mk in valid:
+            return mk
+        return "無印"
+
+    try:
+        mm = {int(k): norm(v) for k, v in (mark_map or {}).items()}
+        if mm.get(c, "無印") != "無印":
+            return mm[c]
+    except Exception:
+        pass
+
+    # 現在のrace_noキーを最優先で読む。
+    try:
+        mk = norm(st.session_state.get(f"market_mark_by_car_r{race_no}_{c}", "—"))
+        if mk != "無印":
+            return mk
+    except Exception:
+        pass
+
+    # race_noがズレた時の保険。全session_stateから車番別radioを探す。
+    try:
+        suffix = f"_{c}"
+        for k, v in st.session_state.items():
+            ks = str(k)
+            if "market_mark_by_car" in ks and ks.endswith(suffix):
+                mk = norm(v)
+                if mk != "無印":
+                    return mk
+    except Exception:
+        pass
+
+    # 旧rawの保険。
+    try:
+        raw_pairs = [
+            (globals().get("market_honmei"), "◎"),
+            (globals().get("market_taikou"), "〇"),
+            (globals().get("market_tan"), "△"),
+            (globals().get("market_batsu"), "×"),
+        ]
+        for raw_car, mk in raw_pairs:
+            try:
+                if raw_car is not None and int(raw_car) == c:
+                    return mk
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    return "無印"
+
+
 
 def _myoumi_market_trio_penalty(marks) -> float:
     """
@@ -7010,26 +7084,36 @@ def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
     a-b の順番はフォメ列順を保持する。
     実オッズではなく、外部印との被りから見た内部妙味pt。
 
-    v46方針：
-    ・2車複も三連複と同じく、1列目軸の市場印を上限キャップとして扱う。
-    ・VeloBi軸が市場でも△/〇/◎なら、ズレ妙味はあっても10.0には張り付かせない。
+    v50方針：
+    ・2車複は「軸の印」より「相手の印の薄さ」を重視する。
+      軸が◎でも、相手が無印なら妙味は残す。
+    ・ただし、相手が△/〇/◎なら市場にも拾われているので明確に下げる。
+    ・市場印を mark_map だけに頼らず、session_state からも再取得する。
     """
     mm = {int(k): str(v) for k, v in (mark_map or {}).items()}
-    ma = str(mm.get(int(a), "無印") or "無印").replace("○", "〇").replace("▲", "△")
-    mb = str(mm.get(int(b), "無印") or "無印").replace("○", "〇").replace("▲", "△")
+    ma = _resolve_market_mark_for_car_myoumi(int(a), mm)
+    mb = _resolve_market_mark_for_car_myoumi(int(b), mm)
 
-    score = 10.0
-    score -= _myoumi_mark_penalty(ma, "head")
-    score -= _myoumi_mark_penalty(mb, "tail")
-    score -= _myoumi_market_pair_penalty([ma, mb])
-    score += _myoumi_eval1_bonus(int(a), int(role1), mm)
+    # 2車複では、軸が市場◎でも「相手が売れていない」なら妙味は残る。
+    # そのため head 減点は軽め、tail 減点は強めにする。
+    head_penalty = {"◎": 0.8, "〇": 0.55, "△": 0.30, "×": 0.15, "無印": 0.0}
+    tail_penalty = {"◎": 2.4, "〇": 1.7, "△": 1.2, "×": 0.45, "無印": 0.0}
 
-    # v49:
-    # v46〜v48の「軸印による上限キャップ」は強すぎた。
-    # 例：軸4が△というだけで 4-6 / 4-5 が6点台まで落ち、
-    # 妙味が消えて評価重複4→7だけで補正フォメを作ってしまった。
-    # ここではキャップせず、上の印減点だけで濃淡を付ける。
-    # これにより、△軸は10点張り付きは避けつつ、筋のある妙味は7点以上に残す。
+    # 相手側の市場軽視を妙味として見る。
+    tail_bonus = {"無印": 1.0, "×": 0.55, "△": 0.00, "〇": -0.35, "◎": -0.70}
+
+    score = 9.2
+    score -= head_penalty.get(ma, 0.0)
+    score -= tail_penalty.get(mb, 0.0)
+    score += tail_bonus.get(mb, 0.0)
+
+    # ◎×△、◎×〇などは市場にも相手が見えているので追加で落とす。
+    score -= _myoumi_market_pair_penalty([ma, mb]) * 0.75
+
+    # 評価1が市場無印なら少しだけ上げ、◎なら少しだけ下げる。
+    # 軸印だけで妙味を殺さないため係数は小さくする。
+    score += 0.30 * _myoumi_eval1_bonus(int(a), int(role1), mm)
+
     return round(max(0.0, min(10.0, score)), 1)
 
 
