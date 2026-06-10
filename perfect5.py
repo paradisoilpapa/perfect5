@@ -6,6 +6,7 @@
 # v44: 三連複妙味ptをVeloBi順位寄りに再調整。外部印ズレの10点張り付きと同一三連複の重複表示を抑制。
 # v45: 三連複妙味ptで軸の市場印を上限キャップ化。評価1が△/〇/◎なら10点張り付きさせない。
 # v46: 2車複妙味ptにも軸の市場印キャップを適用。軸が△/〇/◎なら2車複も10点張り付きさせない。
+# v47: 市場印snapshotが—入りでfallbackされない問題を修正。2車複の軸印キャップも通過基準未満へ強化。
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6612,28 +6613,40 @@ market_batsu = _to_car_int_or_none(market_batsu_raw)
 # 以前は ◎/〇/△/× から車番へ圧縮した値だけで復元していたため、
 # 三連複の評価重複欄で「車番1が無印なのに◎/〇になる」などのズレが起き得た。
 _market_mark_snapshot = snapshot.get("market_mark_by_car", {})
-_VALID_MARKS_LOCAL = {"◎", "〇", "○", "△", "×"}
+_VALID_MARKS_LOCAL = {"◎", "〇", "○", "△", "▲", "×"}
+
+def _normalize_market_mark_local(_mark):
+    _mk = str(_mark or "").strip()
+    if _mk == "○":
+        return "〇"
+    if _mk == "▲":
+        return "△"
+    return _mk
+
 market_mark_map = {}
+# v47: market_mark_by_car は全車ぶん「—」を持つことがある。
+# その場合に「dictがあるからfallbackしない」と、市場印が空扱いになって妙味ptが10のままになる。
+# 先に車番ごとの有効印を拾い、その後で旧raw値も必ず補完する。
 if isinstance(_market_mark_snapshot, dict) and _market_mark_snapshot:
     for _car, _mark in _market_mark_snapshot.items():
         try:
             _ci = int(_car)
         except Exception:
             continue
-        _mk = str(_mark)
+        _mk = _normalize_market_mark_local(_mark)
         if _mk in _VALID_MARKS_LOCAL:
             market_mark_map[_ci] = _mk
-else:
-    # 旧snapshot用フォールバック
-    for _car, _mark in [
-        (market_honmei, "◎"),
-        (market_taikou, "〇"),
-        (market_tan, "△"),
-        (market_batsu, "×"),
-    ]:
-        if _car is None:
-            continue
-        market_mark_map.setdefault(int(_car), _mark)
+
+# 旧snapshot用・または market_mark_by_car が「—」だけだった時の補完。
+for _car, _mark in [
+    (market_honmei, "◎"),
+    (market_taikou, "〇"),
+    (market_tan, "△"),
+    (market_batsu, "×"),
+]:
+    if _car is None:
+        continue
+    market_mark_map.setdefault(int(_car), _mark)
 
 
 def _uniq_keep(seq):
@@ -6979,8 +6992,8 @@ def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
     ・VeloBi軸が市場でも△/〇/◎なら、ズレ妙味はあっても10.0には張り付かせない。
     """
     mm = {int(k): str(v) for k, v in (mark_map or {}).items()}
-    ma = mm.get(int(a), "無印")
-    mb = mm.get(int(b), "無印")
+    ma = str(mm.get(int(a), "無印") or "無印").replace("○", "〇").replace("▲", "△")
+    mb = str(mm.get(int(b), "無印") or "無印").replace("○", "〇").replace("▲", "△")
 
     score = 10.0
     score -= _myoumi_mark_penalty(ma, "head")
@@ -6991,17 +7004,17 @@ def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
     # v46: 2車複も「軸が市場にどれだけ拾われているか」で上限をかける。
     # 例：VeloBi軸4が市場△なら、4-6/4-5が外部ズレで上がっても10.0にはしない。
     head_cap = {
-        "◎": 5.6,
-        "〇": 6.4,
-        "○": 6.4,
-        "△": 7.6,
-        "×": 8.5,
+        "◎": 4.8,
+        "〇": 5.8,
+        "○": 5.8,
+        "△": 6.8,
+        "×": 8.0,
         "無印": 10.0,
     }.get(str(ma or "無印"), 10.0)
 
     # 相手にも市場印があるなら、市場本線寄りとして少しだけ上限を下げる。
     if str(mb or "無印") in MARKED_SET:
-        head_cap -= 0.35
+        head_cap -= 0.50
 
     score = min(score, head_cap)
     return round(max(0.0, min(10.0, score)), 1)
@@ -7137,7 +7150,7 @@ EVAL_OVERLAP_MAX_2KEI = int(globals().get("EVAL_OVERLAP_MAX_2KEI", 3))
 # ここは妙味ではなく「評価がかぶる安い本線寄り」の確認枠なので、妙味ptでは切らない。
 EVAL_OVERLAP_MIN_3KEI = float(globals().get("EVAL_OVERLAP_MIN_3KEI", 5.0))
 EVAL_OVERLAP_MAX_3KEI = int(globals().get("EVAL_OVERLAP_MAX_3KEI", 3))
-MARKED_SET = {"◎", "〇", "○", "△", "×"}
+MARKED_SET = {"◎", "〇", "○", "△", "▲", "×"}
 
 
 def _is_market_marked(car: int, mark_map: dict) -> bool:
