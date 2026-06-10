@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# v25: 評価重複の柱三連単にライン補正フォメを追加
+# v26: 柱三連単ライン補正フォメの3列目に2着候補も入れ替え候補として残す
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7585,11 +7585,15 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
       ・評価重複三連単のうち、妙味ptが一番低いものを「一番素直な柱」とみなす。
       ・柱 A→B→C を作る。
       ・Aと同ラインの車が2列目にいる場合、Bと並べて2着候補へ加える。
-      ・三連複フォメ内で成立する形だけ残す。
+      ・3列目は柱Cだけだと薄くなるため、2着候補同士の入れ替わりも残す。
+      ・つまり A - 2着候補 - (2着候補＋柱C) の形で出す。
 
-    例：
+    例1：
       柱 7→5→3、ライン72、2列目251、3列目1346
-      → 7-25-3
+      → 7-25-53
+    例2：
+      柱 2→4→1、ライン423、2列目4163、3列目1375
+      → 2-43-431
     """
     try:
         if not overlap_triples:
@@ -7637,21 +7641,43 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
         if int(B) not in sec_candidates and int(B) != int(A) and int(B) != int(C):
             sec_candidates.append(int(B))
 
-        # 実際に A→sec→C として成立するものだけ。
+        # 実際に A→sec として成立する2着候補だけ。
         valid_seconds = []
         for s in sec_candidates:
-            if len({int(A), int(s), int(C)}) != 3:
+            if int(s) == int(A):
                 continue
-            # 三連複フォメ A-c2-c3 として成立するものだけ残す。
-            if int(s) in c2 and int(C) in c3:
+            if int(s) in c2:
                 valid_seconds.append(int(s))
 
         valid_seconds = [x for i, x in enumerate(valid_seconds) if x not in valid_seconds[:i]]
         if not valid_seconds:
             return None
 
-        forme = f"{int(A)}-{_fmt_cars_compact_for_forme(valid_seconds)}-{int(C)}"
-        expanded = [f"{int(A)}→{int(s)}→{int(C)}" for s in valid_seconds]
+        # 3列目：柱Cだけだと薄いので、2着候補同士の入れ替わりも残す。
+        # 表示順は 2着候補 → 柱C。例：2-43-431
+        third_candidates = []
+        for x in valid_seconds:
+            if int(x) != int(A) and int(x) not in third_candidates:
+                third_candidates.append(int(x))
+        if int(C) != int(A) and int(C) not in third_candidates:
+            third_candidates.append(int(C))
+
+        # 展開表示は同一車重複を除いた実買い目だけ。
+        expanded = []
+        for s in valid_seconds:
+            for t in third_candidates:
+                if len({int(A), int(s), int(t)}) != 3:
+                    continue
+                # 三連複フォメ側に全く出てこない相手は出さない。
+                # ただし2着候補同士の入れ替えは許可する。
+                if int(t) not in c2 and int(t) not in c3:
+                    continue
+                expanded.append(f"{int(A)}→{int(s)}→{int(t)}")
+
+        if not expanded:
+            return None
+
+        forme = f"{int(A)}-{_fmt_cars_compact_for_forme(valid_seconds)}-{_fmt_cars_compact_for_forme(third_candidates)}"
         pillar_text = f"{int(A)}→{int(B)}→{int(C)}"
         return {
             "forme": forme,
