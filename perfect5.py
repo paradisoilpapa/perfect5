@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# v23: 評価重複はVeloBi順に並べ替え、単系参考（2車単/3連単）として表示
+# v25: 評価重複の柱三連単にライン補正フォメを追加
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7550,6 +7550,118 @@ def _triple_overlap_note(a, b, c, mark_map, rec_order_for_forme=None, top_n: int
     ])
 
 
+
+def _fmt_cars_compact_for_forme(cars):
+    """車番リストをフォメ用の連結文字へ。例：[2,5] -> 25"""
+    try:
+        xs = []
+        for x in cars or []:
+            xi = int(x)
+            if xi not in xs:
+                xs.append(xi)
+        return "".join(str(x) for x in xs) if xs else "—"
+    except Exception:
+        return "—"
+
+
+def _line_members_for_car_from_members(line_members_all, car):
+    """ライン配列 [[1,2],[3,4]] から指定車のラインを返す。"""
+    try:
+        c = int(car)
+        for mem in line_members_all or []:
+            xs = [int(x) for x in mem if str(x).isdigit()]
+            if c in xs:
+                return xs
+    except Exception:
+        pass
+    return []
+
+
+def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_order_for_forme=None):
+    """
+    評価重複の柱三連単から、ライン補正フォメを作る。
+
+    思想：
+      ・評価重複三連単のうち、妙味ptが一番低いものを「一番素直な柱」とみなす。
+      ・柱 A→B→C を作る。
+      ・Aと同ラインの車が2列目にいる場合、Bと並べて2着候補へ加える。
+      ・三連複フォメ内で成立する形だけ残す。
+
+    例：
+      柱 7→5→3、ライン72、2列目251、3列目1346
+      → 7-25-3
+    """
+    try:
+        if not overlap_triples:
+            return None
+
+        c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
+        c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
+        if not c2 or not c3:
+            return None
+
+        # 評価重複の「一番数値が低い」ものを柱にする。
+        # 同点ならVeloBi順で安定化。
+        def _key(item):
+            try:
+                sc, a, b, c = float(item[0]), int(item[1]), int(item[2]), int(item[3])
+                ordered = _velobi_ordered_cars([a, b, c], rec_order_for_forme)
+                return (sc, [_velobi_rank_index(x, rec_order_for_forme) for x in ordered], ordered)
+            except Exception:
+                return (999.0, [999, 999, 999], [9, 9, 9])
+
+        pillar = sorted(overlap_triples, key=_key)[0]
+        sc, a0, b0, c0 = float(pillar[0]), int(pillar[1]), int(pillar[2]), int(pillar[3])
+        A, B, C = _velobi_ordered_cars([a0, b0, c0], rec_order_for_forme)
+
+        # Cが3列目にいない形は、既存三連複フォメとつながらないので出さない。
+        if int(C) not in c3:
+            return None
+
+        note_text_obj = globals().get("note_text", "")
+        line_members_all = _parse_line_members_from_note_text(note_text_obj)
+        if not line_members_all:
+            line_members_all = _line_members_list_from_line_def(globals().get("line_def", {}))
+
+        a_line = _line_members_for_car_from_members(line_members_all, A)
+        a_line_others = [int(x) for x in a_line if int(x) != int(A)]
+
+        # 2着候補：柱B＋A同ラインの2列目候補。
+        sec_set = set([int(B)])
+        for x in a_line_others:
+            if int(x) in c2 and int(x) != int(C):
+                sec_set.add(int(x))
+
+        # 表示順は列評価2列目の順を優先。Bが2列目外なら最後に保険で入れる。
+        sec_candidates = [x for x in c2 if x in sec_set and x != int(A) and x != int(C)]
+        if int(B) not in sec_candidates and int(B) != int(A) and int(B) != int(C):
+            sec_candidates.append(int(B))
+
+        # 実際に A→sec→C として成立するものだけ。
+        valid_seconds = []
+        for s in sec_candidates:
+            if len({int(A), int(s), int(C)}) != 3:
+                continue
+            # 三連複フォメ A-c2-c3 として成立するものだけ残す。
+            if int(s) in c2 and int(C) in c3:
+                valid_seconds.append(int(s))
+
+        valid_seconds = [x for i, x in enumerate(valid_seconds) if x not in valid_seconds[:i]]
+        if not valid_seconds:
+            return None
+
+        forme = f"{int(A)}-{_fmt_cars_compact_for_forme(valid_seconds)}-{int(C)}"
+        expanded = [f"{int(A)}→{int(s)}→{int(C)}" for s in valid_seconds]
+        pillar_text = f"{int(A)}→{int(B)}→{int(C)}"
+        return {
+            "forme": forme,
+            "expanded": expanded,
+            "pillar": pillar_text,
+            "score": sc,
+        }
+    except Exception:
+        return None
+
 def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
     """
     現在の実戦ルールに基づく買い目整理。
@@ -7633,6 +7745,15 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
                 lines.append(f"{_fmt_santan_reference(a, b, c, rec_order_for_forme)}　{sc:.1f}pt［評価重複｜{mark_note}］")
         else:
             lines.append("該当なし")
+
+        # 評価重複の柱から、ライン補正した3連単フォメを追加表示する。
+        # 例：柱 7→5→3、7の同ライン2が2列目にいる場合 → 7-25-3
+        pillar_forme = _make_pillar_santan_line_forme(overlap_triples, c2, c3, rec_order_for_forme)
+        if pillar_forme:
+            lines.append("")
+            lines.append("柱三連単｜ライン補正フォメ：")
+            lines.append(f"{pillar_forme['forme']}　［柱 {pillar_forme['pillar']}・{pillar_forme['score']:.1f}pt］")
+            lines.append("展開：" + " / ".join(pillar_forme.get("expanded", [])))
 
         # --------------------------------------------------
         # 期待値推奨：
