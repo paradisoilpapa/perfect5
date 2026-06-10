@@ -7825,8 +7825,13 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
         # それ以外は従来どおり、基本フォメ2列目の順を守る。
         sec_source = keep_set if has_triple_pillar else second_seed
         pair_ranked = locals().get("_pair_second_ranked_for_triple", []) if has_triple_pillar else []
-        if has_triple_pillar and len(pair_ranked) >= 3:
-            sec_candidates = [int(x) for x in pair_ranked if int(x) in c2 and int(x) != int(A)]
+        if has_triple_pillar and pair_ranked:
+            # v36:
+            # 三連複柱ありでも、2列目は「低ptの評価重複2車複 最大2セット」に絞る。
+            # ただし表示順は基本フォメ2列目の順を守る。
+            # 例：基本2列目=4516、低pt2セット=5,4 -> 45
+            pair_second_set = {int(x) for x in pair_ranked}
+            sec_candidates = [x for x in c2 if int(x) in pair_second_set and int(x) != int(A)]
         else:
             sec_candidates = [x for x in c2 if x in sec_source and x != int(A)]
         if int(B) not in sec_candidates and int(B) != int(A):
@@ -7851,9 +7856,47 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
             third_candidates.append(int(C))
 
         if has_triple_pillar:
-            # 三連複柱ありは、3列目候補をVeloBi順で並べる。
-            # 例：c3=1637、候補=1・3・6 なら 136。
-            third_pool = [int(x) for x in c3 if int(x) in third_source and int(x) != int(A)]
+            # v36:
+            # 三連複柱ありは、3列目を「柱C + 軸ライン残り + 余った評価重複相手」に絞る。
+            # 基本フォメ3列目だけで絞ると、軸ライン残りが2列目側にしか無いケースで落ちるため、
+            # 軸ライン残りは3列目へ明示的に残す。
+            # 例：A=2, 軸ライン246, C=1, 低pt2列目=5・4, 余り重複=1 -> 146
+            third_pool = []
+
+            # 柱C
+            if C is not None and int(C) != int(A):
+                third_pool.append(int(C))
+
+            # 軸ラインの残りは3着側へ残す（基本フォメ列に無くても許容）
+            for x in a_line_others:
+                if int(x) != int(A):
+                    third_pool.append(int(x))
+
+            # 余った評価重複相手は、基本フォメ3列目にあれば3着へ回す
+            if overlap_pairs:
+                try:
+                    used_seconds = set(pair_ranked or [])
+                    all_pairs_tmp = []
+                    def _pair_key4(item):
+                        try:
+                            sc4, a4, b4 = float(item[0]), int(item[1]), int(item[2])
+                            ordered4 = _velobi_ordered_cars([a4, b4], rec_order_for_forme)
+                            return (sc4, [_velobi_rank_index(x, rec_order_for_forme) for x in ordered4], ordered4)
+                        except Exception:
+                            return (999.0, [999, 999], [9, 9])
+                    for item in sorted(overlap_pairs, key=_pair_key4):
+                        sc4, a4, b4 = float(item[0]), int(item[1]), int(item[2])
+                        x4, y4 = _velobi_ordered_cars([a4, b4], rec_order_for_forme)
+                        if int(x4) == int(A) and int(y4) != int(A):
+                            all_pairs_tmp.append(int(y4))
+                    for y in all_pairs_tmp:
+                        if int(y) not in used_seconds and int(y) in c3:
+                            third_pool.append(int(y))
+                except Exception:
+                    pass
+
+            # 表示順はVeloBi順。重複除去。
+            third_pool = [x for i, x in enumerate(third_pool) if x not in third_pool[:i] and int(x) != int(A)]
             third_pool = sorted(third_pool, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
             for x in third_pool:
                 if int(x) not in third_candidates:
