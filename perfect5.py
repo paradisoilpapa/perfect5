@@ -7942,7 +7942,11 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                     third_seed.add(int(y))
 
             # 妙味が1点だけの場合は、最低ptの評価重複2車複を合成する。
-            # 例：妙味 A-B だけでは3連が薄いので、評価重複 A-C を足して A-BC-... にする。
+            # v51:
+            #   合成に使う評価重複は2列目へ1セットだけ足す。
+            #   ただし、残りの評価重複相手が基本3列目に存在するなら、3列目へ回す。
+            #   例：静岡6R 妙味=6-5、評価重複=6→3/6→1、基本=6-315-13524
+            #      -> 2列目=3,5 ／ 余り1は3列目へ -> 6-35-351
             if len(myoumi_second_ranked) <= 1 and overlap_pairs:
                 def _pair_key2(item):
                     try:
@@ -7951,23 +7955,37 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                         return (sc2, [_velobi_rank_index(x, rec_order_for_forme) for x in ordered2], ordered2)
                     except Exception:
                         return (999.0, [999, 999], [9, 9])
+
+                ranked_overlap_ys = []
                 for item in sorted(overlap_pairs, key=_pair_key2):
                     try:
                         _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
                         x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
-                        if int(x) == int(A) and int(y) != int(A) and int(y) not in second_seed:
-                            keep_set.add(int(y))
-                            second_seed.add(int(y))
-                            if int(y) in c3:
-                                third_seed.add(int(y))
-                            y_line = _line_members_for_car_from_members(line_members_all, y)
-                            for yy in y_line:
-                                if int(yy) != int(A) and int(yy) != int(y):
-                                    keep_set.add(int(yy))
-                                    third_seed.add(int(yy))
-                            break
+                        yi = int(y)
+                        if int(x) == int(A) and yi != int(A) and yi not in ranked_overlap_ys:
+                            ranked_overlap_ys.append(yi)
                     except Exception:
                         pass
+
+                added_overlap_second = False
+                for yi in ranked_overlap_ys:
+                    if yi not in second_seed and not added_overlap_second:
+                        keep_set.add(yi)
+                        second_seed.add(yi)
+                        added_overlap_second = True
+                        if yi in c3:
+                            third_seed.add(yi)
+                        y_line = _line_members_for_car_from_members(line_members_all, yi)
+                        for yy in y_line:
+                            yyi = int(yy)
+                            if yyi != int(A) and yyi != yi:
+                                keep_set.add(yyi)
+                                third_seed.add(yyi)
+                    else:
+                        # 2列目に足さなかった評価重複相手は、基本3列目にある場合だけ3着へ回す。
+                        if yi in c3:
+                            keep_set.add(yi)
+                            third_seed.add(yi)
 
             # 軸ラインの残りは3列目候補へ。
             for x in a_line_others:
