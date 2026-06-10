@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# v32: 妙味2車複が出たら妙味優先でライン補正フォメを作成。妙味1点なら最低pt評価重複と合成
+# v35: 評価重複のみの場合、2列目は低pt重複2車複の2セットまで。残り重複と軸ライン残りを3列目へ回す
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7733,9 +7733,57 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
             keep_set = {int(B), int(C)}
             second_seed = {int(B)}
             third_seed = {int(C)}
+
+            # v35:
+            # 妙味が無い評価重複レースでは、2列目に使う2車複重複を
+            # 「ptが低い=一番素直な重複」から最大2セットに絞る。
+            # それ以外の重複相手は、基本フォメ3列目にあれば3列目へ回す。
+            # 例：2→5(2.0), 2→4(3.5), 2→1(4.3) なら
+            # 2列目=5,4 ／ 残り1は3列目へ。
+            all_pair_ranked = []
+            if overlap_pairs:
+                def _pair_key3(item):
+                    try:
+                        sc3, a3, b3 = float(item[0]), int(item[1]), int(item[2])
+                        ordered3 = _velobi_ordered_cars([a3, b3], rec_order_for_forme)
+                        # 低ptの重複を優先。
+                        return (sc3, [_velobi_rank_index(x, rec_order_for_forme) for x in ordered3], ordered3)
+                    except Exception:
+                        return (999.0, [999, 999], [9, 9])
+
+                for item in sorted(overlap_pairs, key=_pair_key3):
+                    try:
+                        _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
+                        x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
+                        if int(x) == int(A) and int(y) != int(A) and int(y) not in all_pair_ranked:
+                            all_pair_ranked.append(int(y))
+                    except Exception:
+                        pass
+
+            # 2列目は最大2セットまで。無ければ柱Bを残す。
+            pair_second_ranked = all_pair_ranked[:2] if all_pair_ranked else [int(B)]
+            for y in pair_second_ranked:
+                keep_set.add(int(y))
+                second_seed.add(int(y))
+
+            # 余った評価重複相手は3列目にあれば回す。
+            for y in all_pair_ranked[2:]:
+                if int(y) in c3:
+                    keep_set.add(int(y))
+                    third_seed.add(int(y))
+
+            # Aラインの残りは3列目候補へ。
+            # これにより、軸ラインの後ろ目・三番手目を3着側に残す。
             for x in a_line_others:
                 keep_set.add(int(x))
                 third_seed.add(int(x))
+
+            # v35では、2着候補Bのライン後ろは自動では足さない。
+            # ここを足すと 2-145-136 のように広がりすぎるため、
+            # 2-45-146 のように「低pt2セット＋軸ライン残り＋余り重複」へ絞る。
+
+            # あとで2列目表示に使うため、ローカル変数として保持。
+            _pair_second_ranked_for_triple = pair_second_ranked
         else:
             keep_set = {int(B)}
             second_seed = {int(B)}
@@ -7770,11 +7818,17 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                     keep_set.add(int(x))
                     third_seed.add(int(x))
 
-        # 表示順は列評価2列目の順を優先。
-        # 三連複柱ありは keep_set、2車複柱のみは second_seed を使い、
-        # ライン3番手などを2列目へ入れすぎない。
+        # 表示順。
+        # 三連複柱ありで、同じ軸Aの評価重複2車複が3点以上ある場合は、
+        # 2列目をその評価重複2車複の相手順で出す。
+        # 例：青森7R 2→1 / 2→4 / 2→5 なら 2-145-...
+        # それ以外は従来どおり、基本フォメ2列目の順を守る。
         sec_source = keep_set if has_triple_pillar else second_seed
-        sec_candidates = [x for x in c2 if x in sec_source and x != int(A)]
+        pair_ranked = locals().get("_pair_second_ranked_for_triple", []) if has_triple_pillar else []
+        if has_triple_pillar and len(pair_ranked) >= 3:
+            sec_candidates = [int(x) for x in pair_ranked if int(x) in c2 and int(x) != int(A)]
+        else:
+            sec_candidates = [x for x in c2 if x in sec_source and x != int(A)]
         if int(B) not in sec_candidates and int(B) != int(A):
             sec_candidates.append(int(B))
 
@@ -7795,9 +7849,20 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
         third_candidates = []
         if C is not None and int(C) != int(A) and int(C) in c3:
             third_candidates.append(int(C))
-        for x in c3:
-            if int(x) in third_source and int(x) != int(A) and int(x) not in third_candidates:
-                third_candidates.append(int(x))
+
+        if has_triple_pillar:
+            # 三連複柱ありは、3列目候補をVeloBi順で並べる。
+            # 例：c3=1637、候補=1・3・6 なら 136。
+            third_pool = [int(x) for x in c3 if int(x) in third_source and int(x) != int(A)]
+            third_pool = sorted(third_pool, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
+            for x in third_pool:
+                if int(x) not in third_candidates:
+                    third_candidates.append(int(x))
+        else:
+            for x in c3:
+                if int(x) in third_source and int(x) != int(A) and int(x) not in third_candidates:
+                    third_candidates.append(int(x))
+
         if not third_candidates and C is not None and int(C) != int(A):
             third_candidates.append(int(C))
 
