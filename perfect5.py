@@ -2,6 +2,7 @@
 # v35: 評価重複のみの場合、2列目は低pt重複2車複の2セットまで。残り重複と軸ライン残りを3列目へ回す
 # v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
 # v39: 三連複柱ありで2列目を低pt2セットに絞る場合、2セット目以降のライン残りも3列目へ補正。全候補が基本3列目内なら基本3列目順を優先。
+# v42: 基本三連複フォメの3列目で、2列目採用車の同ライン残りを必ず残す（例：5を2列目なら52の2を3列目へ）。
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7679,29 +7680,62 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
         # 基本フォメ 4-7621-6153 に対して 4-72-15 となる。
         if has_myoumi_pillar:
             keep_set = {int(B)}
-            second_seed = {int(B)}
-            third_seed = {int(B)}
+            second_seed = set()
+            third_seed = set()
 
-            # 妙味2車複は2列目候補へ優先的に置く。
-            for item in myoumi_pairs:
+            # v40:
+            # 妙味2車複が複数出ても、2列目へ全部は置かない。
+            # 2列目は妙味ptの高い順から最大2セットまで。
+            # 余った妙味相手は、基本フォメ3列目に存在する場合のみ3列目へ回す。
+            # 例：静岡4R 妙味 4-6 / 4-5 / 4-1、基本 4-6751-5163
+            #   -> 2列目=6,5 ／ 余り1は3列目へ -> 4-65-516
+            def _myoumi_pair_rank(item):
+                try:
+                    scx, ax, bx = float(item[0]), int(item[1]), int(item[2])
+                    ox = _velobi_ordered_cars([ax, bx], rec_order_for_forme)
+                    # 妙味は高ptを優先し、同点ならVeloBi順。
+                    return (-scx, [_velobi_rank_index(z, rec_order_for_forme) for z in ox], ox)
+                except Exception:
+                    return (999.0, [999, 999], [9, 9])
+
+            myoumi_second_ranked = []
+            myoumi_extra_ranked = []
+            for item in sorted(myoumi_pairs, key=_myoumi_pair_rank):
                 try:
                     _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
                     x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
                     if int(x) == int(A) and int(y) != int(A):
-                        keep_set.add(int(y))
-                        second_seed.add(int(y))
-                        third_seed.add(int(y))
-                        y_line = _line_members_for_car_from_members(line_members_all, y)
-                        for yy in y_line:
-                            if int(yy) != int(A) and int(yy) != int(y):
-                                keep_set.add(int(yy))
-                                third_seed.add(int(yy))
+                        if int(y) not in myoumi_second_ranked and int(y) not in myoumi_extra_ranked:
+                            if len(myoumi_second_ranked) < 2:
+                                myoumi_second_ranked.append(int(y))
+                            else:
+                                myoumi_extra_ranked.append(int(y))
                 except Exception:
                     pass
 
+            for y in myoumi_second_ranked:
+                keep_set.add(int(y))
+                second_seed.add(int(y))
+                # 選抜した2着候補も、基本3列目にあるなら3着入替を許容。
+                if int(y) in c3:
+                    third_seed.add(int(y))
+                # 2着候補の同ライン残りは3列目候補。
+                y_line = _line_members_for_car_from_members(line_members_all, y)
+                for yy in y_line:
+                    yi = int(yy)
+                    if yi != int(A) and yi != int(y):
+                        keep_set.add(yi)
+                        third_seed.add(yi)
+
+            # 余った妙味相手は3列目にあれば回す（2列目には増やさない）。
+            for y in myoumi_extra_ranked:
+                if int(y) in c3:
+                    keep_set.add(int(y))
+                    third_seed.add(int(y))
+
             # 妙味が1点だけの場合は、最低ptの評価重複2車複を合成する。
             # 例：妙味 A-B だけでは3連が薄いので、評価重複 A-C を足して A-BC-... にする。
-            if len(second_seed) <= 1 and overlap_pairs:
+            if len(myoumi_second_ranked) <= 1 and overlap_pairs:
                 def _pair_key2(item):
                     try:
                         sc2, a2, b2 = float(item[0]), int(item[1]), int(item[2])
@@ -7713,10 +7747,11 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                     try:
                         _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
                         x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
-                        if int(x) == int(A) and int(y) != int(A):
+                        if int(x) == int(A) and int(y) != int(A) and int(y) not in second_seed:
                             keep_set.add(int(y))
                             second_seed.add(int(y))
-                            third_seed.add(int(y))
+                            if int(y) in c3:
+                                third_seed.add(int(y))
                             y_line = _line_members_for_car_from_members(line_members_all, y)
                             for yy in y_line:
                                 if int(yy) != int(A) and int(yy) != int(y):
@@ -7967,9 +8002,31 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                 if int(x) not in third_candidates:
                     third_candidates.append(int(x))
         else:
+            # v41:
+            # 2車複妙味から補正フォメを作る場合、2着候補の同ライン残りは
+            # 基本3列目に無くても3列目へ残す。
+            # 例：静岡4R 4-5が妙味、5のライン=52、基本=4-6751-5163。
+            #   2が基本3列目に無いままだと、5を2着にした時のライン相手が消えるため、
+            #   4-65-5162 のようにライン補正として3列目へ追加する。
             for x in c3:
                 if int(x) in third_source and int(x) != int(A) and int(x) not in third_candidates:
                     third_candidates.append(int(x))
+
+            if has_myoumi_pillar:
+                # 基本3列目外でも、ライン補正で作ったthird_seedは追加する。
+                # 表示順はVeloBi順を優先しつつ、既存候補の後ろへ足す。
+                extras = []
+                for x in third_seed:
+                    xi = int(x)
+                    if xi == int(A) or xi in third_candidates:
+                        continue
+                    # 3連単展開側では c2/c3に無い車を弾く処理があるため、
+                    # ライン補正で追加した車はここで明示的に候補化しておく。
+                    extras.append(xi)
+                extras = sorted([x for i, x in enumerate(extras) if x not in extras[:i]], key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
+                for x in extras:
+                    if int(x) not in third_candidates:
+                        third_candidates.append(int(x))
 
         if not third_candidates and C is not None and int(C) != int(A):
             third_candidates.append(int(C))
@@ -7980,10 +8037,12 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
             for t in third_candidates:
                 if len({int(A), int(s), int(t)}) != 3:
                     continue
-                # 三連複フォメ側に全く出てこない相手は出さない。
-                # ただし2着候補同士の入れ替えは許可する。
+                # 三連複フォメ側に全く出てこない相手は原則出さない。
+                # ただしv41では、妙味2車複の2着候補ライン残りとして追加した車は、
+                # 基本フォメ外でもライン補正候補として許可する。
                 if int(t) not in c2 and int(t) not in c3:
-                    continue
+                    if not (has_myoumi_pillar and int(t) in third_seed):
+                        continue
                 expanded.append(f"{int(A)}→{int(s)}→{int(t)}")
 
         if not expanded:
@@ -8359,30 +8418,53 @@ try:
 
         expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(col1_cars, col2_cars, role1, market_mark_map)
 
-        # 3列目：三連複候補
-        # 1) 順流3番手を最優先で入れる（通常123を組めるようにする）
-        # 2) 主導ライン3番手を入れる（穴が出やすい位置）
-        # 3) 各ラインの残りをライン順位順に入れる
+        # 3列目：三連複候補 v42
+        # 重要修正：2列目に採用した車の同ライン残りは、基本3列目に必ず残す。
+        # 例：ライン52で2列目に5を採用したなら、2は基本3列目候補へ入れる。
+        # これを落とすと、4-5-2 のようなライン筋が基本フォメから消えてしまう。
         col3_cars = []
-        for cand in [role3_original]:
-            cand = int(cand)
+
+        def _add_col3(cand):
+            try:
+                cand = int(cand)
+            except Exception:
+                return
             if cand not in col1_cars and cand not in col3_cars:
                 col3_cars.append(cand)
 
+        # 1) 順流3番手を最優先で入れる（通常123を組めるようにする）
+        _add_col3(role3_original)
+
+        # 2) 軸ラインの残り後位
         for cand in eval1_thirdplus:
-            cand = int(cand)
-            if cand not in col1_cars and cand not in col3_cars:
-                col3_cars.append(cand)
+            _add_col3(cand)
 
+        # 3) 2列目に採用された車の同ライン残りを必ず3列目へ
+        #    ここは基本フォメ側のライン整合性を作るため、通常の4車上限では落とさない。
+        for sec in col2_cars:
+            sec = int(sec)
+            sec_line = None
+            for mem in ranked_lines:
+                mem_i = [int(x) for x in mem]
+                if sec in mem_i:
+                    sec_line = mem_i
+                    break
+            if not sec_line:
+                continue
+            for mate in sec_line:
+                mate = int(mate)
+                if mate == int(role1) or mate == sec:
+                    continue
+                _add_col3(mate)
+
+        # 4) 余白があれば、従来どおり各ラインの残りをライン順位順に補充
         for mem in ranked_lines:
             mem = [int(x) for x in mem]
             if not mem:
                 continue
             if int(role1) in mem:
-                # 主導ラインは3番手以降だけを追加済み
                 rest = [int(x) for x in mem[2:]]
             else:
-                # 他ラインは代表以外の後位を3列目へ。単騎は本人を3列目にも置く。
                 rep = None
                 for cand in rec_order_for_forme:
                     cand = int(cand)
@@ -8397,17 +8479,16 @@ try:
                     rest = [int(x) for x in mem if int(x) != int(rep)]
 
             for cand in rest:
-                cand = int(cand)
-                if cand not in col1_cars and cand not in col3_cars:
-                    col3_cars.append(cand)
-                if len(col3_cars) >= 4:
+                _add_col3(cand)
+                # 2列目ライン相手を落とさないため、最大5車まで許容
+                if len(col3_cars) >= 5:
                     break
-            if len(col3_cars) >= 4:
+            if len(col3_cars) >= 5:
                 break
 
         # なお、2列目との重複は許可する。
-        # 例：単騎3は2車複ヒモにも三連複3列目にもなり得る。
-        col3_cars = _uniq_keep(col3_cars[:4])
+        # 例：2着候補でも、三連複の3列目残りにもなり得る。
+        col3_cars = _uniq_keep(col3_cars[:5])
 
         col1_text = _fmt_cars(col1_cars)
         col2_text = _fmt_cars(col2_cars)
