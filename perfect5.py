@@ -6,6 +6,7 @@
 # v44: 三連複妙味ptをVeloBi順位寄りに再調整。外部印ズレの10点張り付きと同一三連複の重複表示を抑制。
 # v45: 三連複妙味ptで軸の市場印を上限キャップ化。評価1が△/〇/◎なら10点張り付きさせない。
 # v46: 2車複妙味ptにも軸の市場印キャップを適用。軸が△/〇/◎なら2車複も10点張り付きさせない。
+# v49: v46〜v48のキャップが強すぎたため撤廃。市場印は減点として反映し、VeloBi筋の妙味は残す。
 # v47: 市場印snapshotが—入りでfallbackされない問題を修正。2車複の軸印キャップも通過基準未満へ強化。
 # v48: snapshotだけでなく現在のst.session_state上の車番別市場印も後段で再取得し、2車複ptへ確実に反映。
 import streamlit as st
@@ -6639,8 +6640,8 @@ if isinstance(_market_mark_snapshot, dict) and _market_mark_snapshot:
             market_mark_map[_ci] = _mk
 
 # v48: 後段計算時点でも、現在のst.session_state上の車番別市場印を再取得して上書きする。
-# Streamlitのrerunや古いsnapshotの影響で、snapshot側が「—」のまま残ると、
-# 4が△なのに内部では無印扱いになり、2車複ptが10.0に張り付くため。
+# v49: 市場印の取得自体は維持するが、点数側の強すぎる上限キャップは撤廃。
+#      軸が△なら減点はするが、妙味そのものを殺さない。
 try:
     _active_for_marks = snapshot.get("active_cars", []) or list(range(1, 10))
     for _no in _active_for_marks:
@@ -7023,22 +7024,12 @@ def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
     score -= _myoumi_market_pair_penalty([ma, mb])
     score += _myoumi_eval1_bonus(int(a), int(role1), mm)
 
-    # v46: 2車複も「軸が市場にどれだけ拾われているか」で上限をかける。
-    # 例：VeloBi軸4が市場△なら、4-6/4-5が外部ズレで上がっても10.0にはしない。
-    head_cap = {
-        "◎": 4.8,
-        "〇": 5.8,
-        "○": 5.8,
-        "△": 6.8,
-        "×": 8.0,
-        "無印": 10.0,
-    }.get(str(ma or "無印"), 10.0)
-
-    # 相手にも市場印があるなら、市場本線寄りとして少しだけ上限を下げる。
-    if str(mb or "無印") in MARKED_SET:
-        head_cap -= 0.50
-
-    score = min(score, head_cap)
+    # v49:
+    # v46〜v48の「軸印による上限キャップ」は強すぎた。
+    # 例：軸4が△というだけで 4-6 / 4-5 が6点台まで落ち、
+    # 妙味が消えて評価重複4→7だけで補正フォメを作ってしまった。
+    # ここではキャップせず、上の印減点だけで濃淡を付ける。
+    # これにより、△軸は10点張り付きは避けつつ、筋のある妙味は7点以上に残す。
     return round(max(0.0, min(10.0, score)), 1)
 
 
@@ -7122,7 +7113,11 @@ def _myoumi_score_3kei(a: int, b: int, c: int, role1: int, mark_map: dict, rec_o
     mb = mm.get(int(b), "無印")
     mc = mm.get(int(c), "無印")
 
-    score = 9.2
+    # v49:
+    # 三連複も強制キャップは撤廃。
+    # ただし基礎点を少し高めに戻し、VeloBi順位減点で差を付ける。
+    # 目的は「10点横並びを崩す」ことであって、「△軸だから妙味を消す」ことではない。
+    score = 10.2
     score -= _myoumi_mark_penalty(ma, "head")
     score -= _myoumi_mark_penalty(mb, "tail")
     score -= _myoumi_mark_penalty(mc, "third")
@@ -7130,25 +7125,6 @@ def _myoumi_score_3kei(a: int, b: int, c: int, role1: int, mark_map: dict, rec_o
     score -= _myoumi_velobi_rank_penalty_3kei(int(a), int(b), int(c), rec_order_for_forme)
     score += 0.35 * _myoumi_eval1_bonus(int(a), int(role1), mm)
 
-    # v45: 1列目軸が市場印付きなら、印の重なりを上限として反映する。
-    # △は「市場にも少し拾われている」ので、AA級の妙味はあっても10.0にはしない。
-    head_cap = {
-        "◎": 5.8,
-        "〇": 6.5,
-        "○": 6.5,
-        "△": 7.6,
-        "×": 8.4,
-        "無印": 10.0,
-    }.get(str(ma or "無印"), 10.0)
-
-    # 3車のうち印付きが多いほど、市場本線寄りとしてさらに上限を下げる。
-    marked_count = sum(1 for m in (ma, mb, mc) if str(m or "無印") in MARKED_SET)
-    if marked_count >= 3:
-        head_cap -= 0.6
-    elif marked_count == 2:
-        head_cap -= 0.25
-
-    score = min(score, head_cap)
     return round(max(0.0, min(10.0, score)), 1)
 
 
