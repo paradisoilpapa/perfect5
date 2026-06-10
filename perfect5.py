@@ -8,6 +8,7 @@
 # v56: 4列目の定義を修正。単なるライン末尾ではなく、4車ライン、または軸ではない3車以上ラインの「ライン内VeloBi評価3番手以降」を4列目へ分離する。
 # v57: 4列目へ落とす条件を再修正。2列目採用車・軸との2車複妙味通過車は、長いラインの3番手以降でも3列目に残す。
 # v58: 4列目条件を再修正。2列目にいるだけでは保護しない。長いラインの評価3番手以降は原則4列目、ただし「2列目採用かつ軸との妙味通過」は3列目に残す。
+# v59: 推奨ライン補正フォメでも4列目候補を3列目へ戻さない。基本フォメで4列目に落とした車は、ライン補正のextras/third_seedから除外する。
 # v42: 基本三連複フォメの3列目で、2列目採用車の同ライン残りを必ず残す（例：5を2列目なら52の2を3列目へ）。
 # v44: 三連複妙味ptをVeloBi順位寄りに再調整。外部印ズレの10点張り付きと同一三連複の重複表示を抑制。
 # v45: 三連複妙味ptで軸の市場印を上限キャップ化。評価1が△/〇/◎なら10点張り付きさせない。
@@ -7817,6 +7818,9 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
     try:
         c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
         c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
+        # v59: 基本フォメで4列目へ分離した車は、推奨ライン補正フォメの3列目へ戻さない。
+        # 例：1-7435-732 / 4列目=56 の場合、ライン補正で 5 をthird_seedに拾っても除外する。
+        third_exclude = {int(x) for x in globals().get("PILLAR_EXCLUDE_THIRD_CARS", []) if str(x).isdigit()}
         if not c2 or not c3:
             return None
 
@@ -8308,7 +8312,7 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                 extras = []
                 for x in third_seed:
                     xi = int(x)
-                    if xi == int(A) or xi in third_candidates:
+                    if xi == int(A) or xi in third_candidates or xi in third_exclude:
                         continue
                     # 3連単展開側では c2/c3に無い車を弾く処理があるため、
                     # ライン補正で追加した車はここで明示的に候補化しておく。
@@ -8318,7 +8322,11 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                     if int(x) not in third_candidates:
                         third_candidates.append(int(x))
 
-        if not third_candidates and C is not None and int(C) != int(A):
+        # v59: 4列目候補は、どの経路で拾われても推奨フォメの3列目から除外する。
+        if third_exclude:
+            third_candidates = [int(x) for x in third_candidates if int(x) not in third_exclude]
+
+        if not third_candidates and C is not None and int(C) != int(A) and int(C) not in third_exclude:
             third_candidates.append(int(C))
 
         # 展開表示は同一車重複を除いた実買い目だけ。
@@ -8875,6 +8883,10 @@ try:
         if col4_cars:
             sanpuku_forme_line += f" / 4列目薄目：{col4_text}"
         sanrentan_forme_line = f"3連単フォメ：1列目→2列目→3列目 {col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
+
+        # v59: 上部の推奨ライン補正フォメ生成でも、4列目候補を3列目へ戻さないために共有する。
+        globals()["PILLAR_EXCLUDE_THIRD_CARS"] = list(col4_cars)
+
         myoumi_pickup_block = _make_myoumi_pickup_block(
             col1_cars,
             col2_cars,
