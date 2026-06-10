@@ -10,6 +10,7 @@
 # v58: 4列目条件を再修正。2列目にいるだけでは保護しない。長いラインの評価3番手以降は原則4列目、ただし「2列目採用かつ軸との妙味通過」は3列目に残す。
 # v59: 推奨ライン補正フォメでも4列目候補を3列目へ戻さない。基本フォメで4列目に落とした車は、ライン補正のextras/third_seedから除外する。
 # v60: 妙味2車複が複数ある時も、軸ラインの直近相手は3列目へ残す。ライン相手を消して補正フォメが崩れるのを防ぐ。
+# v61: 妙味2車複が複数ある時、軸ライン相手が基本2列目にいるなら2列目へ優先採用し、押し出された妙味相手は3列目へ回す。
 # v42: 基本三連複フォメの3列目で、2列目採用車の同ライン残りを必ず残す（例：5を2列目なら52の2を3列目へ）。
 # v44: 三連複妙味ptをVeloBi順位寄りに再調整。外部印ズレの10点張り付きと同一三連複の重複表示を抑制。
 # v45: 三連複妙味ptで軸の市場印を上限キャップ化。評価1が△/〇/◎なら10点張り付きさせない。
@@ -7959,6 +7960,23 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                 except Exception:
                     pass
 
+            # v61:
+            # 妙味2車複が複数ある場合でも、軸ライン相手が基本2列目にいるなら
+            # 2列目へ優先採用する。
+            # 例：軸7・ライン72・妙味7-4/7-5・基本2列目245なら、
+            # 2列目は45ではなく24。押し出された5は3列目へ回し、7-24-51。
+            if len(myoumi_second_ranked) >= 2:
+                for xi in a_line_others:
+                    xi = int(xi)
+                    if xi != int(A) and xi in c2 and xi not in myoumi_second_ranked and xi not in third_exclude:
+                        displaced = None
+                        if len(myoumi_second_ranked) >= 2:
+                            displaced = myoumi_second_ranked.pop()
+                        myoumi_second_ranked.append(xi)
+                        if displaced is not None and displaced not in myoumi_extra_ranked:
+                            myoumi_extra_ranked.insert(0, int(displaced))
+                        break
+
             for y in myoumi_second_ranked:
                 keep_set.add(int(y))
                 second_seed.add(int(y))
@@ -7978,17 +7996,9 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                     keep_set.add(int(y))
                     third_seed.add(int(y))
 
-            # v60:
-            # 妙味2車複が複数ある場合でも、軸ラインの直近相手は3列目へ残す。
-            # 例：軸7・ライン72・妙味7-4/7-5なら、2は7のライン相手なので3列目へ残す。
-            # ただし軸ライン全員を無条件に足すと広がるため、直近相手だけに限定する。
-            # また4列目に分離済みの車は戻さない。
-            if len(myoumi_second_ranked) >= 2:
-                for xi in _line_nearest_third_partners(A):
-                    xi = int(xi)
-                    if xi != int(A) and xi not in second_seed and xi not in third_exclude:
-                        keep_set.add(xi)
-                        third_seed.add(xi)
+            # v61:
+            # 妙味複数時の軸ライン相手は、3列目へ無条件追加しない。
+            # 基本2列目にいるなら上で2列目へ採用し、いないなら無理に戻さない。
 
             # 妙味が1点だけの場合は、2列目が薄くなりやすい。
             # v53:
