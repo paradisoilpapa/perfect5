@@ -3,7 +3,8 @@
 # v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
 # v39: 三連複柱ありで2列目を低pt2セットに絞る場合、2セット目以降のライン残りも3列目へ補正。全候補が基本3列目内なら基本3列目順を優先。
 # v42: 基本三連複フォメの3列目で、2列目採用車の同ライン残りを必ず残す（例：5を2列目なら52の2を3列目へ）。
-# v43: 三連複妙味ptにVeloBi順流順位補正を追加。外部印ズレだけで10.0ptが連発しないよう、元スコア順位の薄い組み合わせを減点。
+# v44: 三連複妙味ptをVeloBi順位寄りに再調整。外部印ズレの10点張り付きと同一三連複の重複表示を抑制。
+# v45: 三連複妙味ptで軸の市場印を上限キャップ化。評価1が△/〇/◎なら10点張り付きさせない。
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6987,12 +6988,12 @@ def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
 
 def _myoumi_velobi_rank_penalty_3kei(a: int, b: int, c: int, rec_order_for_forme=None) -> float:
     """
-    三連複妙味pt用のVeloBi元スコア順位補正。
+    三連複妙味pt用のVeloBi順位補正。
 
-    目的：
-    ・外部印ズレだけで 10.0pt が連発するのを防ぐ。
-    ・VeloBiの順流メイン着順（= 元スコアの濃淡を反映した実戦順）から薄い車を含む組み合わせを少し下げる。
-    ・ただし穴を完全に消さない。妙味検出なので減点は緩めにする。
+    v44方針：
+    ・外部印/WIN側の低評価だけで10.0ptへ張り付かないよう、VeloBi順流順位を強めに反映する。
+    ・2列目で薄い車を使う方を重く減点し、3列目の穴は少しだけ許容する。
+    ・妙味を消すのではなく、10点横並びを崩して買い目順位として使える差を付ける。
     """
     try:
         order = [int(x) for x in (rec_order_for_forme or []) if str(x).strip().isdigit()]
@@ -7003,38 +7004,48 @@ def _myoumi_velobi_rank_penalty_3kei(a: int, b: int, c: int, rec_order_for_forme
 
         def one_pen(car: int, role: str) -> float:
             r = int(rank.get(int(car), n))
-            # 1〜3位は本線内。4位以下から段階的に下げる。
-            if r <= 3:
+            # v43はここが緩すぎて、WIN側ズレが優先されすぎた。
+            if r <= 2:
                 base = 0.0
+            elif r == 3:
+                base = 0.15
             elif r == 4:
-                base = 0.25
-            elif r == 5:
                 base = 0.55
+            elif r == 5:
+                base = 1.05
             elif r == 6:
-                base = 0.85
+                base = 1.55
             else:
-                base = 1.10
+                base = 2.05
 
-            # 3列目の穴は少し許容。2列目で薄い車を使う方を重く見る。
-            if role == "third":
-                base *= 0.70
-            elif role == "head":
-                base *= 0.50
+            if role == "head":
+                base *= 0.45
+            elif role == "third":
+                base *= 0.80
+            else:  # tail / 2列目
+                base *= 1.10
             return base
 
-        pen = 0.0
-        pen += one_pen(int(a), "head")
-        pen += one_pen(int(b), "tail")
-        pen += one_pen(int(c), "third")
+        ra = rank.get(int(a), n)
+        rb = rank.get(int(b), n)
+        rc = rank.get(int(c), n)
+        pen = one_pen(int(a), "head") + one_pen(int(b), "tail") + one_pen(int(c), "third")
 
-        # 3車平均が明らかに薄いときだけ追加減点。
-        avg_rank = (rank.get(int(a), n) + rank.get(int(b), n) + rank.get(int(c), n)) / 3.0
+        avg_rank = (ra + rb + rc) / 3.0
         if avg_rank >= 5.0:
-            pen += 0.45
+            pen += 0.85
         elif avg_rank >= 4.0:
+            pen += 0.45
+        elif avg_rank >= 3.4:
             pen += 0.20
 
-        return float(max(0.0, min(2.2, pen)))
+        # 6〜7位級を含む組み合わせは、外部印ズレだけで最上位にしない。
+        if max(ra, rb, rc) >= 7:
+            pen += 0.45
+        elif max(ra, rb, rc) >= 6:
+            pen += 0.25
+
+        return float(max(0.0, min(4.2, pen)))
     except Exception:
         return 0.0
 
@@ -7044,21 +7055,44 @@ def _myoumi_score_3kei(a: int, b: int, c: int, role1: int, mark_map: dict, rec_o
     3連系ピックアップ用。
     a-b-c の順番はフォメ列順を保持する。
     実オッズではなく、外部印との被りから見た内部妙味pt。
-    v43: 外部印ズレだけでなく、VeloBi順流順位の濃淡も反映する。
+
+    v45方針：
+    ・三連複妙味は「外部印が軽い＝即10点」ではなく、VeloBi本体と市場印の重なりを見る。
+    ・特に1列目軸が市場印付きなら、妙味の上限をキャップする。
+      例：軸が△なら、ズレはあるが市場にも拾われているので10点にはしない。
     """
     mm = {int(k): str(v) for k, v in (mark_map or {}).items()}
     ma = mm.get(int(a), "無印")
     mb = mm.get(int(b), "無印")
     mc = mm.get(int(c), "無印")
 
-    score = 10.0
+    score = 9.2
     score -= _myoumi_mark_penalty(ma, "head")
     score -= _myoumi_mark_penalty(mb, "tail")
     score -= _myoumi_mark_penalty(mc, "third")
     score -= _myoumi_market_trio_penalty([ma, mb, mc])
     score -= _myoumi_velobi_rank_penalty_3kei(int(a), int(b), int(c), rec_order_for_forme)
-    score += _myoumi_eval1_bonus(int(a), int(role1), mm)
+    score += 0.35 * _myoumi_eval1_bonus(int(a), int(role1), mm)
 
+    # v45: 1列目軸が市場印付きなら、印の重なりを上限として反映する。
+    # △は「市場にも少し拾われている」ので、AA級の妙味はあっても10.0にはしない。
+    head_cap = {
+        "◎": 5.8,
+        "〇": 6.5,
+        "○": 6.5,
+        "△": 7.6,
+        "×": 8.4,
+        "無印": 10.0,
+    }.get(str(ma or "無印"), 10.0)
+
+    # 3車のうち印付きが多いほど、市場本線寄りとしてさらに上限を下げる。
+    marked_count = sum(1 for m in (ma, mb, mc) if str(m or "無印") in MARKED_SET)
+    if marked_count >= 3:
+        head_cap -= 0.6
+    elif marked_count == 2:
+        head_cap -= 0.25
+
+    score = min(score, head_cap)
     return round(max(0.0, min(10.0, score)), 1)
 
 
@@ -7317,7 +7351,8 @@ def _collect_myoumi_pickups(col1_cars, col2_cars, col3_cars, role1, mark_map, re
             for c in c3:
                 if len({int(a), int(b), int(c)}) != 3:
                     continue
-                key = (int(a), int(b), int(c))
+                # 三連複なので、同じ3車の並び違いは重複表示しない。
+                key = tuple(sorted((int(a), int(b), int(c))))
                 if key in seen_ordered:
                     continue
                 seen_ordered.add(key)
