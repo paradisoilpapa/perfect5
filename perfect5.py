@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# v26: 柱三連単ライン補正フォメの3列目に2着候補も入れ替え候補として残す
+# v28: 柱三連単ライン補正フォメは、柱＋ライン補正で残す車番を作り、基本三連複フォメの各列に存在するものだけを列ごとに残す
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7584,16 +7584,18 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
     思想：
       ・評価重複三連単のうち、妙味ptが一番低いものを「一番素直な柱」とみなす。
       ・柱 A→B→C を作る。
-      ・Aと同ラインの車が2列目にいる場合、Bと並べて2着候補へ加える。
-      ・3列目は柱Cだけだと薄くなるため、2着候補同士の入れ替わりも残す。
-      ・つまり A - 2着候補 - (2着候補＋柱C) の形で出す。
+      ・残す車番は「柱B・柱C・A同ライン補正」で作る。
+      ・ただし、どの列に残すかは基本三連複フォメを優先する。
+        - 2列目に存在するものだけを2列目へ残す。
+        - 3列目に存在するものだけを3列目へ残す。
+      ・つまり A - (残す車番 ∩ 2列目) - (残す車番 ∩ 3列目) の形で出す。
 
     例1：
       柱 7→5→3、ライン72、2列目251、3列目1346
-      → 7-25-53
+      → 7-25-3
     例2：
       柱 2→4→1、ライン423、2列目4163、3列目1375
-      → 2-43-431
+      → 2-413-13
     """
     try:
         if not overlap_triples:
@@ -7630,15 +7632,19 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
         a_line = _line_members_for_car_from_members(line_members_all, A)
         a_line_others = [int(x) for x in a_line if int(x) != int(A)]
 
-        # 2着候補：柱B＋A同ラインの2列目候補。
-        sec_set = set([int(B)])
+        # 残す車番：柱B・柱C・A同ライン補正。
+        # ただし、列への反映は基本三連複フォメの列位置を守る。
+        # 例：柱 2→4→1、ライン423、2列目4163、3列目1375
+        #     残す車番 = {4,1,3}
+        #     2列目 = 4163 ∩ {4,1,3} → 413
+        #     3列目 = 1375 ∩ {4,1,3} → 13
+        keep_set = {int(B), int(C)}
         for x in a_line_others:
-            if int(x) in c2 and int(x) != int(C):
-                sec_set.add(int(x))
+            keep_set.add(int(x))
 
         # 表示順は列評価2列目の順を優先。Bが2列目外なら最後に保険で入れる。
-        sec_candidates = [x for x in c2 if x in sec_set and x != int(A) and x != int(C)]
-        if int(B) not in sec_candidates and int(B) != int(A) and int(B) != int(C):
+        sec_candidates = [x for x in c2 if x in keep_set and x != int(A)]
+        if int(B) not in sec_candidates and int(B) != int(A):
             sec_candidates.append(int(B))
 
         # 実際に A→sec として成立する2着候補だけ。
@@ -7646,20 +7652,23 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
         for s in sec_candidates:
             if int(s) == int(A):
                 continue
-            if int(s) in c2:
+            if int(s) in c2 or int(s) == int(B):
                 valid_seconds.append(int(s))
 
         valid_seconds = [x for i, x in enumerate(valid_seconds) if x not in valid_seconds[:i]]
         if not valid_seconds:
             return None
 
-        # 3列目：柱Cだけだと薄いので、2着候補同士の入れ替わりも残す。
-        # 表示順は 2着候補 → 柱C。例：2-43-431
+        # 3列目：残す車番のうち、基本三連複フォメ3列目に存在するものだけを残す。
+        # 2着候補全部を3列目へ回すのではなく、列評価の3列目にあるものだけ。
+        # 例：柱 2→4→1、ライン423、3列目1375、残す車番{4,1,3} → 13。
         third_candidates = []
-        for x in valid_seconds:
-            if int(x) != int(A) and int(x) not in third_candidates:
+        if int(C) != int(A) and int(C) in c3:
+            third_candidates.append(int(C))
+        for x in c3:
+            if int(x) in keep_set and int(x) != int(A) and int(x) not in third_candidates:
                 third_candidates.append(int(x))
-        if int(C) != int(A) and int(C) not in third_candidates:
+        if not third_candidates and int(C) != int(A):
             third_candidates.append(int(C))
 
         # 展開表示は同一車重複を除いた実買い目だけ。
