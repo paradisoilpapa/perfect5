@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# v31: 2車複評価重複からのライン補正フォメは2列目=評価重複相手、3列目=ライン残りへ分離
+# v32: 妙味2車複が出たら妙味優先でライン補正フォメを作成。妙味1点なら最低pt評価重複と合成
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7577,7 +7577,7 @@ def _line_members_for_car_from_members(line_members_all, car):
     return []
 
 
-def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_order_for_forme=None, overlap_pairs=None):
+def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_order_for_forme=None, overlap_pairs=None, myoumi_pairs=None):
     """
     評価重複の柱三連単から、ライン補正フォメを作る。
 
@@ -7603,12 +7603,31 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
         if not c2 or not c3:
             return None
 
+        # v32：妙味2車複が出た場合は、評価重複より妙味を優先して補正フォメを作る。
+        # 妙味2車複が1点だけなら、最低ptの評価重複2車複を合成して3連系の形にする。
+        myoumi_pairs = list(myoumi_pairs or [])
+        has_myoumi_pillar = bool(myoumi_pairs)
+
         # 評価重複の「一番数値が低い」ものを柱にする。
         # 三連複評価重複がある場合は A→B→C を柱にする。
         # 無い場合は、評価重複2車複 A→B を柱にし、3列目はライン補正と基本フォメから作る。
-        has_triple_pillar = bool(overlap_triples)
+        has_triple_pillar = (not has_myoumi_pillar) and bool(overlap_triples)
 
-        if has_triple_pillar:
+        if has_myoumi_pillar:
+            def _myoumi_key(item):
+                try:
+                    sc, a, b = float(item[0]), int(item[1]), int(item[2])
+                    # 妙味は高いものを優先。列順は元の出力順を尊重。
+                    return (-sc, _velobi_rank_index(a, rec_order_for_forme), _velobi_rank_index(b, rec_order_for_forme), a, b)
+                except Exception:
+                    return (999.0, 999, 999, 9, 9)
+
+            pillar = sorted(myoumi_pairs, key=_myoumi_key)[0]
+            sc, a0, b0 = float(pillar[0]), int(pillar[1]), int(pillar[2])
+            A, B = _velobi_ordered_cars([a0, b0], rec_order_for_forme)
+            C = None
+
+        elif has_triple_pillar:
             def _key(item):
                 try:
                     sc, a, b, c = float(item[0]), int(item[1]), int(item[2]), int(item[3])
@@ -7656,7 +7675,61 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
         #   ・3列目は、その相手のライン後ろ/前、Aライン残りなどを基本フォメの3列目に合わせて残す。
         # これにより、青森4Rのような 4→7 / 4→2 では、
         # 基本フォメ 4-7621-6153 に対して 4-72-15 となる。
-        if has_triple_pillar:
+        if has_myoumi_pillar:
+            keep_set = {int(B)}
+            second_seed = {int(B)}
+            third_seed = {int(B)}
+
+            # 妙味2車複は2列目候補へ優先的に置く。
+            for item in myoumi_pairs:
+                try:
+                    _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
+                    x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
+                    if int(x) == int(A) and int(y) != int(A):
+                        keep_set.add(int(y))
+                        second_seed.add(int(y))
+                        third_seed.add(int(y))
+                        y_line = _line_members_for_car_from_members(line_members_all, y)
+                        for yy in y_line:
+                            if int(yy) != int(A) and int(yy) != int(y):
+                                keep_set.add(int(yy))
+                                third_seed.add(int(yy))
+                except Exception:
+                    pass
+
+            # 妙味が1点だけの場合は、最低ptの評価重複2車複を合成する。
+            # 例：妙味 A-B だけでは3連が薄いので、評価重複 A-C を足して A-BC-... にする。
+            if len(second_seed) <= 1 and overlap_pairs:
+                def _pair_key2(item):
+                    try:
+                        sc2, a2, b2 = float(item[0]), int(item[1]), int(item[2])
+                        ordered2 = _velobi_ordered_cars([a2, b2], rec_order_for_forme)
+                        return (sc2, [_velobi_rank_index(x, rec_order_for_forme) for x in ordered2], ordered2)
+                    except Exception:
+                        return (999.0, [999, 999], [9, 9])
+                for item in sorted(overlap_pairs, key=_pair_key2):
+                    try:
+                        _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
+                        x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
+                        if int(x) == int(A) and int(y) != int(A):
+                            keep_set.add(int(y))
+                            second_seed.add(int(y))
+                            third_seed.add(int(y))
+                            y_line = _line_members_for_car_from_members(line_members_all, y)
+                            for yy in y_line:
+                                if int(yy) != int(A) and int(yy) != int(y):
+                                    keep_set.add(int(yy))
+                                    third_seed.add(int(yy))
+                            break
+                    except Exception:
+                        pass
+
+            # 軸ラインの残りは3列目候補へ。
+            for x in a_line_others:
+                keep_set.add(int(x))
+                third_seed.add(int(x))
+
+        elif has_triple_pillar:
             keep_set = {int(B), int(C)}
             second_seed = {int(B)}
             third_seed = {int(C)}
@@ -7753,7 +7826,7 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
             "expanded": expanded,
             "pillar": pillar_text,
             "score": sc,
-            "source": "triple" if has_triple_pillar else "pair",
+            "source": "myoumi" if has_myoumi_pillar else ("triple" if has_triple_pillar else "pair"),
         }
     except Exception:
         return None
@@ -7847,7 +7920,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         # 評価重複の柱から、ライン補正した3連単フォメを作る。
         # v29では「ヴェロビ的買目」の中ではなく、note上部（推奨順流予想の直後）に表示する。
         globals()["PILLAR_LINE_FORME_BLOCK"] = ""
-        pillar_forme = _make_pillar_santan_line_forme(overlap_triples, c2, c3, rec_order_for_forme, overlap_pairs=overlap_pairs)
+        pillar_forme = _make_pillar_santan_line_forme(overlap_triples, c2, c3, rec_order_for_forme, overlap_pairs=overlap_pairs, myoumi_pairs=two)
         if pillar_forme:
             _pillar_lines = []
             _pillar_lines.append("【推奨三連単＆三連複｜ライン補正フォメ】")
