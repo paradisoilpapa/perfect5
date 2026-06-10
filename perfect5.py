@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # v35: 評価重複のみの場合、2列目は低pt重複2車複の2セットまで。残り重複と軸ライン残りを3列目へ回す
 # v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
+# v52: 妙味2車複が複数ある時、軸ライン残りを無条件で3列目へ入れず、採用2着候補のライン残り＋評価重複相手だけを3列目へ回す。
 # v39: 三連複柱ありで2列目を低pt2セットに絞る場合、2セット目以降のライン残りも3列目へ補正。全候補が基本3列目内なら基本3列目順を優先。
 # v42: 基本三連複フォメの3列目で、2列目採用車の同ライン残りを必ず残す（例：5を2列目なら52の2を3列目へ）。
 # v44: 三連複妙味ptをVeloBi順位寄りに再調整。外部印ズレの10点張り付きと同一三連複の重複表示を抑制。
@@ -7987,10 +7988,33 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                             keep_set.add(yi)
                             third_seed.add(yi)
 
-            # 軸ラインの残りは3列目候補へ。
-            for x in a_line_others:
-                keep_set.add(int(x))
-                third_seed.add(int(x))
+            # v52:
+            # 妙味2車複が複数ある場合、軸ライン残りを無条件で3列目へ入れると広がりすぎる。
+            # 3列目へ回すのは、
+            #   1) 採用した2着候補の同ライン残り
+            #   2) 余った妙味相手が基本3列目にあるもの
+            #   3) 評価重複2車複の相手が基本3列目にあるもの
+            # に絞る。
+            # 例：静岡8R 妙味=1-7/1-5、評価重複=1→4/1→3、基本=1-4753-73624
+            #   -> 2列目=75 ／ 3列目=7・2・3・4（6は入れない）
+            if overlap_pairs:
+                def _pair_key_myoumi_extra(item):
+                    try:
+                        scx, ax, bx = float(item[0]), int(item[1]), int(item[2])
+                        ox = _velobi_ordered_cars([ax, bx], rec_order_for_forme)
+                        return (scx, [_velobi_rank_index(z, rec_order_for_forme) for z in ox], ox)
+                    except Exception:
+                        return (999.0, [999, 999], [9, 9])
+                for item in sorted(overlap_pairs, key=_pair_key_myoumi_extra):
+                    try:
+                        _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
+                        x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
+                        yi = int(y)
+                        if int(x) == int(A) and yi != int(A) and yi in c3:
+                            keep_set.add(yi)
+                            third_seed.add(yi)
+                    except Exception:
+                        pass
 
         elif has_triple_pillar:
             keep_set = {int(B), int(C)}
