@@ -4,6 +4,7 @@
 # v52: 妙味2車複が複数ある時、軸ライン残りを無条件で3列目へ入れず、採用2着候補のライン残り＋評価重複相手だけを3列目へ回す。
 # v53: 妙味2車複が1点だけの場合、評価重複を足す前に「軸ライン相手」が基本2列目にあれば2列目へ優先採用する。
 # v39: 三連複柱ありで2列目を低pt2セットに絞る場合、2セット目以降のライン残りも3列目へ補正。全候補が基本3列目内なら基本3列目順を優先。
+# v54: ライン補正フォメの3列目は、採用2着候補の同ライン全員ではなく「直近の相手」まで。ライン末尾・4番手格は3列目から落とす。
 # v42: 基本三連複フォメの3列目で、2列目採用車の同ライン残りを必ず残す（例：5を2列目なら52の2を3列目へ）。
 # v44: 三連複妙味ptをVeloBi順位寄りに再調整。外部印ズレの10点張り付きと同一三連複の重複表示を抑制。
 # v45: 三連複妙味ptで軸の市場印を上限キャップ化。評価1が△/〇/◎なら10点張り付きさせない。
@@ -7881,6 +7882,33 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
         a_line = _line_members_for_car_from_members(line_members_all, A)
         a_line_others = [int(x) for x in a_line if int(x) != int(A)]
 
+        def _line_nearest_third_partners(car):
+            """
+            v54: ライン補正フォメ用。
+            2列目に採用した車の同ライン残りを3列目へ入れる時、
+            ライン全員を足すと末尾・4番手格まで入って買い目が膨らむ。
+            そのため、採用車の直近の相手だけを3列目候補にする。
+            例：246で2を2列目に採用 -> 4のみ（6は実質4列目扱いで除外）
+                52で5を採用 -> 2
+                146で6を採用 -> 1
+            """
+            try:
+                line = [int(x) for x in _line_members_for_car_from_members(line_members_all, car)]
+                ci = int(car)
+                if ci not in line:
+                    return []
+                idx = line.index(ci)
+                out = []
+                # 基本はラインの後ろ（次位）を優先。
+                if idx + 1 < len(line):
+                    out.append(line[idx + 1])
+                # 末尾なら直前を使う。
+                elif idx - 1 >= 0:
+                    out.append(line[idx - 1])
+                return [x for x in out if int(x) != int(A) and int(x) != ci]
+            except Exception:
+                return []
+
         # 残す車番：
         # 三連複柱あり：柱B・柱C・A同ライン補正。
         # 三連複柱なし：
@@ -7930,12 +7958,11 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                 if int(y) in c3:
                     third_seed.add(int(y))
                 # 2着候補の同ライン残りは3列目候補。
-                y_line = _line_members_for_car_from_members(line_members_all, y)
-                for yy in y_line:
-                    yi = int(yy)
-                    if yi != int(A) and yi != int(y):
-                        keep_set.add(yi)
-                        third_seed.add(yi)
+                # v54: ただしライン全員ではなく、直近の相手だけを採用する。
+                # 例：246の2を2列目にした場合、4は残すが6は実質4列目扱いで落とす。
+                for yi in _line_nearest_third_partners(y):
+                    keep_set.add(int(yi))
+                    third_seed.add(int(yi))
 
             # 余った妙味相手は3列目にあれば回す（2列目には増やさない）。
             for y in myoumi_extra_ranked:
@@ -7991,12 +8018,10 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                         added_overlap_second = True
                         if yi in c3:
                             third_seed.add(yi)
-                        y_line = _line_members_for_car_from_members(line_members_all, yi)
-                        for yy in y_line:
-                            yyi = int(yy)
-                            if yyi != int(A) and yyi != yi:
-                                keep_set.add(yyi)
-                                third_seed.add(yyi)
+                        # v54: 評価重複を2列目へ足した場合も、同ライン残りは直近相手だけ。
+                        for yyi in _line_nearest_third_partners(yi):
+                            keep_set.add(int(yyi))
+                            third_seed.add(int(yyi))
                     else:
                         # 2列目に足さなかった評価重複相手は、基本3列目にある場合だけ3着へ回す。
                         if yi in c3:
@@ -8218,11 +8243,8 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                 #   2列目=3,2。2セット目の2のライン残り5を3列目へ足し、4-32-215。
                 try:
                     for y in list(pair_ranked or [])[1:]:
-                        y_line = _line_members_for_car_from_members(line_members_all, y)
-                        for yy in y_line:
-                            yi = int(yy)
-                            if yi in (int(A), int(y)):
-                                continue
+                        for yi in _line_nearest_third_partners(y):
+                            yi = int(yi)
                             if yi in c3:
                                 third_pool.append(yi)
                 except Exception:
