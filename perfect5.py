@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # v35: 評価重複のみの場合、2列目は低pt重複2車複の2セットまで。残り重複と軸ライン残りを3列目へ回す
+# v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7760,8 +7761,24 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                     except Exception:
                         pass
 
+            original_pair_count_for_triple = len(all_pair_ranked)
+
             # 2列目は最大2セットまで。無ければ柱Bを残す。
             pair_second_ranked = all_pair_ranked[:2] if all_pair_ranked else [int(B)]
+
+            # v37:
+            # 評価重複2車複が1セットしかない場合は、2列目が薄くなりすぎる。
+            # 軸ラインの残りが基本2列目に存在するなら、2列目にも追加する。
+            # 例：A=7、評価重複=7→5、軸ライン=72、基本2列目=251
+            #   -> 2列目は 5 + 2 = 52
+            if len(pair_second_ranked) == 1:
+                for x in a_line_others:
+                    xi = int(x)
+                    if xi != int(A) and xi in c2 and xi not in pair_second_ranked:
+                        pair_second_ranked.append(xi)
+                        if len(pair_second_ranked) >= 2:
+                            break
+
             for y in pair_second_ranked:
                 keep_set.add(int(y))
                 second_seed.add(int(y))
@@ -7784,6 +7801,7 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
 
             # あとで2列目表示に使うため、ローカル変数として保持。
             _pair_second_ranked_for_triple = pair_second_ranked
+            _original_pair_count_for_triple = original_pair_count_for_triple
         else:
             keep_set = {int(B)}
             second_seed = {int(B)}
@@ -7863,14 +7881,28 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
             # 例：A=2, 軸ライン246, C=1, 低pt2列目=5・4, 余り重複=1 -> 146
             third_pool = []
 
-            # 柱C
-            if C is not None and int(C) != int(A):
-                third_pool.append(int(C))
+            # v37:
+            # 評価重複2車複が1セットのみで、軸ライン残りを2列目にも足したケースは、
+            # 3列目も軸ライン残りを先に見せる。例：7-52-23。
+            one_pair_case = (locals().get("_original_pair_count_for_triple", 0) == 1)
 
-            # 軸ラインの残りは3着側へ残す（基本フォメ列に無くても許容）
-            for x in a_line_others:
-                if int(x) != int(A):
-                    third_pool.append(int(x))
+            if one_pair_case:
+                # 軸ラインの残りを先に3着側へ残す（基本フォメ列に無くても許容）
+                for x in a_line_others:
+                    if int(x) != int(A):
+                        third_pool.append(int(x))
+                # 柱C
+                if C is not None and int(C) != int(A):
+                    third_pool.append(int(C))
+            else:
+                # 柱C
+                if C is not None and int(C) != int(A):
+                    third_pool.append(int(C))
+
+                # 軸ラインの残りは3着側へ残す（基本フォメ列に無くても許容）
+                for x in a_line_others:
+                    if int(x) != int(A):
+                        third_pool.append(int(x))
 
             # 余った評価重複相手は、基本フォメ3列目にあれば3着へ回す
             if overlap_pairs:
@@ -7895,9 +7927,11 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                 except Exception:
                     pass
 
-            # 表示順はVeloBi順。重複除去。
+            # 表示順。通常はVeloBi順。
+            # ただしv37の1セット補正ケースは、軸ライン残り→柱Cの順を守る。
             third_pool = [x for i, x in enumerate(third_pool) if x not in third_pool[:i] and int(x) != int(A)]
-            third_pool = sorted(third_pool, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
+            if not locals().get("one_pair_case", False):
+                third_pool = sorted(third_pool, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
             for x in third_pool:
                 if int(x) not in third_candidates:
                     third_candidates.append(int(x))
