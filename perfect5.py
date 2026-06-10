@@ -3,6 +3,7 @@
 # v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
 # v39: 三連複柱ありで2列目を低pt2セットに絞る場合、2セット目以降のライン残りも3列目へ補正。全候補が基本3列目内なら基本3列目順を優先。
 # v42: 基本三連複フォメの3列目で、2列目採用車の同ライン残りを必ず残す（例：5を2列目なら52の2を3列目へ）。
+# v43: 三連複妙味ptにVeloBi順流順位補正を追加。外部印ズレだけで10.0ptが連発しないよう、元スコア順位の薄い組み合わせを減点。
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6984,11 +6985,66 @@ def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
     return round(max(0.0, min(10.0, score)), 1)
 
 
-def _myoumi_score_3kei(a: int, b: int, c: int, role1: int, mark_map: dict) -> float:
+def _myoumi_velobi_rank_penalty_3kei(a: int, b: int, c: int, rec_order_for_forme=None) -> float:
+    """
+    三連複妙味pt用のVeloBi元スコア順位補正。
+
+    目的：
+    ・外部印ズレだけで 10.0pt が連発するのを防ぐ。
+    ・VeloBiの順流メイン着順（= 元スコアの濃淡を反映した実戦順）から薄い車を含む組み合わせを少し下げる。
+    ・ただし穴を完全に消さない。妙味検出なので減点は緩めにする。
+    """
+    try:
+        order = [int(x) for x in (rec_order_for_forme or []) if str(x).strip().isdigit()]
+        if not order:
+            return 0.0
+        rank = {car: i + 1 for i, car in enumerate(order)}
+        n = max(len(order), 1)
+
+        def one_pen(car: int, role: str) -> float:
+            r = int(rank.get(int(car), n))
+            # 1〜3位は本線内。4位以下から段階的に下げる。
+            if r <= 3:
+                base = 0.0
+            elif r == 4:
+                base = 0.25
+            elif r == 5:
+                base = 0.55
+            elif r == 6:
+                base = 0.85
+            else:
+                base = 1.10
+
+            # 3列目の穴は少し許容。2列目で薄い車を使う方を重く見る。
+            if role == "third":
+                base *= 0.70
+            elif role == "head":
+                base *= 0.50
+            return base
+
+        pen = 0.0
+        pen += one_pen(int(a), "head")
+        pen += one_pen(int(b), "tail")
+        pen += one_pen(int(c), "third")
+
+        # 3車平均が明らかに薄いときだけ追加減点。
+        avg_rank = (rank.get(int(a), n) + rank.get(int(b), n) + rank.get(int(c), n)) / 3.0
+        if avg_rank >= 5.0:
+            pen += 0.45
+        elif avg_rank >= 4.0:
+            pen += 0.20
+
+        return float(max(0.0, min(2.2, pen)))
+    except Exception:
+        return 0.0
+
+
+def _myoumi_score_3kei(a: int, b: int, c: int, role1: int, mark_map: dict, rec_order_for_forme=None) -> float:
     """
     3連系ピックアップ用。
     a-b-c の順番はフォメ列順を保持する。
     実オッズではなく、外部印との被りから見た内部妙味pt。
+    v43: 外部印ズレだけでなく、VeloBi順流順位の濃淡も反映する。
     """
     mm = {int(k): str(v) for k, v in (mark_map or {}).items()}
     ma = mm.get(int(a), "無印")
@@ -7000,6 +7056,7 @@ def _myoumi_score_3kei(a: int, b: int, c: int, role1: int, mark_map: dict) -> fl
     score -= _myoumi_mark_penalty(mb, "tail")
     score -= _myoumi_mark_penalty(mc, "third")
     score -= _myoumi_market_trio_penalty([ma, mb, mc])
+    score -= _myoumi_velobi_rank_penalty_3kei(int(a), int(b), int(c), rec_order_for_forme)
     score += _myoumi_eval1_bonus(int(a), int(role1), mm)
 
     return round(max(0.0, min(10.0, score)), 1)
@@ -7264,7 +7321,7 @@ def _collect_myoumi_pickups(col1_cars, col2_cars, col3_cars, role1, mark_map, re
                 if key in seen_ordered:
                     continue
                 seen_ordered.add(key)
-                sc = _myoumi_score_3kei(a, b, c, r1, mark_map)
+                sc = _myoumi_score_3kei(a, b, c, r1, mark_map, rec_order)
                 if sc >= threshold_3kei:
                     three.append((sc, int(a), int(b), int(c)))
 
@@ -7359,7 +7416,7 @@ def _all_2kei_point_items(col1_cars, col2_cars, role1, mark_map):
     return [(sc, a, b) for sc, a, b, _, _ in items]
 
 
-def _all_3kei_point_items(col1_cars, col2_cars, col3_cars, role1, mark_map):
+def _all_3kei_point_items(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
     """
     三連複フォメ内の全候補を、妙味pt付きで返す。
     三連複は重複なし3車として扱い、初回発生のフォメ列順で表示する。
@@ -7379,7 +7436,7 @@ def _all_3kei_point_items(col1_cars, col2_cars, col3_cars, role1, mark_map):
                 if key in seen:
                     continue
                 seen.add(key)
-                sc = _myoumi_score_3kei(int(a), int(b), int(c), int(role1), mark_map)
+                sc = _myoumi_score_3kei(int(a), int(b), int(c), int(role1), mark_map, rec_order_for_forme)
                 items.append((float(sc), int(a), int(b), int(c), i, j, k))
 
     items.sort(key=lambda x: (-x[0], x[4], x[5], x[6], x[1], x[2], x[3]))
@@ -7396,7 +7453,7 @@ def _make_myoumi_point_block(col1_cars, col2_cars, col3_cars, role1, mark_map, r
         threshold_2kei = MYOUMI_PASS_THRESHOLD_2KEI
         threshold_3kei = MYOUMI_PASS_THRESHOLD_3KEI
         two_all = _all_2kei_point_items(col1_cars, col2_cars, role1, mark_map)
-        three_all = _all_3kei_point_items(col1_cars, col2_cars, col3_cars, role1, mark_map)
+        three_all = _all_3kei_point_items(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme)
 
         lines = [f"【妙味ポイント｜2車{threshold_2kei:.1f}pt以上／三連複{threshold_3kei:.1f}pt以上】", ""]
 
@@ -8172,7 +8229,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         ev_seen = set()
 
         threshold_3kei = MYOUMI_PASS_THRESHOLD_3KEI
-        ev_source_triples = _all_3kei_point_items(c1, c2, c3, role1, mark_map)
+        ev_source_triples = _all_3kei_point_items(c1, c2, c3, role1, mark_map, rec_order_for_forme)
 
         if pickup_pair_keys and ev_source_triples:
             for sc, a, b, c in ev_source_triples:
