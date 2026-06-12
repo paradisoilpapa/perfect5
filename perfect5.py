@@ -4,6 +4,7 @@
 #      妙味ptだけで長い軸ライン末端を残しすぎず、弱い・深い候補を4列目へ回す。
 # v70: 素材表示の2列目を信頼2車へ圧縮。妙味高pt車は2列目でなく3列目へ回し、弱線・薄線を4列目へ分離。
 # v71: 素材表示の3列目を修正。弱い単騎妙味より、ライン持ち妙味＋軸ライン直近相手を優先する。
+# v72: 三展開合成フォメの3列目が2列目コピーになる場合、妙味残り＋軸ライン直近相手で再構成する。
 # v67: 4列目は「素材表示だけ」に限定。三展開合成フォメ・妙味通過・期待値推奨へ副作用を出さない。
 #      PILLAR_EXCLUDE_THIRD_CARS を無効化し、三連複フォメ表示用だけ col3 を圧縮する.
 # v64: 三展開合成フォメを最終購入3点へ圧縮。素材フォメは維持し、A-BC-CD型で攻守バランスを取る。
@@ -8640,6 +8641,95 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
             rec_order_for_forme=rec_order_for_forme,
             max_tickets=ATTACK_FORME_MAX_TICKETS,
         )
+
+        # v72:
+        # 三展開合成フォメの3列目が2列目のコピーになるケースを補正する。
+        # 例：4-71-71 は、2列目=攻め、3列目=受けになっておらず、
+        #     的中責任が2列目側に寄りすぎる。
+        # 方針：
+        #   1) 2列目の後半車を残す（4-71なら1）
+        #   2) 軸絡み妙味で2列目に採用されなかった車を足す（例：3）
+        #   3) それが無ければ、軸ラインの直近相手を足す（例：6）
+        # これにより、妙味型なら 4-71-13、ライン型なら 4-71-16/76 に寄る。
+        def _rebuild_attack_thirds_if_copied(_attack):
+            try:
+                if not _attack:
+                    return _attack
+                secs0 = [int(x) for x in _attack.get("seconds", [])]
+                ths0 = [int(x) for x in _attack.get("thirds", [])]
+                if not secs0 or not ths0:
+                    return _attack
+
+                # コピー判定：3列目がすべて2列目内なら補正対象。
+                if not set(ths0).issubset(set(secs0)):
+                    return _attack
+
+                rebuilt = []
+
+                def _add_rebuilt(x):
+                    try:
+                        xi = int(x)
+                        if xi != int(A) and xi not in rebuilt:
+                            rebuilt.append(xi)
+                    except Exception:
+                        pass
+
+                # まず2列目の後半側を3着受けに残す。
+                if len(secs0) >= 2:
+                    _add_rebuilt(secs0[-1])
+                elif secs0:
+                    _add_rebuilt(secs0[0])
+
+                # 妙味ペアのうち、2列目に採用されなかった相手を優先して足す。
+                # 4-7 / 4-3 / 4-1 で2列目が7,1なら、3を拾う。
+                try:
+                    myoumi_leftovers = []
+                    for item in sorted(myoumi_pairs or [], key=_myoumi_pair_rank):
+                        _scx, _ax, _bx = float(item[0]), int(item[1]), int(item[2])
+                        x0, y0 = _velobi_ordered_cars([_ax, _bx], rec_order_for_forme)
+                        if int(x0) == int(A) and int(y0) not in secs0:
+                            _add_unique(myoumi_leftovers, y0)
+                    for y0 in myoumi_leftovers:
+                        _add_rebuilt(y0)
+                        if len(rebuilt) >= ATTACK_FORME_MAX_THIRDS:
+                            break
+                except Exception:
+                    pass
+
+                # まだ足りなければ、軸ラインの直近相手を足す。
+                # 4617なら軸4の直近相手6。
+                if len(rebuilt) < ATTACK_FORME_MAX_THIRDS:
+                    try:
+                        for y0 in a_line_others:
+                            _add_rebuilt(y0)
+                            if len(rebuilt) >= ATTACK_FORME_MAX_THIRDS:
+                                break
+                    except Exception:
+                        pass
+
+                # それでも足りなければ、元の3列目素材から補う。
+                if len(rebuilt) < ATTACK_FORME_MAX_THIRDS:
+                    for y0 in third_candidates:
+                        _add_rebuilt(y0)
+                        if len(rebuilt) >= ATTACK_FORME_MAX_THIRDS:
+                            break
+
+                rebuilt = rebuilt[:ATTACK_FORME_MAX_THIRDS]
+                if not rebuilt:
+                    return _attack
+
+                fixed = _compress_attack_forme(
+                    A,
+                    secs0,
+                    rebuilt,
+                    rec_order_for_forme=rec_order_for_forme,
+                    max_tickets=ATTACK_FORME_MAX_TICKETS,
+                )
+                return fixed or _attack
+            except Exception:
+                return _attack
+
+        attack = _rebuild_attack_thirds_if_copied(attack)
 
         if attack:
             forme = attack["forme"]
