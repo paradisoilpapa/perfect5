@@ -3,6 +3,7 @@
 # v68: 素材表示4列化の3列目圧縮で、軸ライン直近相手を優先保護。
 #      妙味ptだけで長い軸ライン末端を残しすぎず、弱い・深い候補を4列目へ回す。
 # v70: 素材表示の2列目を信頼2車へ圧縮。妙味高pt車は2列目でなく3列目へ回し、弱線・薄線を4列目へ分離。
+# v71: 素材表示の3列目を修正。弱い単騎妙味より、ライン持ち妙味＋軸ライン直近相手を優先する。
 # v67: 4列目は「素材表示だけ」に限定。三展開合成フォメ・妙味通過・期待値推奨へ副作用を出さない。
 #      PILLAR_EXCLUDE_THIRD_CARS を無効化し、三連複フォメ表示用だけ col3 を圧縮する.
 # v64: 三展開合成フォメを最終購入3点へ圧縮。素材フォメは維持し、A-BC-CD型で攻守バランスを取る。
@@ -9357,14 +9358,17 @@ try:
 
         col2_cars_display = _uniq_keep(col2_cars_display[:MATERIAL_FORME_MAX_SECONDS])
 
-        # 3列目は、2列目に置いた信頼車＋妙味車＋軸ライン直近相手で的中率を保つ。
+        # v71：3列目は「信頼2車＋妙味非単騎＋軸ライン直近相手」を優先する。
+        # 目的：妙味が高いだけの弱い単騎が先に入り、軸ライン直近相手を押し出す事故を防ぐ。
+        # 例：静岡7R 4617軸4なら、4-15-1576-23 を狙う。
         col3_cars_display_v70 = []
         for x in col2_cars_display:
             _add_unique_material(col3_cars_display_v70, x)
 
         # 元2列目のうち、妙味通過している車は3列目へ回す。
-        # ただし弱い単騎は後回しにする。
-        myoumi_third_pool = []
+        # ただし単騎・弱別線は最後に回す。
+        myoumi_third_pool_main = []
+        myoumi_third_pool_weak = []
         for x in col2_cars:
             xi = int(x)
             if xi == int(role1):
@@ -9372,14 +9376,22 @@ try:
             sc_m = _pair_myoumi_score_material(xi)
             if sc_m >= globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 7.0):
                 line_len = len(_line_members_for_car_material(xi))
-                myoumi_third_pool.append((0 if line_len >= 2 else 1, -sc_m, rec_pos_map.get(xi, 999), xi))
-        myoumi_third_pool = sorted(myoumi_third_pool, key=lambda z: (z[0], z[1], z[2], z[3]))
-        for *_rest, x in myoumi_third_pool:
+                item = (-sc_m, rec_pos_map.get(xi, 999), xi)
+                if line_len >= 2:
+                    myoumi_third_pool_main.append(item)
+                else:
+                    myoumi_third_pool_weak.append(item)
+
+        myoumi_third_pool_main = sorted(myoumi_third_pool_main, key=lambda z: (z[0], z[1], z[2]))
+        myoumi_third_pool_weak = sorted(myoumi_third_pool_weak, key=lambda z: (z[0], z[1], z[2]))
+
+        # 先に「ラインを持つ妙味」を入れる。例：7。
+        for *_rest, x in myoumi_third_pool_main:
             if len(col3_cars_display_v70) >= MATERIAL_FORME_MAX_THIRDS_V70:
                 break
             _add_unique_material(col3_cars_display_v70, x)
 
-        # 軸ライン直近相手は3列目で保護。例：4617の6。
+        # 次に軸ライン直近相手を保護。例：4617の6。
         for x in axis_nearest_material:
             if len(col3_cars_display_v70) >= MATERIAL_FORME_MAX_THIRDS_V70:
                 break
@@ -9387,6 +9399,12 @@ try:
 
         # それでも足りなければ、元3列目フル候補から補完。
         for x in col3_cars_full_for_calc:
+            if len(col3_cars_display_v70) >= MATERIAL_FORME_MAX_THIRDS_V70:
+                break
+            _add_unique_material(col3_cars_display_v70, x)
+
+        # 最後に弱い単騎妙味。枠が残った時だけ。
+        for *_rest, x in myoumi_third_pool_weak:
             if len(col3_cars_display_v70) >= MATERIAL_FORME_MAX_THIRDS_V70:
                 break
             _add_unique_material(col3_cars_display_v70, x)
@@ -9409,7 +9427,8 @@ try:
             if xi not in used_display:
                 _add_unique_material(col4_cars_display, xi)
 
-        col4_cars_display = _uniq_keep(col4_cars_display)
+        # 4列目はVeloBi順で表示。弱い単騎が先に出て、評価上位薄目が後ろに回る違和感を防ぐ。
+        col4_cars_display = sorted(_uniq_keep(col4_cars_display), key=lambda z: (rec_pos_map.get(int(z), 999), int(z)))
 
         col1_text = _fmt_cars(col1_cars)
         col2_text = _fmt_cars(col2_cars_display)
