@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v81: 三展開合成フォメを評価123・安め切りBOX型（1→2→3三連単＋2→1/3→1二車単＋1=3/2=3二車複）へ変更。
 # v80: 会場別の的中率/回収率手入力→最終H1番手減点・2番手ライン加点補正を買い目用スコアへ反映。
 # v79: v78でreturnに nitan_forme/nitan_follow を渡しておらず表示されない不具合を修正。
 # v78: 抑え2車単 23→1 を三展開合成フォメ直下へインライン表示（例：抑え2車単：54→7）。
@@ -8333,34 +8334,34 @@ def _make_santen_score_attack_forme(max_tickets=None):
     """
     三展+KOスコア順位から、最終の三展開合成フォメを作る。
 
-    v76基本形：
-      三連単：スコア1位 - スコア2位&3位 - スコア2位&4位
-        例：5,4,2,7,6... -> 5-42-47
-        展開：5→4→7 / 5→2→4 / 5→2→7
+    v81基本形：評価123・安め切りBOX型（5点）
+      三連単：A→B→C
+      2車単：B→A / C→A
+      2車複：A=C / B=C
 
-      2車単フォロー：スコア2位・3位 → スコア1位
-        例：4→5 / 2→5
+    役割：
+      A→B→C = 本線の一点3連単
+      B→A   = 評価2の逆転２車単
+      C→A   = 評価3の逆転・回収起爆剤２車単
+      A=C   = 評価2飛びの補助２車複
+      B=C   = 評価1飛びの高配当補助２車複
     """
     try:
-        max_tickets = int(max_tickets or ATTACK_FORME_MAX_TICKETS)
         order, score, detail = _calc_santen_score_order()
-        if len(order) < 4:
+        if len(order) < 3:
             return None
 
         A = int(order[0])
         B = int(order[1])
         C = int(order[2])
-        D = int(order[3])
 
-        seconds = [B, C]
-        thirds = [B, D]
-
-        attack = _compress_attack_forme(A, seconds, thirds, rec_order_for_forme=order, max_tickets=max_tickets)
-        if not attack:
-            return None
-
-        nitan_follow = [f"{B}→{A}", f"{C}→{A}"]
-        nitan_forme = f"{_fmt_cars_compact_for_forme([B, C])}→{A}"
+        tickets_lines = [
+            f"{A}→{B}→{C}　　本線の一点3連単",
+            f"{B}→{A}　　　評価2の逆転２車単",
+            f"{C}→{A}　　　評価3の逆転・回収起爆剤２車単",
+            f"{A}={C}　　　評価2飛びの補助２車複",
+            f"{B}={C}　　　評価1飛びの高配当補助２車複",
+        ]
 
         lines = []
         lines.append("【三展+KOスコア順位】")
@@ -8374,17 +8375,20 @@ def _make_santen_score_attack_forme(max_tickets=None):
             )
 
         return {
-            "forme": attack["forme"],
-            "expanded": attack["expanded"],
-            "seconds": attack["seconds"],
-            "thirds": attack["thirds"],
-            "nitan_follow": nitan_follow,
-            "nitan_forme": nitan_forme,
+            "forme": f"{A}-{B}-{C}",
+            "expanded": [f"{A}→{B}→{C}", f"{B}→{A}", f"{C}→{A}", f"{A}={C}", f"{B}={C}"],
+            "seconds": [B],
+            "thirds": [C],
+            "nitan_follow": [f"{B}→{A}", f"{C}→{A}"],
+            "nitan_forme": f"{B}{C}→{A}",
+            "fukusho_pairs": [f"{A}={C}", f"{B}={C}"],
             "santen_order": order,
             "santen_score": score,
             "santen_detail": detail,
             "santen_block": "\n".join(lines),
-            "source": "santen_plus_ko_score_3ten_plus_nitan",
+            "tickets_lines": tickets_lines,
+            "tickets_block": "\n".join(tickets_lines),
+            "source": "santen_plus_ko_score_yasume_kiri_box_5ten",
         }
     except Exception:
         return None
@@ -9362,15 +9366,17 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             if pillar_forme.get("santen_block"):
                 _pillar_lines.append(pillar_forme.get("santen_block"))
                 _pillar_lines.append("")
-            _pillar_lines.append("【三展開合成フォメ三連単＆三連複】")
+            _pillar_lines.append("【三展開合成フォメ】")
             _pillar_lines.append("")
-            _pillar_lines.append(f"{pillar_forme['forme']}　")
-            _pillar_lines.append("")
-            _pillar_lines.append("展開：" + " / ".join(pillar_forme.get("expanded", [])))
-            # v78: 3連単3点の直下に、同じ三展+KO順位から作った抑え2車単を必ず見える形で出す
-            # 例：7-54-53 の場合、抑え2車単：54→7
-            if pillar_forme.get("nitan_forme"):
-                _pillar_lines.append(f"抑え2車単：{pillar_forme.get('nitan_forme', '')}")
+            if pillar_forme.get("tickets_lines"):
+                _pillar_lines.extend(pillar_forme.get("tickets_lines", []))
+            else:
+                _pillar_lines.append(f"{pillar_forme['forme']}　")
+                _pillar_lines.append("")
+                _pillar_lines.append("展開：" + " / ".join(pillar_forme.get("expanded", [])))
+                # 旧形式フォールバック：3連単直下に、同じ三展+KO順位から作った抑え2車単を表示
+                if pillar_forme.get("nitan_forme"):
+                    _pillar_lines.append(f"抑え2車単：{pillar_forme.get('nitan_forme', '')}")
             globals()["PILLAR_LINE_FORME_BLOCK"] = "\n".join(_pillar_lines)
 
         # --------------------------------------------------
