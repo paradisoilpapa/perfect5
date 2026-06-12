@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v69: 素材4列表示で、4列目分離前の3列目候補を保持。軸ライン直近相手を4列目から復帰し、弱い別線・末端を4列目へ回す。
 # v68: 素材表示4列化の3列目圧縮で、軸ライン直近相手を優先保護。
 #      妙味ptだけで長い軸ライン末端を残しすぎず、弱い・深い候補を4列目へ回す。
 # v67: 4列目は「素材表示だけ」に限定。三展開合成フォメ・妙味通過・期待値推奨へ副作用を出さない。
@@ -9087,6 +9088,11 @@ try:
         # 例：2着候補でも、三連複の3列目残りにもなり得る。
         col3_cars = _uniq_keep(col3_cars[:5])
 
+        # v69: 4列目分離前の3列目候補を素材表示用に保持する。
+        # ここを保持しないと、軸ライン直近相手（例：4617の6）が
+        # 先に4列目へ落ちた時点で復帰不能になる。
+        col3_cars_before_col4_split = _uniq_keep(col3_cars)
+
         # v56：4列目を作る。
         # 目的：フォーメーションは「全部を3列目に入れる」ものではない。
         # 4車ライン、または軸ではない3車以上ラインで、ライン内VeloBi評価3番手以降まで
@@ -9159,14 +9165,15 @@ try:
         col3_cars = _uniq_keep(col3_main)
         col4_cars = _uniq_keep(col4_cars)
 
-        # v68：ここから下は「素材表示用」だけを4列化する。
+        # v69：ここから下は「素材表示用」だけを4列化する。
         # 重要：
         #   ・三展開合成フォメ、妙味通過、期待値推奨、妙味ポイントは
-        #     col3_cars_full_for_calc を使うため、4列目分離の影響を受けない。
-        #   ・ただし素材表示の3列目圧縮では、軸ラインの直近相手を優先保護する。
-        #     例：ライン4617・軸4なら、6は軸ラインの直近相手なので3列目に残す。
-        #     7は軸との妙味ptが高くてもライン末端なので、原則として4列目寄り。
-        col3_cars_full_for_calc = _uniq_keep(col3_cars)
+        #     従来計算側を使うため、4列目表示の影響を受けない。
+        #   ・素材表示の3列目圧縮では、4列目分離前の候補を使う。
+        #     これにより、軸ライン直近相手が先に4列目へ落ちても復帰できる。
+        #   ・例：ライン4617・軸4なら、6は軸ライン直近相手なので3列目に復帰。
+        #     7や3のような末端・弱別線側を4列目へ回しやすくする。
+        col3_cars_full_for_calc = _uniq_keep(col3_cars_before_col4_split)
         col4_cars_display = _uniq_keep(col4_cars)
 
         try:
@@ -9217,7 +9224,14 @@ try:
             if int(x) not in col3_cars_display:
                 col3_cars_display.append(int(x))
 
-        for x in col3_cars_full_for_calc:
+        # 補完は「2列目と重複しない候補」を優先する。
+        # 例：4-7531 の素材3列目なら、1・7よりも2・6を優先しやすくする。
+        col2_set_for_material = {int(v) for v in col2_cars}
+        fill_pool = [int(x) for x in col3_cars_full_for_calc if int(x) not in col2_set_for_material]
+        fill_pool += [int(x) for x in col3_cars_full_for_calc if int(x) in col2_set_for_material]
+        fill_pool = _uniq_keep(fill_pool)
+
+        for x in fill_pool:
             if _max_third > 0 and len(col3_cars_display) >= _max_third:
                 break
             xi = int(x)
@@ -9234,7 +9248,7 @@ try:
                 col4_cars_display.append(xi)
 
         col3_cars_display = _uniq_keep(col3_cars_display)
-        col4_cars_display = _uniq_keep(col4_cars_display)
+        col4_cars_display = _uniq_keep([int(x) for x in col4_cars_display if int(x) not in set(col3_cars_display)])
 
         col1_text = _fmt_cars(col1_cars)
         col2_text = _fmt_cars(col2_cars)
