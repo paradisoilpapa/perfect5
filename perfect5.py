@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# v65: 三連系素材フォメを4列化。3列目は最大2車、残りは4列目へ分離して実買い目を軽量化。
+# v66: 三展開合成フォメはv64へ戻して独立維持。素材三連複フォメだけ4列化し、3列目超過分を4列目へ分離。
 # v64: 三展開合成フォメを最終購入3点へ圧縮。素材フォメは維持し、A-BC-CD型で攻守バランスを取る。
 # v35: 評価重複のみの場合、2列目は低pt重複2車複の2セットまで。残り重複と軸ライン残りを3列目へ回す
 # v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
@@ -7844,10 +7844,9 @@ def _compress_attack_forme(A, seconds, thirds, rec_order_for_forme=None, max_tic
             if xi != A and xi not in th:
                 th.append(xi)
 
-        # v65:
-        # ここでVeloBi順位順に並べ替えると、妙味順で作った 5-43-36 が
-        # 5-34-36 へ戻ってしまう。
-        # 最終合成フォメは「上流で選ばれた意図」を尊重するため、受け取った順を維持する。
+        sec = sorted(sec, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
+        th = sorted(th, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
+
         sec = sec[:ATTACK_FORME_MAX_SECONDS]
         th = th[:ATTACK_FORME_MAX_THIRDS]
 
@@ -9155,14 +9154,15 @@ try:
         col3_cars = _uniq_keep(col3_main)
         col4_cars = _uniq_keep(col4_cars)
 
-        # v65：素材フォメ4列化。
-        # 3列目を広げすぎると 5-413-3762 のように11点まで膨らむ。
-        # 実購入の攻守バランスを保つため、3列目は最大2車まで。
-        # 超過分は「切り／薄目確認用」の4列目へ分離する。
+        # v66：素材三連複フォメのみ4列化。
+        # 重要：これは表示・素材側だけの整理であり、
+        # 上部の【三展開合成フォメ】には連動させない。
+        # 例：合成フォメ 5-34-36 と、素材フォメ 5-413-37-62 は別物として扱う。
         try:
             _max_third = int(MATERIAL_FORME_MAX_THIRDS)
         except Exception:
             _max_third = 2
+
         if _max_third > 0 and len(col3_cars) > _max_third:
             overflow_thirds = [int(x) for x in col3_cars[_max_third:]]
             col3_cars = [int(x) for x in col3_cars[:_max_third]]
