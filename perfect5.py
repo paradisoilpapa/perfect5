@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v77: 三展開合成フォメ 1-23-24 の抑えとして、2車単 23→1（例：54→7）を「抑え2車単」で表示。
 # v69: 素材4列表示で、4列目分離前の3列目候補を保持。軸ライン直近相手を4列目から復帰し、弱い別線・末端を4列目へ回す。
 # v68: 素材表示4列化の3列目圧縮で、軸ライン直近相手を優先保護。
 #      妙味ptだけで長い軸ライン末端を残しすぎず、弱い・深い候補を4列目へ回す。
@@ -9005,7 +9006,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             _pillar_lines.append("展開：" + " / ".join(pillar_forme.get("expanded", [])))
             if pillar_forme.get("nitan_follow"):
                 _pillar_lines.append("")
-                _pillar_lines.append("【三展+KO 2車単フォロー】")
+                _pillar_lines.append("【抑え2車単｜三展+KO 23→1】")
                 _pillar_lines.append(f"{pillar_forme.get('nitan_forme', '')}　")
                 _pillar_lines.append("展開：" + " / ".join(pillar_forme.get("nitan_follow", [])))
             globals()["PILLAR_LINE_FORME_BLOCK"] = "\n".join(_pillar_lines)
