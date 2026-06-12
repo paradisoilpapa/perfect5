@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v65: 三連系素材フォメを4列化。3列目は最大2車、残りは4列目へ分離して実買い目を軽量化。
 # v64: 三展開合成フォメを最終購入3点へ圧縮。素材フォメは維持し、A-BC-CD型で攻守バランスを取る。
 # v35: 評価重複のみの場合、2列目は低pt重複2車複の2セットまで。残り重複と軸ライン残りを3列目へ回す
 # v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
@@ -7793,6 +7794,7 @@ def _fmt_cars_compact_for_forme(cars):
 ATTACK_FORME_MAX_TICKETS = 3   # 最終購入点数。原則3点。
 ATTACK_FORME_MAX_SECONDS = 2   # 2列目最大。A-BC-CD型のBC。
 ATTACK_FORME_MAX_THIRDS  = 2   # 3列目最大。A-BC-CD型のCD。
+MATERIAL_FORME_MAX_THIRDS = 2   # 素材三連複フォメの3列目最大。超過分は4列目へ分離。
 
 
 def _expand_santan_forme(A, seconds, thirds):
@@ -7842,9 +7844,10 @@ def _compress_attack_forme(A, seconds, thirds, rec_order_for_forme=None, max_tic
             if xi != A and xi not in th:
                 th.append(xi)
 
-        sec = sorted(sec, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
-        th = sorted(th, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
-
+        # v65:
+        # ここでVeloBi順位順に並べ替えると、妙味順で作った 5-43-36 が
+        # 5-34-36 へ戻ってしまう。
+        # 最終合成フォメは「上流で選ばれた意図」を尊重するため、受け取った順を維持する。
         sec = sec[:ATTACK_FORME_MAX_SECONDS]
         th = th[:ATTACK_FORME_MAX_THIRDS]
 
@@ -9152,6 +9155,22 @@ try:
         col3_cars = _uniq_keep(col3_main)
         col4_cars = _uniq_keep(col4_cars)
 
+        # v65：素材フォメ4列化。
+        # 3列目を広げすぎると 5-413-3762 のように11点まで膨らむ。
+        # 実購入の攻守バランスを保つため、3列目は最大2車まで。
+        # 超過分は「切り／薄目確認用」の4列目へ分離する。
+        try:
+            _max_third = int(MATERIAL_FORME_MAX_THIRDS)
+        except Exception:
+            _max_third = 2
+        if _max_third > 0 and len(col3_cars) > _max_third:
+            overflow_thirds = [int(x) for x in col3_cars[_max_third:]]
+            col3_cars = [int(x) for x in col3_cars[:_max_third]]
+            for x in overflow_thirds:
+                if int(x) not in col4_cars:
+                    col4_cars.append(int(x))
+            col4_cars = _uniq_keep(col4_cars)
+
         col1_text = _fmt_cars(col1_cars)
         col2_text = _fmt_cars(col2_cars)
         col3_text = _fmt_cars(col3_cars)
@@ -9171,9 +9190,10 @@ try:
         sanrentan_points = _count_sanrentan(col1_cars, col2_cars, col3_cars)
 
         nishatan_forme_line = f"2車系フォメ：1列目→2列目 {col1_text}→{col2_text} / {col1_text}={col2_text}（{nishatan_points}点）"
-        sanpuku_forme_line = f"三連複フォメ：1列目-2列目-3列目 {col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
         if col4_cars:
-            sanpuku_forme_line += f" / 4列目薄目：{col4_text}"
+            sanpuku_forme_line = f"三連複フォメ：1列目-2列目-3列目-4列目 {col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）-{col4_text}"
+        else:
+            sanpuku_forme_line = f"三連複フォメ：1列目-2列目-3列目 {col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
         sanrentan_forme_line = f"3連単フォメ：1列目→2列目→3列目 {col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
 
         # v59: 上部の推奨ライン補正フォメ生成でも、4列目候補を3列目へ戻さないために共有する。
