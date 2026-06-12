@@ -2,6 +2,7 @@
 # v69: 素材4列表示で、4列目分離前の3列目候補を保持。軸ライン直近相手を4列目から復帰し、弱い別線・末端を4列目へ回す。
 # v68: 素材表示4列化の3列目圧縮で、軸ライン直近相手を優先保護。
 #      妙味ptだけで長い軸ライン末端を残しすぎず、弱い・深い候補を4列目へ回す。
+# v70: 素材表示の2列目を信頼2車へ圧縮。妙味高pt車は2列目でなく3列目へ回し、弱線・薄線を4列目へ分離。
 # v67: 4列目は「素材表示だけ」に限定。三展開合成フォメ・妙味通過・期待値推奨へ副作用を出さない。
 #      PILLAR_EXCLUDE_THIRD_CARS を無効化し、三連複フォメ表示用だけ col3 を圧縮する.
 # v64: 三展開合成フォメを最終購入3点へ圧縮。素材フォメは維持し、A-BC-CD型で攻守バランスを取る。
@@ -9250,8 +9251,168 @@ try:
         col3_cars_display = _uniq_keep(col3_cars_display)
         col4_cars_display = _uniq_keep([int(x) for x in col4_cars_display if int(x) not in set(col3_cars_display)])
 
+        # v70：素材表示では「2列目＝信頼」「3列目＝妙味・補完」に分離する。
+        # 重要：ここは表示用だけ。三展開合成フォメ・妙味通過・期待値推奨には副作用を出さない。
+        try:
+            MATERIAL_FORME_MAX_SECONDS = int(globals().get("MATERIAL_FORME_MAX_SECONDS", 2))
+        except Exception:
+            MATERIAL_FORME_MAX_SECONDS = 2
+        try:
+            MATERIAL_FORME_MAX_THIRDS_V70 = int(globals().get("MATERIAL_FORME_MAX_THIRDS_V70", 4))
+        except Exception:
+            MATERIAL_FORME_MAX_THIRDS_V70 = 4
+
+        def _line_members_for_car_material(car):
+            try:
+                ci = int(car)
+                for mem in ranked_lines:
+                    xs = [int(x) for x in mem]
+                    if ci in xs:
+                        return xs
+            except Exception:
+                pass
+            return []
+
+        def _pair_myoumi_score_material(car):
+            try:
+                return float(_myoumi_score_2kei(int(role1), int(car), int(role1), market_mark_map))
+            except Exception:
+                return 0.0
+
+        def _add_unique_material(lst, x):
+            try:
+                xi = int(x)
+            except Exception:
+                return
+            if xi != int(role1) and xi not in lst:
+                lst.append(xi)
+
+        axis_line_material = []
+        for mem in ranked_lines:
+            xs = [int(x) for x in mem]
+            if int(role1) in xs:
+                axis_line_material = xs
+                break
+
+        axis_nearest_material = _axis_nearest_partners_for_material()
+        axis_nearest_set_material = {int(x) for x in axis_nearest_material}
+
+        # 2列目候補A：軸ライン内で、直近相手以外の「妙味はあるが末端すぎない」車。
+        # 高すぎる妙味を2列目に置きすぎると的中責任が重いので、同条件なら低pt側を信頼寄りにする。
+        axis_inner_candidates = []
+        if axis_line_material:
+            line_pos_material = {int(x): i for i, x in enumerate(axis_line_material)}
+            for x in axis_line_material:
+                xi = int(x)
+                if xi == int(role1) or xi in axis_nearest_set_material:
+                    continue
+                sc_m = _pair_myoumi_score_material(xi)
+                if sc_m >= globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 7.0):
+                    axis_inner_candidates.append((sc_m, rec_pos_map.get(xi, 999), line_pos_material.get(xi, 999), xi))
+            axis_inner_candidates = sorted(axis_inner_candidates, key=lambda z: (z[0], z[1], z[2], z[3]))
+
+        # 2列目候補B：他ラインの代表。ここは妙味より信頼度を優先し、推奨順の上位を拾う。
+        other_line_reps_material = []
+        for mem in ranked_lines:
+            xs = [int(x) for x in mem]
+            if not xs or int(role1) in xs:
+                continue
+            rep = None
+            for cand in rec_order_for_forme:
+                ci = int(cand)
+                if ci in xs:
+                    rep = ci
+                    break
+            if rep is None:
+                rep = int(xs[0])
+            # 単騎は2列目信頼枠に置くと妙味寄りになりやすいので、原則後回し。
+            line_len = len(xs)
+            other_line_reps_material.append((0 if line_len >= 2 else 1, rec_pos_map.get(rep, 999), -line_len, rep))
+        other_line_reps_material = sorted(other_line_reps_material, key=lambda z: (z[0], z[1], z[2], z[3]))
+
+        col2_cars_display = []
+        # 軸ライン内の妙味信頼候補を1車だけ入れる。例：4617の1。
+        if axis_inner_candidates:
+            _add_unique_material(col2_cars_display, axis_inner_candidates[0][3])
+        # 他ライン代表を1車入れる。例：25の5。
+        for _kind, _rp, _llen, rep in other_line_reps_material:
+            if len(col2_cars_display) >= MATERIAL_FORME_MAX_SECONDS:
+                break
+            _add_unique_material(col2_cars_display, rep)
+
+        # 足りない場合だけ、元2列目から信頼寄りを補完。
+        if len(col2_cars_display) < MATERIAL_FORME_MAX_SECONDS:
+            fill_seconds = sorted(
+                [int(x) for x in col2_cars if int(x) != int(role1)],
+                key=lambda z: (
+                    0 if _pair_myoumi_score_material(z) < globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 7.0) else 1,
+                    rec_pos_map.get(int(z), 999),
+                    int(z),
+                )
+            )
+            for x in fill_seconds:
+                if len(col2_cars_display) >= MATERIAL_FORME_MAX_SECONDS:
+                    break
+                _add_unique_material(col2_cars_display, x)
+
+        col2_cars_display = _uniq_keep(col2_cars_display[:MATERIAL_FORME_MAX_SECONDS])
+
+        # 3列目は、2列目に置いた信頼車＋妙味車＋軸ライン直近相手で的中率を保つ。
+        col3_cars_display_v70 = []
+        for x in col2_cars_display:
+            _add_unique_material(col3_cars_display_v70, x)
+
+        # 元2列目のうち、妙味通過している車は3列目へ回す。
+        # ただし弱い単騎は後回しにする。
+        myoumi_third_pool = []
+        for x in col2_cars:
+            xi = int(x)
+            if xi == int(role1):
+                continue
+            sc_m = _pair_myoumi_score_material(xi)
+            if sc_m >= globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 7.0):
+                line_len = len(_line_members_for_car_material(xi))
+                myoumi_third_pool.append((0 if line_len >= 2 else 1, -sc_m, rec_pos_map.get(xi, 999), xi))
+        myoumi_third_pool = sorted(myoumi_third_pool, key=lambda z: (z[0], z[1], z[2], z[3]))
+        for *_rest, x in myoumi_third_pool:
+            if len(col3_cars_display_v70) >= MATERIAL_FORME_MAX_THIRDS_V70:
+                break
+            _add_unique_material(col3_cars_display_v70, x)
+
+        # 軸ライン直近相手は3列目で保護。例：4617の6。
+        for x in axis_nearest_material:
+            if len(col3_cars_display_v70) >= MATERIAL_FORME_MAX_THIRDS_V70:
+                break
+            _add_unique_material(col3_cars_display_v70, x)
+
+        # それでも足りなければ、元3列目フル候補から補完。
+        for x in col3_cars_full_for_calc:
+            if len(col3_cars_display_v70) >= MATERIAL_FORME_MAX_THIRDS_V70:
+                break
+            _add_unique_material(col3_cars_display_v70, x)
+
+        col3_cars_display = _uniq_keep(col3_cars_display_v70[:MATERIAL_FORME_MAX_THIRDS_V70])
+
+        # 4列目は、表示素材に出る全候補のうち、2列目・3列目に採用しなかったもの。
+        # 弱い別線・末端・妙味だけの車をここへ逃がす。
+        all_material_candidates = []
+        for seq in (col2_cars, col3_cars_full_for_calc, rec_order_for_forme):
+            for x in seq:
+                xi = int(x)
+                if xi != int(role1):
+                    _add_unique_material(all_material_candidates, xi)
+
+        col4_cars_display = []
+        used_display = set([int(x) for x in col2_cars_display] + [int(x) for x in col3_cars_display])
+        for x in all_material_candidates:
+            xi = int(x)
+            if xi not in used_display:
+                _add_unique_material(col4_cars_display, xi)
+
+        col4_cars_display = _uniq_keep(col4_cars_display)
+
         col1_text = _fmt_cars(col1_cars)
-        col2_text = _fmt_cars(col2_cars)
+        col2_text = _fmt_cars(col2_cars_display)
         col3_text = _fmt_cars(col3_cars_display)
         col4_text = _fmt_cars(col4_cars_display)
 
@@ -9264,9 +9425,9 @@ try:
         if col4_cars_display:
             column_eval_block += f"\n4列目｜薄目・4着寄り候補：{col4_text}"
 
-        nishatan_points = _count_nishatan(col1_cars, col2_cars)
-        sanpuku_points = _count_sanpuku(col1_cars, col2_cars, col3_cars_display)
-        sanrentan_points = _count_sanrentan(col1_cars, col2_cars, col3_cars_display)
+        nishatan_points = _count_nishatan(col1_cars, col2_cars_display)
+        sanpuku_points = _count_sanpuku(col1_cars, col2_cars_display, col3_cars_display)
+        sanrentan_points = _count_sanrentan(col1_cars, col2_cars_display, col3_cars_display)
 
         nishatan_forme_line = f"2車系フォメ：1列目→2列目 {col1_text}→{col2_text} / {col1_text}={col2_text}（{nishatan_points}点）"
         if col4_cars_display:
