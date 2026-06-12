@@ -4,6 +4,7 @@
 #      妙味ptだけで長い軸ライン末端を残しすぎず、弱い・深い候補を4列目へ回す。
 # v70: 素材表示の2列目を信頼2車へ圧縮。妙味高pt車は2列目でなく3列目へ回し、弱線・薄線を4列目へ分離。
 # v71: 素材表示の3列目を修正。弱い単騎妙味より、ライン持ち妙味＋軸ライン直近相手を優先する。
+# v73: 三展開合成フォメの3列目コピー補正を修正。妙味残りより軸ライン直近相手を優先し、三展開で薄い単騎妙味を3列目へ入れない。
 # v72: 三展開合成フォメの3列目が2列目コピーになる場合、妙味残り＋軸ライン直近相手で再構成する。
 # v67: 4列目は「素材表示だけ」に限定。三展開合成フォメ・妙味通過・期待値推奨へ副作用を出さない。
 #      PILLAR_EXCLUDE_THIRD_CARS を無効化し、三連複フォメ表示用だけ col3 を圧縮する.
@@ -8680,27 +8681,34 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
                 elif secs0:
                     _add_rebuilt(secs0[0])
 
-                # 妙味ペアのうち、2列目に採用されなかった相手を優先して足す。
-                # 4-7 / 4-3 / 4-1 で2列目が7,1なら、3を拾う。
-                try:
-                    myoumi_leftovers = []
-                    for item in sorted(myoumi_pairs or [], key=_myoumi_pair_rank):
-                        _scx, _ax, _bx = float(item[0]), int(item[1]), int(item[2])
-                        x0, y0 = _velobi_ordered_cars([_ax, _bx], rec_order_for_forme)
-                        if int(x0) == int(A) and int(y0) not in secs0:
-                            _add_unique(myoumi_leftovers, y0)
-                    for y0 in myoumi_leftovers:
-                        _add_rebuilt(y0)
-                        if len(rebuilt) >= ATTACK_FORME_MAX_THIRDS:
-                            break
-                except Exception:
-                    pass
-
-                # まだ足りなければ、軸ラインの直近相手を足す。
-                # 4617なら軸4の直近相手6。
+                # v73:
+                # 2列目コピーを直す時、妙味残りを先に入れない。
+                # 妙味ptが高くても、三展開で薄い単騎・弱線なら3列目の受けとして危険。
+                # まず軸ラインの直近相手を足す。
+                # 4617なら軸4の直近相手6。これで 4-71-16 に寄せる。
                 if len(rebuilt) < ATTACK_FORME_MAX_THIRDS:
                     try:
                         for y0 in a_line_others:
+                            _add_rebuilt(y0)
+                            if len(rebuilt) >= ATTACK_FORME_MAX_THIRDS:
+                                break
+                    except Exception:
+                        pass
+
+                # まだ足りない場合だけ、妙味ペアの残りを補助で足す。
+                # ただし三展開のVeloBi順でかなり薄い車は採用しない。
+                # 7車なら上位5番手以内を目安にする。
+                if len(rebuilt) < ATTACK_FORME_MAX_THIRDS:
+                    try:
+                        myoumi_leftovers = []
+                        rank_limit = min(5, len(rec_order_for_forme or []))
+                        for item in sorted(myoumi_pairs or [], key=_myoumi_pair_rank):
+                            _scx, _ax, _bx = float(item[0]), int(item[1]), int(item[2])
+                            x0, y0 = _velobi_ordered_cars([_ax, _bx], rec_order_for_forme)
+                            if int(x0) == int(A) and int(y0) not in secs0:
+                                if _velobi_rank_index(y0, rec_order_for_forme) < rank_limit:
+                                    _add_unique(myoumi_leftovers, y0)
+                        for y0 in myoumi_leftovers:
                             _add_rebuilt(y0)
                             if len(rebuilt) >= ATTACK_FORME_MAX_THIRDS:
                                 break
