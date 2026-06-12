@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
+# v68: 素材表示4列化の3列目圧縮で、軸ライン直近相手を優先保護。
+#      妙味ptだけで長い軸ライン末端を残しすぎず、弱い・深い候補を4列目へ回す。
 # v67: 4列目は「素材表示だけ」に限定。三展開合成フォメ・妙味通過・期待値推奨へ副作用を出さない。
-#      PILLAR_EXCLUDE_THIRD_CARS を無効化し、三連複フォメ表示用だけ col3 を圧縮する。
+#      PILLAR_EXCLUDE_THIRD_CARS を無効化し、三連複フォメ表示用だけ col3 を圧縮する.
 # v64: 三展開合成フォメを最終購入3点へ圧縮。素材フォメは維持し、A-BC-CD型で攻守バランスを取る。
 # v35: 評価重複のみの場合、2列目は低pt重複2車複の2セットまで。残り重複と軸ライン残りを3列目へ回す
 # v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
@@ -9157,26 +9159,82 @@ try:
         col3_cars = _uniq_keep(col3_main)
         col4_cars = _uniq_keep(col4_cars)
 
-        # v67：ここから下は「素材表示用」だけを4列化する。
-        # 重要：col3_cars は計算用のフル候補として残す。
-        #      三展開合成フォメ、妙味通過、期待値推奨、妙味ポイントは
-        #      col3_cars_full_for_calc を使うため、4列目分離の影響を受けない。
+        # v68：ここから下は「素材表示用」だけを4列化する。
+        # 重要：
+        #   ・三展開合成フォメ、妙味通過、期待値推奨、妙味ポイントは
+        #     col3_cars_full_for_calc を使うため、4列目分離の影響を受けない。
+        #   ・ただし素材表示の3列目圧縮では、軸ラインの直近相手を優先保護する。
+        #     例：ライン4617・軸4なら、6は軸ラインの直近相手なので3列目に残す。
+        #     7は軸との妙味ptが高くてもライン末端なので、原則として4列目寄り。
         col3_cars_full_for_calc = _uniq_keep(col3_cars)
         col4_cars_display = _uniq_keep(col4_cars)
-        col3_cars_display = list(col3_cars_full_for_calc)
 
         try:
             _max_third = int(MATERIAL_FORME_MAX_THIRDS)
         except Exception:
             _max_third = 2
 
-        if _max_third > 0 and len(col3_cars_display) > _max_third:
-            overflow_thirds = [int(x) for x in col3_cars_display[_max_third:]]
-            col3_cars_display = [int(x) for x in col3_cars_display[:_max_third]]
-            for x in overflow_thirds:
-                if int(x) not in col4_cars_display:
-                    col4_cars_display.append(int(x))
-            col4_cars_display = _uniq_keep(col4_cars_display)
+        def _axis_nearest_partners_for_material():
+            """
+            素材表示用の保護候補。
+            軸ラインの直近相手だけを3列目優先に残す。
+            長いラインの末端を、軸との妙味だけで過保護しないための補正。
+            """
+            out = []
+            try:
+                A0 = int(role1)
+                for mem in ranked_lines:
+                    xs = [int(x) for x in mem]
+                    if A0 not in xs or len(xs) < 2:
+                        continue
+                    idx = xs.index(A0)
+
+                    # 軸の直後を最優先
+                    if idx + 1 < len(xs):
+                        x = int(xs[idx + 1])
+                        if x != A0:
+                            out.append(x)
+
+                    # 軸が番手以降にいるケースの直前も一応保護
+                    if idx - 1 >= 0:
+                        x = int(xs[idx - 1])
+                        if x != A0:
+                            out.append(x)
+                    break
+            except Exception:
+                pass
+            return _uniq_keep(out)
+
+        material_protect = [
+            int(x) for x in _axis_nearest_partners_for_material()
+            if int(x) in [int(v) for v in col3_cars_full_for_calc]
+        ]
+
+        # 表示用3列目は、単純な先頭2車切りではなく、
+        # まず軸ライン直近相手を保護し、その後に元のcol3順で補完する。
+        col3_cars_display = []
+        for x in material_protect:
+            if int(x) not in col3_cars_display:
+                col3_cars_display.append(int(x))
+
+        for x in col3_cars_full_for_calc:
+            if _max_third > 0 and len(col3_cars_display) >= _max_third:
+                break
+            xi = int(x)
+            if xi not in col3_cars_display:
+                col3_cars_display.append(xi)
+
+        if _max_third > 0:
+            col3_cars_display = col3_cars_display[:_max_third]
+
+        # 表示用3列目に残らなかった候補は4列目へ。
+        for x in col3_cars_full_for_calc:
+            xi = int(x)
+            if xi not in col3_cars_display and xi not in col4_cars_display:
+                col4_cars_display.append(xi)
+
+        col3_cars_display = _uniq_keep(col3_cars_display)
+        col4_cars_display = _uniq_keep(col4_cars_display)
 
         col1_text = _fmt_cars(col1_cars)
         col2_text = _fmt_cars(col2_cars)
