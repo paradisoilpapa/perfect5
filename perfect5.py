@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v79: v78でreturnに nitan_forme/nitan_follow を渡しておらず表示されない不具合を修正。
 # v78: 抑え2車単 23→1 を三展開合成フォメ直下へインライン表示（例：抑え2車単：54→7）。
 # v77: 三展開合成フォメ 1-23-24 の抑えとして、2車単 23→1（例：54→7）を「抑え2車単」で表示。
 # v69: 素材4列表示で、4列目分離前の3列目候補を保持。軸ライン直近相手を4列目から復帰し、弱い別線・末端を4列目へ回す。
@@ -8901,6 +8902,9 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
             "score": sc,
             "source": attack.get("source") if isinstance(attack, dict) and attack.get("source") else ("myoumi" if has_myoumi_pillar else ("triple" if has_triple_pillar else "pair")),
             "santen_block": attack.get("santen_block", "") if isinstance(attack, dict) else "",
+            # v79: 三展+KOから作った抑え2車単を表示側へ渡す
+            "nitan_forme": attack.get("nitan_forme", "") if isinstance(attack, dict) else "",
+            "nitan_follow": attack.get("nitan_follow", []) if isinstance(attack, dict) else [],
         }
     except Exception:
         return None
