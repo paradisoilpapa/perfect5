@@ -4,6 +4,7 @@
 #      妙味ptだけで長い軸ライン末端を残しすぎず、弱い・深い候補を4列目へ回す。
 # v70: 素材表示の2列目を信頼2車へ圧縮。妙味高pt車は2列目でなく3列目へ回し、弱線・薄線を4列目へ分離。
 # v71: 素材表示の3列目を修正。弱い単騎妙味より、ライン持ち妙味＋軸ライン直近相手を優先する。
+# v74: 三展スコア順位を追加。三展開合成フォメは三展スコア順位から 1-23-24 型で生成し、VeloBi列評価は素材として維持。
 # v73: 三展開合成フォメの3列目コピー補正を修正。妙味残りより軸ライン直近相手を優先し、三展開で薄い単騎妙味を3列目へ入れない。
 # v72: 三展開合成フォメの3列目が2列目コピーになる場合、妙味残り＋軸ライン直近相手で再構成する。
 # v67: 4列目は「素材表示だけ」に限定。三展開合成フォメ・妙味通過・期待値推奨へ副作用を出さない。
@@ -5058,6 +5059,7 @@ try:
         [(int(k), float(v)) for k, v in (score_map or {}).items()],
         key=lambda t: (-t[1], t[0])
     )
+    globals()["KO_SCORE_ORDER_FOR_TIE"] = [int(n) for n, _sc in _sc_pairs]
 
     note_sections.append("【KO使用スコア（降順）】")
 
@@ -7894,6 +7896,84 @@ def _line_members_for_car_from_members(line_members_all, car):
     return []
 
 
+
+
+def _calc_santen_score_order(style_seq_map=None, active_cars=None, ko_order_for_tie=None):
+    """
+    順流・渦・逆流の3展開から三展スコア順位を作る。
+    点数は各展開の順位を上位ほど加点（7車なら1位=7点）。
+    同点はKO使用スコア順で決める。
+    """
+    try:
+        smap = style_seq_map or globals().get("STYLE_SEQ_MAP", {}) or {}
+        seqs = []
+        for k in ("順流", "渦", "逆流"):
+            xs = [int(x) for x in (smap.get(k, []) or []) if str(x).isdigit()]
+            if xs:
+                seqs.append(xs)
+        if not seqs:
+            return [], {}
+
+        cars = []
+        if active_cars:
+            cars = [int(x) for x in active_cars if str(x).isdigit()]
+        if not cars:
+            for xs in seqs:
+                for x in xs:
+                    if int(x) not in cars:
+                        cars.append(int(x))
+
+        n = max([len(xs) for xs in seqs] + [len(cars), 1])
+        score = {int(c): 0.0 for c in cars}
+        for xs in seqs:
+            for i, c in enumerate(xs):
+                c = int(c)
+                score.setdefault(c, 0.0)
+                score[c] += float(n - i)
+
+        ko = [int(x) for x in (ko_order_for_tie or globals().get("KO_SCORE_ORDER_FOR_TIE", []) or []) if str(x).isdigit()]
+        ko_rank = {int(c): i for i, c in enumerate(ko)}
+
+        order = sorted(score.keys(), key=lambda c: (-score.get(int(c), 0.0), ko_rank.get(int(c), 999), int(c)))
+        return order, score
+    except Exception:
+        return [], {}
+
+
+def _make_santen_score_attack_forme(max_tickets=None):
+    """
+    三展スコア順位から、最終の三展開合成フォメを作る。
+    基本形：スコア1位 - スコア2位&3位 - スコア2位&4位
+    例：5,4,2,7... -> 5-42-47
+    """
+    try:
+        max_tickets = int(max_tickets or ATTACK_FORME_MAX_TICKETS)
+        order, score = _calc_santen_score_order()
+        if len(order) < 4:
+            return None
+        A = int(order[0])
+        seconds = [int(order[1]), int(order[2])]
+        thirds = [int(order[1]), int(order[3])]
+        attack = _compress_attack_forme(A, seconds, thirds, rec_order_for_forme=order, max_tickets=max_tickets)
+        if not attack:
+            return None
+        lines = []
+        lines.append("【三展スコア順位】")
+        for i, c in enumerate(order, start=1):
+            lines.append(f"{i}位：{int(c)} (三展スコア={score.get(int(c), 0.0):.1f})")
+        return {
+            "forme": attack["forme"],
+            "expanded": attack["expanded"],
+            "seconds": attack["seconds"],
+            "thirds": attack["thirds"],
+            "santen_order": order,
+            "santen_score": score,
+            "santen_block": "\n".join(lines),
+            "source": "santen_score",
+        }
+    except Exception:
+        return None
+
 def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_order_for_forme=None, overlap_pairs=None, myoumi_pairs=None):
     """
     評価重複の柱三連単から、ライン補正フォメを作る。
@@ -8739,6 +8819,13 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
 
         attack = _rebuild_attack_thirds_if_copied(attack)
 
+        # v74:
+        # 三展開合成フォメは、妙味・ライン補正ではなく三展スコア順位から作る。
+        # VeloBi列評価は素材として維持し、ここだけを 1-23-24 型へ差し替える。
+        santen_attack = _make_santen_score_attack_forme(max_tickets=ATTACK_FORME_MAX_TICKETS)
+        if santen_attack:
+            attack = santen_attack
+
         if attack:
             forme = attack["forme"]
             expanded = attack["expanded"]
@@ -8756,7 +8843,8 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
             "expanded": expanded,
             "pillar": pillar_text,
             "score": sc,
-            "source": "myoumi" if has_myoumi_pillar else ("triple" if has_triple_pillar else "pair"),
+            "source": attack.get("source") if isinstance(attack, dict) and attack.get("source") else ("myoumi" if has_myoumi_pillar else ("triple" if has_triple_pillar else "pair")),
+            "santen_block": attack.get("santen_block", "") if isinstance(attack, dict) else "",
         }
     except Exception:
         return None
@@ -8853,6 +8941,9 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         pillar_forme = _make_pillar_santan_line_forme(overlap_triples, c2, c3, rec_order_for_forme, overlap_pairs=overlap_pairs, myoumi_pairs=two)
         if pillar_forme:
             _pillar_lines = []
+            if pillar_forme.get("santen_block"):
+                _pillar_lines.append(pillar_forme.get("santen_block"))
+                _pillar_lines.append("")
             _pillar_lines.append("【三展開合成フォメ三連単＆三連複】")
             _pillar_lines.append("")
             _pillar_lines.append(f"{pillar_forme['forme']}　")
