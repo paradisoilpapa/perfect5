@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v83: 三展開合成フォメ上部ブロックを必ず三展+KOスコア順位ベースの1券種1行表示に統一。生成不可フォールバックを廃止。
 # v82: 三展開合成フォメを1券種1行表示へ修正。展開・抑え2車単の旧まとめ表示を廃止。
 # v81: 三展開合成フォメを評価123・安め切りBOX型（1→2→3三連単＋2→1/3→1二車単＋1=3/2=3二車複）へ変更。
 # v80: 会場別の的中率/回収率手入力→最終H1番手減点・2番手ライン加点補正を買い目用スコアへ反映。
@@ -9360,10 +9361,11 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         else:
             lines.append("該当なし")
 
-        # 評価重複の柱から、ライン補正した3連単フォメを作る。
-        # v29では「ヴェロビ的買目」の中ではなく、note上部（推奨順流予想の直後）に表示する。
+        # v83: note上部の「三展開合成フォメ」は、評価重複柱ではなく
+        # 必ず三展+KOスコア順位ベースの安め切りBOX型を表示する。
+        # 旧表示の「展開：...」「抑え2車単：...」「生成不可」は出さない。
         globals()["PILLAR_LINE_FORME_BLOCK"] = ""
-        pillar_forme = _make_pillar_santan_line_forme(overlap_triples, c2, c3, rec_order_for_forme, overlap_pairs=overlap_pairs, myoumi_pairs=two)
+        pillar_forme = _make_santen_score_attack_forme(max_tickets=ATTACK_FORME_MAX_TICKETS)
         if pillar_forme:
             _pillar_lines = []
             if pillar_forme.get("santen_block"):
@@ -9371,23 +9373,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
                 _pillar_lines.append("")
             _pillar_lines.append("【三展開合成フォメ】")
             _pillar_lines.append("")
-            if pillar_forme.get("tickets_lines"):
-                _pillar_lines.extend(pillar_forme.get("tickets_lines", []))
-            else:
-                # v82 フォールバックも1券種1行に統一。
-                # ここに来ても「展開：...」「抑え2車単：...」は出さない。
-                _order = [int(x) for x in pillar_forme.get("santen_order", []) if str(x).isdigit()]
-                if len(_order) >= 3:
-                    A, B, C = _order[0], _order[1], _order[2]
-                    _pillar_lines.extend([
-                        f"3連単｜{A}→{B}→{C}　　本線の一点",
-                        f"2車単｜{B}→{A}　　　評価2の逆転",
-                        f"2車単｜{C}→{A}　　　評価3の逆転・回収起爆剤",
-                        f"2車複｜{A}={C}　　　評価2飛びの補助",
-                        f"2車複｜{B}={C}　　　評価1飛びの高配当補助",
-                    ])
-                else:
-                    _pillar_lines.append("生成不可")
+            _pillar_lines.extend(pillar_forme.get("tickets_lines", []))
             globals()["PILLAR_LINE_FORME_BLOCK"] = "\n".join(_pillar_lines)
 
         # --------------------------------------------------
