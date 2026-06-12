@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
+# v85: 会場判定・最終H補正倍率・必要オッズ倍率の3点を三展+KO順位生成へ反映。悪い会場ほどKO/H補正順位を強く見る。
+# v84: 必要オッズ倍率を三展+KO順位へ反映。倍率が高い会場ほど三展固定を弱め、KO/H補正順位を強く見る。
 # v83: 三展開合成フォメ上部ブロックを必ず三展+KOスコア順位ベースの1券種1行表示に統一。生成不可フォールバックを廃止。
 # v82: 三展開合成フォメを1券種1行表示へ修正。展開・抑え2車単の旧まとめ表示を廃止。
 # v81: 三展開合成フォメを評価123・安め切りBOX型（1→2→3三連単＋2→1/3→1二車単＋1=3/2=3二車複）へ変更。
-# v80: 会場別の的中率/回収率手入力→最終H1番手減点・2番手ライン加点補正を買い目用スコアへ反映。
+# v80: 会場別の的中率/回収率手入力→最終aH1番手減点・2番手ライン加点補正を買い目用スコアへ反映。
 # v79: v78でreturnに nitan_forme/nitan_follow を渡しておらず表示されない不具合を修正。
 # v78: 抑え2車単 23→1 を三展開合成フォメ直下へインライン表示（例：抑え2車単：54→7）。
 # v77: 三展開合成フォメ 1-23-24 の抑えとして、2車単 23→1（例：54→7）を「抑え2車単」で表示。
@@ -8310,13 +8312,84 @@ def _calc_santen_score_order(style_seq_map=None, active_cars=None, ko_order_for_
             except Exception:
                 ko_score[int(c)] = 0.0
 
-        total_score = {
-            int(c): float(santen_score.get(int(c), 0.0)) + float(ko_score.get(int(c), 0.0))
-            for c in cars
+        # --------------------------------------------------
+        # v85: 会場判定・最終H補正倍率・必要オッズ倍率をすべて
+        #      「三展+KO順位生成」へ反映する。
+        #
+        # 思想：
+        #   ・会場判定        = その会場で素直決着をどれだけ疑うか
+        #   ・最終H補正倍率  = H1番手減点/H2番手加点をどれだけ強く見るか
+        #   ・必要オッズ倍率 = 安い順当筋を嫌い、補正後順位をどれだけ重視するか
+        #
+        # これらを order_pressure にまとめ、
+        #   三展順位 × (1-order_pressure) + KO/H補正順位 × order_pressure
+        # で、最終のA/B/Cを作る。
+        # --------------------------------------------------
+        try:
+            min_odds_mult = float(globals().get("venue_min_odds_mult", 1.0) or 1.0)
+        except Exception:
+            min_odds_mult = 1.0
+
+        try:
+            venue_profile_for_order = str(globals().get("venue_profile", "unknown") or "unknown")
+        except Exception:
+            venue_profile_for_order = "unknown"
+
+        try:
+            home_flow_mult_for_order = float(globals().get("venue_home_flow_mult", 1.0) or 1.0)
+        except Exception:
+            home_flow_mult_for_order = 1.0
+
+        profile_pressure_map = {
+            "strong_good": 0.00,
+            "swing_return": 0.18,
+            "normal": 0.10,
+            "normal_watch": 0.32,
+            "cheap_hit": 0.28,
+            "bad": 0.50,
+            "low_hit_risk": 0.60,
+            "very_bad": 0.78,
+            "unknown": 0.10,
         }
 
+        odds_pressure = clamp((min_odds_mult - 1.00) / 0.40, 0.0, 1.0)
+        profile_pressure = float(profile_pressure_map.get(venue_profile_for_order, 0.10))
+        home_pressure = clamp((home_flow_mult_for_order - 1.00) / 0.80, 0.0, 1.0)
+
+        # 必要オッズを主、会場判定を準主、H倍率を補助にする。
+        # low_hit_risk / H1.39 / 必要1.30 なら、おおむね0.66前後になる。
+        odds_blend = clamp(
+            0.50 * float(odds_pressure)
+            + 0.35 * float(profile_pressure)
+            + 0.15 * float(home_pressure),
+            0.0,
+            1.0,
+        )
+
+        santen_order = sorted(
+            [int(c) for c in cars],
+            key=lambda c: (-float(santen_score.get(int(c), 0.0)), int(c))
+        )
+        santen_rank_score = {int(c): float(len(cars) - i) for i, c in enumerate(santen_order)}
+
         ko = [int(x) for x in (ko_order_for_tie or globals().get("KO_SCORE_ORDER_FOR_TIE", []) or []) if str(x).isdigit()]
+        if not ko:
+            ko = sorted(
+                [int(c) for c in cars],
+                key=lambda c: (-float(ko_score.get(int(c), 0.0)), int(c))
+            )
         ko_rank = {int(c): i for i, c in enumerate(ko)}
+        ko_rank_score = {int(c): float(len(cars) - ko_rank.get(int(c), len(cars))) for c in cars}
+
+        total_score = {}
+        for c in cars:
+            c = int(c)
+            # 同点の微差だけ raw KO を足す。順位の主役は「三展順位×KO/H順位のブレンド」。
+            total_score[c] = (
+                (1.0 - odds_blend) * float(santen_rank_score.get(c, 0.0))
+                + odds_blend * float(ko_rank_score.get(c, 0.0))
+                + 0.001 * float(ko_score.get(c, 0.0))
+            )
 
         order = sorted(
             total_score.keys(),
@@ -8326,6 +8399,15 @@ def _calc_santen_score_order(style_seq_map=None, active_cars=None, ko_order_for_
             "santen": santen_score,
             "ko": ko_score,
             "total": total_score,
+            "santen_rank_score": santen_rank_score,
+            "ko_rank_score": ko_rank_score,
+            "venue_min_odds_mult": min_odds_mult,
+            "venue_profile": venue_profile_for_order,
+            "venue_home_flow_mult": home_flow_mult_for_order,
+            "odds_pressure": odds_pressure,
+            "profile_pressure": profile_pressure,
+            "home_pressure": home_pressure,
+            "odds_blend": odds_blend,
         }
         return order, total_score, detail
     except Exception:
@@ -8372,6 +8454,21 @@ def _make_santen_score_attack_forme(max_tickets=None):
         santen = (detail or {}).get("santen", {})
         ko = (detail or {}).get("ko", {})
         total = (detail or {}).get("total", score)
+        odds_blend = float((detail or {}).get("odds_blend", 0.0) or 0.0)
+        min_odds_mult = float((detail or {}).get("venue_min_odds_mult", 1.0) or 1.0)
+        venue_profile_for_order = str((detail or {}).get("venue_profile", "unknown") or "unknown")
+        home_flow_mult_for_order = float((detail or {}).get("venue_home_flow_mult", 1.0) or 1.0)
+        odds_pressure = float((detail or {}).get("odds_pressure", 0.0) or 0.0)
+        profile_pressure = float((detail or {}).get("profile_pressure", 0.0) or 0.0)
+        home_pressure = float((detail or {}).get("home_pressure", 0.0) or 0.0)
+        if odds_blend > 0:
+            lines.append(
+                f"※会場補正を順位へ反映：会場={venue_profile_for_order}／H倍率{home_flow_mult_for_order:.2f}／必要オッズ{min_odds_mult:.2f} "
+                f"→ 三展{(1.0-odds_blend)*100:.0f}%＋KO/H{odds_blend*100:.0f}%"
+            )
+            lines.append(
+                f"　内訳：必要{odds_pressure:.2f}・会場{profile_pressure:.2f}・H{home_pressure:.2f}"
+            )
         for i, c in enumerate(order, start=1):
             c = int(c)
             lines.append(
