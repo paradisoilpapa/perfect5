@@ -4,6 +4,7 @@
 #      妙味ptだけで長い軸ライン末端を残しすぎず、弱い・深い候補を4列目へ回す。
 # v70: 素材表示の2列目を信頼2車へ圧縮。妙味高pt車は2列目でなく3列目へ回し、弱線・薄線を4列目へ分離。
 # v71: 素材表示の3列目を修正。弱い単騎妙味より、ライン持ち妙味＋軸ライン直近相手を優先する。
+# v75: 三展スコアにKO実スコアを加算。三展開合成フォメは 1-23-245 型、原則5点へ拡張。
 # v74: 三展スコア順位を追加。三展開合成フォメは三展スコア順位から 1-23-24 型で生成し、VeloBi列評価は素材として維持。
 # v73: 三展開合成フォメの3列目コピー補正を修正。妙味残りより軸ライン直近相手を優先し、三展開で薄い単騎妙味を3列目へ入れない。
 # v72: 三展開合成フォメの3列目が2列目コピーになる場合、妙味残り＋軸ライン直近相手で再構成する。
@@ -5060,6 +5061,7 @@ try:
         key=lambda t: (-t[1], t[0])
     )
     globals()["KO_SCORE_ORDER_FOR_TIE"] = [int(n) for n, _sc in _sc_pairs]
+    globals()["KO_SCORE_MAP_FOR_SANTEN"] = {int(n): float(_sc) for n, _sc in _sc_pairs}
 
     note_sections.append("【KO使用スコア（降順）】")
 
@@ -7801,9 +7803,9 @@ def _fmt_cars_compact_for_forme(cars):
 # ==============================
 # 三展開合成フォメ 圧縮設定
 # ==============================
-ATTACK_FORME_MAX_TICKETS = 3   # 最終購入点数。原則3点。
+ATTACK_FORME_MAX_TICKETS = 5   # 最終購入点数。v75は三展+KOで原則5点。
 ATTACK_FORME_MAX_SECONDS = 2   # 2列目最大。A-BC-CD型のBC。
-ATTACK_FORME_MAX_THIRDS  = 2   # 3列目最大。A-BC-CD型のCD。
+ATTACK_FORME_MAX_THIRDS  = 3   # 3列目最大。v75は A-BC-CDE 型を許可。
 MATERIAL_FORME_MAX_THIRDS = 2   # 素材三連複フォメの3列目最大。超過分は4列目へ分離。
 
 
@@ -7898,11 +7900,15 @@ def _line_members_for_car_from_members(line_members_all, car):
 
 
 
-def _calc_santen_score_order(style_seq_map=None, active_cars=None, ko_order_for_tie=None):
+def _calc_santen_score_order(style_seq_map=None, active_cars=None, ko_order_for_tie=None, ko_score_map=None):
     """
     順流・渦・逆流の3展開から三展スコア順位を作る。
     点数は各展開の順位を上位ほど加点（7車なら1位=7点）。
-    同点はKO使用スコア順で決める。
+
+    v75:
+      三展スコアにKO使用スコアの実数を加算する。
+      例：三展19点 + KO2.029 = 21.029
+      これにより三展同点を自然に割り、KO上位を軽く反映する。
     """
     try:
         smap = style_seq_map or globals().get("STYLE_SEQ_MAP", {}) or {}
@@ -7912,7 +7918,7 @@ def _calc_santen_score_order(style_seq_map=None, active_cars=None, ko_order_for_
             if xs:
                 seqs.append(xs)
         if not seqs:
-            return [], {}
+            return [], {}, {}
 
         cars = []
         if active_cars:
@@ -7924,43 +7930,83 @@ def _calc_santen_score_order(style_seq_map=None, active_cars=None, ko_order_for_
                         cars.append(int(x))
 
         n = max([len(xs) for xs in seqs] + [len(cars), 1])
-        score = {int(c): 0.0 for c in cars}
+        santen_score = {int(c): 0.0 for c in cars}
         for xs in seqs:
             for i, c in enumerate(xs):
                 c = int(c)
-                score.setdefault(c, 0.0)
-                score[c] += float(n - i)
+                santen_score.setdefault(c, 0.0)
+                santen_score[c] += float(n - i)
+
+        kmap = ko_score_map or globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {}
+        ko_score = {}
+        for c in cars:
+            try:
+                ko_score[int(c)] = float(kmap.get(int(c), 0.0))
+            except Exception:
+                ko_score[int(c)] = 0.0
+
+        total_score = {
+            int(c): float(santen_score.get(int(c), 0.0)) + float(ko_score.get(int(c), 0.0))
+            for c in cars
+        }
 
         ko = [int(x) for x in (ko_order_for_tie or globals().get("KO_SCORE_ORDER_FOR_TIE", []) or []) if str(x).isdigit()]
         ko_rank = {int(c): i for i, c in enumerate(ko)}
 
-        order = sorted(score.keys(), key=lambda c: (-score.get(int(c), 0.0), ko_rank.get(int(c), 999), int(c)))
-        return order, score
+        order = sorted(
+            total_score.keys(),
+            key=lambda c: (-total_score.get(int(c), 0.0), ko_rank.get(int(c), 999), int(c))
+        )
+        detail = {
+            "santen": santen_score,
+            "ko": ko_score,
+            "total": total_score,
+        }
+        return order, total_score, detail
     except Exception:
-        return [], {}
+        return [], {}, {}
 
 
 def _make_santen_score_attack_forme(max_tickets=None):
     """
-    三展スコア順位から、最終の三展開合成フォメを作る。
-    基本形：スコア1位 - スコア2位&3位 - スコア2位&4位
-    例：5,4,2,7... -> 5-42-47
+    三展+KOスコア順位から、最終の三展開合成フォメを作る。
+
+    v75基本形：
+      スコア1位 - スコア2位&3位 - スコア2位&4位&5位
+      例：5,4,2,7,6... -> 5-42-476
+
+    目的：
+      3点では拾い切れない3着候補を5位まで持たせ、
+      5点前後で攻守バランスを取る。
     """
     try:
         max_tickets = int(max_tickets or ATTACK_FORME_MAX_TICKETS)
-        order, score = _calc_santen_score_order()
+        order, score, detail = _calc_santen_score_order()
         if len(order) < 4:
             return None
+
         A = int(order[0])
         seconds = [int(order[1]), int(order[2])]
+
         thirds = [int(order[1]), int(order[3])]
+        if len(order) >= 5:
+            thirds.append(int(order[4]))
+
         attack = _compress_attack_forme(A, seconds, thirds, rec_order_for_forme=order, max_tickets=max_tickets)
         if not attack:
             return None
+
         lines = []
-        lines.append("【三展スコア順位】")
+        lines.append("【三展+KOスコア順位】")
+        santen = (detail or {}).get("santen", {})
+        ko = (detail or {}).get("ko", {})
+        total = (detail or {}).get("total", score)
         for i, c in enumerate(order, start=1):
-            lines.append(f"{i}位：{int(c)} (三展スコア={score.get(int(c), 0.0):.1f})")
+            c = int(c)
+            lines.append(
+                f"{i}位：{c} (合成={total.get(c, 0.0):.3f}｜三展={santen.get(c, 0.0):.1f}+KO={ko.get(c, 0.0):.6f})"
+            )
+
         return {
             "forme": attack["forme"],
             "expanded": attack["expanded"],
@@ -7968,8 +8014,9 @@ def _make_santen_score_attack_forme(max_tickets=None):
             "thirds": attack["thirds"],
             "santen_order": order,
             "santen_score": score,
+            "santen_detail": detail,
             "santen_block": "\n".join(lines),
-            "source": "santen_score",
+            "source": "santen_plus_ko_score",
         }
     except Exception:
         return None
