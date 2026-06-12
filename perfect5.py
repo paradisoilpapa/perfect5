@@ -4,6 +4,7 @@
 #      妙味ptだけで長い軸ライン末端を残しすぎず、弱い・深い候補を4列目へ回す。
 # v70: 素材表示の2列目を信頼2車へ圧縮。妙味高pt車は2列目でなく3列目へ回し、弱線・薄線を4列目へ分離。
 # v71: 素材表示の3列目を修正。弱い単騎妙味より、ライン持ち妙味＋軸ライン直近相手を優先する。
+# v76: 三展+KOは三連単 1-23-24 の3点へ戻し、ズレ保険として2車単 23→1 を同時出力。
 # v75: 三展スコアにKO実スコアを加算。三展開合成フォメは 1-23-245 型、原則5点へ拡張。
 # v74: 三展スコア順位を追加。三展開合成フォメは三展スコア順位から 1-23-24 型で生成し、VeloBi列評価は素材として維持。
 # v73: 三展開合成フォメの3列目コピー補正を修正。妙味残りより軸ライン直近相手を優先し、三展開で薄い単騎妙味を3列目へ入れない。
@@ -7803,9 +7804,9 @@ def _fmt_cars_compact_for_forme(cars):
 # ==============================
 # 三展開合成フォメ 圧縮設定
 # ==============================
-ATTACK_FORME_MAX_TICKETS = 5   # 最終購入点数。v75は三展+KOで原則5点。
+ATTACK_FORME_MAX_TICKETS = 3   # 最終購入点数。v76は三連単1-23-24の3点。
 ATTACK_FORME_MAX_SECONDS = 2   # 2列目最大。A-BC-CD型のBC。
-ATTACK_FORME_MAX_THIRDS  = 3   # 3列目最大。v75は A-BC-CDE 型を許可。
+ATTACK_FORME_MAX_THIRDS  = 2   # 3列目最大。v76は A-BC-BD 型。
 MATERIAL_FORME_MAX_THIRDS = 2   # 素材三連複フォメの3列目最大。超過分は4列目へ分離。
 
 
@@ -7971,13 +7972,13 @@ def _make_santen_score_attack_forme(max_tickets=None):
     """
     三展+KOスコア順位から、最終の三展開合成フォメを作る。
 
-    v75基本形：
-      スコア1位 - スコア2位&3位 - スコア2位&4位&5位
-      例：5,4,2,7,6... -> 5-42-476
+    v76基本形：
+      三連単：スコア1位 - スコア2位&3位 - スコア2位&4位
+        例：5,4,2,7,6... -> 5-42-47
+        展開：5→4→7 / 5→2→4 / 5→2→7
 
-    目的：
-      3点では拾い切れない3着候補を5位まで持たせ、
-      5点前後で攻守バランスを取る。
+      2車単フォロー：スコア2位・3位 → スコア1位
+        例：4→5 / 2→5
     """
     try:
         max_tickets = int(max_tickets or ATTACK_FORME_MAX_TICKETS)
@@ -7986,15 +7987,19 @@ def _make_santen_score_attack_forme(max_tickets=None):
             return None
 
         A = int(order[0])
-        seconds = [int(order[1]), int(order[2])]
+        B = int(order[1])
+        C = int(order[2])
+        D = int(order[3])
 
-        thirds = [int(order[1]), int(order[3])]
-        if len(order) >= 5:
-            thirds.append(int(order[4]))
+        seconds = [B, C]
+        thirds = [B, D]
 
         attack = _compress_attack_forme(A, seconds, thirds, rec_order_for_forme=order, max_tickets=max_tickets)
         if not attack:
             return None
+
+        nitan_follow = [f"{B}→{A}", f"{C}→{A}"]
+        nitan_forme = f"{_fmt_cars_compact_for_forme([B, C])}→{A}"
 
         lines = []
         lines.append("【三展+KOスコア順位】")
@@ -8012,11 +8017,13 @@ def _make_santen_score_attack_forme(max_tickets=None):
             "expanded": attack["expanded"],
             "seconds": attack["seconds"],
             "thirds": attack["thirds"],
+            "nitan_follow": nitan_follow,
+            "nitan_forme": nitan_forme,
             "santen_order": order,
             "santen_score": score,
             "santen_detail": detail,
             "santen_block": "\n".join(lines),
-            "source": "santen_plus_ko_score",
+            "source": "santen_plus_ko_score_3ten_plus_nitan",
         }
     except Exception:
         return None
@@ -8996,6 +9003,11 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             _pillar_lines.append(f"{pillar_forme['forme']}　")
             _pillar_lines.append("")
             _pillar_lines.append("展開：" + " / ".join(pillar_forme.get("expanded", [])))
+            if pillar_forme.get("nitan_follow"):
+                _pillar_lines.append("")
+                _pillar_lines.append("【三展+KO 2車単フォロー】")
+                _pillar_lines.append(f"{pillar_forme.get('nitan_forme', '')}　")
+                _pillar_lines.append("展開：" + " / ".join(pillar_forme.get("nitan_follow", [])))
             globals()["PILLAR_LINE_FORME_BLOCK"] = "\n".join(_pillar_lines)
 
         # --------------------------------------------------
