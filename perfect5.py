@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-# v66: 三展開合成フォメはv64へ戻して独立維持。素材三連複フォメだけ4列化し、3列目超過分を4列目へ分離。
+# v67: 4列目は「素材表示だけ」に限定。三展開合成フォメ・妙味通過・期待値推奨へ副作用を出さない。
+#      PILLAR_EXCLUDE_THIRD_CARS を無効化し、三連複フォメ表示用だけ col3 を圧縮する。
 # v64: 三展開合成フォメを最終購入3点へ圧縮。素材フォメは維持し、A-BC-CD型で攻守バランスを取る。
 # v35: 評価重複のみの場合、2列目は低pt重複2車複の2セットまで。残り重複と軸ライン残りを3列目へ回す
 # v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
@@ -7911,7 +7912,9 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
         c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
         # v59: 基本フォメで4列目へ分離した車は、推奨ライン補正フォメの3列目へ戻さない。
         # 例：1-7435-732 / 4列目=56 の場合、ライン補正で 5 をthird_seedに拾っても除外する。
-        third_exclude = {int(x) for x in globals().get("PILLAR_EXCLUDE_THIRD_CARS", []) if str(x).isdigit()}
+        # v67: 4列目は素材表示専用。
+        # 三展開合成フォメへは絶対に副作用を出さない。
+        third_exclude = set()
         if not c2 or not c3:
             return None
 
@@ -9154,27 +9157,31 @@ try:
         col3_cars = _uniq_keep(col3_main)
         col4_cars = _uniq_keep(col4_cars)
 
-        # v66：素材三連複フォメのみ4列化。
-        # 重要：これは表示・素材側だけの整理であり、
-        # 上部の【三展開合成フォメ】には連動させない。
-        # 例：合成フォメ 5-34-36 と、素材フォメ 5-413-37-62 は別物として扱う。
+        # v67：ここから下は「素材表示用」だけを4列化する。
+        # 重要：col3_cars は計算用のフル候補として残す。
+        #      三展開合成フォメ、妙味通過、期待値推奨、妙味ポイントは
+        #      col3_cars_full_for_calc を使うため、4列目分離の影響を受けない。
+        col3_cars_full_for_calc = _uniq_keep(col3_cars)
+        col4_cars_display = _uniq_keep(col4_cars)
+        col3_cars_display = list(col3_cars_full_for_calc)
+
         try:
             _max_third = int(MATERIAL_FORME_MAX_THIRDS)
         except Exception:
             _max_third = 2
 
-        if _max_third > 0 and len(col3_cars) > _max_third:
-            overflow_thirds = [int(x) for x in col3_cars[_max_third:]]
-            col3_cars = [int(x) for x in col3_cars[:_max_third]]
+        if _max_third > 0 and len(col3_cars_display) > _max_third:
+            overflow_thirds = [int(x) for x in col3_cars_display[_max_third:]]
+            col3_cars_display = [int(x) for x in col3_cars_display[:_max_third]]
             for x in overflow_thirds:
-                if int(x) not in col4_cars:
-                    col4_cars.append(int(x))
-            col4_cars = _uniq_keep(col4_cars)
+                if int(x) not in col4_cars_display:
+                    col4_cars_display.append(int(x))
+            col4_cars_display = _uniq_keep(col4_cars_display)
 
         col1_text = _fmt_cars(col1_cars)
         col2_text = _fmt_cars(col2_cars)
-        col3_text = _fmt_cars(col3_cars)
-        col4_text = _fmt_cars(col4_cars)
+        col3_text = _fmt_cars(col3_cars_display)
+        col4_text = _fmt_cars(col4_cars_display)
 
         column_eval_block = (
             "【VeloBi列評価】\n"
@@ -9182,22 +9189,23 @@ try:
             f"2列目｜2車複ヒモ候補：{col2_text}\n"
             f"3列目｜三連複候補：{col3_text}"
         )
-        if col4_cars:
+        if col4_cars_display:
             column_eval_block += f"\n4列目｜薄目・4着寄り候補：{col4_text}"
 
         nishatan_points = _count_nishatan(col1_cars, col2_cars)
-        sanpuku_points = _count_sanpuku(col1_cars, col2_cars, col3_cars)
-        sanrentan_points = _count_sanrentan(col1_cars, col2_cars, col3_cars)
+        sanpuku_points = _count_sanpuku(col1_cars, col2_cars, col3_cars_display)
+        sanrentan_points = _count_sanrentan(col1_cars, col2_cars, col3_cars_display)
 
         nishatan_forme_line = f"2車系フォメ：1列目→2列目 {col1_text}→{col2_text} / {col1_text}={col2_text}（{nishatan_points}点）"
-        if col4_cars:
+        if col4_cars_display:
             sanpuku_forme_line = f"三連複フォメ：1列目-2列目-3列目-4列目 {col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）-{col4_text}"
         else:
             sanpuku_forme_line = f"三連複フォメ：1列目-2列目-3列目 {col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
         sanrentan_forme_line = f"3連単フォメ：1列目→2列目→3列目 {col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
 
         # v59: 上部の推奨ライン補正フォメ生成でも、4列目候補を3列目へ戻さないために共有する。
-        globals()["PILLAR_EXCLUDE_THIRD_CARS"] = list(col4_cars)
+        # v67: 4列目表示は上部合成フォメへ渡さない。
+        globals()["PILLAR_EXCLUDE_THIRD_CARS"] = []
 
         myoumi_pickup_block = _make_myoumi_pickup_block(
             col1_cars,
