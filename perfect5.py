@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v82: 三展開合成フォメを1券種1行表示へ修正。展開・抑え2車単の旧まとめ表示を廃止。
 # v81: 三展開合成フォメを評価123・安め切りBOX型（1→2→3三連単＋2→1/3→1二車単＋1=3/2=3二車複）へ変更。
 # v80: 会場別の的中率/回収率手入力→最終H1番手減点・2番手ライン加点補正を買い目用スコアへ反映。
 # v79: v78でreturnに nitan_forme/nitan_follow を渡しておらず表示されない不具合を修正。
@@ -8355,12 +8356,14 @@ def _make_santen_score_attack_forme(max_tickets=None):
         B = int(order[1])
         C = int(order[2])
 
+        # v82: 1券種1行。
+        # 旧表示の「展開：A→B→C / B→A / ...」「抑え2車単」は使わない。
         tickets_lines = [
-            f"{A}→{B}→{C}　　本線の一点3連単",
-            f"{B}→{A}　　　評価2の逆転２車単",
-            f"{C}→{A}　　　評価3の逆転・回収起爆剤２車単",
-            f"{A}={C}　　　評価2飛びの補助２車複",
-            f"{B}={C}　　　評価1飛びの高配当補助２車複",
+            f"3連単｜{A}→{B}→{C}　　本線の一点",
+            f"2車単｜{B}→{A}　　　評価2の逆転",
+            f"2車単｜{C}→{A}　　　評価3の逆転・回収起爆剤",
+            f"2車複｜{A}={C}　　　評価2飛びの補助",
+            f"2車複｜{B}={C}　　　評価1飛びの高配当補助",
         ]
 
         lines = []
@@ -9371,12 +9374,20 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             if pillar_forme.get("tickets_lines"):
                 _pillar_lines.extend(pillar_forme.get("tickets_lines", []))
             else:
-                _pillar_lines.append(f"{pillar_forme['forme']}　")
-                _pillar_lines.append("")
-                _pillar_lines.append("展開：" + " / ".join(pillar_forme.get("expanded", [])))
-                # 旧形式フォールバック：3連単直下に、同じ三展+KO順位から作った抑え2車単を表示
-                if pillar_forme.get("nitan_forme"):
-                    _pillar_lines.append(f"抑え2車単：{pillar_forme.get('nitan_forme', '')}")
+                # v82 フォールバックも1券種1行に統一。
+                # ここに来ても「展開：...」「抑え2車単：...」は出さない。
+                _order = [int(x) for x in pillar_forme.get("santen_order", []) if str(x).isdigit()]
+                if len(_order) >= 3:
+                    A, B, C = _order[0], _order[1], _order[2]
+                    _pillar_lines.extend([
+                        f"3連単｜{A}→{B}→{C}　　本線の一点",
+                        f"2車単｜{B}→{A}　　　評価2の逆転",
+                        f"2車単｜{C}→{A}　　　評価3の逆転・回収起爆剤",
+                        f"2車複｜{A}={C}　　　評価2飛びの補助",
+                        f"2車複｜{B}={C}　　　評価1飛びの高配当補助",
+                    ])
+                else:
+                    _pillar_lines.append("生成不可")
             globals()["PILLAR_LINE_FORME_BLOCK"] = "\n".join(_pillar_lines)
 
         # --------------------------------------------------
