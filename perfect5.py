@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v64: 三展開合成フォメを最終購入3点へ圧縮。素材フォメは維持し、A-BC-CD型で攻守バランスを取る。
 # v35: 評価重複のみの場合、2列目は低pt重複2車複の2セットまで。残り重複と軸ライン残りを3列目へ回す
 # v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
 # v52: 妙味2車複が複数ある時、軸ライン残りを無条件で3列目へ入れず、採用2着候補のライン残り＋評価重複相手だけを3列目へ回す。
@@ -7786,6 +7787,90 @@ def _fmt_cars_compact_for_forme(cars):
         return "—"
 
 
+# ==============================
+# 三展開合成フォメ 圧縮設定
+# ==============================
+ATTACK_FORME_MAX_TICKETS = 3   # 最終購入点数。原則3点。
+ATTACK_FORME_MAX_SECONDS = 2   # 2列目最大。A-BC-CD型のBC。
+ATTACK_FORME_MAX_THIRDS  = 2   # 3列目最大。A-BC-CD型のCD。
+
+
+def _expand_santan_forme(A, seconds, thirds):
+    """
+    A-BC-CD 型を三連単の実買い目へ展開する。
+    同一車番重複は自然除外する。
+    例：5-43-36 -> 5→4→3 / 5→4→6 / 5→3→6
+    """
+    out = []
+    try:
+        A = int(A)
+        for s in seconds or []:
+            for t in thirds or []:
+                s = int(s)
+                t = int(t)
+                if len({A, s, t}) != 3:
+                    continue
+                out.append(f"{A}→{s}→{t}")
+    except Exception:
+        pass
+    return out
+
+
+def _compress_attack_forme(A, seconds, thirds, rec_order_for_forme=None, max_tickets=None):
+    """
+    最終購入用の三展開合成フォメへ圧縮する。
+
+    目的：
+      ・素材フォメをそのまま11点などに広げない。
+      ・最終購入は原則3点。
+      ・A-BC-CD 型を優先する。
+      ・重複除外による自然な3点化を活かす。
+    """
+    try:
+        max_tickets = int(max_tickets or ATTACK_FORME_MAX_TICKETS)
+        A = int(A)
+
+        sec = []
+        for x in seconds or []:
+            xi = int(x)
+            if xi != A and xi not in sec:
+                sec.append(xi)
+
+        th = []
+        for x in thirds or []:
+            xi = int(x)
+            if xi != A and xi not in th:
+                th.append(xi)
+
+        sec = sorted(sec, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
+        th = sorted(th, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
+
+        sec = sec[:ATTACK_FORME_MAX_SECONDS]
+        th = th[:ATTACK_FORME_MAX_THIRDS]
+
+        while len(_expand_santan_forme(A, sec, th)) > max_tickets:
+            # 3列目を削る方が、2列目の攻め筋を残しやすい。
+            if len(th) > 1:
+                th.pop()
+            elif len(sec) > 1:
+                sec.pop()
+            else:
+                break
+
+        expanded = _expand_santan_forme(A, sec, th)
+        if not expanded:
+            return None
+
+        return {
+            "forme": f"{A}-{_fmt_cars_compact_for_forme(sec)}-{_fmt_cars_compact_for_forme(th)}",
+            "expanded": expanded,
+            "seconds": sec,
+            "thirds": th,
+        }
+    except Exception:
+        return None
+
+
 def _line_members_for_car_from_members(line_members_all, car):
     """ライン配列 [[1,2],[3,4]] から指定車のラインを返す。"""
     try:
@@ -8535,7 +8620,25 @@ def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_or
         if not expanded:
             return None
 
-        forme = f"{int(A)}-{_fmt_cars_compact_for_forme(valid_seconds)}-{_fmt_cars_compact_for_forme(third_candidates)}"
+        # v64: 最終購入用に3点へ圧縮。
+        # 既存の補正で作った valid_seconds / third_candidates を素材として、
+        # A-BC-CD 型の「三展開合成フォメ」に落とす。
+        attack = _compress_attack_forme(
+            A,
+            valid_seconds,
+            third_candidates,
+            rec_order_for_forme=rec_order_for_forme,
+            max_tickets=ATTACK_FORME_MAX_TICKETS,
+        )
+
+        if attack:
+            forme = attack["forme"]
+            expanded = attack["expanded"]
+            valid_seconds = attack.get("seconds", valid_seconds)
+            third_candidates = attack.get("thirds", third_candidates)
+        else:
+            forme = f"{int(A)}-{_fmt_cars_compact_for_forme(valid_seconds)}-{_fmt_cars_compact_for_forme(third_candidates)}"
+
         if C is not None:
             pillar_text = f"{int(A)}→{int(B)}→{int(C)}"
         else:
@@ -8642,7 +8745,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         pillar_forme = _make_pillar_santan_line_forme(overlap_triples, c2, c3, rec_order_for_forme, overlap_pairs=overlap_pairs, myoumi_pairs=two)
         if pillar_forme:
             _pillar_lines = []
-            _pillar_lines.append("【推奨三連単＆三連複｜ライン補正フォメ】")
+            _pillar_lines.append("【三展開合成フォメ三連単＆三連複】")
             _pillar_lines.append("")
             _pillar_lines.append(f"{pillar_forme['forme']}　")
             _pillar_lines.append("")
