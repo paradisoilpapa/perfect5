@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v87: 旧三展開合成フォメを廃止し、推奨流れベースの34-12二車複フォメ（1-2と3-4を切る4点）を表示。
 # v85: 会場判定・最終H補正倍率・必要オッズ倍率の3点を三展+KO順位生成へ反映。悪い会場ほどKO/H補正順位を強く見る。
 # v84: 必要オッズ倍率を三展+KO順位へ反映。倍率が高い会場ほど三展固定を弱め、KO/H補正順位を強く見る。
 # v83: 三展開合成フォメ上部ブロックを必ず三展+KOスコア順位ベースの1券種1行表示に統一。生成不可フォールバックを廃止。
@@ -8416,80 +8417,122 @@ def _calc_santen_score_order(style_seq_map=None, active_cars=None, ko_order_for_
 
 def _make_santen_score_attack_forme(max_tickets=None):
     """
-    三展+KOスコア順位から、最終の三展開合成フォメを作る。
+    v87:
+    旧「三展開合成フォメ」は使わない。
+    代わりに、推奨戦法のメイン着順予想を順位母集団として、
+    34-12 の2車複フォーメーションを出す。
 
-    v81基本形：評価123・安め切りBOX型（5点）
-      三連単：A→B→C
-      2車単：B→A / C→A
-      2車複：A=C / B=C
+    推奨流れを、
+      A = 1位
+      B = 2位
+      C = 3位
+      D = 4位
+    として、
 
-    役割：
-      A→B→C = 本線の一点3連単
-      B→A   = 評価2の逆転２車単
-      C→A   = 評価3の逆転・回収起爆剤２車単
-      A=C   = 評価2飛びの補助２車複
-      B=C   = 評価1飛びのズレ補助２車複
+      2車複：C=A / C=B / D=A / D=B
+
+    つまり評価数字でいう 34-12。
+    買わないもの：
+      A=B（安い1-2）
+      C=D（深すぎる3-4）
     """
     try:
-        order, score, detail = _calc_santen_score_order()
-        if len(order) < 3:
+        # 推奨戦法のメイン着順予想を最優先で使う。
+        # ここが今回の主旨。「三展順位」ではなく「推奨流れ」から券を作る。
+        rec_style = str(globals().get("RECOMMENDED_STYLE", "") or "")
+        rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
+
+        rec_seq = [int(x) for x in (rec_seq or []) if str(x).isdigit()]
+
+        # 保険：
+        # RECOMMENDED_STYLE_SEQ がまだ無い場所から呼ばれた場合だけ、
+        # STYLE_SEQ_MAP から推奨戦法の列を拾う。
+        if len(rec_seq) < 4:
+            try:
+                style_map = globals().get("STYLE_SEQ_MAP", {}) or {}
+                if rec_style and style_map.get(rec_style):
+                    rec_seq = [int(x) for x in style_map.get(rec_style, []) if str(x).isdigit()]
+            except Exception:
+                pass
+
+        # さらに保険：
+        # 推奨流れがまだ作られていない場合だけ、旧三展+KO順位へフォールバック。
+        # ただし表示名は「フォールバック」と明記する。
+        used_fallback = False
+        detail = {}
+        score = {}
+        if len(rec_seq) < 4:
+            order, score, detail = _calc_santen_score_order()
+            rec_seq = [int(x) for x in (order or []) if str(x).isdigit()]
+            used_fallback = True
+
+        if len(rec_seq) < 4:
             return None
 
-        A = int(order[0])
-        B = int(order[1])
-        C = int(order[2])
+        A = int(rec_seq[0])
+        B = int(rec_seq[1])
+        C = int(rec_seq[2])
+        D = int(rec_seq[3])
 
-        # v82: 1券種1行。
-        # 旧表示の「展開：A→B→C / B→A / ...」「抑え2車単」は使わない。
-        tickets_lines = [
-            f"3連単｜{A}→{B}→{C}　　本線の一点",
-            f"2車単｜{B}→{A}　　　評価2の逆転",
-            f"2車単｜{C}→{A}　　　評価3の逆転・回収起爆剤",
-            f"2車複｜{A}={C}　　　評価2飛びの補助",
-            f"2車複｜{B}={C}　　　評価1飛びのズレ補助",
-        ]
+        # 34-12 二車複。重複を避けつつ順序保持。
+        raw_pairs = [(C, A), (C, B), (D, A), (D, B)]
+        seen = set()
+        pairs = []
+        for x, y in raw_pairs:
+            if int(x) == int(y):
+                continue
+            key = tuple(sorted((int(x), int(y))))
+            if key in seen:
+                continue
+            seen.add(key)
+            pairs.append((int(x), int(y)))
+
+        if not pairs:
+            return None
+
+        tickets_lines = []
+        for x, y in pairs:
+            note = "34-12"
+            if (x, y) == (C, A):
+                note = "3-1｜1-2非依存の主力"
+            elif (x, y) == (D, B):
+                note = "4-2｜1飛び側の主力"
+            elif (x, y) == (C, B):
+                note = "3-2｜補助"
+            elif (x, y) == (D, A):
+                note = "4-1｜補助"
+            tickets_lines.append(f"2車複｜{x}={y}　　　{note}")
 
         lines = []
-        lines.append("【三展+KOスコア順位】")
-        santen = (detail or {}).get("santen", {})
-        ko = (detail or {}).get("ko", {})
-        total = (detail or {}).get("total", score)
-        odds_blend = float((detail or {}).get("odds_blend", 0.0) or 0.0)
-        min_odds_mult = float((detail or {}).get("venue_min_odds_mult", 1.0) or 1.0)
-        venue_profile_for_order = str((detail or {}).get("venue_profile", "unknown") or "unknown")
-        home_flow_mult_for_order = float((detail or {}).get("venue_home_flow_mult", 1.0) or 1.0)
-        odds_pressure = float((detail or {}).get("odds_pressure", 0.0) or 0.0)
-        profile_pressure = float((detail or {}).get("profile_pressure", 0.0) or 0.0)
-        home_pressure = float((detail or {}).get("home_pressure", 0.0) or 0.0)
-        if odds_blend > 0:
-            lines.append(
-                f"※会場補正を順位へ反映：会場={venue_profile_for_order}／H倍率{home_flow_mult_for_order:.2f}／必要オッズ{min_odds_mult:.2f} "
-                f"→ 三展{(1.0-odds_blend)*100:.0f}%＋KO/H{odds_blend*100:.0f}%"
-            )
-            lines.append(
-                f"　内訳：必要{odds_pressure:.2f}・会場{profile_pressure:.2f}・H{home_pressure:.2f}"
-            )
-        for i, c in enumerate(order, start=1):
-            c = int(c)
-            lines.append(
-                f"{i}位：{c} (合成={total.get(c, 0.0):.3f}｜三展={santen.get(c, 0.0):.1f}+KO={ko.get(c, 0.0):.6f})"
-            )
+        lines.append("【推奨流れ】")
+        if rec_style:
+            lines.append(f"推奨戦法：{rec_style}")
+        lines.append(" → ".join(str(int(x)) for x in rec_seq))
+        lines.append("")
+        if used_fallback:
+            lines.append("※推奨流れ未生成のため、三展+KO順位から一時フォールバック")
+            lines.append("")
+
+        lines.append("【34-12 2車複フォメの考え方】")
+        lines.append(f"1位={A}、2位={B}、3位={C}、4位={D}")
+        lines.append(f"買う：{C}{D}-{A}{B}")
+        lines.append(f"切る：{A}={B}（安目1-2）／{C}={D}（深すぎる3-4）")
 
         return {
-            "forme": f"{A}-{B}-{C}",
-            "expanded": [f"{A}→{B}→{C}", f"{B}→{A}", f"{C}→{A}", f"{A}={C}", f"{B}={C}"],
-            "seconds": [B],
-            "thirds": [C],
-            "nitan_follow": [f"{B}→{A}", f"{C}→{A}"],
-            "nitan_forme": f"{B}{C}→{A}",
-            "fukusho_pairs": [f"{A}={C}", f"{B}={C}"],
-            "santen_order": order,
+            "forme": f"{C}{D}-{A}{B}",
+            "expanded": [f"{x}={y}" for x, y in pairs],
+            "seconds": [A, B],
+            "thirds": [C, D],
+            "nitan_follow": [],
+            "nitan_forme": "",
+            "fukusho_pairs": [f"{x}={y}" for x, y in pairs],
+            "santen_order": rec_seq,
             "santen_score": score,
             "santen_detail": detail,
             "santen_block": "\n".join(lines),
             "tickets_lines": tickets_lines,
             "tickets_block": "\n".join(tickets_lines),
-            "source": "santen_plus_ko_score_yasume_kiri_box_5ten",
+            "source": "recommended_flow_34_12_nifuku_4ten",
         }
     except Exception:
         return None
@@ -9458,9 +9501,8 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         else:
             lines.append("該当なし")
 
-        # v83: note上部の「三展開合成フォメ」は、評価重複柱ではなく
-        # 必ず三展+KOスコア順位ベースの安め切りBOX型を表示する。
-        # 旧表示の「展開：...」「抑え2車単：...」「生成不可」は出さない。
+        # v87: note上部の旧「三展開合成フォメ」は廃止。
+        # 推奨戦法のメイン着順予想から 34-12 の2車複フォメを表示する。
         globals()["PILLAR_LINE_FORME_BLOCK"] = ""
         pillar_forme = _make_santen_score_attack_forme(max_tickets=ATTACK_FORME_MAX_TICKETS)
         if pillar_forme:
@@ -9468,7 +9510,7 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
             if pillar_forme.get("santen_block"):
                 _pillar_lines.append(pillar_forme.get("santen_block"))
                 _pillar_lines.append("")
-            _pillar_lines.append("【三展開合成フォメ】")
+            _pillar_lines.append("【推奨流れ 34-12 2車複フォメ】")
             _pillar_lines.append("")
             _pillar_lines.extend(pillar_forme.get("tickets_lines", []))
             globals()["PILLAR_LINE_FORME_BLOCK"] = "\n".join(_pillar_lines)
