@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v88: note上部サマリーへ推奨流れ34-12二車複フォメを直接差し込み。PILLAR生成順に依存しないよう修正。
 # v87: 旧三展開合成フォメを廃止し、推奨流れベースの34-12二車複フォメ（1-2と3-4を切る4点）を表示。
 # v85: 会場判定・最終H補正倍率・必要オッズ倍率の3点を三展+KO順位生成へ反映。悪い会場ほどKO/H補正順位を強く見る。
 # v84: 必要オッズ倍率を三展+KO順位へ反映。倍率が高い会場ほど三展固定を弱め、KO/H補正順位を強く見る。
@@ -10262,6 +10263,54 @@ except Exception as _e:
     st.caption(sanpuku_forme_line)
 
 
+# =====================================================
+# v88: note上部へ直接出す「推奨流れ 34-12 2車複フォメ」
+#   PILLAR_LINE_FORME_BLOCK の生成順に依存しない。
+#   推奨戦法メイン着順予想から必ず作る。
+# =====================================================
+def _make_recommended_flow_34_12_summary_block(rec_style, rec_seq):
+    try:
+        seq = [int(x) for x in (rec_seq or []) if str(x).isdigit()]
+        if len(seq) < 4:
+            return ""
+
+        A, B, C, D = int(seq[0]), int(seq[1]), int(seq[2]), int(seq[3])
+
+        raw_pairs = [
+            (C, A, "3-1｜主力"),
+            (C, B, "3-2｜補助"),
+            (D, A, "4-1｜補助"),
+            (D, B, "4-2｜主力"),
+        ]
+
+        seen = set()
+        ticket_lines = []
+        for x, y, note in raw_pairs:
+            if int(x) == int(y):
+                continue
+            key = tuple(sorted((int(x), int(y))))
+            if key in seen:
+                continue
+            seen.add(key)
+            ticket_lines.append(f"2車複｜{int(x)}={int(y)}　　　{note}")
+
+        if not ticket_lines:
+            return ""
+
+        lines = []
+        lines.append("【推奨流れ 34-12 2車複フォメ】")
+        if rec_style:
+            lines.append(f"推奨戦法：{rec_style}")
+        lines.append("推奨流れ：" + " → ".join(str(int(x)) for x in seq))
+        lines.append(f"順位：1位={A}、2位={B}、3位={C}、4位={D}")
+        lines.append(f"買う：{C}{D}-{A}{B}")
+        lines.append(f"切る：{A}={B}（1-2安目）／{C}={D}（3-4深目）")
+        lines.append("")
+        lines.extend(ticket_lines)
+        return "\n".join(lines)
+    except Exception as e:
+        return f"【推奨流れ 34-12 2車複フォメ】生成不可（{e}）"
+
 # -----------------------------------------
 # note上部に実戦用サマリーを差し込む
 # 詳細部は行単位で保存する
@@ -10280,11 +10329,12 @@ try:
 
     if _rec_style and _rec_seq:
         _rec_display_seq = " → ".join(str(int(x)) for x in _rec_seq)
+        _flow_34_12_block = _make_recommended_flow_34_12_summary_block(_rec_style, _rec_seq)
         summary_block = (
             f"\n\n✅ 推奨戦法：{_rec_style}\n\n"
             f"【{_rec_style}メイン着順予想】\n"
             f"{_rec_display_seq}\n\n"
-            + (("＊＊＊＊\n" + globals().get("PILLAR_LINE_FORME_BLOCK", "") + "\n＊＊＊＊\n\n") if globals().get("PILLAR_LINE_FORME_BLOCK", "") else "")
+            + (("＊＊＊＊\n" + _flow_34_12_block + "\n＊＊＊＊\n\n") if _flow_34_12_block else "")
             + f"コピー用：{_rec_copy}\n\n"
             f"全体妙味：{expect_axis_label}\n\n"
             f"{column_eval_block}\n\n"
