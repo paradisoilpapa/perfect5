@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v90: 三展フォメを廃止し、推奨流れ34-12二車複フォメをメイン表示とnoteコピー両方へ出す。
 # v85: 会場判定・最終H補正倍率・必要オッズ倍率の3点を三展+KO順位生成へ反映。悪い会場ほどKO/H補正順位を強く見る。
 # v84: 必要オッズ倍率を三展+KO順位へ反映。倍率が高い会場ほど三展固定を弱め、KO/H補正順位を強く見る。
 # v83: 三展開合成フォメ上部ブロックを必ず三展+KOスコア順位ベースの1券種1行表示に統一。生成不可フォールバックを廃止。
@@ -8467,7 +8468,9 @@ def _make_recommended_flow_34_12_block():
         lines = []
         lines.append("【推奨流れ 34-12 2車複フォメ】")
         lines.append("")
-        lines.append(f"推奨戦法：{style}")
+        # noteコピー整理で下部重複ブロックと誤判定されないよう、
+        # ここでは plain な「推奨戦法：」は使わない。
+        lines.append(f"対象戦法：{style}")
         lines.append("推奨流れ：" + " → ".join(str(int(x)) for x in xs))
         lines.append("")
         lines.append(f"1位={A}　2位={B}　3位={C}　4位={D}")
@@ -9487,7 +9490,19 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         center_keys = set()
         overlap_triples = _collect_eval_overlap_3kei(c1, c2, c3, int(role1), mark_map, rec_order_for_forme)
 
-        lines = ["【ヴェロビ的買目】"]
+        # v90: 旧「三展開合成フォメ」の差し替えブロックを、
+        #      メイン表示にもnoteコピーにも必ず出す。
+        flow_34_12_block = _make_recommended_flow_34_12_block()
+        globals()["PILLAR_LINE_FORME_BLOCK"] = flow_34_12_block
+
+        lines = []
+        if flow_34_12_block:
+            lines.append(flow_34_12_block)
+            lines.append("")
+            lines.append("＊＊＊＊")
+            lines.append("")
+
+        lines.append("【ヴェロビ的買目】")
 
         lines.append("")
         lines.append(f"2車複｜妙味通過（{MYOUMI_PASS_THRESHOLD_2KEI:.1f}pt以上）：")
