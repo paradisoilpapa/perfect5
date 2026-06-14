@@ -10405,27 +10405,25 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
 
 def _compact_note_copy_display_only(text: str) -> str:
     """
-    noteコピー欄に出す表示だけを圧縮する。
+    noteコピー欄の表示だけを圧縮する。
     コード本体・計算・note_sectionsは残す。
+
+    絶対に残す：
+    ・【ヴェロビ的事前買目】ブロック全部
+      2車複｜妙味通過
+      2車複’｜評価重複
+      三連複｜妙味通過
+      三連複’｜評価重複
     """
     try:
-        txt = str(text or "")
+        raw = str(text or "")
 
-        # 詰まりやすい見出し・主要行だけ改行補正
-        insert_before = [
-            "全体妙味：",
-            "✅ 推奨戦法：",
-            "コピー用：",
+        # ===== 表示用の改行補正 =====
+        # ブロック境界
+        headers = [
             "【ヴェロビ的事前買目】",
             "【想定期待値推奨",
             "【妙味ポイント",
-            "デイ　",
-            "モーニング　",
-            "ナイター　",
-            "ミッドナイト　",
-            "ライン　",
-            "最終ホーム想定",
-            "H主導ライン",
             "【ライン評価グループ】",
             "【KO使用スコア（降順）】",
             "【順流メイン着順予想】",
@@ -10433,15 +10431,37 @@ def _compact_note_copy_display_only(text: str) -> str:
             "【逆流メイン着順予想】",
             "＜短評＞",
         ]
-        for key in insert_before:
-            txt = txt.replace(key, "\n" + key)
+        for h in headers:
+            raw = raw.replace(h, "\n" + h)
 
-        lines = [str(x).rstrip() for x in txt.splitlines()]
+        # 行の境界
+        raw = raw.replace("全体妙味：", "\n全体妙味：")
+        raw = raw.replace("✅ 推奨戦法：", "\n✅ 推奨戦法：")
+        raw = raw.replace("コピー用：", "\nコピー用：")
+        raw = raw.replace("最終ホーム想定", "\n最終ホーム想定")
+        raw = raw.replace("H主導ライン", "\nH主導ライン")
+
+        raw = re.sub(r"(?<!\n)(デイ|モーニング|ナイター|ミッドナイト)　", r"\n\1　", raw)
+        raw = re.sub(r"(?<!H主導)(?<![Ａ-ＺA-Z級])ライン　", "\nライン　", raw)
+
+        # 買い目行の境界。ここは削除ではなく改行だけ。
+        ticket_heads = [
+            "2車複｜",
+            "2車複’｜",
+            "三連複｜",
+            "三連複’｜",
+            "2車複：",
+            "三連複：",
+        ]
+        for h in ticket_heads:
+            raw = raw.replace(h, "\n" + h)
+
+        lines = [str(x).rstrip() for x in raw.splitlines()]
 
         def ns(s: str) -> str:
             return str(s or "").strip()
 
-        def is_header(s: str) -> bool:
+        def is_any_header(s: str) -> bool:
             t = ns(s)
             return t.startswith("【") or t.startswith("＜")
 
@@ -10451,10 +10471,10 @@ def _compact_note_copy_display_only(text: str) -> str:
 
         def append_line(out: list[str], s: str):
             t = str(s).rstrip()
-            if t:
+            if ns(t):
                 out.append(t)
 
-        def first_line_match(pattern: str):
+        def first_match(pattern: str) -> str:
             rgx = re.compile(pattern)
             for line in lines:
                 t = ns(line)
@@ -10462,29 +10482,30 @@ def _compact_note_copy_display_only(text: str) -> str:
                     return t
             return ""
 
-        def first_prefix(prefix: str):
+        def first_prefix(prefix: str) -> str:
             for line in lines:
                 t = ns(line)
                 if t.startswith(prefix):
                     return t
             return ""
 
-        def block_by_prefix(prefix: str):
-            out = []
+        def block_by_prefix(prefix: str) -> list[str]:
+            """指定ヘッダーから次のヘッダー直前まで。中の買い目行は必ず残す。"""
+            out_block = []
             i = 0
             while i < len(lines):
                 t = ns(lines[i])
                 if t.startswith(prefix):
-                    out.append(t)
+                    out_block.append(t)
                     i += 1
                     while i < len(lines):
                         nt = ns(lines[i])
-                        if is_header(nt):
+                        if is_any_header(nt):
                             break
                         if nt:
-                            out.append(str(lines[i]).rstrip())
+                            out_block.append(str(lines[i]).rstrip())
                         i += 1
-                    return out
+                    return out_block
                 i += 1
             return []
 
@@ -10495,13 +10516,21 @@ def _compact_note_copy_display_only(text: str) -> str:
             for x in block:
                 append_line(out, x)
 
+        def add_single(out: list[str], line: str):
+            if not line:
+                return
+            append_blank(out)
+            append_line(out, line)
+
         out = []
 
-        race_line = first_line_match(r"^[^\s　【＜]+[0-9０-９]+R$")
+        # レース名
+        race_line = first_match(r"^[^\s　【＜]+[0-9０-９]+R$")
         if race_line:
             append_line(out, race_line)
             append_blank(out)
 
+        # 展開評価・全体妙味
         tenkai = first_prefix("展開評価：")
         myoumi = first_prefix("全体妙味：")
         if tenkai:
@@ -10509,37 +10538,42 @@ def _compact_note_copy_display_only(text: str) -> str:
         if myoumi:
             append_line(out, myoumi)
 
+        # 推奨戦法
         style_line = first_prefix("✅ 推奨戦法：")
         if style_line:
             append_blank(out)
             append_line(out, style_line)
 
-        # 推奨戦法のメイン着順予想を先に出す
+        # 推奨戦法のメイン着順予想
         style = ""
-        m_style = re.search(r"推奨戦法：([^\n]+)", style_line)
-        if m_style:
-            style = m_style.group(1).strip()
+        m = re.search(r"推奨戦法：([^\n]+)", style_line)
+        if m:
+            style = m.group(1).strip()
         if style in ("順流", "渦", "逆流"):
-            add_block(out, block_by_prefix(f"【{style}メイン着順予想】"))
+            add_single(out, first_prefix(f"【{style}メイン着順予想】"))
 
+        # コピー用
         copy_line = first_prefix("コピー用：")
         if copy_line:
             append_blank(out)
             append_line(out, copy_line)
 
+        # ===== ここを絶対に残す =====
         add_block(out, block_by_prefix("【ヴェロビ的事前買目】"))
+
+        # 期待値・妙味
         add_block(out, block_by_prefix("【想定期待値推奨"))
         add_block(out, block_by_prefix("【妙味ポイント"))
 
-        # ライン情報
+        # レース情報
         race_info = []
-        for p in ("デイ", "モーニング", "ナイター", "ミッドナイト"):
-            v = first_prefix(p)
+        for pfx in ("デイ", "モーニング", "ナイター", "ミッドナイト"):
+            v = first_prefix(pfx)
             if v:
                 race_info.append(v)
                 break
-        for p in ("ライン　", "最終ホーム想定", "H主導ライン"):
-            v = first_prefix(p)
+        for pfx in ("ライン　", "最終ホーム想定", "H主導ライン"):
+            v = first_prefix(pfx)
             if v and v not in race_info:
                 race_info.append(v)
         if race_info:
@@ -10547,14 +10581,15 @@ def _compact_note_copy_display_only(text: str) -> str:
             for x in race_info:
                 append_line(out, x)
 
+        # 下部分析
         add_block(out, block_by_prefix("【ライン評価グループ】"))
         add_block(out, block_by_prefix("【KO使用スコア（降順）】"))
-        add_block(out, block_by_prefix("【順流メイン着順予想】"))
-        add_block(out, block_by_prefix("【渦メイン着順予想】"))
-        add_block(out, block_by_prefix("【逆流メイン着順予想】"))
+        add_single(out, first_prefix("【順流メイン着順予想】"))
+        add_single(out, first_prefix("【渦メイン着順予想】"))
+        add_single(out, first_prefix("【逆流メイン着順予想】"))
         add_block(out, block_by_prefix("＜短評＞"))
 
-        # 連続空行整理
+        # 空行整理
         cleaned = []
         prev_blank = False
         for x in out:
@@ -10568,7 +10603,6 @@ def _compact_note_copy_display_only(text: str) -> str:
 
     except Exception:
         return text
-
 
 note_text = _replace_tanpyou_with_simple_comment(note_text)
 note_text = _compact_note_copy_display_only(note_text)
