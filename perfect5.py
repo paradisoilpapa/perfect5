@@ -10414,12 +10414,20 @@ def _compact_note_copy_display_only(text: str) -> str:
       2車複’｜評価重複
       三連複｜妙味通過
       三連複’｜評価重複
+    ・推奨戦法のメイン着順予想は、上部に「中身付き」で残す
+    ・下部の順流/渦/逆流メイン着順予想も「中身付き」で残す
+
+    消す：
+    ・推奨流れ34-12 2車複フォメ
+    ・VeloBi列評価
+    ・会場×最終Hライン補正
+    ・補正詳細
     """
     try:
         raw = str(text or "")
 
         # ===== 表示用の改行補正 =====
-        # ブロック境界
+        # 1行に詰まったブロック境界を分ける。削除はしない。
         headers = [
             "【ヴェロビ的事前買目】",
             "【想定期待値推奨",
@@ -10434,17 +10442,17 @@ def _compact_note_copy_display_only(text: str) -> str:
         for h in headers:
             raw = raw.replace(h, "\n" + h)
 
-        # 行の境界
         raw = raw.replace("全体妙味：", "\n全体妙味：")
         raw = raw.replace("✅ 推奨戦法：", "\n✅ 推奨戦法：")
         raw = raw.replace("コピー用：", "\nコピー用：")
+
+        # レース情報が詰まるケースを分割
+        raw = re.sub(r"(デイ|モーニング|ナイター|ミッドナイト)(　[^\n]*?級)ライン　", r"\n\1\2\nライン　", raw)
         raw = raw.replace("最終ホーム想定", "\n最終ホーム想定")
         raw = raw.replace("H主導ライン", "\nH主導ライン")
+        raw = re.sub(r"(?<!H主導)(?<!級)ライン　", "\nライン　", raw)
 
-        raw = re.sub(r"(?<!\n)(デイ|モーニング|ナイター|ミッドナイト)　", r"\n\1　", raw)
-        raw = re.sub(r"(?<!H主導)(?<![Ａ-ＺA-Z級])ライン　", "\nライン　", raw)
-
-        # 買い目行の境界。ここは削除ではなく改行だけ。
+        # 買い目行の境界。削除ではなく改行だけ。
         ticket_heads = [
             "2車複｜",
             "2車複’｜",
@@ -10464,6 +10472,18 @@ def _compact_note_copy_display_only(text: str) -> str:
         def is_any_header(s: str) -> bool:
             t = ns(s)
             return t.startswith("【") or t.startswith("＜")
+
+        def is_race_info_start(s: str) -> bool:
+            t = ns(s)
+            return (
+                t.startswith("デイ")
+                or t.startswith("モーニング")
+                or t.startswith("ナイター")
+                or t.startswith("ミッドナイト")
+                or t.startswith("ライン　")
+                or t.startswith("最終ホーム想定")
+                or t.startswith("H主導ライン")
+            )
 
         def append_blank(out: list[str]):
             if out and out[-1] != "":
@@ -10489,8 +10509,8 @@ def _compact_note_copy_display_only(text: str) -> str:
                     return t
             return ""
 
-        def block_by_prefix(prefix: str) -> list[str]:
-            """指定ヘッダーから次のヘッダー直前まで。中の買い目行は必ず残す。"""
+        def block_by_prefix(prefix: str, stop_on_race_info: bool = False) -> list[str]:
+            """指定ヘッダーから次のヘッダー直前まで取得する。"""
             out_block = []
             i = 0
             while i < len(lines):
@@ -10501,6 +10521,8 @@ def _compact_note_copy_display_only(text: str) -> str:
                     while i < len(lines):
                         nt = ns(lines[i])
                         if is_any_header(nt):
+                            break
+                        if stop_on_race_info and is_race_info_start(nt):
                             break
                         if nt:
                             out_block.append(str(lines[i]).rstrip())
@@ -10521,6 +10543,19 @@ def _compact_note_copy_display_only(text: str) -> str:
                 return
             append_blank(out)
             append_line(out, line)
+
+        def add_unique_lines(out: list[str], items: list[str]):
+            seen = set()
+            vals = []
+            for x in items:
+                t = ns(x)
+                if t and t not in seen:
+                    vals.append(t)
+                    seen.add(t)
+            if vals:
+                append_blank(out)
+                for x in vals:
+                    append_line(out, x)
 
         out = []
 
@@ -10544,13 +10579,13 @@ def _compact_note_copy_display_only(text: str) -> str:
             append_blank(out)
             append_line(out, style_line)
 
-        # 推奨戦法のメイン着順予想
+        # 推奨戦法のメイン着順予想を中身付きで上部に残す
         style = ""
         m = re.search(r"推奨戦法：([^\n]+)", style_line)
         if m:
             style = m.group(1).strip()
         if style in ("順流", "渦", "逆流"):
-            add_single(out, first_prefix(f"【{style}メイン着順予想】"))
+            add_block(out, block_by_prefix(f"【{style}メイン着順予想】", stop_on_race_info=True))
 
         # コピー用
         copy_line = first_prefix("コピー用：")
@@ -10558,14 +10593,14 @@ def _compact_note_copy_display_only(text: str) -> str:
             append_blank(out)
             append_line(out, copy_line)
 
-        # ===== ここを絶対に残す =====
-        add_block(out, block_by_prefix("【ヴェロビ的事前買目】"))
+        # ヴェロビ的事前買目は絶対に残す
+        add_block(out, block_by_prefix("【ヴェロビ的事前買目】", stop_on_race_info=True))
 
         # 期待値・妙味
-        add_block(out, block_by_prefix("【想定期待値推奨"))
-        add_block(out, block_by_prefix("【妙味ポイント"))
+        add_block(out, block_by_prefix("【想定期待値推奨", stop_on_race_info=True))
+        add_block(out, block_by_prefix("【妙味ポイント", stop_on_race_info=True))
 
-        # レース情報
+        # レース情報は1回だけ残す
         race_info = []
         for pfx in ("デイ", "モーニング", "ナイター", "ミッドナイト"):
             v = first_prefix(pfx)
@@ -10574,20 +10609,17 @@ def _compact_note_copy_display_only(text: str) -> str:
                 break
         for pfx in ("ライン　", "最終ホーム想定", "H主導ライン"):
             v = first_prefix(pfx)
-            if v and v not in race_info:
+            if v:
                 race_info.append(v)
-        if race_info:
-            append_blank(out)
-            for x in race_info:
-                append_line(out, x)
+        add_unique_lines(out, race_info)
 
         # 下部分析
-        add_block(out, block_by_prefix("【ライン評価グループ】"))
-        add_block(out, block_by_prefix("【KO使用スコア（降順）】"))
-        add_single(out, first_prefix("【順流メイン着順予想】"))
-        add_single(out, first_prefix("【渦メイン着順予想】"))
-        add_single(out, first_prefix("【逆流メイン着順予想】"))
-        add_block(out, block_by_prefix("＜短評＞"))
+        add_block(out, block_by_prefix("【ライン評価グループ】", stop_on_race_info=True))
+        add_block(out, block_by_prefix("【KO使用スコア（降順）】", stop_on_race_info=True))
+        add_block(out, block_by_prefix("【順流メイン着順予想】", stop_on_race_info=True))
+        add_block(out, block_by_prefix("【渦メイン着順予想】", stop_on_race_info=True))
+        add_block(out, block_by_prefix("【逆流メイン着順予想】", stop_on_race_info=True))
+        add_block(out, block_by_prefix("＜短評＞", stop_on_race_info=True))
 
         # 空行整理
         cleaned = []
