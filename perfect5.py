@@ -10352,98 +10352,21 @@ except Exception as _e:
 
 # -----------------------------------------
 # noteコピー表示整理（表示だけ。計算・順位・フォメ生成には触らない）
-# 削除対象：
-# ・ラスト半周補正ブロック
-# ・下部の重複した推奨戦法〜コピー用
-# ・軸評価〜2車複候補〜絞り推奨買目〜仮想単勝
-# 残す対象：
-# ・上部サマリー
-# ・ライン評価グループ
-# ・KO使用スコア
-# ・順流/渦/逆流メイン着順予想
-# ・短評
 # -----------------------------------------
-def _clean_note_copy_display_only(text: str) -> str:
-    try:
-        lines = str(text).splitlines()
-        out = []
-        i = 0
-        n = len(lines)
 
-        while i < n:
-            line = lines[i]
-            s = line.strip()
-
-            # 1) ラスト半周補正ブロックを削除
-            if s == "【ラスト半周補正】":
-                i += 1
-                # 次の空行まで飛ばす
-                while i < n and lines[i].strip() != "":
-                    i += 1
-                # 空行も1つ飛ばす
-                while i < n and lines[i].strip() == "":
-                    i += 1
-                continue
-
-            # 2) 下部の重複した推奨戦法〜仮想単勝まで削除
-            #    戦法別着順予想の後に出る plain な「推奨戦法：」から始まるブロックだけ対象。
-            if re.match(r"^推奨戦法：", s):
-                i += 1
-                # ＜短評＞直前まで飛ばす
-                while i < n and lines[i].strip() != "＜短評＞":
-                    i += 1
-                # ＜短評＞は残すので continue せず、次ループで処理
-                continue
-
-            # 3) 念のため、軸評価から始まってしまった下部買い目ブロックも削除
-            if re.match(r"^軸評価：", s):
-                i += 1
-                while i < n and lines[i].strip() != "＜短評＞":
-                    i += 1
-                continue
-
-            out.append(line)
-            i += 1
-
-        # 連続空行を最大2行に抑える
-        cleaned = []
-        blank = 0
-        for line in out:
-            if line.strip() == "":
-                blank += 1
-                if blank <= 2:
-                    cleaned.append(line)
-            else:
-                blank = 0
-                cleaned.append(line)
-
-        return "\n".join(cleaned).strip() + "\n"
-
-    except Exception:
-        return text
-
-
-
-# -----------------------------------------
-# 短評をアプリ向け定型コメントへ置換（表示だけ。計算・順位・フォメ生成には触らない）
-# -----------------------------------------
 def _replace_tanpyou_with_simple_comment(text: str) -> str:
     try:
         txt = str(text)
 
-        # 全体妙味を取得
         m_myoumi = re.search(r"全体妙味：([^\s（]+)", txt)
         myoumi = m_myoumi.group(1).strip() if m_myoumi else "未判定"
 
-        # 順当度を旧短評から取得
         m_jundo = re.search(r"・順当度：([^［\n]+)", txt)
         jundo = m_jundo.group(1).strip() if m_jundo else "未判定"
 
-        # 推奨戦法を取得
         m_style = re.search(r"✅\s*推奨戦法：([^\n]+)", txt)
         style = m_style.group(1).strip() if m_style else "推奨戦法"
 
-        # 全体妙味コメント
         if myoumi in ("低", "C"):
             line1 = f"・全体妙味：{myoumi}。市場評価と近い構成。"
         elif myoumi == "B":
@@ -10455,13 +10378,14 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         else:
             line1 = "・全体妙味：未判定。"
 
-        # 展開コメント
         if jundo and jundo != "未判定":
             line2 = f"・展開は{jundo}。"
         else:
-            line2 = "・展開は未判定。"
+            # 既存の展開評価行から補完
+            m_tenkai = re.search(r"展開評価：([^\n]+)", txt)
+            tenkai = m_tenkai.group(1).strip() if m_tenkai else "未判定"
+            line2 = f"・展開は{tenkai}。" if tenkai != "未判定" else "・展開は未判定。"
 
-        # 戦法コメント
         if style in ("順流", "渦", "逆流"):
             line3 = f"・{style}メインで確認。"
         else:
@@ -10469,7 +10393,6 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
 
         new_block = "＜短評＞\n" + "\n".join([line1, line2, line3])
 
-        # ＜短評＞以降を定型コメントに差し替える
         if "＜短評＞" in txt:
             txt = re.sub(r"＜短評＞[\s\S]*$", new_block + "\n", txt)
         else:
@@ -10479,8 +10402,176 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
     except Exception:
         return text
 
-note_text = _clean_note_copy_display_only(note_text)
+
+def _compact_note_copy_display_only(text: str) -> str:
+    """
+    noteコピー欄に出す表示だけを圧縮する。
+    コード本体・計算・note_sectionsは残す。
+    """
+    try:
+        txt = str(text or "")
+
+        # 詰まりやすい見出し・主要行だけ改行補正
+        insert_before = [
+            "全体妙味：",
+            "✅ 推奨戦法：",
+            "コピー用：",
+            "【ヴェロビ的事前買目】",
+            "【想定期待値推奨",
+            "【妙味ポイント",
+            "デイ　",
+            "モーニング　",
+            "ナイター　",
+            "ミッドナイト　",
+            "ライン　",
+            "最終ホーム想定",
+            "H主導ライン",
+            "【ライン評価グループ】",
+            "【KO使用スコア（降順）】",
+            "【順流メイン着順予想】",
+            "【渦メイン着順予想】",
+            "【逆流メイン着順予想】",
+            "＜短評＞",
+        ]
+        for key in insert_before:
+            txt = txt.replace(key, "\n" + key)
+
+        lines = [str(x).rstrip() for x in txt.splitlines()]
+
+        def ns(s: str) -> str:
+            return str(s or "").strip()
+
+        def is_header(s: str) -> bool:
+            t = ns(s)
+            return t.startswith("【") or t.startswith("＜")
+
+        def append_blank(out: list[str]):
+            if out and out[-1] != "":
+                out.append("")
+
+        def append_line(out: list[str], s: str):
+            t = str(s).rstrip()
+            if t:
+                out.append(t)
+
+        def first_line_match(pattern: str):
+            rgx = re.compile(pattern)
+            for line in lines:
+                t = ns(line)
+                if rgx.search(t):
+                    return t
+            return ""
+
+        def first_prefix(prefix: str):
+            for line in lines:
+                t = ns(line)
+                if t.startswith(prefix):
+                    return t
+            return ""
+
+        def block_by_prefix(prefix: str):
+            out = []
+            i = 0
+            while i < len(lines):
+                t = ns(lines[i])
+                if t.startswith(prefix):
+                    out.append(t)
+                    i += 1
+                    while i < len(lines):
+                        nt = ns(lines[i])
+                        if is_header(nt):
+                            break
+                        if nt:
+                            out.append(str(lines[i]).rstrip())
+                        i += 1
+                    return out
+                i += 1
+            return []
+
+        def add_block(out: list[str], block: list[str]):
+            if not block:
+                return
+            append_blank(out)
+            for x in block:
+                append_line(out, x)
+
+        out = []
+
+        race_line = first_line_match(r"^[^\s　【＜]+[0-9０-９]+R$")
+        if race_line:
+            append_line(out, race_line)
+            append_blank(out)
+
+        tenkai = first_prefix("展開評価：")
+        myoumi = first_prefix("全体妙味：")
+        if tenkai:
+            append_line(out, tenkai)
+        if myoumi:
+            append_line(out, myoumi)
+
+        style_line = first_prefix("✅ 推奨戦法：")
+        if style_line:
+            append_blank(out)
+            append_line(out, style_line)
+
+        # 推奨戦法のメイン着順予想を先に出す
+        style = ""
+        m_style = re.search(r"推奨戦法：([^\n]+)", style_line)
+        if m_style:
+            style = m_style.group(1).strip()
+        if style in ("順流", "渦", "逆流"):
+            add_block(out, block_by_prefix(f"【{style}メイン着順予想】"))
+
+        copy_line = first_prefix("コピー用：")
+        if copy_line:
+            append_blank(out)
+            append_line(out, copy_line)
+
+        add_block(out, block_by_prefix("【ヴェロビ的事前買目】"))
+        add_block(out, block_by_prefix("【想定期待値推奨"))
+        add_block(out, block_by_prefix("【妙味ポイント"))
+
+        # ライン情報
+        race_info = []
+        for p in ("デイ", "モーニング", "ナイター", "ミッドナイト"):
+            v = first_prefix(p)
+            if v:
+                race_info.append(v)
+                break
+        for p in ("ライン　", "最終ホーム想定", "H主導ライン"):
+            v = first_prefix(p)
+            if v and v not in race_info:
+                race_info.append(v)
+        if race_info:
+            append_blank(out)
+            for x in race_info:
+                append_line(out, x)
+
+        add_block(out, block_by_prefix("【ライン評価グループ】"))
+        add_block(out, block_by_prefix("【KO使用スコア（降順）】"))
+        add_block(out, block_by_prefix("【順流メイン着順予想】"))
+        add_block(out, block_by_prefix("【渦メイン着順予想】"))
+        add_block(out, block_by_prefix("【逆流メイン着順予想】"))
+        add_block(out, block_by_prefix("＜短評＞"))
+
+        # 連続空行整理
+        cleaned = []
+        prev_blank = False
+        for x in out:
+            blank = ns(x) == ""
+            if blank and prev_blank:
+                continue
+            cleaned.append(x)
+            prev_blank = blank
+
+        return "\n".join(cleaned).strip() + "\n"
+
+    except Exception:
+        return text
+
+
 note_text = _replace_tanpyou_with_simple_comment(note_text)
+note_text = _compact_note_copy_display_only(note_text)
 
 st.text_area("ここを選択してコピー", note_text, height=620)
 # =========================
