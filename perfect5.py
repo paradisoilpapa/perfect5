@@ -5,6 +5,7 @@
 # v94: noteコピー欄を最終推奨中心へ圧縮。列評価・旧フォメ・会場H詳細ログをnote出力から除外。
 # v93: v92の未入力ステータス表示を削除。合成実効オッズ未入力時は基本推奨だけを表示し、余計な状態文を出さない。
 # v92: 基本推奨に評価順1-2-全 三連複を追加。合成実効オッズ2.5倍未満の時だけ34-12 2車複フォメを切替推奨表示。
+# v99: note推奨を短文化。不要な合成実効オッズ入力・12-34確率入力を削除し、1-2ワイド確率だけで下限表示。
 # v98: note最終推奨の説明文を短縮。判定基準は的中率と推奨下限合成オッズのみ表示。
 # v90: 三展フォメを廃止し、推奨流れ34-12二車複フォメをメイン表示とnoteコピー両方へ出す。
 # v91: 推奨流れ34-12フォメの説明行（順位対応/買う/切る）を削除し、買い目だけを簡潔表示。
@@ -308,20 +309,22 @@ def _calc_flow_switch_metric(hit_count, total_count, target_ev, safety_factor):
     return out
 
 
-def _calc_flow_switch_stats(total_count, wide12_hits, nifuku1234_hits, target_ev, safety_factor):
+def _calc_flow_switch_stats(total_count, wide12_hits, target_ev=None, safety_factor=None, nifuku1234_hits=None):
+    """
+    推奨流れ1-2-全 三連複の下限計算用。
+    必要なのは「推奨流れ1-2ワイド的中率」だけ。
+    12-34系2車複の確率は切替候補の表示には使わない。
+    """
     total_i = _safe_int_or_none(total_count)
     wide_i = _safe_int_or_none(wide12_hits)
-    nifuku_i = _safe_int_or_none(nifuku1234_hits)
     target_f = _safe_float_or_none(target_ev)
     safety_f = _safe_float_or_none(safety_factor)
     return {
         "total_count": total_i,
         "wide12_hits": wide_i,
-        "nifuku1234_hits": nifuku_i,
         "target_ev": target_f,
         "safety_factor": safety_f,
         "trio12_all": _calc_flow_switch_metric(wide_i, total_i, target_f, safety_f),
-        "nifuku34_12": _calc_flow_switch_metric(nifuku_i, total_i, target_f, safety_f),
     }
 
 def _fmt_pct(v):
@@ -352,10 +355,9 @@ def _fmt_ev_required_label(target_ev):
 def _get_flow_switch_stats_from_state():
     total = st.session_state.get("flow_switch_total_races", None)
     wide_hits = st.session_state.get("flow_switch_12_wide_hits", None)
-    nifuku_hits = st.session_state.get("flow_switch_1234_nifuku_hits", None)
     target_ev = st.session_state.get("flow_switch_target_ev", None)
     safety = st.session_state.get("flow_switch_safety_factor", None)
-    return _calc_flow_switch_stats(total, wide_hits, nifuku_hits, target_ev, safety)
+    return _calc_flow_switch_stats(total, wide_hits, target_ev, safety)
 
 
 def _flow_12_all_recommended_floor():
@@ -393,11 +395,7 @@ def _make_flow_switch_pairs(xs):
 def _append_flow_switch_criteria_lines(lines, stats, include_headers=True):
     total = int(stats.get("total_count") or 0)
     wide_hits = int(stats.get("wide12_hits") or 0)
-    nifuku_hits = int(stats.get("nifuku1234_hits") or 0)
-    target_ev = stats.get("target_ev", None)
-    safety = float(stats.get("safety_factor", 1.0) or 1.0)
     trio = stats.get("trio12_all", {}) or {}
-    nifuku = stats.get("nifuku34_12", {}) or {}
 
     if include_headers:
         lines.append("【1-2-全 三連複 判定基準】")
@@ -408,37 +406,9 @@ def _append_flow_switch_criteria_lines(lines, stats, include_headers=True):
     else:
         lines.append("—")
     lines.append("")
-    lines.append("損益分岐合成オッズ：")
-    lines.append(_fmt_odds(trio.get("break_even_odds")))
-    lines.append("")
-    lines.append(_fmt_ev_required_label(target_ev))
-    lines.append(_fmt_odds(trio.get("ev_required_odds")))
-    lines.append("")
-    lines.append("安全係数込み 推奨下限合成オッズ：")
+    lines.append("推奨下限合成オッズ：")
     lines.append(_fmt_odds(trio.get("recommended_floor_odds")))
-    lines.append("")
-    lines.append("切替条件：")
-    lines.append("上記三連複の合成実効オッズが、推奨下限合成オッズ未満なら、")
-    lines.append("推奨流れ34-12 2車複フォメへ切替検討。")
-    lines.append("")
 
-    if include_headers:
-        lines.append("【34-12 2車複 判定基準】")
-        lines.append("")
-    lines.append("現在の推奨流れ12-34系 2車複的中率：")
-    if total > 0:
-        lines.append(f"{nifuku_hits} / {total} = {_fmt_pct(nifuku.get('hit_rate'))}")
-    else:
-        lines.append("—")
-    lines.append("")
-    lines.append("損益分岐合成オッズ：")
-    lines.append(_fmt_odds(nifuku.get("break_even_odds")))
-    lines.append("")
-    lines.append(_fmt_ev_required_label(target_ev))
-    lines.append(_fmt_odds(nifuku.get("ev_required_odds")))
-    lines.append("")
-    lines.append("安全係数込み 推奨下限合成オッズ：")
-    lines.append(_fmt_odds(nifuku.get("recommended_floor_odds")))
 
 
 # 推奨ラベル判定用（クリア台数→方針）
@@ -1858,72 +1828,37 @@ st.session_state["venue_profile"] = venue_profile
 st.session_state["venue_home_flow_mult"] = venue_home_flow_mult
 st.session_state["venue_min_odds_mult"] = venue_min_odds_mult
 
-with st.sidebar.expander("🎯 推奨流れ1-2-全 三連複｜切替判定", expanded=False):
-    flow_12_all_trio_eff_odds = st.number_input(
-        "推奨流れ1-2-全 三連複 合成実効オッズ",
-        min_value=0.0,
-        max_value=999.9,
-        value=st.session_state.get("flow_12_all_trio_eff_odds", None),
-        step=0.1,
-        format="%.1f",
-        key="flow_12_all_trio_eff_odds",
-        help="入力した場合のみ、集計的中率・目標EV・安全係数から計算した推奨下限合成オッズと比較します。",
-    )
-
-    flow_switch_total_races = st.number_input(
+with st.sidebar.expander("🎯 推奨流れ1-2-全 三連複｜下限計算", expanded=False):
+    flow_switch_total_races = st.text_input(
         "総レース数",
-        min_value=0,
-        max_value=100000,
-        value=st.session_state.get("flow_switch_total_races", None),
-        step=1,
+        value=str(st.session_state.get("flow_switch_total_races", "") or ""),
         key="flow_switch_total_races",
     )
-    flow_switch_12_wide_hits = st.number_input(
+    flow_switch_12_wide_hits = st.text_input(
         "推奨流れ1-2ワイド的中数",
-        min_value=0,
-        max_value=100000,
-        value=st.session_state.get("flow_switch_12_wide_hits", None),
-        step=1,
+        value=str(st.session_state.get("flow_switch_12_wide_hits", "") or ""),
         key="flow_switch_12_wide_hits",
     )
-    flow_switch_1234_nifuku_hits = st.number_input(
-        "推奨流れ12-34系 2車複的中数",
-        min_value=0,
-        max_value=100000,
-        value=st.session_state.get("flow_switch_1234_nifuku_hits", None),
-        step=1,
-        key="flow_switch_1234_nifuku_hits",
-    )
-    flow_switch_target_ev = st.number_input(
+    flow_switch_target_ev = st.text_input(
         "目標EV",
-        min_value=0.01,
-        max_value=10.00,
-        value=st.session_state.get("flow_switch_target_ev", None),
-        step=0.01,
-        format="%.2f",
+        value=str(st.session_state.get("flow_switch_target_ev", "") or ""),
         key="flow_switch_target_ev",
     )
-    flow_switch_safety_factor = st.number_input(
+    flow_switch_safety_factor = st.text_input(
         "安全係数",
-        min_value=0.01,
-        max_value=10.00,
-        value=st.session_state.get("flow_switch_safety_factor", None),
-        step=0.01,
-        format="%.2f",
+        value=str(st.session_state.get("flow_switch_safety_factor", "") or ""),
         key="flow_switch_safety_factor",
     )
 
     flow_switch_stats = _calc_flow_switch_stats(
         flow_switch_total_races,
         flow_switch_12_wide_hits,
-        flow_switch_1234_nifuku_hits,
         flow_switch_target_ev,
         flow_switch_safety_factor,
     )
     _flow12_floor = flow_switch_stats.get("trio12_all", {}).get("recommended_floor_odds", None)
-    st.caption(f"推奨流れ1-2-全 三連複 下限：{_fmt_odds(_flow12_floor)}")
+    st.caption(f"推奨下限合成オッズ：{_fmt_odds(_flow12_floor)}")
 
-globals()["flow_12_all_trio_eff_odds"] = _safe_float_or_none(st.session_state.get("flow_12_all_trio_eff_odds", None))
 globals()["FLOW_SWITCH_STATS"] = _get_flow_switch_stats_from_state()
 globals()["FLOW_12_ALL_TRIO_SWITCH_ODDS_THRESHOLD"] = _flow_12_all_recommended_floor()
 
@@ -8756,12 +8691,9 @@ def _make_recommended_flow_34_12_block():
 
 def _make_recommended_flow_12_all_trio_switch_block():
     """
-    推奨流れ1-2-全 三連複を基本表示し、
-    集計入力から計算した推奨下限合成オッズ未満なら
-    推奨流れ34-12 2車複フォメへの切替検討を表示する。
-
-    表示文言は「評価順」ではなく「推奨流れ」で統一する。
-    既存のヴェロビ的買目・妙味通過・評価重複・期待値推奨には副作用を出さない。
+    画面表示用の短縮ブロック。
+    実効オッズ入力や12-34側の確率計算は使わない。
+    1-2ワイド確率から出した推奨下限と、切替候補の車番だけを出す。
     """
     try:
         seq = globals().get("RECOMMENDED_STYLE_SEQ", []) or []
@@ -8789,101 +8721,33 @@ def _make_recommended_flow_12_all_trio_switch_block():
             return ""
 
         stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
-        threshold = _flow_12_all_recommended_floor()
-        eff_odds = _safe_float_or_none(globals().get("flow_12_all_trio_eff_odds", st.session_state.get("flow_12_all_trio_eff_odds", None)))
-        has_eff_odds = eff_odds is not None and eff_odds > 0.0
-        has_threshold = threshold is not None and threshold > 0
-        should_switch = bool(has_eff_odds and has_threshold and eff_odds < threshold)
+        trio = stats.get("trio12_all", {}) or {}
         pairs = _make_flow_switch_pairs(xs)
+        rest_text = "".join(str(int(x)) for x in rest)
 
         lines = []
-        lines.append("【基本推奨｜推奨流れ1-2-全 三連複】")
-        lines.append("推奨流れ1番手・2番手の3着内セットを軸にした基本形。")
-        lines.append("2車複1-2ではなく、三連複1-2-全として配当化する。")
-        if has_eff_odds:
-            lines.append(f"現在の合成実効オッズ：{eff_odds:.1f}倍")
+        lines.append("【ヴェロビ三連複推奨】")
         lines.append("")
-        lines.append("対象戦法：" + style)
-        lines.append("推奨流れ：" + " → ".join(str(int(x)) for x in xs))
-        lines.append("")
-        lines.append("三連複：")
-        for c in rest:
-            lines.append(f"{A}-{B}-{c}")
-
-        lines.append("")
-        lines.append("【1-2-全 三連複 判定基準】")
-        lines.append("")
-        total = int(stats.get("total_count") or 0)
-        wide_hits = int(stats.get("wide12_hits") or 0)
-        target_ev = stats.get("target_ev", None)
-        trio = stats.get("trio12_all", {}) or {}
-        lines.append("現在の推奨流れ1-2ワイド的中率：")
-        if total > 0:
-            lines.append(f"{wide_hits} / {total} = {_fmt_pct(trio.get('hit_rate'))}")
-        else:
-            lines.append("—")
-        lines.append("")
-        lines.append("損益分岐合成オッズ：")
-        lines.append(_fmt_odds(trio.get("break_even_odds")))
-        lines.append("")
-        lines.append(_fmt_ev_required_label(target_ev))
-        lines.append(_fmt_odds(trio.get("ev_required_odds")))
-        lines.append("")
-        lines.append("安全係数込み 推奨下限合成オッズ：")
+        lines.append("推奨下限合成オッズ：")
         lines.append(_fmt_odds(trio.get("recommended_floor_odds")))
         lines.append("")
-        lines.append("切替条件：")
-        lines.append("上記三連複の合成実効オッズが、推奨下限合成オッズ未満なら、")
-        lines.append("推奨流れ34-12 2車複フォメへ切替検討。")
+        lines.append(f"{A}-{B}-{rest_text}")
+        lines.append("")
+        lines.append("推奨下限合成オッズ未満なら、")
+        lines.append("下記へ切替検討。")
 
         if pairs:
             lines.append("")
-            if should_switch:
-                lines.append("【切替推奨｜推奨流れ34-12 2車複フォメ】")
-                lines.append("判定：推奨流れ34-12 2車複フォメへ切替検討")
-                lines.append(f"理由：推奨流れ1-2-全 三連複の合成実効オッズが推奨下限{threshold:.2f}倍未満。")
-            else:
-                lines.append("【切替候補｜推奨流れ34-12 2車複フォメ】")
-                if has_eff_odds and has_threshold:
-                    lines.append("判定：推奨流れ1-2-全 三連複を優先")
-                    lines.append(f"基準：推奨流れ1-2-全 三連複の推奨下限合成オッズは{threshold:.2f}倍。")
-                else:
-                    lines.append("判定：未入力のため自動切替判定なし")
-                    lines.append("基準：総レース数・的中数・目標EV・安全係数を入力後に算出。")
+            lines.append("【切替候補｜評価34-12 2車複フォメ】")
             lines.append("")
-            lines.append("狙い：")
-            lines.append("推奨流れ1番手・2番手のどちらかが垂れて4着になり、")
-            lines.append("推奨流れ3番手・4番手が連対へ上がる半崩れ狙い。")
             lines.append("")
             lines.append("切替2車複：")
             for a, b in pairs:
                 lines.append(f"{a}={b}")
-            lines.append("")
-            lines.append("【34-12 2車複 判定基準】")
-            lines.append("")
-            # 1-2-全側を重複させないため、34側だけを手で出す
-            total = int(stats.get("total_count") or 0)
-            nifuku_hits = int(stats.get("nifuku1234_hits") or 0)
-            target_ev = stats.get("target_ev", None)
-            nifuku = stats.get("nifuku34_12", {}) or {}
-            lines.append("現在の推奨流れ12-34系 2車複的中率：")
-            if total > 0:
-                lines.append(f"{nifuku_hits} / {total} = {_fmt_pct(nifuku.get('hit_rate'))}")
-            else:
-                lines.append("—")
-            lines.append("")
-            lines.append("損益分岐合成オッズ：")
-            lines.append(_fmt_odds(nifuku.get("break_even_odds")))
-            lines.append("")
-            lines.append(_fmt_ev_required_label(target_ev))
-            lines.append(_fmt_odds(nifuku.get("ev_required_odds")))
-            lines.append("")
-            lines.append("安全係数込み 推奨下限合成オッズ：")
-            lines.append(_fmt_odds(nifuku.get("recommended_floor_odds")))
 
         return "\n".join(lines)
     except Exception as e:
-        return f"【基本推奨｜推奨流れ1-2-全 三連複】生成不可（{e}）"
+        return f"【ヴェロビ三連複推奨】生成不可（{e}）"
 
 def _make_santen_score_attack_forme(max_tickets=None):
     """
@@ -10731,8 +10595,8 @@ def _extract_note_section_lines(block_text: str, header_prefix: str, max_items: 
 
 def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_label, rule_buy_block):
     """
-    note貼り付け用の最終推奨サマリー。
-    推奨流れ1-2-全 三連複と、推奨流れ34-12 2車複フォメの切替基準を出す。
+    note貼り付け用の短縮推奨サマリー。
+    12R分を並べても読めるよう、買い目と下限だけに絞る。
     """
     try:
         xs = []
@@ -10745,73 +10609,38 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     xs.append(c)
 
         lines = []
-        if rec_style:
-            lines.append(f"✅ 推奨戦法：{rec_style}")
-            lines.append("")
-
-        if xs:
-            lines.append("推奨流れ：")
-            lines.append(" → ".join(str(int(x)) for x in xs))
-            lines.append("")
-
-        lines.append("【ヴェロビ最終推奨】")
-        lines.append("")
-
-        stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
-        threshold = _flow_12_all_recommended_floor()
-        eff_odds = _safe_float_or_none(globals().get("flow_12_all_trio_eff_odds", st.session_state.get("flow_12_all_trio_eff_odds", None)))
-        has_eff_odds = eff_odds is not None and eff_odds > 0.0
-        has_threshold = threshold is not None and threshold > 0
-        should_switch = bool(has_eff_odds and has_threshold and eff_odds < threshold)
 
         if len(xs) >= 3:
             A, B = int(xs[0]), int(xs[1])
             rest = [int(x) for x in xs[2:] if int(x) not in (A, B)]
             pairs = _make_flow_switch_pairs(xs)
+            rest_text = "".join(str(int(x)) for x in rest)
 
-            if should_switch:
-                lines.append("判定：推奨流れ34-12 2車複フォメへ切替検討")
-                lines.append("理由：推奨下限合成オッズ未満")
-            else:
-                lines.append("判定：推奨流れ1-2-全 三連複を優先")
-                lines.append("理由：推奨流れ1番手・2番手の3着内セット狙い")
-            lines.append("")
-            lines.append("三連複：")
-            for c in rest:
-                lines.append(f"{A}-{B}-{c}")
-
-            lines.append("")
-            lines.append("【1-2-全 三連複 判定基準】")
-            lines.append("")
-            total = int(stats.get("total_count") or 0)
-            wide_hits = int(stats.get("wide12_hits") or 0)
+            stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
             trio = stats.get("trio12_all", {}) or {}
-            lines.append("現在の推奨流れ1-2ワイド的中率：")
-            if total > 0:
-                lines.append(f"{wide_hits} / {total} = {_fmt_pct(trio.get('hit_rate'))}")
-            else:
-                lines.append("—")
+
+            lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
             lines.append("推奨下限合成オッズ：")
             lines.append(_fmt_odds(trio.get("recommended_floor_odds")))
             lines.append("")
-            lines.append("切替条件：")
-            lines.append("上記三連複の合成実効オッズが、推奨下限合成オッズ未満なら、")
-            lines.append("推奨流れ34-12 2車複フォメへ切替検討。")
+            lines.append(f"{A}-{B}-{rest_text}")
+            lines.append("")
+            lines.append("推奨下限合成オッズ未満なら、")
+            lines.append("下記へ切替検討。")
 
             if pairs:
                 lines.append("")
-                lines.append("【切替候補｜推奨流れ34-12 2車複フォメ】")
+                lines.append("【切替候補｜評価34-12 2車複フォメ】")
                 lines.append("")
                 lines.append("")
                 lines.append("切替2車複：")
                 for a, b in pairs:
                     lines.append(f"{a}={b}")
         else:
-            lines.append("判定：生成不可")
-
-        lines.append("")
-        lines.append(f"全体妙味：{expect_axis_label}")
+            lines.append("【ヴェロビ三連複推奨】")
+            lines.append("")
+            lines.append("生成不可")
 
         support = []
         for header in [
