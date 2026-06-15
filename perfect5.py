@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# v94: noteコピー欄を最終推奨中心へ圧縮。列評価・旧フォメ・会場H詳細ログをnote出力から除外。
+# v93: v92の未入力ステータス表示を削除。合成実効オッズ未入力時は基本推奨だけを表示し、余計な状態文を出さない。
 # v92: 基本推奨に評価順1-2-全 三連複を追加。合成実効オッズ2.5倍未満の時だけ34-12 2車複フォメを切替推奨表示。
 # v90: 三展フォメを廃止し、推奨流れ34-12二車複フォメをメイン表示とnoteコピー両方へ出す。
 # v91: 推奨流れ34-12フォメの説明行（順位対応/買う/切る）を削除し、買い目だけを簡潔表示。
@@ -1668,7 +1670,7 @@ with st.sidebar.expander("🎯 基本推奨｜1-2-全 三連複", expanded=False
         step=0.1,
         format="%.1f",
         key="flow_12_all_trio_eff_odds",
-        help="0.0は未入力扱い。2.5倍未満なら34-12 2車複フォメを切替推奨として表示します。",
+        help="2.5倍未満なら34-12 2車複フォメを切替推奨として表示します。",
     )
     st.caption("判定：2.5倍未満 → 34-12 2車複フォメへ切替表示")
 
@@ -8547,8 +8549,6 @@ def _make_recommended_flow_12_all_trio_switch_block():
         lines.append(f"合成実効オッズが{threshold:.1f}倍以上ならこちらを優先。")
         if has_eff_odds:
             lines.append(f"現在の合成実効オッズ：{eff_odds:.1f}倍")
-        else:
-            lines.append("現在の合成実効オッズ：未入力（自動切替判定なし）")
         lines.append("")
         lines.append("対象戦法：" + style)
         lines.append("推奨流れ：" + " → ".join(str(int(x)) for x in xs))
@@ -10399,7 +10399,143 @@ except Exception as _e:
 # -----------------------------------------
 # note上部に実戦用サマリーを差し込む
 # 詳細部は行単位で保存する
+# v94: noteコピペ用は「最終推奨」中心に圧縮する。
+#      VeloBi列評価・旧フォメ・妙味ポイント全件・会場H詳細ログはnoteへ出さない。
 # -----------------------------------------
+def _extract_note_section_lines(block_text: str, header_prefix: str, max_items: int = 3):
+    """
+    rule_buy_block から指定見出し直下の買い目行だけを抜く。
+    note用の補助根拠を短くするための表示専用処理。
+    """
+    try:
+        lines = str(block_text or "").splitlines()
+        out = []
+        capture = False
+        for raw in lines:
+            s = raw.strip()
+            if not s:
+                if capture and out:
+                    break
+                continue
+            if s.startswith(header_prefix):
+                capture = True
+                continue
+            if capture and s.startswith(("2車複｜", "2車複’｜", "三連複｜", "三連複’｜", "【")):
+                break
+            if capture:
+                if s != "該当なし":
+                    out.append(s)
+                    if len(out) >= int(max_items):
+                        break
+        return out
+    except Exception:
+        return []
+
+
+def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_label, rule_buy_block):
+    """
+    note貼り付け用の最終推奨サマリー。
+    画面内の検証用情報ではなく、読者が迷わない最低限だけを出す。
+    """
+    try:
+        xs = []
+        seen = set()
+        for x in (rec_seq or []):
+            if str(x).isdigit():
+                c = int(x)
+                if c not in seen:
+                    seen.add(c)
+                    xs.append(c)
+
+        lines = []
+        if rec_style:
+            lines.append(f"✅ 推奨戦法：{rec_style}")
+            lines.append("")
+
+        if xs:
+            lines.append("推奨流れ：")
+            lines.append(" → ".join(str(int(x)) for x in xs))
+            lines.append("")
+
+        lines.append("【ヴェロビ最終推奨】")
+        lines.append("")
+
+        threshold = float(globals().get("FLOW_12_ALL_TRIO_SWITCH_ODDS_THRESHOLD", 2.5) or 2.5)
+        eff_odds = float(globals().get("flow_12_all_trio_eff_odds", st.session_state.get("flow_12_all_trio_eff_odds", 0.0)) or 0.0)
+        has_eff_odds = eff_odds > 0.0
+        should_switch = bool(has_eff_odds and eff_odds < threshold)
+
+        if len(xs) >= 3:
+            A, B = int(xs[0]), int(xs[1])
+            rest = [int(x) for x in xs[2:] if int(x) not in (A, B)]
+
+            if should_switch and len(xs) >= 4:
+                C, D = int(xs[2]), int(xs[3])
+                raw_pairs = [(C, A), (C, B), (D, A), (D, B)]
+                pairs = []
+                keys = set()
+                for a, b in raw_pairs:
+                    key = tuple(sorted((int(a), int(b))))
+                    if int(a) != int(b) and key not in keys:
+                        keys.add(key)
+                        pairs.append((int(a), int(b)))
+
+                lines.append("判定：評価順34-12 2車複フォメへ切替")
+                lines.append(f"理由：1-2-全 三連複の合成実効オッズが{threshold:.1f}倍未満")
+                if has_eff_odds:
+                    lines.append(f"合成実効オッズ：{eff_odds:.1f}倍")
+                lines.append("")
+                lines.append("2車複：")
+                for a, b in pairs:
+                    lines.append(f"{a}={b}")
+                lines.append("")
+                lines.append("狙い：")
+                lines.append("評価1・評価2のどちらかが垂れ、評価3・4が連対へ上がる半崩れ狙い。")
+            else:
+                lines.append("判定：評価順1-2-全 三連複を優先")
+                lines.append("理由：評価1・評価2の3着内セット狙い")
+                if has_eff_odds:
+                    lines.append(f"合成実効オッズ：{eff_odds:.1f}倍")
+                lines.append("")
+                lines.append("三連複：")
+                for c in rest:
+                    lines.append(f"{A}-{B}-{c}")
+                lines.append("")
+                lines.append("切替条件：")
+                lines.append(f"上記三連複の合成実効オッズが{threshold:.1f}倍未満なら、評価順34-12 2車複フォメへ切替。")
+        else:
+            lines.append("判定：生成不可")
+
+        lines.append("")
+        lines.append(f"全体妙味：{expect_axis_label}")
+
+        support = []
+        for header in [
+            "2車複｜妙味通過",
+            "2車複’｜評価重複",
+            "三連複｜妙味通過",
+            "三連複’｜評価重複",
+        ]:
+            vals = _extract_note_section_lines(rule_buy_block, header, max_items=3)
+            if vals:
+                label = header.replace("（", " ").split(" ")[0]
+                support.append((label, vals))
+
+        if support:
+            lines.append("")
+            lines.append("【補助根拠】")
+            for label, vals in support:
+                lines.append(f"{label}：" + "、".join(vals))
+
+        if rec_copy:
+            lines.append("")
+            lines.append(f"コピー用：{rec_copy}")
+
+        return "\n".join(lines).strip()
+    except Exception as e:
+        return f"note最終推奨サマリー生成不可：{e}"
+
+
 try:
     _rec_style = globals().get("RECOMMENDED_STYLE", "")
     _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
@@ -10412,30 +10548,13 @@ try:
     # 既存の上部サマリーだけを削除
     note_text = _strip_existing_top_summary(note_text)
 
-    if _rec_style and _rec_seq:
-        _rec_display_seq = " → ".join(str(int(x)) for x in _rec_seq)
-        summary_block = (
-            f"\n\n✅ 推奨戦法：{_rec_style}\n\n"
-            f"【{_rec_style}メイン着順予想】\n"
-            f"{_rec_display_seq}\n\n"
-            + (("＊＊＊＊\n" + globals().get("PILLAR_LINE_FORME_BLOCK", "") + "\n＊＊＊＊\n\n") if globals().get("PILLAR_LINE_FORME_BLOCK", "") else "")
-            + f"コピー用：{_rec_copy}\n\n"
-            f"全体妙味：{expect_axis_label}\n\n"
-            f"{column_eval_block}\n\n"
-            f"{nishatan_forme_line}\n"
-            f"{sanpuku_forme_line}\n"
-            + (f"\n{rule_buy_block}\n" if rule_buy_block else "")
-            + (f"\n{myoumi_point_block}\n" if myoumi_point_block else "")
-        )
-    else:
-        summary_block = (
-            f"\n\n全体妙味：{expect_axis_label}\n\n"
-            f"{column_eval_block}\n\n"
-            f"{nishatan_forme_line}\n"
-            f"{sanpuku_forme_line}\n"
-            + (f"\n{rule_buy_block}\n" if rule_buy_block else "")
-            + (f"\n{myoumi_point_block}\n" if myoumi_point_block else "")
-        )
+    summary_block = "\n\n" + _make_note_final_summary_block(
+        _rec_style,
+        _rec_seq,
+        _rec_copy,
+        expect_axis_label,
+        rule_buy_block,
+    ) + "\n"
 
     # 最初の全体妙味行の直後にだけ挿入
     _m_axis = re.search(
@@ -10461,6 +10580,7 @@ except Exception as _e:
 # noteコピー表示整理（表示だけ。計算・順位・フォメ生成には触らない）
 # 削除対象：
 # ・ラスト半周補正ブロック
+# ・会場×最終Hライン補正ブロック
 # ・下部の重複した推奨戦法〜コピー用
 # ・軸評価〜2車複候補〜絞り推奨買目〜仮想単勝
 # 残す対象：
@@ -10483,6 +10603,17 @@ def _clean_note_copy_display_only(text: str) -> str:
 
             # 1) ラスト半周補正ブロックを削除
             if s == "【ラスト半周補正】":
+                i += 1
+                # 次の空行まで飛ばす
+                while i < n and lines[i].strip() != "":
+                    i += 1
+                # 空行も1つ飛ばす
+                while i < n and lines[i].strip() == "":
+                    i += 1
+                continue
+
+            # 1-b) 会場×最終Hライン補正ブロックを削除
+            if s == "【会場×最終Hライン補正】":
                 i += 1
                 # 次の空行まで飛ばす
                 while i < n and lines[i].strip() != "":
