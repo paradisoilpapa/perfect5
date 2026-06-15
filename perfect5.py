@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v92: 基本推奨に評価順1-2-全 三連複を追加。合成実効オッズ2.5倍未満の時だけ34-12 2車複フォメを切替推奨表示。
 # v90: 三展フォメを廃止し、推奨流れ34-12二車複フォメをメイン表示とnoteコピー両方へ出す。
 # v91: 推奨流れ34-12フォメの説明行（順位対応/買う/切る）を削除し、買い目だけを簡潔表示。
 # v90: 推奨流れ34-12をメイン表示とコピー欄へ出力。
@@ -237,6 +238,9 @@ HEN_THRESHOLD = 55.0     # 偏差値クリア閾値
 HEN_STRONG_ONE = 60.0    # 単独強者の目安
 
 MAX_TICKETS = 6          # 買い目最大点数
+
+# 評価順1-2-全 三連複 → 34-12 2車複フォメ切替基準
+FLOW_12_ALL_TRIO_SWITCH_ODDS_THRESHOLD = 2.5
 
 # 推奨ラベル判定用（クリア台数→方針）
 # k>=5:「2車複・ワイド」中心（広く） / k=3,4:「3連複」 / k=1,2:「状況次第（軸流し寄り）」 / k=0:ケン
@@ -1654,6 +1658,21 @@ st.session_state["venue_return_rate"] = venue_return_rate
 st.session_state["venue_profile"] = venue_profile
 st.session_state["venue_home_flow_mult"] = venue_home_flow_mult
 st.session_state["venue_min_odds_mult"] = venue_min_odds_mult
+
+with st.sidebar.expander("🎯 基本推奨｜1-2-全 三連複", expanded=False):
+    flow_12_all_trio_eff_odds = st.number_input(
+        "1-2-全 三連複 合成実効オッズ",
+        min_value=0.0,
+        max_value=999.9,
+        value=float(st.session_state.get("flow_12_all_trio_eff_odds", 0.0) or 0.0),
+        step=0.1,
+        format="%.1f",
+        key="flow_12_all_trio_eff_odds",
+        help="0.0は未入力扱い。2.5倍未満なら34-12 2車複フォメを切替推奨として表示します。",
+    )
+    st.caption("判定：2.5倍未満 → 34-12 2車複フォメへ切替表示")
+
+globals()["flow_12_all_trio_eff_odds"] = float(st.session_state.get("flow_12_all_trio_eff_odds", 0.0) or 0.0)
 
 race_time = st.sidebar.selectbox("開催区分", ["モーニング","デイ","ナイター","ミッドナイト"], 1)
 race_day = st.sidebar.date_input("日付（風取得用）", value=date.today())
@@ -8481,6 +8500,94 @@ def _make_recommended_flow_34_12_block():
     except Exception as e:
         return f"【推奨流れ 34-12 2車複フォメ】生成不可（{e}）"
 
+
+def _make_recommended_flow_12_all_trio_switch_block():
+    """
+    v92:
+    基本表示として「評価順1-2-全 三連複」を出す。
+    1-2-全 三連複の合成実効オッズが 2.5倍未満の時だけ、
+    切替推奨として「評価順34-12 2車複フォメ」を併記する。
+
+    評価順は globals()["RECOMMENDED_STYLE_SEQ"] を正とし、無ければ STYLE_SEQ_MAP から復元する。
+    既存のヴェロビ的買目・妙味通過・評価重複・期待値推奨には副作用を出さない。
+    """
+    try:
+        seq = globals().get("RECOMMENDED_STYLE_SEQ", []) or []
+        style = str(globals().get("RECOMMENDED_STYLE", "推奨流れ") or "推奨流れ")
+
+        if not seq:
+            style_map = globals().get("STYLE_SEQ_MAP", {}) or {}
+            seq = style_map.get(style, []) or []
+
+        xs = []
+        seen = set()
+        for x in seq:
+            if str(x).isdigit():
+                c = int(x)
+                if c not in seen:
+                    seen.add(c)
+                    xs.append(c)
+
+        if len(xs) < 3:
+            return ""
+
+        A, B = int(xs[0]), int(xs[1])
+        rest = [int(x) for x in xs[2:] if int(x) not in (A, B)]
+        if not rest:
+            return ""
+
+        threshold = float(globals().get("FLOW_12_ALL_TRIO_SWITCH_ODDS_THRESHOLD", 2.5) or 2.5)
+        eff_odds = float(globals().get("flow_12_all_trio_eff_odds", st.session_state.get("flow_12_all_trio_eff_odds", 0.0)) or 0.0)
+        has_eff_odds = eff_odds > 0.0
+        should_switch = bool(has_eff_odds and eff_odds < threshold)
+
+        lines = []
+        lines.append("【基本推奨｜評価順1-2-全 三連複】")
+        lines.append("評価1・評価2の3着内セットを軸にした基本形。")
+        lines.append(f"合成実効オッズが{threshold:.1f}倍以上ならこちらを優先。")
+        if has_eff_odds:
+            lines.append(f"現在の合成実効オッズ：{eff_odds:.1f}倍")
+        else:
+            lines.append("現在の合成実効オッズ：未入力（自動切替判定なし）")
+        lines.append("")
+        lines.append("対象戦法：" + style)
+        lines.append("推奨流れ：" + " → ".join(str(int(x)) for x in xs))
+        lines.append("")
+        lines.append("三連複：")
+        for c in rest:
+            lines.append(f"{A}-{B}-{c}")
+
+        if should_switch and len(xs) >= 4:
+            C, D = int(xs[2]), int(xs[3])
+            raw_pairs = [(C, A), (C, B), (D, A), (D, B)]
+            pairs = []
+            keys = set()
+            for a, b in raw_pairs:
+                if int(a) == int(b):
+                    continue
+                key = tuple(sorted((int(a), int(b))))
+                if key in keys:
+                    continue
+                keys.add(key)
+                pairs.append((int(a), int(b)))
+
+            if pairs:
+                lines.append("")
+                lines.append("【切替推奨｜評価順34-12 2車複フォメ】")
+                lines.append("条件：")
+                lines.append(f"評価順1-2-全 三連複の合成実効オッズが{threshold:.1f}倍未満の時。")
+                lines.append("")
+                lines.append("狙い：")
+                lines.append("評価1・評価2のどちらかが垂れて4着になり、評価3・4が連対へ上がる半崩れ狙い。")
+                lines.append("")
+                lines.append("2車複：")
+                for a, b in pairs:
+                    lines.append(f"{a}={b}")
+
+        return "\n".join(lines)
+    except Exception as e:
+        return f"【基本推奨｜評価順1-2-全 三連複】生成不可（{e}）"
+
 def _make_santen_score_attack_forme(max_tickets=None):
     """
     三展+KOスコア順位から、最終の三展開合成フォメを作る。
@@ -9488,9 +9595,9 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         center_keys = set()
         overlap_triples = _collect_eval_overlap_3kei(c1, c2, c3, int(role1), mark_map, rec_order_for_forme)
 
-        # v90: 旧「三展開合成フォメ」の差し替えブロックを、
-        #      メイン表示にもnoteコピーにも必ず出す。
-        flow_34_12_block = _make_recommended_flow_34_12_block()
+        # v92: 旧「三展開合成フォメ」の差し替えブロックを、
+        #      基本推奨1-2-全三連複＋条件付き34-12切替として出す。
+        flow_34_12_block = _make_recommended_flow_12_all_trio_switch_block()
         globals()["PILLAR_LINE_FORME_BLOCK"] = flow_34_12_block
 
         lines = []
@@ -9537,10 +9644,10 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
         else:
             lines.append("該当なし")
 
-        # v89: ここだけ差し替える。
-        # 旧「三展開合成フォメ」は出さず、推奨流れから 34-12 の2車複フォメを出す。
+        # v92: ここだけ差し替える。
+        # 旧「三展開合成フォメ」は出さず、推奨流れから1-2-全三連複を出す。
         # 重要：この下のヴェロビ的買目・妙味通過・評価重複・期待値推奨はそのまま残す。
-        globals()["PILLAR_LINE_FORME_BLOCK"] = _make_recommended_flow_34_12_block()
+        globals()["PILLAR_LINE_FORME_BLOCK"] = _make_recommended_flow_12_all_trio_switch_block()
 
         # --------------------------------------------------
         # 期待値推奨：
