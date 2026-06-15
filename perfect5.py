@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v95: note最終推奨の切替条件にも34-12 2車複フォメの実車番を必ず表示。
 # v94: noteコピー欄を最終推奨中心へ圧縮。列評価・旧フォメ・会場H詳細ログをnote出力から除外。
 # v93: v92の未入力ステータス表示を削除。合成実効オッズ未入力時は基本推奨だけを表示し、余計な状態文を出さない。
 # v92: 基本推奨に評価順1-2-全 三連複を追加。合成実効オッズ2.5倍未満の時だけ34-12 2車複フォメを切替推奨表示。
@@ -10503,6 +10504,22 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append("")
                 lines.append("切替条件：")
                 lines.append(f"上記三連複の合成実効オッズが{threshold:.1f}倍未満なら、評価順34-12 2車複フォメへ切替。")
+                if len(xs) >= 4:
+                    C, D = int(xs[2]), int(xs[3])
+                    raw_pairs = [(C, A), (C, B), (D, A), (D, B)]
+                    pairs = []
+                    keys = set()
+                    for a, b in raw_pairs:
+                        key = tuple(sorted((int(a), int(b))))
+                        if int(a) != int(b) and key not in keys:
+                            keys.add(key)
+                            pairs.append((int(a), int(b)))
+
+                    if pairs:
+                        lines.append("")
+                        lines.append("切替2車複：")
+                        for a, b in pairs:
+                            lines.append(f"{a}={b}")
         else:
             lines.append("判定：生成不可")
 
