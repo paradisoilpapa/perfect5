@@ -8742,6 +8742,9 @@ def _make_recommended_flow_12_all_trio_switch_block():
         lines = []
         lines.append("【ヴェロビ三連複推奨】")
         lines.append("")
+        lines.append("推奨下限合成オッズ：")
+        lines.append(_fmt_odds(trio.get("recommended_floor_odds")))
+        lines.append("")
         lines.append("条件：")
         lines.append("1-2市場2車複オッズが基準内")
         lines.append("")
