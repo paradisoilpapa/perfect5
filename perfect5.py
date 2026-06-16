@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v100: note三連複推奨を実戦用短文へ整理。1-2ワイド率だけで下限計算、1-2市場2車複3倍以下対象R数をサイドバー入力へ追加。
 # v97: 推奨流れ1-2/12-34系の集計値は未入力時に規定値計算しない。サイドバー入力後のみ判定基準を算出。
 # v96: 推奨流れ1-2-全三連複/34-12二車複の切替基準を固定2.5倍から集計入力ベースの自動計算へ変更。
 # v95: note最終推奨の切替条件にも34-12 2車複フォメの実車番を必ず表示。
@@ -250,7 +251,7 @@ MAX_TICKETS = 6          # 買い目最大点数
 # v97: 集計値はサイドバー入力後だけ使う。未入力時に規定値（92/45/31等）で自動計算しない。
 FLOW_SWITCH_DEFAULT_TOTAL_RACES = None
 FLOW_SWITCH_DEFAULT_12_WIDE_HITS = None
-FLOW_SWITCH_DEFAULT_1234_NIFUKU_HITS = None
+FLOW_SWITCH_DEFAULT_12_NIFUKU_UNDER3_RACES = None
 FLOW_SWITCH_DEFAULT_TARGET_EV = None
 FLOW_SWITCH_DEFAULT_SAFETY = None
 FLOW_12_ALL_TRIO_SWITCH_ODDS_THRESHOLD = None
@@ -309,19 +310,23 @@ def _calc_flow_switch_metric(hit_count, total_count, target_ev, safety_factor):
     return out
 
 
-def _calc_flow_switch_stats(total_count, wide12_hits, target_ev=None, safety_factor=None, nifuku1234_hits=None):
+def _calc_flow_switch_stats(total_count, wide12_hits, target_ev=None, safety_factor=None, nifuku12_under3_races=None):
     """
     推奨流れ1-2-全 三連複の下限計算用。
-    必要なのは「推奨流れ1-2ワイド的中率」だけ。
-    12-34系2車複の確率は切替候補の表示には使わない。
+    下限計算は「推奨流れ1-2ワイド的中率」だけで行う。
+    推奨1-2 2車複3倍以下対象R数は、市場1-2が基準内に収まる頻度の確認用で、
+    レースごとの自動判定や下限計算には使わない。
     """
     total_i = _safe_int_or_none(total_count)
     wide_i = _safe_int_or_none(wide12_hits)
     target_f = _safe_float_or_none(target_ev)
     safety_f = _safe_float_or_none(safety_factor)
+    under3_i = _safe_int_or_none(nifuku12_under3_races)
     return {
         "total_count": total_i,
         "wide12_hits": wide_i,
+        "nifuku12_under3_races": under3_i,
+        "nifuku12_under3_rate": _safe_div_float(under3_i, total_i, None),
         "target_ev": target_f,
         "safety_factor": safety_f,
         "trio12_all": _calc_flow_switch_metric(wide_i, total_i, target_f, safety_f),
@@ -355,9 +360,10 @@ def _fmt_ev_required_label(target_ev):
 def _get_flow_switch_stats_from_state():
     total = st.session_state.get("flow_switch_total_races", None)
     wide_hits = st.session_state.get("flow_switch_12_wide_hits", None)
+    under3_races = st.session_state.get("flow_switch_12_nifuku_under3_races", None)
     target_ev = st.session_state.get("flow_switch_target_ev", None)
     safety = st.session_state.get("flow_switch_safety_factor", None)
-    return _calc_flow_switch_stats(total, wide_hits, target_ev, safety)
+    return _calc_flow_switch_stats(total, wide_hits, target_ev, safety, under3_races)
 
 
 def _flow_12_all_recommended_floor():
@@ -1828,16 +1834,21 @@ st.session_state["venue_profile"] = venue_profile
 st.session_state["venue_home_flow_mult"] = venue_home_flow_mult
 st.session_state["venue_min_odds_mult"] = venue_min_odds_mult
 
-with st.sidebar.expander("🎯 推奨流れ1-2-全 三連複｜下限計算", expanded=False):
+with st.sidebar.expander("🎯 流れ1-2｜下限計算", expanded=False):
     flow_switch_total_races = st.text_input(
         "総レース数",
         value=str(st.session_state.get("flow_switch_total_races", "") or ""),
         key="flow_switch_total_races",
     )
     flow_switch_12_wide_hits = st.text_input(
-        "推奨流れ1-2ワイド的中数",
+        "推奨1-2ワイド的中数",
         value=str(st.session_state.get("flow_switch_12_wide_hits", "") or ""),
         key="flow_switch_12_wide_hits",
+    )
+    flow_switch_12_nifuku_under3_races = st.text_input(
+        "推奨1-2 2車複 3倍以下対象R数",
+        value=str(st.session_state.get("flow_switch_12_nifuku_under3_races", "") or ""),
+        key="flow_switch_12_nifuku_under3_races",
     )
     flow_switch_target_ev = st.text_input(
         "目標EV",
@@ -1855,9 +1866,12 @@ with st.sidebar.expander("🎯 推奨流れ1-2-全 三連複｜下限計算", ex
         flow_switch_12_wide_hits,
         flow_switch_target_ev,
         flow_switch_safety_factor,
+        flow_switch_12_nifuku_under3_races,
     )
     _flow12_floor = flow_switch_stats.get("trio12_all", {}).get("recommended_floor_odds", None)
+    _under3_rate = flow_switch_stats.get("nifuku12_under3_rate", None)
     st.caption(f"推奨下限合成オッズ：{_fmt_odds(_flow12_floor)}")
+    st.caption(f"推奨1-2 2車複3倍以下比率：{_fmt_pct(_under3_rate)}")
 
 globals()["FLOW_SWITCH_STATS"] = _get_flow_switch_stats_from_state()
 globals()["FLOW_12_ALL_TRIO_SWITCH_ODDS_THRESHOLD"] = _flow_12_all_recommended_floor()
@@ -8693,7 +8707,7 @@ def _make_recommended_flow_12_all_trio_switch_block():
     """
     画面表示用の短縮ブロック。
     実効オッズ入力や12-34側の確率計算は使わない。
-    1-2ワイド確率から出した推奨下限と、切替候補の車番だけを出す。
+    1-2ワイド確率から出した推奨下限と、短い条件・買い目だけを出す。
     """
     try:
         seq = globals().get("RECOMMENDED_STYLE_SEQ", []) or []
@@ -8728,20 +8742,23 @@ def _make_recommended_flow_12_all_trio_switch_block():
         lines = []
         lines.append("【ヴェロビ三連複推奨】")
         lines.append("")
-        lines.append("推奨下限合成オッズ：")
-        lines.append(_fmt_odds(trio.get("recommended_floor_odds")))
+        lines.append("条件：")
+        lines.append("1-2市場2車複オッズが基準内")
         lines.append("")
+        lines.append("三連複：")
         lines.append(f"{A}-{B}-{rest_text}")
         lines.append("")
-        lines.append("推奨下限合成オッズ未満なら、")
-        lines.append("下記へ切替検討。")
+        lines.append("買い基準：")
+        lines.append("安目切り後の合成オッズが基準以上")
 
         if pairs:
             lines.append("")
-            lines.append("【切替候補｜評価34-12 2車複フォメ】")
+            lines.append("【切替候補｜34-12 2車複】")
             lines.append("")
+            lines.append("条件：")
+            lines.append("1-2市場2車複オッズが基準外")
             lines.append("")
-            lines.append("切替2車複：")
+            lines.append("2車複：")
             for a, b in pairs:
                 lines.append(f"{a}={b}")
 
@@ -10619,22 +10636,28 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
             trio = stats.get("trio12_all", {}) or {}
 
+            lines.append(f"推奨流れ【{rec_style or '推奨'}】：")
+            lines.append(" → ".join(str(int(x)) for x in xs))
+            lines.append("")
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
-            lines.append("推奨下限合成オッズ：")
-            lines.append(_fmt_odds(trio.get("recommended_floor_odds")))
+            lines.append("条件：")
+            lines.append("1-2市場2車複オッズが基準内")
             lines.append("")
+            lines.append("三連複：")
             lines.append(f"{A}-{B}-{rest_text}")
             lines.append("")
-            lines.append("推奨下限合成オッズ未満なら、")
-            lines.append("下記へ切替検討。")
+            lines.append("買い基準：")
+            lines.append("安目切り後の合成オッズが基準以上")
 
             if pairs:
                 lines.append("")
-                lines.append("【切替候補｜評価34-12 2車複フォメ】")
+                lines.append("【切替候補｜34-12 2車複】")
                 lines.append("")
+                lines.append("条件：")
+                lines.append("1-2市場2車複オッズが基準外")
                 lines.append("")
-                lines.append("切替2車複：")
+                lines.append("2車複：")
                 for a, b in pairs:
                     lines.append(f"{a}={b}")
         else:
@@ -10654,12 +10677,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 label = header.replace("（", " ").split(" ")[0]
                 support.append((label, vals))
 
-        if support:
-            lines.append("")
-            lines.append("【補助根拠】")
-            for label, vals in support:
-                lines.append(f"{label}：" + "、".join(vals))
-
+        # note上部の実戦用推奨は、条件・買い目・切替候補だけに絞る。
+        # 補助根拠は下部の詳細ブロック側に任せる。
         if rec_copy:
             lines.append("")
             lines.append(f"コピー用：{rec_copy}")
