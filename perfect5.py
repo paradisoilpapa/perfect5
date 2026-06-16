@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v105: note三連複推奨の買い基準にサイドバー計算の推奨下限合成オッズを本文差し込み。
 # v104: 1-2市場2車複の条件を固定3倍ではなく、推奨下限合成オッズから表示。3倍固定文言を削除。
 # v103: note推奨にサイドバー入力の意味を反映。1-2ワイド率・推奨下限・1-2二車複基準以下率を短く表示。
 # v100: note三連複推奨を実戦用短文へ整理。1-2ワイド率だけで下限計算、1-2市場2車複3倍以下対象R数をサイドバー入力へ追加。
@@ -402,6 +403,25 @@ def _flow12_market_nifuku_condition_lines(inline_switch=False, stats=None):
     if inline_switch:
         return f"1-2市場2車複オッズが{basis}超"
     return f"1-2市場2車複オッズが{basis}以下"
+
+
+def _flow12_trio_buy_criteria_line(stats=None):
+    """ヴェロビ三連複推奨の買い基準表示。
+    固定文言ではなく、サイドバー入力から算出した推奨下限合成オッズを本文へ差し込む。
+    """
+    try:
+        if stats is None:
+            stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
+        trio = (stats or {}).get("trio12_all", {}) or {}
+        floor = trio.get("recommended_floor_odds", None)
+        if floor is None:
+            return "安目切り後の合成オッズが推奨下限以上"
+        floor = float(floor)
+        if not math.isfinite(floor) or floor <= 0:
+            return "安目切り後の合成オッズが推奨下限以上"
+        return f"安目切り後の合成オッズ {floor:.2f}倍以上"
+    except Exception:
+        return "安目切り後の合成オッズが推奨下限以上"
 
 
 def _fmt_ev_required_label(target_ev):
@@ -8814,7 +8834,7 @@ def _make_recommended_flow_12_all_trio_switch_block():
         lines.append(f"{A}-{B}-{rest_text}")
         lines.append("")
         lines.append("買い基準：")
-        lines.append("安目切り後の合成オッズが基準以上")
+        lines.append(_flow12_trio_buy_criteria_line(stats))
 
         if pairs:
             lines.append("")
@@ -10713,7 +10733,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append(f"{A}-{B}-{rest_text}")
             lines.append("")
             lines.append("買い基準：")
-            lines.append("安目切り後の合成オッズが基準以上")
+            lines.append(_flow12_trio_buy_criteria_line(stats))
 
             if pairs:
                 lines.append("")
