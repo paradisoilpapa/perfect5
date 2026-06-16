@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# v109: 本文条件の直下に1-3/2-3市場オッズ参考表示を追加。判定・推奨ロジックには使わない。
+# v108: サイドバーに1-3/2-3市場オッズ入力を参考用で追加。判定・推奨ロジックには一切使わない。
 # v107: 本文条件を1-2市場ワイドオッズ表示へ修正。払戻合計入力と推定オッズ表示を削除し、三連複/34-12必要合成オッズを本文へ表示。
 # v106: 1-2市場2車複条件を推奨下限合成オッズから切り離し、1-2二車複的中分布の推定想定オッズを表示。
 # v105: note三連複推奨の買い基準にサイドバー計算の推奨下限合成オッズを本文差し込み。
@@ -440,6 +442,33 @@ def _flow12_market_nifuku_basis_label(stats=None):
 def _flow12_market_nifuku_condition_lines(inline_switch=False, stats=None):
     return _flow12_market_wide_condition_lines(inline_switch, stats)
 
+
+
+def _fmt_market_odds_input_label(v):
+    """サイドバー参考入力の市場オッズを本文用に整形する。判定には使わない。"""
+    try:
+        s = str(v or "").strip()
+        if not s:
+            return "—"
+        x = float(s)
+        if not math.isfinite(x) or x <= 0:
+            return s
+        return f"{x:.2f}倍"
+    except Exception:
+        return str(v or "").strip() or "—"
+
+
+def _flow_reference_market_odds_lines():
+    """1-3/2-3市場オッズの参考表示。ヴェロビ判定・推奨には一切使わない。"""
+    try:
+        v13 = st.session_state.get("flow_switch_market_13_odds", "")
+        v23 = st.session_state.get("flow_switch_market_23_odds", "")
+        return [
+            f"1-3市場オッズ {_fmt_market_odds_input_label(v13)}",
+            f"2-3市場オッズ {_fmt_market_odds_input_label(v23)}",
+        ]
+    except Exception:
+        return ["1-3市場オッズ —", "2-3市場オッズ —"]
 
 def _flow12_trio_buy_criteria_line(stats=None):
     """ヴェロビ三連複推奨の買い基準表示。
@@ -1984,6 +2013,20 @@ with st.sidebar.expander("🎯 流れ1-2｜下限計算", expanded=False):
         value=str(st.session_state.get("flow_switch_12_wide_hits", "") or ""),
         key="flow_switch_12_wide_hits",
     )
+
+    # 参考用：軸選定のための市場オッズメモ。
+    # ヴェロビ側の判定・買い基準・推奨ロジックには使わない。
+    flow_switch_market_13_odds = st.text_input(
+        "1-3市場オッズ（参考・手判断用）",
+        value=str(st.session_state.get("flow_switch_market_13_odds", "") or ""),
+        key="flow_switch_market_13_odds",
+    )
+    flow_switch_market_23_odds = st.text_input(
+        "2-3市場オッズ（参考・手判断用）",
+        value=str(st.session_state.get("flow_switch_market_23_odds", "") or ""),
+        key="flow_switch_market_23_odds",
+    )
+    st.caption("1-3 / 2-3市場オッズは参考入力のみ。推奨判定には使いません。")
     flow_switch_target_ev = st.text_input(
         "目標EV",
         value=str(st.session_state.get("flow_switch_target_ev", "") or ""),
@@ -8886,6 +8929,7 @@ def _make_recommended_flow_12_all_trio_switch_block():
         # レース本文は短くする。集計説明は出さない。
         lines.append("条件：")
         lines.append(_flow12_market_nifuku_condition_lines(False, stats))
+        lines.extend(_flow_reference_market_odds_lines())
         lines.append("")
         lines.append("三連複：")
         lines.append(f"{A}-{B}-{rest_text}")
