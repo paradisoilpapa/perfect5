@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # v109: 本文条件の直下に1-3/2-3市場オッズ参考表示を追加。判定・推奨ロジックには使わない。
 # v108: サイドバーに1-3/2-3市場オッズ入力を参考用で追加。判定・推奨ロジックには一切使わない。
+# v110: 1-3/2-3市場オッズ参考表示をコピー用ブロックにも追加。
 # v107: 本文条件を1-2市場ワイドオッズ表示へ修正。払戻合計入力と推定オッズ表示を削除し、三連複/34-12必要合成オッズを本文へ表示。
 # v106: 1-2市場2車複条件を推奨下限合成オッズから切り離し、1-2二車複的中分布の推定想定オッズを表示。
 # v105: note三連複推奨の買い基準にサイドバー計算の推奨下限合成オッズを本文差し込み。
@@ -10832,6 +10833,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("")
             lines.append("条件：")
             lines.append(_flow12_market_nifuku_condition_lines(False, stats))
+            lines.extend(_flow_reference_market_odds_lines())
             lines.append("")
             lines.append("三連複：")
             lines.append(f"{A}-{B}-{rest_text}")
