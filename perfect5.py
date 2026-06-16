@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v106: 1-2市場2車複条件を推奨下限合成オッズから切り離し、1-2二車複的中分布の推定想定オッズを表示。
 # v105: note三連複推奨の買い基準にサイドバー計算の推奨下限合成オッズを本文差し込み。
 # v104: 1-2市場2車複の条件を固定3倍ではなく、推奨下限合成オッズから表示。3倍固定文言を削除。
 # v103: note推奨にサイドバー入力の意味を反映。1-2ワイド率・推奨下限・1-2二車複基準以下率を短く表示。
@@ -254,6 +255,8 @@ MAX_TICKETS = 6          # 買い目最大点数
 # v97: 集計値はサイドバー入力後だけ使う。未入力時に規定値（92/45/31等）で自動計算しない。
 FLOW_SWITCH_DEFAULT_TOTAL_RACES = None
 FLOW_SWITCH_DEFAULT_12_WIDE_HITS = None
+FLOW_SWITCH_DEFAULT_12_NIFUKU_HITS = None
+FLOW_SWITCH_DEFAULT_12_NIFUKU_PAYOUT_SUM = None
 FLOW_SWITCH_DEFAULT_12_NIFUKU_UNDER3_RACES = None
 FLOW_SWITCH_DEFAULT_TARGET_EV = None
 FLOW_SWITCH_DEFAULT_SAFETY = None
@@ -313,23 +316,66 @@ def _calc_flow_switch_metric(hit_count, total_count, target_ev, safety_factor):
     return out
 
 
-def _calc_flow_switch_stats(total_count, wide12_hits, target_ev=None, safety_factor=None, nifuku12_under3_races=None):
+def _calc_flow_switch_stats(total_count, wide12_hits, target_ev=None, safety_factor=None,
+                            nifuku12_under3_races=None, nifuku12_hit_count=None, nifuku12_payout_sum=None):
     """
     推奨流れ1-2-全 三連複の下限計算用。
-    下限計算は「推奨流れ1-2ワイド的中率」だけで行う。
-    推奨1-2 2車複基準以下対象R数は、市場1-2が基準内に収まる頻度の確認用で、
-    レースごとの自動判定や下限計算には使わない。
+
+    分けるもの：
+    ・買い基準：推奨1-2ワイド的中率から推奨下限合成オッズを出す。
+    ・入口条件：1-2二車複の的中時配当分布から、1-2市場2車複の想定オッズを推定する。
+
+    重要：推奨下限合成オッズを、1-2市場2車複オッズ条件に流用しない。
     """
     total_i = _safe_int_or_none(total_count)
     wide_i = _safe_int_or_none(wide12_hits)
     target_f = _safe_float_or_none(target_ev)
     safety_f = _safe_float_or_none(safety_factor)
+    hit_i = _safe_int_or_none(nifuku12_hit_count)
+    payout_i = _safe_int_or_none(nifuku12_payout_sum)
     under3_i = _safe_int_or_none(nifuku12_under3_races)
+
+    avg_odds = None
+    under3_rate = None
+    under3_est_avg_odds = None
+    under3_est_range_low = None
+    under3_est_range_high = None
+
+    # 2車複払戻は100円あたり円換算として扱う（204円=2.04倍）。
+    if hit_i and hit_i > 0:
+        under3_rate = _safe_div_float(under3_i, hit_i, None)
+        if payout_i and payout_i > 0:
+            avg_odds = float(payout_i) / float(hit_i) / 100.0
+
+        # 〜3倍ゾーンの平均オッズは、ゾーン別払戻合計がないため厳密には不明。
+        # ここでは「推定」として出す。
+        # 下限：3倍以下ゾーンを最低100円払い戻しとした場合。
+        # 上限：3倍超ゾーンを最低310円払い戻しとした場合。
+        # 表示用の想定値：レンジ中央値。ただし3倍以下なので1.00〜3.00に丸める。
+        if under3_i and under3_i > 0 and payout_i and payout_i > 0:
+            over_count = max(0, int(hit_i) - int(under3_i))
+            under_min_sum = int(under3_i) * 100
+            over_min_sum = over_count * 310
+            if int(payout_i) >= under_min_sum + over_min_sum:
+                low = 1.00
+                high = (float(payout_i) - float(over_min_sum)) / float(under3_i) / 100.0
+                high = max(low, min(3.00, high))
+                mid = (low + high) / 2.0
+                under3_est_range_low = low
+                under3_est_range_high = high
+                under3_est_avg_odds = mid
+
     return {
         "total_count": total_i,
         "wide12_hits": wide_i,
+        "nifuku12_hit_count": hit_i,
+        "nifuku12_payout_sum": payout_i,
+        "nifuku12_avg_odds": avg_odds,
         "nifuku12_under3_races": under3_i,
-        "nifuku12_under3_rate": _safe_div_float(under3_i, total_i, None),
+        "nifuku12_under3_rate": under3_rate,
+        "nifuku12_under3_est_avg_odds": under3_est_avg_odds,
+        "nifuku12_under3_est_range_low": under3_est_range_low,
+        "nifuku12_under3_est_range_high": under3_est_range_high,
         "target_ev": target_f,
         "safety_factor": safety_f,
         "trio12_all": _calc_flow_switch_metric(wide_i, total_i, target_f, safety_f),
@@ -377,14 +423,15 @@ def _fmt_count_rate_line(hit_count, total_count, rate):
         return "—"
 
 def _flow12_market_nifuku_basis_odds(stats=None):
-    """推奨流れ1-2市場2車複の基準オッズ。
-    固定値は使わず、サイドバー入力から計算した推奨下限合成オッズを使う。
+    """推奨流れ1-2市場2車複の入口条件に使う想定オッズ。
+
+    推奨下限合成オッズは使わない。
+    1-2二車複的中数・払戻合計・3倍以下回数から、3倍以下ゾーンの推定平均オッズを使う。
     """
     try:
         if stats is None:
             stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
-        trio = (stats or {}).get("trio12_all", {}) or {}
-        v = trio.get("recommended_floor_odds", None)
+        v = (stats or {}).get("nifuku12_under3_est_avg_odds", None)
         if v is None:
             return None
         v = float(v)
@@ -393,16 +440,27 @@ def _flow12_market_nifuku_basis_odds(stats=None):
         return None
 
 
+def _flow12_market_nifuku_basis_label(stats=None):
+    try:
+        if stats is None:
+            stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
+        low = (stats or {}).get("nifuku12_under3_est_range_low", None)
+        high = (stats or {}).get("nifuku12_under3_est_range_high", None)
+        est = (stats or {}).get("nifuku12_under3_est_avg_odds", None)
+        if est is None:
+            return "想定オッズ"
+        if low is not None and high is not None:
+            return f"約{float(est):.2f}倍目安（推定{float(low):.2f}〜{float(high):.2f}倍）"
+        return f"約{float(est):.2f}倍目安"
+    except Exception:
+        return "想定オッズ"
+
+
 def _flow12_market_nifuku_condition_lines(inline_switch=False, stats=None):
-    basis_v = _flow12_market_nifuku_basis_odds(stats)
-    if basis_v is None:
-        if inline_switch:
-            return "1-2市場2車複オッズが推奨下限合成オッズ超"
-        return "1-2市場2車複オッズが推奨下限合成オッズ以下"
-    basis = _fmt_odds(basis_v)
+    label = _flow12_market_nifuku_basis_label(stats)
     if inline_switch:
-        return f"1-2市場2車複オッズが{basis}超"
-    return f"1-2市場2車複オッズが{basis}以下"
+        return f"1-2市場2車複オッズが{label}超"
+    return f"1-2市場2車複オッズが{label}以下"
 
 
 def _flow12_trio_buy_criteria_line(stats=None):
@@ -434,11 +492,13 @@ def _fmt_ev_required_label(target_ev):
 
 def _get_flow_switch_stats_from_state():
     total = st.session_state.get("flow_switch_total_races", None)
-    wide_hits = st.session_state.get("flow_switch_12_wide_hits", None)
+    nifuku_hits = st.session_state.get("flow_switch_12_nifuku_hits", None)
+    nifuku_payout_sum = st.session_state.get("flow_switch_12_nifuku_payout_sum", None)
     under3_races = st.session_state.get("flow_switch_12_nifuku_under3_races", None)
+    wide_hits = st.session_state.get("flow_switch_12_wide_hits", None)
     target_ev = st.session_state.get("flow_switch_target_ev", None)
     safety = st.session_state.get("flow_switch_safety_factor", None)
-    return _calc_flow_switch_stats(total, wide_hits, target_ev, safety, under3_races)
+    return _calc_flow_switch_stats(total, wide_hits, target_ev, safety, under3_races, nifuku_hits, nifuku_payout_sum)
 
 
 def _flow_12_all_recommended_floor():
@@ -1915,15 +1975,25 @@ with st.sidebar.expander("🎯 流れ1-2｜下限計算", expanded=False):
         value=str(st.session_state.get("flow_switch_total_races", "") or ""),
         key="flow_switch_total_races",
     )
+    flow_switch_12_nifuku_hits = st.text_input(
+        "1-2二車複的中数",
+        value=str(st.session_state.get("flow_switch_12_nifuku_hits", "") or ""),
+        key="flow_switch_12_nifuku_hits",
+    )
+    flow_switch_12_nifuku_payout_sum = st.text_input(
+        "1-2二車複払戻合計",
+        value=str(st.session_state.get("flow_switch_12_nifuku_payout_sum", "") or ""),
+        key="flow_switch_12_nifuku_payout_sum",
+    )
+    flow_switch_12_nifuku_under3_races = st.text_input(
+        "1-2二車複 3倍以下回数",
+        value=str(st.session_state.get("flow_switch_12_nifuku_under3_races", "") or ""),
+        key="flow_switch_12_nifuku_under3_races",
+    )
     flow_switch_12_wide_hits = st.text_input(
         "推奨1-2ワイド的中数",
         value=str(st.session_state.get("flow_switch_12_wide_hits", "") or ""),
         key="flow_switch_12_wide_hits",
-    )
-    flow_switch_12_nifuku_under3_races = st.text_input(
-        "推奨1-2 2車複 基準以下対象R数",
-        value=str(st.session_state.get("flow_switch_12_nifuku_under3_races", "") or ""),
-        key="flow_switch_12_nifuku_under3_races",
     )
     flow_switch_target_ev = st.text_input(
         "目標EV",
@@ -1942,11 +2012,22 @@ with st.sidebar.expander("🎯 流れ1-2｜下限計算", expanded=False):
         flow_switch_target_ev,
         flow_switch_safety_factor,
         flow_switch_12_nifuku_under3_races,
+        flow_switch_12_nifuku_hits,
+        flow_switch_12_nifuku_payout_sum,
     )
     _flow12_floor = flow_switch_stats.get("trio12_all", {}).get("recommended_floor_odds", None)
+    _nifuku_avg = flow_switch_stats.get("nifuku12_avg_odds", None)
     _under3_rate = flow_switch_stats.get("nifuku12_under3_rate", None)
+    _under3_est = flow_switch_stats.get("nifuku12_under3_est_avg_odds", None)
+    _under3_low = flow_switch_stats.get("nifuku12_under3_est_range_low", None)
+    _under3_high = flow_switch_stats.get("nifuku12_under3_est_range_high", None)
+    st.caption(f"1-2二車複平均オッズ：{_fmt_odds(_nifuku_avg)}")
+    st.caption(f"1-2二車複3倍以下率：{_fmt_pct(_under3_rate)}")
+    if _under3_est is not None and _under3_low is not None and _under3_high is not None:
+        st.caption(f"1-2二車複3倍以下 推定平均：{_fmt_odds(_under3_est)}（推定{float(_under3_low):.2f}〜{float(_under3_high):.2f}倍）")
+    else:
+        st.caption("1-2二車複3倍以下 推定平均：—")
     st.caption(f"推奨下限合成オッズ：{_fmt_odds(_flow12_floor)}")
-    st.caption(f"推奨1-2 2車複基準以下比率：{_fmt_pct(_under3_rate)}")
 
 globals()["FLOW_SWITCH_STATS"] = _get_flow_switch_stats_from_state()
 globals()["FLOW_12_ALL_TRIO_SWITCH_ODDS_THRESHOLD"] = _flow_12_all_recommended_floor()
@@ -8819,13 +8900,16 @@ def _make_recommended_flow_12_all_trio_switch_block():
         lines.append("")
         total_count = stats.get("total_count")
         wide_hits = stats.get("wide12_hits")
+        nifuku_hits = stats.get("nifuku12_hit_count")
         under3_races = stats.get("nifuku12_under3_races")
         under3_rate = stats.get("nifuku12_under3_rate")
+        under3_est = stats.get("nifuku12_under3_est_avg_odds")
 
         lines.append("基準：")
         lines.append(f"1-2ワイド率：{_fmt_count_rate_line(wide_hits, total_count, trio.get('hit_rate'))}")
         lines.append(f"推奨下限合成オッズ：{_fmt_odds(trio.get('recommended_floor_odds'))}")
-        lines.append(f"1-2二車複基準以下率：{_fmt_count_rate_line(under3_races, total_count, under3_rate)}")
+        lines.append(f"1-2二車複3倍以下率：{_fmt_count_rate_line(under3_races, nifuku_hits, under3_rate)}")
+        lines.append(f"1-2二車複3倍以下 推定平均：{_fmt_odds(under3_est)}")
         lines.append("")
         lines.append("条件：")
         lines.append(_flow12_market_nifuku_condition_lines(False, stats))
