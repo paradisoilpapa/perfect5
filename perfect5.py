@@ -2,7 +2,7 @@
 # v108: note上部サマリーに「2車複｜妙味通過（7.0pt以上）」だけを復活。評価重複・三連複妙味・三連複評価重複はnote上部へ出さない。
 # v111: 選択コピー欄の2車複妙味通過表示を簡潔化。旧妙味通過＋34-12内通過ペアを統合し、説明文は表示しない。基準8.5pt。
 # v114: note上部推奨を二強軸フォメ＋安め上位4点表記へ変更。補助2車複は妙味8.5pt通過のみを短く表示。
-# v119: 全体妙味は内部判定を変えず、表示直前だけA/B/Cへ統一（低・C→A、B・A→B、AA・荒→C）。
+# v120: 全体妙味A/B/C変換の二重適用を修正。旧ラベルは表示直前に一度だけ変換し、青網掛けとコピー欄を一致させる。
 # v113: 三連複推奨の買い基準文言のみ削除。余計な代替文言は出さない。
 # v116: 三連複二強軸フォメの3列目を車番羅列ではなく「全」表示へ修正。
 # v117: note三連複推奨を評価1・2-全-全表示へ変更。2列目3車固定を廃止し、安め上位4点でライン決着も拾える表示へ修正。
@@ -10058,7 +10058,9 @@ def _replace_axis_line_to_expect(text: str, label: str) -> str:
     def repl(m):
         s = m.group(0)
         rate = re.search(r"（軸想定2着内率\s*\d+%）", s)
-        return f"全体妙味：{_display_expect_myoumi_label(label)}" + (rate.group(0) if rate else "")
+        # ここでは旧判定ラベルのまま差し込む。
+        # A/B/Cへの表示変換は _display_expect_myoumi_labels_in_text() で一度だけ行う。
+        return f"全体妙味：{str(label or '').strip()}" + (rate.group(0) if rate else "")
 
     return re.sub(pat, repl, text, count=1)
 
@@ -10920,9 +10922,8 @@ try:
     _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
     _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
 
-    # まず軸評価行を全体妙味へ置換（内部判定は変えず、表示だけA/B/Cへ丸める）
+    # まず軸評価行を全体妙味へ置換（この時点では旧ラベルのまま）
     note_text = _replace_axis_line_to_expect(note_text, expect_axis_label)
-    note_text = _display_expect_myoumi_labels_in_text(note_text)
 
     # 既存の上部サマリーだけを削除
     note_text = _strip_existing_top_summary(note_text)
@@ -11064,7 +11065,8 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         style = m_style.group(1).strip() if m_style else "推奨戦法"
 
         # 全体妙味コメント
-        myoumi = _display_expect_myoumi_label(myoumi)
+        # note_text側で旧ラベル→新A/B/C変換済み。ここで再変換するとAがBへズレるため行わない。
+        myoumi = str(myoumi or "").strip()
         if myoumi == "A":
             line1 = "・全体妙味：A。市場評価と近い構成。"
         elif myoumi == "B":
@@ -11100,7 +11102,6 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
 
 note_text = _clean_note_copy_display_only(note_text)
 note_text = _replace_tanpyou_with_simple_comment(note_text)
-note_text = _display_expect_myoumi_labels_in_text(note_text)
 
 st.text_area("ここを選択してコピー", note_text, height=620)
 # =========================
