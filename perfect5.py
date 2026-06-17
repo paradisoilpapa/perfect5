@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-# v108: note上部サマリーに「2車複｜妙味通過（7.0pt以上）」だけを復活。評価重複・三連複妙味・三連複評価重複はnote上部へ出さない。
+# v118: 全体妙味の表示をA/B/Cへ統一。旧「低」はA、旧「A/AA/荒」はC寄りに集約し、短評もA/B/C表記へ統一。
+# v108: note上部サマリーに「2車複｜妙味通過（7.0pt以上）」だけを復活。評価重複・三連複妙味・三連複評価重複はnote上部へ出さない.
 # v111: 選択コピー欄の2車複妙味通過表示を簡潔化。旧妙味通過＋34-12内通過ペアを統合し、説明文は表示しない。基準8.5pt。
 # v114: note上部推奨を二強軸フォメ＋安め上位4点表記へ変更。補助2車複は妙味8.5pt通過のみを短く表示。
 # v113: 三連複推奨の買い基準文言のみ削除。余計な代替文言は出さない。
@@ -7654,21 +7655,18 @@ def _calc_expect_axis_score_label(col1_cars, col2_cars, role1, mark_map):
 
         score = max(0.0, min(10.0, float(score)))
 
-        # 表示ランクだけを調整。
-        # 6.6点のような「期待値はあるが荒れ寄り」の形をAAに上げすぎない。
-        # 8.0以上はズレすぎの荒領域として扱う。
-        if score >= 8.0:
-            label = "荒"
-        elif score >= 6.8:
-            label = "AA"
-        elif score >= 5.5:
+        # v118: 全体妙味の表示を A/B/C に統一する。
+        # scoreは「市場評価とのズレ・配当妙味」を見る点数。
+        # 低スコアほど市場と近く、今の安め三連複運用では素直なレース。
+        # A = 妙味低・市場近い・安め向き
+        # B = 標準
+        # C = ズレ大きめ・荒れ含み
+        if score < 4.5:
             label = "A"
-        elif score >= 4.5:
+        elif score < 6.8:
             label = "B"
-        elif score >= 3.5:
-            label = "C"
         else:
-            label = "低"
+            label = "C"
 
         return label, round(score, 1), role_marks
 
@@ -10017,6 +10015,31 @@ def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_o
     except Exception:
         return ""
 
+
+def _normalize_expect_myoumi_label(label: str) -> str:
+    """
+    v118: 全体妙味の表示を A/B/C に統一する。
+    旧表記が残っている場合も、選択コピー欄では必ずA/B/Cへ寄せる。
+    A = 妙味低・市場近い・安め向き
+    B = 標準
+    C = ズレ大きめ・荒れ含み
+    """
+    s = str(label or "").strip()
+    if s in ("低",):
+        return "A"
+    if s in ("AA", "荒"):
+        return "C"
+    if s in ("A", "B", "C"):
+        return s
+    return "B"
+
+
+def _normalize_expect_myoumi_labels_in_text(text: str) -> str:
+    """既に本文内に残っている旧全体妙味表記もA/B/Cへ統一する。"""
+    def repl(m):
+        return "全体妙味：" + _normalize_expect_myoumi_label(m.group(1))
+    return re.sub(r"全体妙味：(AA|A|B|C|荒|低)", repl, str(text))
+
 def _replace_axis_line_to_expect(text: str, label: str) -> str:
     """
     note本文の最初の軸評価行を全体妙味へ置換する。
@@ -10027,7 +10050,8 @@ def _replace_axis_line_to_expect(text: str, label: str) -> str:
     def repl(m):
         s = m.group(0)
         rate = re.search(r"（軸想定2着内率\s*\d+%）", s)
-        return f"全体妙味：{label}" + (rate.group(0) if rate else "")
+        label2 = _normalize_expect_myoumi_label(label)
+        return f"全体妙味：{label2}" + (rate.group(0) if rate else "")
 
     return re.sub(pat, repl, text, count=1)
 
@@ -10220,6 +10244,7 @@ try:
         col2_cars = _uniq_keep(col2_cars[:4])
 
         expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(col1_cars, col2_cars, role1, market_mark_map)
+        expect_axis_label = _normalize_expect_myoumi_label(expect_axis_label)
 
         # 3列目：三連複候補 v42
         # 重要修正：2列目に採用した車の同ライン残りは、基本3列目に必ず残す。
@@ -10889,8 +10914,12 @@ try:
     _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
     _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
 
-    # まず軸評価行を全体妙味へ置換
+    # まず軸評価行を全体妙味へ置換（A/B/C統一）
+    expect_axis_label = _normalize_expect_myoumi_label(expect_axis_label)
     note_text = _replace_axis_line_to_expect(note_text, expect_axis_label)
+
+    # 既存の旧表記が残っている場合もA/B/Cへ統一
+    note_text = _normalize_expect_myoumi_labels_in_text(note_text)
 
     # 既存の上部サマリーだけを削除
     note_text = _strip_existing_top_summary(note_text)
@@ -10906,7 +10935,7 @@ try:
 
     # 最初の全体妙味行の直後にだけ挿入
     _m_axis = re.search(
-        r"全体妙味：(?:AA|A|B|C|荒|低)（軸想定2着内率\s*\d+%）",
+        r"全体妙味：(?:A|B|C|AA|荒|低)（軸想定2着内率\s*\d+%）",
         note_text
     )
 
@@ -11029,15 +11058,14 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         m_style = re.search(r"✅\s*推奨戦法：([^\n]+)", txt)
         style = m_style.group(1).strip() if m_style else "推奨戦法"
 
-        # 全体妙味コメント
-        if myoumi in ("低", "C"):
-            line1 = f"・全体妙味：{myoumi}。市場評価と近い構成。"
+        # 全体妙味コメント v118：A/B/C表記へ統一
+        myoumi = _normalize_expect_myoumi_label(myoumi)
+        if myoumi == "A":
+            line1 = "・全体妙味：A。市場評価と近い構成。"
         elif myoumi == "B":
             line1 = "・全体妙味：B。市場評価とのズレは中間。"
-        elif myoumi in ("A", "AA"):
-            line1 = f"・全体妙味：{myoumi}。市場評価と適度にズレあり。"
-        elif myoumi == "荒":
-            line1 = "・全体妙味：荒。ズレが大きく見送り寄り。"
+        elif myoumi == "C":
+            line1 = "・全体妙味：C。市場評価とのズレが大きめ。"
         else:
             line1 = "・全体妙味：未判定。"
 
