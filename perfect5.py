@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # v108: note上部サマリーに「2車複｜妙味通過（7.0pt以上）」だけを復活。評価重複・三連複妙味・三連複評価重複はnote上部へ出さない。
+# v111: 選択コピー欄の2車複妙味通過表示を簡潔化。旧妙味通過＋34-12内通過ペアを統合し、説明文は表示しない。基準8.5pt。
 # v107: 本文条件を1-2市場ワイドオッズ表示へ修正。払戻合計入力と推定オッズ表示を削除し、三連複/34-12必要合成オッズを本文へ表示。
 # v106: 1-2市場2車複条件を推奨下限合成オッズから切り離し、1-2二車複的中分布の推定想定オッズを表示。
 # v105: note三連複推奨の買い基準にサイドバー計算の推奨下限合成オッズを本文差し込み。
@@ -7972,8 +7973,8 @@ def _myoumi_score_3kei(a: int, b: int, c: int, role1: int, mark_map: dict, rec_o
 # 妙味pt 通過基準
 # ==============================
 # 5.0pt基準では候補が広がりすぎるため、実戦買目の通過基準を引き上げる。
-# 2車複は7.0pt以上、三連複は8.0pt以上を標準にする。
-MYOUMI_PASS_THRESHOLD_2KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 7.0))
+# 2車複は8.5pt以上、三連複は8.0pt以上を標準にする。
+MYOUMI_PASS_THRESHOLD_2KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 8.5))
 MYOUMI_PASS_THRESHOLD_3KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_3KEI", 8.0))
 # ワイドは現時点では未採用。2車複と三連複だけで表示する。
 
@@ -8245,7 +8246,7 @@ def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, 
 
     基準：
     ・実戦買目の通過基準は MYOUMI_PASS_THRESHOLD_* を使う。
-    ・2車複は7.0pt以上、三連複は8.0pt以上を標準にする。
+    ・2車複は8.5pt以上、三連複は8.0pt以上を標準にする。
     """
     try:
         two, three = _collect_myoumi_pickups(
@@ -10756,15 +10757,13 @@ def _extract_note_section_lines(block_text: str, header_prefix: str, max_items: 
         return []
 
 
-def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_label, rule_buy_block):
+def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_label, rule_buy_block, mark_map=None):
     """
     note貼り付け用の短縮推奨サマリー。
     12R分を並べても読めるよう、買い目と下限だけに絞る。
 
-    v108:
-    旧ヴェロビ的買目から note上部へ復活させるのは、
-    「2車複｜妙味通過（7.0pt以上）」だけ。
-    評価重複・三連複妙味・三連複評価重複は note上部へ出さない。
+    v111:
+    note上部の2車複妙味通過欄は、通過ペアだけを簡潔表示する。
     """
     try:
         xs = []
@@ -10775,6 +10774,32 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 if c not in seen:
                     seen.add(c)
                     xs.append(c)
+
+        def _pair_display_from_line(s):
+            """旧妙味ブロックの行から車番ペアだけを抜く。例：'7-2　9.1pt［通過］' → '7-2'"""
+            try:
+                m = re.search(r"([1-9])\s*[-=]\s*([1-9])", str(s))
+                if not m:
+                    return None
+                a, b = int(m.group(1)), int(m.group(2))
+                if a == b:
+                    return None
+                return f"{a}-{b}"
+            except Exception:
+                return None
+
+        def _add_pair(out, pair_keys, a, b):
+            try:
+                a, b = int(a), int(b)
+                if a == b:
+                    return
+                key = tuple(sorted((a, b)))
+                if key in pair_keys:
+                    return
+                pair_keys.add(key)
+                out.append(f"{a}-{b}")
+            except Exception:
+                pass
 
         lines = []
 
@@ -10800,14 +10825,31 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("買い基準：")
             lines.append(_flow12_trio_buy_criteria_line(stats))
 
-            # v108:
-            # 旧ヴェロビ的買目のうち、note上部へ戻すのは
-            # 2車複の妙味通過だけ。
+            # 旧「2車複｜妙味通過」から候補を残す。
             two_myoumi_vals = _extract_note_section_lines(
                 rule_buy_block,
                 "2車複｜妙味通過",
-                max_items=4,
+                max_items=6,
             )
+
+            combined_pairs = []
+            combined_keys = set()
+
+            for v in two_myoumi_vals:
+                disp = _pair_display_from_line(v)
+                if not disp:
+                    continue
+                a, b = disp.split("-", 1)
+                _add_pair(combined_pairs, combined_keys, a, b)
+
+            # 34-12切替候補からも、妙味通過したペアだけを足す。
+            for a, b in (pairs or []):
+                try:
+                    sc = _myoumi_score_2kei(int(a), int(b), int(A), mark_map or {})
+                except Exception:
+                    sc = 0.0
+                if float(sc) >= float(MYOUMI_PASS_THRESHOLD_2KEI):
+                    _add_pair(combined_pairs, combined_keys, int(a), int(b))
 
             lines.append("")
             lines.append("【補助候補｜2車複 妙味通過】")
@@ -10816,25 +10858,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append(f"妙味ポイント {MYOUMI_PASS_THRESHOLD_2KEI:.1f}pt以上")
             lines.append("")
             lines.append("2車複：")
-            if two_myoumi_vals:
-                for v in two_myoumi_vals:
-                    lines.append(str(v))
+            if combined_pairs:
+                for p in combined_pairs:
+                    lines.append(p)
             else:
                 lines.append("該当なし")
-
-            if pairs:
-                lines.append("")
-                lines.append("【切替候補｜34-12 2車複】")
-                lines.append("")
-                lines.append("条件：")
-                lines.append(_flow12_market_nifuku_condition_lines(True, stats))
-                lines.append("")
-                lines.append("2車複：")
-                for a, b in pairs:
-                    lines.append(f"{a}={b}")
-                lines.append("")
-                lines.append("買い基準：")
-                lines.append(_flow3412_nifuku_buy_criteria_line(stats))
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
@@ -10868,6 +10896,7 @@ try:
         _rec_copy,
         expect_axis_label,
         rule_buy_block,
+        market_mark_map,
     ) + "\n"
 
     # 最初の全体妙味行の直後にだけ挿入
