@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v108: note上部サマリーに「2車複｜妙味通過（7.0pt以上）」だけを復活。評価重複・三連複妙味・三連複評価重複はnote上部へ出さない。
 # v107: 本文条件を1-2市場ワイドオッズ表示へ修正。払戻合計入力と推定オッズ表示を削除し、三連複/34-12必要合成オッズを本文へ表示。
 # v106: 1-2市場2車複条件を推奨下限合成オッズから切り離し、1-2二車複的中分布の推定想定オッズを表示。
 # v105: note三連複推奨の買い基準にサイドバー計算の推奨下限合成オッズを本文差し込み。
@@ -10759,6 +10760,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
     """
     note貼り付け用の短縮推奨サマリー。
     12R分を並べても読めるよう、買い目と下限だけに絞る。
+
+    v108:
+    旧ヴェロビ的買目から note上部へ復活させるのは、
+    「2車複｜妙味通過（7.0pt以上）」だけ。
+    評価重複・三連複妙味・三連複評価重複は note上部へ出さない。
     """
     try:
         xs = []
@@ -10779,7 +10785,6 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             rest_text = "".join(str(int(x)) for x in rest)
 
             stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
-            trio = stats.get("trio12_all", {}) or {}
 
             lines.append(f"推奨流れ【{rec_style or '推奨'}】：")
             lines.append(" → ".join(str(int(x)) for x in xs))
@@ -10794,6 +10799,28 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("")
             lines.append("買い基準：")
             lines.append(_flow12_trio_buy_criteria_line(stats))
+
+            # v108:
+            # 旧ヴェロビ的買目のうち、note上部へ戻すのは
+            # 2車複の妙味通過だけ。
+            two_myoumi_vals = _extract_note_section_lines(
+                rule_buy_block,
+                "2車複｜妙味通過",
+                max_items=4,
+            )
+
+            lines.append("")
+            lines.append("【補助候補｜2車複 妙味通過】")
+            lines.append("")
+            lines.append("条件：")
+            lines.append(f"妙味ポイント {MYOUMI_PASS_THRESHOLD_2KEI:.1f}pt以上")
+            lines.append("")
+            lines.append("2車複：")
+            if two_myoumi_vals:
+                for v in two_myoumi_vals:
+                    lines.append(str(v))
+            else:
+                lines.append("該当なし")
 
             if pairs:
                 lines.append("")
@@ -10813,20 +10840,6 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("")
             lines.append("生成不可")
 
-        support = []
-        for header in [
-            "2車複｜妙味通過",
-            "2車複’｜評価重複",
-            "三連複｜妙味通過",
-            "三連複’｜評価重複",
-        ]:
-            vals = _extract_note_section_lines(rule_buy_block, header, max_items=3)
-            if vals:
-                label = header.replace("（", " ").split(" ")[0]
-                support.append((label, vals))
-
-        # note上部の実戦用推奨は、条件・買い目・切替候補だけに絞る。
-        # 補助根拠は下部の詳細ブロック側に任せる。
         if rec_copy:
             lines.append("")
             lines.append(f"コピー用：{rec_copy}")
@@ -10834,6 +10847,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
         return "\n".join(lines).strip()
     except Exception as e:
         return f"note最終推奨サマリー生成不可：{e}"
+
 
 
 try:
