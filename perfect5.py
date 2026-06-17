@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # v108: note上部サマリーに「2車複｜妙味通過（7.0pt以上）」だけを復活。評価重複・三連複妙味・三連複評価重複はnote上部へ出さない。
 # v111: 選択コピー欄の2車複妙味通過表示を簡潔化。旧妙味通過＋34-12内通過ペアを統合し、説明文は表示しない。基準8.5pt。
+# v113: 三連複推奨の買い基準文言のみ削除。余計な代替文言は出さない。
 # v107: 本文条件を1-2市場ワイドオッズ表示へ修正。払戻合計入力と推定オッズ表示を削除し、三連複/34-12必要合成オッズを本文へ表示。
 # v106: 1-2市場2車複条件を推奨下限合成オッズから切り離し、1-2二車複的中分布の推定想定オッズを表示。
 # v105: note三連複推奨の買い基準にサイドバー計算の推奨下限合成オッズを本文差し込み。
@@ -444,22 +445,12 @@ def _flow12_market_nifuku_condition_lines(inline_switch=False, stats=None):
 
 
 def _flow12_trio_buy_criteria_line(stats=None):
-    """ヴェロビ三連複推奨の買い基準表示。
-    固定文言ではなく、サイドバー入力から算出した推奨下限合成オッズを本文へ差し込む。
+    """ヴェロビ三連複推奨の運用目安表示。
+
+    現行運用は「安目切り後の合成オッズで買う/見送る」ではなく、
+    市場の安め上位を進塁目として使うため、旧合成オッズ基準は本文に出さない。
     """
-    try:
-        if stats is None:
-            stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
-        trio = (stats or {}).get("trio12_all", {}) or {}
-        floor = trio.get("recommended_floor_odds", None)
-        if floor is None:
-            return "安目切り後の三連複合成オッズが推奨下限以上"
-        floor = float(floor)
-        if not math.isfinite(floor) or floor <= 0:
-            return "安目切り後の三連複合成オッズが推奨下限以上"
-        return f"安目切り後の三連複合成オッズ {floor:.2f}倍以上"
-    except Exception:
-        return "安目切り後の三連複合成オッズが推奨下限以上"
+    return "安め上位4点セットを基本"
 
 
 
@@ -8891,9 +8882,6 @@ def _make_recommended_flow_12_all_trio_switch_block():
         lines.append("")
         lines.append("三連複：")
         lines.append(f"{A}-{B}-{rest_text}")
-        lines.append("")
-        lines.append("買い基準：")
-        lines.append(_flow12_trio_buy_criteria_line(stats))
 
         if pairs:
             lines.append("")
@@ -10821,9 +10809,6 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("")
             lines.append("三連複：")
             lines.append(f"{A}-{B}-{rest_text}")
-            lines.append("")
-            lines.append("買い基準：")
-            lines.append(_flow12_trio_buy_criteria_line(stats))
 
             # 旧「2車複｜妙味通過」から候補を残す。
             two_myoumi_vals = _extract_note_section_lines(
