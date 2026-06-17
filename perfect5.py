@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # v108: note上部サマリーに「2車複｜妙味通過（7.0pt以上）」だけを復活。評価重複・三連複妙味・三連複評価重複はnote上部へ出さない。
 # v111: 選択コピー欄の2車複妙味通過表示を簡潔化。旧妙味通過＋34-12内通過ペアを統合し、説明文は表示しない。基準8.5pt。
+# v114: note上部推奨を二強軸フォメ＋安め上位4点表記へ変更。補助2車複は妙味8.5pt通過のみを短く表示。
 # v113: 三連複推奨の買い基準文言のみ削除。余計な代替文言は出さない。
 # v107: 本文条件を1-2市場ワイドオッズ表示へ修正。払戻合計入力と推定オッズ表示を削除し、三連複/34-12必要合成オッズを本文へ表示。
 # v106: 1-2市場2車複条件を推奨下限合成オッズから切り離し、1-2二車複的中分布の推定想定オッズを表示。
@@ -10635,6 +10636,11 @@ try:
         col3_text = _fmt_cars(col3_cars_display)
         col4_text = _fmt_cars(col4_cars_display)
 
+        # note上部サマリー用：VeloBi列評価の素材列を保持する。
+        globals()["NOTE_COL2_TEXT"] = col2_text
+        globals()["NOTE_COL3_TEXT"] = col3_text
+        globals()["NOTE_COL4_TEXT"] = col4_text
+
         column_eval_block = (
             "【VeloBi列評価】\n"
             f"1列目｜軸候補：{col1_text}\n"
@@ -10748,10 +10754,10 @@ def _extract_note_section_lines(block_text: str, header_prefix: str, max_items: 
 def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_label, rule_buy_block, mark_map=None):
     """
     note貼り付け用の短縮推奨サマリー。
-    12R分を並べても読めるよう、買い目と下限だけに絞る。
 
-    v111:
-    note上部の2車複妙味通過欄は、通過ペアだけを簡潔表示する。
+    v114:
+    ・三連複は二強軸フォメとして表示し、「安め上位4点」「単打・つなぎ狙い」を明記する。
+    ・補助2車複は、旧2車複妙味通過＋34-12候補の中から8.5pt以上だけを統合し、説明文なしで短く表示する。
     """
     try:
         xs = []
@@ -10789,6 +10795,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             except Exception:
                 pass
 
+        def _safe_col_text(name, fallback):
+            try:
+                v = str(globals().get(name, "") or "").strip()
+                return v if v else fallback
+            except Exception:
+                return fallback
+
         lines = []
 
         if len(xs) >= 3:
@@ -10797,24 +10810,27 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             pairs = _make_flow_switch_pairs(xs)
             rest_text = "".join(str(int(x)) for x in rest)
 
-            stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
+            # 二強軸表示：1列目は推奨流れ1位＋2位。
+            axis_text = f"{A}{B}"
+            col2_text = _safe_col_text("NOTE_COL2_TEXT", f"{B}{''.join(str(int(x)) for x in xs[2:4])}")
+            col3_text = _safe_col_text("NOTE_COL3_TEXT", rest_text)
 
             lines.append(f"推奨流れ【{rec_style or '推奨'}】：")
             lines.append(" → ".join(str(int(x)) for x in xs))
             lines.append("")
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
-            lines.append("条件：")
-            lines.append(_flow12_market_nifuku_condition_lines(False, stats))
-            lines.append("")
             lines.append("三連複：")
-            lines.append(f"{A}-{B}-{rest_text}")
+            lines.append(f"{axis_text}-{col2_text}-{col3_text}")
+            lines.append("")
+            lines.append("から安め上位4点")
+            lines.append("※単打・つなぎ狙い")
 
             # 旧「2車複｜妙味通過」から候補を残す。
             two_myoumi_vals = _extract_note_section_lines(
                 rule_buy_block,
                 "2車複｜妙味通過",
-                max_items=6,
+                max_items=8,
             )
 
             combined_pairs = []
@@ -10837,10 +10853,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     _add_pair(combined_pairs, combined_keys, int(a), int(b))
 
             lines.append("")
-            lines.append("【補助候補｜2車複 妙味通過】")
-            lines.append("")
-            lines.append("条件：")
-            lines.append(f"妙味ポイント {MYOUMI_PASS_THRESHOLD_2KEI:.1f}pt以上")
+            lines.append(f"【補助候補｜2車複 妙味{MYOUMI_PASS_THRESHOLD_2KEI:.1f}pt通過】")
             lines.append("")
             lines.append("2車複：")
             if combined_pairs:
@@ -10848,6 +10861,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     lines.append(p)
             else:
                 lines.append("該当なし")
+            lines.append("")
+            lines.append("※長打狙い")
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
