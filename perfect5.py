@@ -3,6 +3,7 @@
 # v111: 選択コピー欄の2車複妙味通過表示を簡潔化。旧妙味通過＋34-12内通過ペアを統合し、説明文は表示しない。基準8.5pt。
 # v114: note上部推奨を二強軸フォメ＋安め上位4点表記へ変更。補助2車複は妙味8.5pt通過のみを短く表示。
 # v113: 三連複推奨の買い基準文言のみ削除。余計な代替文言は出さない。
+# v116: 三連複二強軸フォメの3列目を車番羅列ではなく「全」表示へ修正。
 # v107: 本文条件を1-2市場ワイドオッズ表示へ修正。払戻合計入力と推定オッズ表示を削除し、三連複/34-12必要合成オッズを本文へ表示。
 # v106: 1-2市場2車複条件を推奨下限合成オッズから切り離し、1-2二車複的中分布の推定想定オッズを表示。
 # v105: note三連複推奨の買い基準にサイドバー計算の推奨下限合成オッズを本文差し込み。
@@ -10755,8 +10756,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
     """
     note貼り付け用の短縮推奨サマリー。
 
-    v114:
-    ・三連複は二強軸フォメとして表示し、「安め上位4点」「単打・つなぎ狙い」を明記する。
+    v116:
+    ・三連複は二強軸フォメとして表示し、3列目は車番羅列ではなく「全」表示にする。
+    ・「安め上位4点」「単打・つなぎ狙い」を明記する。
     ・補助2車複は、旧2車複妙味通過＋34-12候補の中から8.5pt以上だけを統合し、説明文なしで短く表示する。
     """
     try:
@@ -10810,10 +10812,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             pairs = _make_flow_switch_pairs(xs)
             rest_text = "".join(str(int(x)) for x in rest)
 
-            # 二強軸表示：1列目は推奨流れ1位＋2位。
+            # 二強軸表示：評価表記 12-123-1234567 を実車番へ変換する。
+            # 例：推奨流れ 7→2→5→4→1→3→6 なら 72-725-全。
+            # NOTE_COL2_TEXT / NOTE_COL3_TEXT は旧列評価用なので、ここでは使わない。
             axis_text = f"{A}{B}"
-            col2_text = _safe_col_text("NOTE_COL2_TEXT", f"{B}{''.join(str(int(x)) for x in xs[2:4])}")
-            col3_text = _safe_col_text("NOTE_COL3_TEXT", rest_text)
+            col2_text = "".join(str(int(x)) for x in xs[:3])
+            col3_text = "全"
 
             lines.append(f"推奨流れ【{rec_style or '推奨'}】：")
             lines.append(" → ".join(str(int(x)) for x in xs))
