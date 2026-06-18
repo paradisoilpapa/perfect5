@@ -3,6 +3,7 @@
 # v111: 選択コピー欄の2車複妙味通過表示を簡潔化。旧妙味通過＋34-12内通過ペアを統合し、説明文は表示しない。基準8.5pt。
 # v114: note上部推奨を二強軸フォメ＋安め上位4点表記へ変更。補助2車複は妙味8.5pt通過のみを短く表示。
 # v120: 全体妙味A/B/C変換の二重適用を修正。旧ラベルは表示直前に一度だけ変換し、青網掛けとコピー欄を一致させる。
+# v121: note上部推奨を三連複固定表示からステップ式（1-2幹確認→123BOX→1/2軸拡張）へ変更。
 # v113: 三連複推奨の買い基準文言のみ削除。余計な代替文言は出さない。
 # v116: 三連複二強軸フォメの3列目を車番羅列ではなく「全」表示へ修正。
 # v117: note三連複推奨を評価1・2-全-全表示へ変更。2列目3車固定を廃止し、安め上位4点でライン決着も拾える表示へ修正。
@@ -10846,23 +10847,36 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             pairs = _make_flow_switch_pairs(xs)
             rest_text = "".join(str(int(x)) for x in rest)
 
-            # 二強軸表示：評価表記 12-全-全 を実車番へ変換する。
-            # 例：推奨流れ 7→2→5→4→1→3→6 なら 72-全-全。
-            # NOTE_COL2_TEXT / NOTE_COL3_TEXT は旧列評価用なので、ここでは使わない。
-            axis_text = f"{A}{B}"
-            col2_text = "全"
-            col3_text = "全"
+            # ステップ式表示：
+            # 評価1・2の幹確認 → 評価1・2・3の上位圧縮 → 評価1・2から評価3・4へ拡張。
+            # 例：推奨流れ 5→3→1→7→2→4→6
+            #   ステップ1：5-3
+            #   ステップ2：531 BOX
+            #   ステップ3：5-317 / 3-17
+            C = int(xs[2])
+            D = int(xs[3]) if len(xs) >= 4 else None
+            step1_pair = f"{A}-{B}"
+            step2_box = f"{A}{B}{C} BOX"
+            if D is not None:
+                step3_left = f"{A}-{B}{C}{D}"
+                step3_right = f"{B}-{C}{D}"
+                step3_text = f"{step3_left} / {step3_right}"
+            else:
+                step3_text = f"{A}-{B}{C} / {B}-{C}"
 
             lines.append(f"推奨流れ【{rec_style or '推奨'}】：")
             lines.append(" → ".join(str(int(x)) for x in xs))
             lines.append("")
-            lines.append("【ヴェロビ三連複推奨】")
+            lines.append("【ステップ式】")
             lines.append("")
-            lines.append("三連複：")
-            lines.append(f"{axis_text}-{col2_text}-{col3_text}")
+            lines.append("ステップ1")
+            lines.append(f"ワイド＆2車複：{step1_pair}")
             lines.append("")
-            lines.append("から安め上位4点")
-            lines.append("※単打・つなぎ狙い")
+            lines.append("ステップ2")
+            lines.append(f"2車複：{step2_box}")
+            lines.append("")
+            lines.append("ステップ3")
+            lines.append(f"2車複：{step3_text}")
 
             # 旧「2車複｜妙味通過」から候補を残す。
             two_myoumi_vals = _extract_note_section_lines(
