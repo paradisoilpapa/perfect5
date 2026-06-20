@@ -4,6 +4,7 @@
 # v114: note上部推奨を二強軸フォメ＋安め上位4点表記へ変更。補助2車複は妙味8.5pt通過のみを短く表示。
 # v120: 全体妙味A/B/C変換の二重適用を修正。旧ラベルは表示直前に一度だけ変換し、青網掛けとコピー欄を一致させる。
 # v121: note上部推奨を三連複固定表示からステップ式（1-2幹確認→123BOX→1/2軸拡張）へ変更。
+# v122: A-B同一ライン時、B後ろの3番手以降をライン残り候補としてステップ3に保護。地区まとめは弱めるが即消ししない。
 # v122: コメントチェックに自在・競り相手・3番手以降追走信頼を追加。競り相手同士の弱者追加減点、3番手以降の結束補正、KO差＋競り＋脚質による1軸/二強/混戦判定をnote上部ステップ式へ反映。
 # v113: 三連複推奨の買い基準文言のみ削除。余計な代替文言は出さない。
 # v116: 三連複二強軸フォメの3列目を車番羅列ではなく「全」表示へ修正。
@@ -2857,7 +2858,7 @@ def _line_follow_trust_bonus_for_car(_no, _role, _is_girls_like=False):
         mp = {
             "明確追走": 0.050,
             "通常": 0.000,
-            "地区まとめ": -0.040,
+            "地区まとめ": -0.025,
             "流動": -0.080,
             "単騎寄り": -0.120,
         }
@@ -11142,6 +11143,56 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             except Exception:
                 return fallback
 
+        def _axis_pair_line_tail_candidates(_a, _b):
+            """
+            A-Bが同一ラインで並んでいる場合、Bの後ろの3番手以降を
+            3着・相手拡張候補として保護する。
+
+            目的：
+            ・個人評価が低い3番手でも、A→Bのライン決着では市場上位に残ることがある。
+            ・「地区まとめ」は結束弱めだが、ライン残り候補から即消ししない。
+            ・「流動」「単騎寄り」は固定ラインとして扱いにくいため保護しない。
+            """
+            out = []
+            try:
+                _a, _b = int(_a), int(_b)
+                _line_def = globals().get("line_def", {}) or {}
+                _trust = globals().get("line_follow_trust", {}) or {}
+
+                for _gid, _mem in (_line_def or {}).items():
+                    xs = [int(x) for x in (_mem or []) if str(x).isdigit()]
+                    if _a not in xs or _b not in xs:
+                        continue
+                    ia, ib = xs.index(_a), xs.index(_b)
+
+                    # A→Bの順で隣接しているラインだけを保護対象にする。
+                    if ib != ia + 1:
+                        continue
+
+                    for x in xs[ib + 1:]:
+                        xi = int(x)
+                        label = str(_trust.get(xi, _trust.get(str(xi), "通常")) or "通常")
+                        if label in ("流動", "単騎寄り"):
+                            continue
+                        if xi not in out:
+                            out.append(xi)
+                    break
+            except Exception:
+                pass
+            return out
+
+        def _merge_car_text(*seqs):
+            out = []
+            for seq in seqs:
+                for x in (seq or []):
+                    try:
+                        xi = int(x)
+                    except Exception:
+                        continue
+                    if xi not in out:
+                        out.append(xi)
+            return "".join(str(x) for x in out)
+
         lines = []
 
         if len(xs) >= 3:
@@ -11158,6 +11209,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             #   ステップ3：5-317 / 3-17
             C = int(xs[2])
             D = int(xs[3]) if len(xs) >= 4 else None
+            line_tail_after_ab = _axis_pair_line_tail_candidates(A, B)
             axis_judge = _make_axis_trust_judgement(xs)
             axis_type = str(axis_judge.get("type", "未判定"))
             axis_cap = str(axis_judge.get("cap", "通常"))
@@ -11167,25 +11219,32 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             step1_pair = f"{A}-{B}"
 
             if axis_type in ("1軸型", "1軸寄り"):
-                # 1軸型：評価1を主軸にし、評価2との二強BOXに寄せすぎない
+                # 1軸型：評価1を主軸にし、評価2との二強BOXに寄せすぎない。
+                # ただしA-Bが同一ラインで、B後ろに3番手以降がいる場合は、
+                # 個人評価が低くてもライン残り候補としてステップ3に保護する。
                 step2_box = f"{A}-{B}{C}"
+                step3_tail = [B, C]
                 if D is not None:
-                    step3_text = f"{A}-{B}{C}{D}"
-                else:
-                    step3_text = f"{A}-{B}{C}"
+                    step3_tail.append(D)
+                step3_tail += line_tail_after_ab
+                step3_text = f"{A}-{_merge_car_text(step3_tail)}"
             elif axis_type == "混戦寄り" or "見送り" in axis_type:
                 # 混戦：通常ステップ上限を下げる
                 step2_box = "見送り寄り"
                 step3_text = "上限下げ"
             else:
-                # 標準：評価1・2二強型
+                # 標準：評価1・2二強型。
+                # 二強型でもA-B同ラインの後ろは、ライン決着の3着候補として残す。
                 step2_box = f"{A}{B}{C} BOX"
                 if D is not None:
-                    step3_left = f"{A}-{B}{C}{D}"
-                    step3_right = f"{B}-{C}{D}"
+                    left_tail = [B, C, D] + line_tail_after_ab
+                    right_tail = [C, D]
+                    step3_left = f"{A}-{_merge_car_text(left_tail)}"
+                    step3_right = f"{B}-{_merge_car_text(right_tail)}"
                     step3_text = f"{step3_left} / {step3_right}"
                 else:
-                    step3_text = f"{A}-{B}{C} / {B}-{C}"
+                    left_tail = [B, C] + line_tail_after_ab
+                    step3_text = f"{A}-{_merge_car_text(left_tail)} / {B}-{C}"
 
             lines.append(f"推奨流れ【{rec_style or '推奨'}】：")
             lines.append(" → ".join(str(int(x)) for x in xs))
@@ -11195,6 +11254,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             if axis_reasons:
                 lines.append("理由：" + "／".join(axis_reasons[:4]))
             lines.append(axis_line_note)
+            if line_tail_after_ab:
+                lines.append("ライン残り保護：" + ",".join(str(int(x)) for x in line_tail_after_ab))
             lines.append("")
             lines.append("【ステップ式】")
             lines.append("")
