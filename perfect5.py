@@ -6,6 +6,7 @@
 # v121: note上部推奨を三連複固定表示からステップ式（1-2幹確認→123BOX→1/2軸拡張）へ変更。
 # v122: A-B同一ライン時、B後ろの3番手以降をライン残り候補としてステップ3に保護。地区まとめは弱めるが即消ししない。
 # v122: コメントチェックに自在・競り相手・3番手以降追走信頼を追加。競り相手同士の弱者追加減点、3番手以降の結束補正、KO差＋競り＋脚質による1軸/二強/混戦判定をnote上部ステップ式へ反映。
+# v123: note上部の補助候補表示を「長期スパン妙味｜12-34」へ変更。20倍以上のみ候補として1-3/1-4/2-3/2-4相当をpt付きで固定表示。
 # v113: 三連複推奨の買い基準文言のみ削除。余計な代替文言は出さない。
 # v116: 三連複二強軸フォメの3列目を車番羅列ではなく「全」表示へ修正。
 # v117: note三連複推奨を評価1・2-全-全表示へ変更。2列目3車固定を廃止し、安め上位4点でライン決着も拾える表示へ修正。
@@ -11268,43 +11269,43 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("ステップ3")
             lines.append(f"2車複：{step3_text}")
 
-            # 旧「2車複｜妙味通過」から候補を残す。
-            two_myoumi_vals = _extract_note_section_lines(
-                rule_buy_block,
-                "2車複｜妙味通過",
-                max_items=8,
-            )
-
-            combined_pairs = []
-            combined_keys = set()
-
-            for v in two_myoumi_vals:
-                disp = _pair_display_from_line(v)
-                if not disp:
-                    continue
-                a, b = disp.split("-", 1)
-                _add_pair(combined_pairs, combined_keys, a, b)
-
-            # 34-12切替候補からも、妙味通過したペアだけを足す。
-            for a, b in (pairs or []):
-                try:
-                    sc = _myoumi_score_2kei(int(a), int(b), int(A), mark_map or {})
-                except Exception:
-                    sc = 0.0
-                if float(sc) >= float(MYOUMI_PASS_THRESHOLD_2KEI):
-                    _add_pair(combined_pairs, combined_keys, int(a), int(b))
+            # 長期スパン妙味：評価1・2 × 評価3・4（12-34）を固定表示する。
+            # 旧「2車複｜妙味通過」の単独候補表示は、短期の買い指示に見えるため廃止。
+            # ここでは長期集計上の妙味候補として、20倍以上のみ候補であることを明示する。
+            long_span_pairs = []
+            long_span_keys = set()
+            if D is not None:
+                for a, b in ((A, C), (A, D), (B, C), (B, D)):
+                    try:
+                        a_i, b_i = int(a), int(b)
+                        if a_i == b_i:
+                            continue
+                        key = tuple(sorted((a_i, b_i)))
+                        if key in long_span_keys:
+                            continue
+                        long_span_keys.add(key)
+                        try:
+                            sc = float(_myoumi_score_2kei(a_i, b_i, int(A), mark_map or {}))
+                        except Exception:
+                            sc = 0.0
+                        # 2車複なので表示は小さい車番-大きい車番へ揃える。
+                        disp = f"{key[0]}-{key[1]}"
+                        long_span_pairs.append((disp, sc))
+                    except Exception:
+                        pass
 
             lines.append("")
-            lines.append(f"【補助候補｜2車複 妙味{MYOUMI_PASS_THRESHOLD_2KEI:.1f}pt通過】")
+            lines.append("【長期スパン妙味｜12-34】")
             lines.append("")
-            lines.append("2車複：")
-            if combined_pairs:
-                for p in combined_pairs:
-                    lines.append(p)
+            lines.append("20倍以上のみ候補")
+            lines.append("")
+            if long_span_pairs:
+                for disp, sc in long_span_pairs:
+                    lines.append(f"{disp}　{sc:.0f}pt")
             else:
                 lines.append("該当なし")
             lines.append("")
-            lines.append("※長打狙い")
+            lines.append("※20倍未満は原則見送り")
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
