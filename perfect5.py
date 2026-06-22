@@ -11295,7 +11295,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         pass
 
             lines.append("")
-            lines.append("【長期スパン妙味｜12-34】")
+            lines.append("【長期スパン妙味２車複】")
             lines.append("")
             lines.append("20倍以上のみ候補")
             lines.append("")
