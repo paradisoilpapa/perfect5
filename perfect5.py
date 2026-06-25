@@ -11484,7 +11484,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("目安：")
             lines.append("A：推奨買い候補")
             lines.append("B：買い候補")
-            lines.append("C：記録")
+            lines.append("C：やや見送り")
             lines.append("D：見送り")
             lines.append("")
             lines.append("※購入は総合B以上を目安")
