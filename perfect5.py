@@ -11,6 +11,7 @@
 # v128: note上部サマリーからステップ式ブロックを削除。軸判定と長期スパン妙味2車複だけを表示。
 # v130: 長期スパン妙味2車複を、的中期待・妙味期待・総合評価A/B/C/Dの2軸表示へ変更。
 # v131: 長期スパン妙味2車複の購入目安を20倍以上から総合B以上へ変更。点数過多時はA優先。
+# v133: ２車複フォーメーションに総合評価別の買い目まとめ（A/B/C/D）を追加。C表記を「やや見送り」へ変更。
 # v132: 長期スパン妙味2車複の見出しを2車複フォーメーションへ整理。Aを推奨買い候補へ変更し、C/Dも20倍以上なら買い推奨の注記を追加。
 # v129: ステップ式削除後に残っていた軸判定の「上限：ステップ◯まで」表示を削除。
 # v126: 長期スパン妙味2車複を締切3分前13倍以上推奨へ変更。評価1・2 × 評価2〜5のフォーメーション表示へ拡張。
@@ -11475,6 +11476,17 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append(long_span_forme)
             lines.append("")
             if long_span_pairs:
+                # 総合評価ごとの買い目まとめ。先にA/B/C/Dで見られるようにして、事前購入判断を簡単にする。
+                rank_groups = {"A": [], "B": [], "C": [], "D": []}
+                for disp, hit_rank, myoumi_rank, total_rank in long_span_pairs:
+                    tr = str(total_rank)
+                    if tr not in rank_groups:
+                        rank_groups[tr] = []
+                    rank_groups[tr].append(disp)
+                for rank in ["A", "B", "C", "D"]:
+                    if rank_groups.get(rank):
+                        lines.append(f"{rank}：{'、'.join(rank_groups[rank])}")
+                lines.append("")
                 lines.append("買い目　的中期待　妙味期待　総合評価")
                 for disp, hit_rank, myoumi_rank, total_rank in long_span_pairs:
                     lines.append(f"{disp}　　{hit_rank}　　　　　{myoumi_rank}　　　　　{total_rank}")
@@ -11489,7 +11501,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("")
             lines.append("※購入は総合B以上を目安")
             lines.append("※点数が多い場合はA優先")
-            lines.append("※C、Dは20倍以上のオッズがつくなら買い推奨")
+            lines.append("※C、Dは20倍以上なら穴押さえ候補")
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
