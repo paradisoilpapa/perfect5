@@ -11,6 +11,7 @@
 # v128: note上部サマリーからステップ式ブロックを削除。軸判定と長期スパン妙味2車複だけを表示。
 # v130: 長期スパン妙味2車複を、的中期待・妙味期待・総合評価A/B/C/Dの2軸表示へ変更。
 # v131: 長期スパン妙味2車複の購入目安を20倍以上から総合B以上へ変更。点数過多時はA優先。
+# v134: 的中期待の計算を掛け算から、打ち合わせ通り 0.6×VeloBi点 + 0.4×Win点 + 一致ボーナスへ修正。
 # v133: ２車複フォーメーションに総合評価別の買い目まとめ（A/B/C/D）を追加。C表記を「やや見送り」へ変更。
 # v132: 長期スパン妙味2車複の見出しを2車複フォーメーションへ整理。Aを推奨買い候補へ変更し、C/Dも20倍以上なら買い推奨の注記を追加。
 # v129: ステップ式削除後に残っていた軸判定の「上限：ステップ◯まで」表示を削除。
@@ -11402,19 +11403,32 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return 0
 
-            def _longspan_hit_rank(_a, _b):
-                # 的中期待：ヴェロビ評価とウィンチケット印が重なるほど高くする。
-                # 車別点 = ヴェロビ順位点 × ウィンチケット印点、2車複は2車合計。
+            def _longspan_hit_score_one(_car_no):
+                # 的中期待：打ち合わせ通り、ヴェロビ順位点(5,4,3,2,1)と
+                # ウィンチケット印点(◎4,〇3,△2,×1)の「重なり」を見る。
+                # 掛け算ではなく、車別に 0.6×VeloBi + 0.4×Win + 一致ボーナス。
                 try:
-                    _s = (
-                        _longspan_velobi_point(_a) * _longspan_win_point(_a)
-                        + _longspan_velobi_point(_b) * _longspan_win_point(_b)
-                    )
-                    if _s >= 24:
+                    _v = float(_longspan_velobi_point(_car_no))
+                    _w = float(_longspan_win_point(_car_no))
+                    _bonus = 0.0
+                    if _v >= 4 and _w >= 3:
+                        _bonus = 1.5
+                    elif _v >= 3 and _w >= 2:
+                        _bonus = 1.0
+                    return 0.6 * _v + 0.4 * _w + _bonus
+                except Exception:
+                    return 0.0
+
+            def _longspan_hit_rank(_a, _b):
+                # 2車複の的中期待点 = 2車の車別的中期待点の合計。
+                # 最大目安：1位◎(6.1) + 2位〇(5.1) = 11.2点程度。
+                try:
+                    _s = _longspan_hit_score_one(_a) + _longspan_hit_score_one(_b)
+                    if _s >= 10.0:
                         return "A"
-                    if _s >= 14:
+                    if _s >= 8.0:
                         return "B"
-                    if _s >= 5:
+                    if _s >= 6.0:
                         return "C"
                     return "D"
                 except Exception:
