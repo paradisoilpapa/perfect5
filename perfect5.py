@@ -7,6 +7,8 @@
 # v122: A-B同一ライン時、B後ろの3番手以降をライン残り候補としてステップ3に保護。地区まとめは弱めるが即消ししない。
 # v122: コメントチェックに自在・競り相手・3番手以降追走信頼を追加。競り相手同士の弱者追加減点、3番手以降の結束補正、KO差＋競り＋脚質による1軸/二強/混戦判定をnote上部ステップ式へ反映。
 # v123: note上部の補助候補表示を「長期スパン妙味｜12-34」へ変更。20倍以上のみ候補として1-3/1-4/2-3/2-4相当をpt付きで固定表示。
+# v124: 後位信頼をselectboxからチェックボックス式へ変更。複数チェック時は単騎寄り＞流動＞地区まとめ＞明確追走の優先順で1つの内部ラベルに変換。
+# v125: コメントチェックを自力/自力自在/自在に分離。単騎コメントを後位信頼から分離して独立チェック化。後位信頼は明確/地区/流動のみ。
 # v113: 三連複推奨の買い基準文言のみ削除。余計な代替文言は出さない。
 # v116: 三連複二強軸フォメの3列目を車番羅列ではなく「全」表示へ修正。
 # v117: note三連複推奨を評価1・2-全-全表示へ変更。2列目3車固定を廃止し、安め上位4点でライン決着も拾える表示へ修正。
@@ -2381,16 +2383,20 @@ for i, no in enumerate(active_cars_live):
 # コメントチェック表
 #   前検コメントを見て手動チェック
 #   自力：自力 / 自力基本 / 自分で / 前で 等
-#   自在：自力自在 / 前々 / 何でも / 流れで 等
+#   自力自在：自力自在 / 何でもやる / 前々自力 等
+#   自在：自在 / 前々 / 流れで / 位置取り 等
 #   番手：○○君 / ○○へ / 任せる / 近畿勢 等
+#   単騎：一人で / 単騎で / 決めず 等（ライン入力上の単騎とは別のコメント補助）
 #   競り：競り対象の車番にチェックし、競り相手を選択
 #   後位信頼：3番手以降の明確追走/地区まとめ/流動を手動評価
 # =====================================================
 st.subheader("コメントチェック")
 
 jiryoku_comment_live = {}
+jiryoku_jizai_comment_live = {}
 jizai_comment_live = {}
 target_comment_live = {}
+single_comment_live = {}
 seri_comment_live = {}
 seri_target_live = {}
 line_follow_trust_live = {}
@@ -2408,6 +2414,12 @@ for i, no in enumerate(active_cars_live):
             key=f"jiryoku_comment_r{race_no}_{no}"
         )
 
+        jiryoku_jizai_comment_live[no] = st.checkbox(
+            "自力自在",
+            value=False,
+            key=f"jiryoku_jizai_comment_r{race_no}_{no}"
+        )
+
         jizai_comment_live[no] = st.checkbox(
             "自在",
             value=False,
@@ -2418,6 +2430,12 @@ for i, no in enumerate(active_cars_live):
             "番手",
             value=False,
             key=f"target_comment_r{race_no}_{no}"
+        )
+
+        single_comment_live[no] = st.checkbox(
+            "単騎",
+            value=False,
+            key=f"single_comment_r{race_no}_{no}"
         )
 
         seri_comment_live[no] = st.checkbox(
@@ -2435,12 +2453,45 @@ for i, no in enumerate(active_cars_live):
         )
         seri_target_live[no] = None if _seri_target_sel == "—" else int(_seri_target_sel)
 
-        line_follow_trust_live[no] = st.selectbox(
-            "後位信頼",
-            options=["通常", "明確追走", "地区まとめ", "流動", "単騎寄り"],
-            index=0,
-            key=f"line_follow_trust_r{race_no}_{no}"
+        # v125: 後位信頼はselectboxではなくチェックボックス式。
+        # 単騎コメントは後位信頼ではなく、上の「単騎」チェックで独立管理する。
+        # 複数チェック時は、リスクが強い順に 流動 > 地区まとめ > 明確追走 で採用する。
+        _old_line_follow_key = f"line_follow_trust_r{race_no}_{no}"
+        _old_line_follow_val = str(st.session_state.get(_old_line_follow_key, "通常") or "通常")
+
+        st.caption("後位信頼")
+        _lft_clear = st.checkbox(
+            "明確",
+            value=(_old_line_follow_val == "明確追走"),
+            key=f"line_follow_clear_r{race_no}_{no}"
         )
+        _lft_district = st.checkbox(
+            "地区",
+            value=(_old_line_follow_val == "地区まとめ"),
+            key=f"line_follow_district_r{race_no}_{no}"
+        )
+        _lft_flow = st.checkbox(
+            "流動",
+            value=(_old_line_follow_val == "流動"),
+            key=f"line_follow_flow_r{race_no}_{no}"
+        )
+
+        _lft_checked_count = sum([
+            bool(_lft_clear),
+            bool(_lft_district),
+            bool(_lft_flow),
+        ])
+        if _lft_checked_count >= 2:
+            st.caption("※複数時は強リスク側を採用")
+
+        if _lft_flow:
+            line_follow_trust_live[no] = "流動"
+        elif _lft_district:
+            line_follow_trust_live[no] = "地区まとめ"
+        elif _lft_clear:
+            line_follow_trust_live[no] = "明確追走"
+        else:
+            line_follow_trust_live[no] = "通常"
 
 st.markdown("---")
 
@@ -2484,8 +2535,10 @@ if apply_input:
         "x_out": dict(x_out_live),
 
         "jiryoku_comment": dict(jiryoku_comment_live),
+        "jiryoku_jizai_comment": dict(jiryoku_jizai_comment_live),
         "jizai_comment": dict(jizai_comment_live),
         "target_comment": dict(target_comment_live),
+        "single_comment": dict(single_comment_live),
         "seri_comment": dict(seri_comment_live),
         "seri_target": dict(seri_target_live),
         "line_follow_trust": dict(line_follow_trust_live),
@@ -2523,15 +2576,19 @@ x3 = snapshot["x3"]
 x_out = snapshot["x_out"]
 
 jiryoku_comment = snapshot.get("jiryoku_comment", {})
+jiryoku_jizai_comment = snapshot.get("jiryoku_jizai_comment", {})
 jizai_comment = snapshot.get("jizai_comment", {})
 target_comment = snapshot.get("target_comment", {})
+single_comment = snapshot.get("single_comment", {})
 seri_comment = snapshot.get("seri_comment", {})
 seri_target = snapshot.get("seri_target", {})
 line_follow_trust = snapshot.get("line_follow_trust", {})
 
 globals()["jiryoku_comment"] = jiryoku_comment
+globals()["jiryoku_jizai_comment"] = jiryoku_jizai_comment
 globals()["jizai_comment"] = jizai_comment
 globals()["target_comment"] = target_comment
+globals()["single_comment"] = single_comment
 globals()["seri_comment"] = seri_comment
 globals()["seri_target"] = seri_target
 globals()["line_follow_trust"] = line_follow_trust
@@ -2823,8 +2880,10 @@ eff_wind_speed = globals().get("eff_wind_speed", wind_speed)
 # コメント補正用：競り相手・後位信頼の前処理
 # =====================================================
 jiryoku_comment_map = globals().get("jiryoku_comment", {}) or {}
+jiryoku_jizai_comment_map = globals().get("jiryoku_jizai_comment", {}) or {}
 jizai_comment_map   = globals().get("jizai_comment", {}) or {}
 target_comment_map  = globals().get("target_comment", {}) or {}
+single_comment_map  = globals().get("single_comment", {}) or {}
 seri_comment_map    = globals().get("seri_comment", {}) or {}
 seri_target_map     = globals().get("seri_target", {}) or {}
 line_follow_trust_map = globals().get("line_follow_trust", {}) or {}
@@ -2909,7 +2968,9 @@ for no in active_cars:
     #   競り：競り対象者を減点
     # =====================================================
     is_jiryoku_comment = bool(jiryoku_comment_map.get(int(no), False))
+    is_jiryoku_jizai_comment = bool(jiryoku_jizai_comment_map.get(int(no), False))
     is_jizai_comment   = bool(jizai_comment_map.get(int(no), False))
+    is_single_comment  = bool(single_comment_map.get(int(no), False))
     is_seri_comment    = bool(seri_comment_map.get(int(no), False))
     seri_opponents = []
     try:
@@ -2925,54 +2986,81 @@ for no in active_cars:
     seri_opponents = [int(x) for x in dict.fromkeys(seri_opponents) if int(x) != int(no)]
 
         # -----------------------------------------------------
-    # 自力コメント補正
+    # 自力・自力自在・自在コメント補正
+    #   3つは原則どれか1つ。
+    #   自力自在チェック、または自力＋自在の同時チェックは内部的に「自力自在」として扱う。
+    #   大きく順位を作り替えず、軸判定・ステップ判定の補助に留める。
     # -----------------------------------------------------
+    if is_jiryoku_jizai_comment or (is_jiryoku_comment and is_jizai_comment):
+        move_style = "自力自在"
+    elif is_jiryoku_comment:
+        move_style = "自力"
+    elif is_jizai_comment:
+        move_style = "自在"
+    else:
+        move_style = ""
+
     jiryoku_comment_bonus = 0.0
+    jizai_comment_bonus = 0.0
 
-    if is_jiryoku_comment:
-        # 基本加点
-        jiryoku_comment_bonus = 0.120
-
-        # ライン先頭の自力コメントは、実際に動く役割なので追加
+    if move_style == "自力":
+        # 主導力寄り。旧自力補正より少し抑え、コメントだけで順位が動きすぎないようにする。
+        jiryoku_comment_bonus = 0.105
         if role == "head":
-            jiryoku_comment_bonus += 0.020
-
-        # H主導ラインの先頭なら、さらに追加
+            jiryoku_comment_bonus += 0.015
         try:
             h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
             if h_line and int(h_line[0]) == int(no):
-                jiryoku_comment_bonus += 0.030
+                jiryoku_comment_bonus += 0.025
         except Exception:
             pass
-
-        # ガールズはラインがないため少し薄め
         if is_girls_like:
             jiryoku_comment_bonus *= 0.60
 
-    jiryoku_comment_bonus = clamp(jiryoku_comment_bonus, 0.0, 0.170)
+    elif move_style == "自力自在":
+        # 主導力と対応力を分割。自力単独より安定寄り、自在単独より主導力あり。
+        jiryoku_comment_bonus = 0.065
+        jizai_comment_bonus = 0.035
+        if role == "head":
+            jiryoku_comment_bonus += 0.010
+        if role in ("head", "single"):
+            jizai_comment_bonus += 0.005
+        try:
+            h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+            if h_line and int(h_line[0]) == int(no):
+                jiryoku_comment_bonus += 0.015
+        except Exception:
+            pass
+        if is_girls_like:
+            jiryoku_comment_bonus *= 0.60
+            jizai_comment_bonus *= 0.60
 
-    # -----------------------------------------------------
-    # 自在コメント補正
-    #   自在は1着固定力ではなく、崩れにくさ・位置取りの安定として軽く加点する。
-    # -----------------------------------------------------
-    jizai_comment_bonus = 0.0
-
-    if is_jizai_comment:
-        jizai_comment_bonus = 0.060
-
-        # ライン先頭・単騎の自在は、展開対応力として少しだけ上乗せ
+    elif move_style == "自在":
+        # 自在は1着固定力ではなく、崩れにくさ・位置取りの安定として軽く加点する。
+        jizai_comment_bonus = 0.065
         if role in ("head", "single"):
             jizai_comment_bonus += 0.010
-
-        # 自力と自在が両方なら過大評価を避ける
-        if is_jiryoku_comment:
-            jizai_comment_bonus *= 0.70
-
-        # ガールズは位置取りが流動的なので少し薄め
         if is_girls_like:
             jizai_comment_bonus *= 0.60
 
-    jizai_comment_bonus = clamp(jizai_comment_bonus, 0.0, 0.090)
+    jiryoku_comment_bonus = clamp(jiryoku_comment_bonus, 0.0, 0.145)
+    jizai_comment_bonus = clamp(jizai_comment_bonus, 0.0, 0.080)
+
+    # -----------------------------------------------------
+    # 単騎コメント補正
+    #   ライン入力上の単騎とは別に、「一人で」「単騎で」「決めず」を明示する補助。
+    #   強く減点せず、ライン保護・軸信頼の過信を少し抑える。
+    # -----------------------------------------------------
+    single_comment_bonus = 0.0
+    if is_single_comment:
+        single_comment_bonus = -0.010
+        if role != "single":
+            single_comment_bonus -= 0.010
+        if move_style in ("自力", "自力自在", "自在"):
+            single_comment_bonus *= 0.50
+        if is_girls_like:
+            single_comment_bonus *= 0.50
+    single_comment_bonus = clamp(single_comment_bonus, -0.020, 0.0)
 
     # -----------------------------------------------------
     # ライン連動補正
@@ -3093,6 +3181,7 @@ for no in active_cars:
         + l200
         + jiryoku_comment_bonus
         + jizai_comment_bonus
+        + single_comment_bonus
         + line_cushion_bonus
         + seri_penalty
         + line_follow_trust_bonus
@@ -3112,6 +3201,7 @@ for no in active_cars:
         round(l200, 3),
         round(jiryoku_comment_bonus, 3),
         round(jizai_comment_bonus, 3),
+        round(single_comment_bonus, 3),
         round(line_cushion_bonus, 3),
         round(seri_penalty, 3),
         round(line_follow_trust_bonus, 3),
@@ -3121,7 +3211,7 @@ for no in active_cars:
 df = pd.DataFrame(rows, columns=[
     "車番", "役割", "脚質基準(会場)", "風補正", "得点補正", "バンク補正",
     "周長補正", "周回補正", "個人補正", "安定度", "H補正", "ラスト200",
-    "自力コメント補正", "自在コメント補正", "ライン連動補正", "競り補正", "後位信頼補正",
+    "自力コメント補正", "自在コメント補正", "単騎コメント補正", "ライン連動補正", "競り補正", "後位信頼補正",
     "合計_SBなし_raw",
 ])
 
@@ -11007,7 +11097,7 @@ def _make_axis_trust_judgement(seq):
     材料：
     ・KO/H補正後の score_map の1位-2位差
     ・評価1/評価2の競り関与
-    ・自力/自在コメント
+    ・自力/自力自在/自在コメント
     ・3番手以降の追走信頼
     """
     try:
@@ -11029,13 +11119,25 @@ def _make_axis_trust_judgement(seq):
         gap = s1 - s2
 
         jiryoku = globals().get("jiryoku_comment", {}) or {}
+        jiryoku_jizai = globals().get("jiryoku_jizai_comment", {}) or {}
         jizai = globals().get("jizai_comment", {}) or {}
+        single_comment = globals().get("single_comment", {}) or {}
         line_def = globals().get("line_def", {}) or {}
 
         a_seri = _is_car_seri_involved_for_axis(A)
         b_seri = _is_car_seri_involved_for_axis(B)
         a_jiryoku = bool(jiryoku.get(A, jiryoku.get(str(A), False)))
+        a_jiryoku_jizai = bool(jiryoku_jizai.get(A, jiryoku_jizai.get(str(A), False)))
         a_jizai = bool(jizai.get(A, jizai.get(str(A), False)))
+        a_single_comment = bool(single_comment.get(A, single_comment.get(str(A), False)))
+        if a_jiryoku_jizai or (a_jiryoku and a_jizai):
+            a_move_style = "自力自在"
+        elif a_jiryoku:
+            a_move_style = "自力"
+        elif a_jizai:
+            a_move_style = "自在"
+        else:
+            a_move_style = ""
         a_role = role_in_line(A, line_def) if isinstance(line_def, dict) else "single"
         line_note, line_level = _axis_line_follow_summary(A)
 
@@ -11046,14 +11148,16 @@ def _make_axis_trust_judgement(seq):
             axis_type = "二強型・見送り寄り"
             cap = "ステップ1まで"
             reasons.append("評価1が競り関与")
-        elif gap >= 0.220 and (a_jiryoku or a_jizai or a_role in ("head", "single")):
+        elif gap >= 0.220 and (a_move_style in ("自力", "自力自在", "自在") or a_role == "head"):
             axis_type = "1軸型"
             cap = "ステップ3まで"
             reasons.append("評価1が評価2を明確に上回る")
-            if a_jiryoku:
-                reasons.append("評価1に自力コメント")
-            if a_jizai:
-                reasons.append("評価1に自在コメント")
+            if a_move_style:
+                reasons.append(f"評価1に{a_move_style}コメント")
+            elif a_role == "head":
+                reasons.append("評価1がライン先頭")
+            if a_single_comment and not a_move_style:
+                reasons.append("評価1は単騎コメントのみ")
         elif gap >= 0.160 and b_seri and not a_seri:
             axis_type = "1軸寄り"
             cap = "ステップ2まで"
@@ -11159,6 +11263,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _a, _b = int(_a), int(_b)
                 _line_def = globals().get("line_def", {}) or {}
                 _trust = globals().get("line_follow_trust", {}) or {}
+                _single_comment = globals().get("single_comment", {}) or {}
 
                 for _gid, _mem in (_line_def or {}).items():
                     xs = [int(x) for x in (_mem or []) if str(x).isdigit()]
@@ -11173,7 +11278,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     for x in xs[ib + 1:]:
                         xi = int(x)
                         label = str(_trust.get(xi, _trust.get(str(xi), "通常")) or "通常")
-                        if label in ("流動", "単騎寄り"):
+                        single_flag = bool(_single_comment.get(xi, _single_comment.get(str(xi), False)))
+                        if label in ("流動", "単騎寄り") or single_flag:
                             continue
                         if xi not in out:
                             out.append(xi)
