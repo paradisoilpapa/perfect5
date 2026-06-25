@@ -9,6 +9,7 @@
 # v123: note上部の補助候補表示を「長期スパン妙味｜12-34」へ変更。20倍以上のみ候補として1-3/1-4/2-3/2-4相当をpt付きで固定表示。
 # v127: 長期スパン妙味2車複の評価5位参照E未定義を修正。評価1・2×評価2〜5フォーメーション生成時にEを安全定義。
 # v128: note上部サマリーからステップ式ブロックを削除。軸判定と長期スパン妙味2車複だけを表示。
+# v130: 長期スパン妙味2車複を、的中期待・妙味期待・総合評価A/B/C/Dの2軸表示へ変更。購入目安は20倍以上へ整理。
 # v129: ステップ式削除後に残っていた軸判定の「上限：ステップ◯まで」表示を削除。
 # v126: 長期スパン妙味2車複を締切3分前13倍以上推奨へ変更。評価1・2 × 評価2〜5のフォーメーション表示へ拡張。
 # v124: 後位信頼をselectboxからチェックボックス式へ変更。複数チェック時は単騎寄り＞流動＞地区まとめ＞明確追走の優先順で1つの内部ラベルに変換。
@@ -11373,12 +11374,74 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # 軸判定は残し、実際の確認対象は下の長期スパン妙味2車複に集約する。
 
             # 長期スパン妙味：評価1・2 × 評価2〜5を2車複フォーメーションで表示する。
-            # 実戦推奨は締切3分前13倍以上、20倍以上は長打候補として扱う。
+            # v130: 妙味ptだけで買い推奨にせず、ヴェロビ順位とウィンチケット印の重なりを
+            #       的中期待として別表示し、的中期待×妙味期待で総合評価A/B/C/Dを出す。
             long_span_pairs = []
             long_span_keys = set()
             long_span_left = [x for x in [A, B] if x is not None]
             long_span_right = [x for x in [B, C, D, E] if x is not None]
             long_span_forme = f"{_merge_car_text(long_span_left)}-{_merge_car_text(long_span_right)}" if long_span_left and long_span_right else "—"
+
+            def _longspan_velobi_point(_car_no):
+                try:
+                    _car_no = int(_car_no)
+                    _rank = [int(x) for x in xs].index(_car_no) + 1
+                    return {1: 5, 2: 4, 3: 3, 4: 2, 5: 1}.get(_rank, 0)
+                except Exception:
+                    return 0
+
+            def _longspan_win_point(_car_no):
+                try:
+                    _car_no = int(_car_no)
+                    _mk = str((mark_map or {}).get(_car_no, (mark_map or {}).get(str(_car_no), "")) or "").strip()
+                    _mk = _mk.replace("○", "〇")
+                    return {"◎": 4, "〇": 3, "△": 2, "×": 1}.get(_mk, 0)
+                except Exception:
+                    return 0
+
+            def _longspan_hit_rank(_a, _b):
+                # 的中期待：ヴェロビ評価とウィンチケット印が重なるほど高くする。
+                # 車別点 = ヴェロビ順位点 × ウィンチケット印点、2車複は2車合計。
+                try:
+                    _s = (
+                        _longspan_velobi_point(_a) * _longspan_win_point(_a)
+                        + _longspan_velobi_point(_b) * _longspan_win_point(_b)
+                    )
+                    if _s >= 24:
+                        return "A"
+                    if _s >= 14:
+                        return "B"
+                    if _s >= 5:
+                        return "C"
+                    return "D"
+                except Exception:
+                    return "D"
+
+            def _longspan_myoumi_rank(_score):
+                # 妙味期待：従来の妙味ptをA/B/C/Dへ丸める。
+                # 高ptでも的中期待が低ければ総合側で抑える。
+                try:
+                    _score = float(_score)
+                    if _score >= 9.0:
+                        return "A"
+                    if _score >= 7.0:
+                        return "B"
+                    if _score >= 5.0:
+                        return "C"
+                    return "D"
+                except Exception:
+                    return "D"
+
+            def _longspan_total_rank(_hit_rank, _myoumi_rank):
+                # 総合評価：事前購入の見やすさ用。
+                # 的中A×妙味Dは「来そうだが安い」ためC、的中Dは原則抑える。
+                table = {
+                    ("A", "A"): "A", ("A", "B"): "A", ("A", "C"): "B", ("A", "D"): "C",
+                    ("B", "A"): "A", ("B", "B"): "B", ("B", "C"): "B", ("B", "D"): "C",
+                    ("C", "A"): "B", ("C", "B"): "C", ("C", "C"): "C", ("C", "D"): "D",
+                    ("D", "A"): "C", ("D", "B"): "D", ("D", "C"): "D", ("D", "D"): "D",
+                }
+                return table.get((str(_hit_rank), str(_myoumi_rank)), "D")
 
             for a in long_span_left:
                 for b in long_span_right:
@@ -11396,25 +11459,33 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             sc = 0.0
                         # 2車複なので表示は小さい車番-大きい車番へ揃える。
                         disp = f"{key[0]}-{key[1]}"
-                        long_span_pairs.append((disp, sc))
+                        hit_rank = _longspan_hit_rank(key[0], key[1])
+                        myoumi_rank = _longspan_myoumi_rank(sc)
+                        total_rank = _longspan_total_rank(hit_rank, myoumi_rank)
+                        long_span_pairs.append((disp, hit_rank, myoumi_rank, total_rank))
                     except Exception:
                         pass
 
             lines.append("")
             lines.append("【長期スパン妙味２車複】")
             lines.append("")
-            lines.append("締切3分前 13倍以上のみ推奨")
             lines.append("フォーメーション")
             lines.append(long_span_forme)
             lines.append("")
             if long_span_pairs:
-                for disp, sc in long_span_pairs:
-                    lines.append(f"{disp}　{sc:.0f}pt")
+                lines.append("買い目　的中期待　妙味期待　総合評価")
+                for disp, hit_rank, myoumi_rank, total_rank in long_span_pairs:
+                    lines.append(f"{disp}　　{hit_rank}　　　　　{myoumi_rank}　　　　　{total_rank}")
             else:
                 lines.append("該当なし")
             lines.append("")
-            lines.append("※20倍以上は長打候補")
-            lines.append("※13倍未満は原則見送り")
+            lines.append("目安：")
+            lines.append("A：買い候補")
+            lines.append("B：オッズ次第")
+            lines.append("C：記録")
+            lines.append("D：見送り")
+            lines.append("")
+            lines.append("※購入目安は20倍以上")
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
