@@ -7,6 +7,7 @@
 # v122: A-B同一ライン時、B後ろの3番手以降をライン残り候補としてステップ3に保護。地区まとめは弱めるが即消ししない。
 # v122: コメントチェックに自在・競り相手・3番手以降追走信頼を追加。競り相手同士の弱者追加減点、3番手以降の結束補正、KO差＋競り＋脚質による1軸/二強/混戦判定をnote上部ステップ式へ反映。
 # v123: note上部の補助候補表示を「長期スパン妙味｜12-34」へ変更。20倍以上のみ候補として1-3/1-4/2-3/2-4相当をpt付きで固定表示。
+# v126: 長期スパン妙味2車複を締切3分前13倍以上推奨へ変更。評価1・2 × 評価2〜5のフォーメーション表示へ拡張。
 # v124: 後位信頼をselectboxからチェックボックス式へ変更。複数チェック時は単騎寄り＞流動＞地区まとめ＞明確追走の優先順で1つの内部ラベルに変換。
 # v125: コメントチェックを自力/自力自在/自在に分離。単騎コメントを後位信頼から分離して独立チェック化。後位信頼は明確/地区/流動のみ。
 # v113: 三連複推奨の買い基準文言のみ削除。余計な代替文言は出さない。
@@ -11375,13 +11376,16 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("ステップ3")
             lines.append(f"2車複：{step3_text}")
 
-            # 長期スパン妙味：評価1・2 × 評価3・4（12-34）を固定表示する。
-            # 旧「2車複｜妙味通過」の単独候補表示は、短期の買い指示に見えるため廃止。
-            # ここでは長期集計上の妙味候補として、20倍以上のみ候補であることを明示する。
+            # 長期スパン妙味：評価1・2 × 評価2〜5を2車複フォーメーションで表示する。
+            # 実戦推奨は締切3分前13倍以上、20倍以上は長打候補として扱う。
             long_span_pairs = []
             long_span_keys = set()
-            if D is not None:
-                for a, b in ((A, C), (A, D), (B, C), (B, D)):
+            long_span_left = [x for x in [A, B] if x is not None]
+            long_span_right = [x for x in [B, C, D, E] if x is not None]
+            long_span_forme = f"{_merge_car_text(long_span_left)}-{_merge_car_text(long_span_right)}" if long_span_left and long_span_right else "—"
+
+            for a in long_span_left:
+                for b in long_span_right:
                     try:
                         a_i, b_i = int(a), int(b)
                         if a_i == b_i:
@@ -11403,7 +11407,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("")
             lines.append("【長期スパン妙味２車複】")
             lines.append("")
-            lines.append("20倍以上のみ候補")
+            lines.append("締切3分前 13倍以上のみ推奨")
+            lines.append("フォーメーション")
+            lines.append(long_span_forme)
             lines.append("")
             if long_span_pairs:
                 for disp, sc in long_span_pairs:
@@ -11411,7 +11417,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             else:
                 lines.append("該当なし")
             lines.append("")
-            lines.append("※20倍未満は原則見送り")
+            lines.append("※20倍以上は長打候補")
+            lines.append("※13倍未満は原則見送り")
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
