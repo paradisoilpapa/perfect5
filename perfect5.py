@@ -9,6 +9,7 @@
 # v123: note上部の補助候補表示を「長期スパン妙味｜12-34」へ変更。20倍以上のみ候補として1-3/1-4/2-3/2-4相当をpt付きで固定表示。
 # v127: 長期スパン妙味2車複の評価5位参照E未定義を修正。評価1・2×評価2〜5フォーメーション生成時にEを安全定義。
 # v128: note上部サマリーからステップ式ブロックを削除。軸判定と長期スパン妙味2車複だけを表示。
+# v129: ステップ式削除後に残っていた軸判定の「上限：ステップ◯まで」表示を削除。
 # v126: 長期スパン妙味2車複を締切3分前13倍以上推奨へ変更。評価1・2 × 評価2〜5のフォーメーション表示へ拡張。
 # v124: 後位信頼をselectboxからチェックボックス式へ変更。複数チェック時は単騎寄り＞流動＞地区まとめ＞明確追走の優先順で1つの内部ラベルに変換。
 # v125: コメントチェックを自力/自力自在/自在に分離。単騎コメントを後位信頼から分離して独立チェック化。後位信頼は明確/地区/流動のみ。
@@ -11361,7 +11362,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append(" → ".join(str(int(x)) for x in xs))
             lines.append("")
             lines.append("【軸判定】")
-            lines.append(f"{axis_type}（上限：{axis_cap}）")
+            lines.append(f"{axis_type}")
             if axis_reasons:
                 lines.append("理由：" + "／".join(axis_reasons[:4]))
             lines.append(axis_line_note)
