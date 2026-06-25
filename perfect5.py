@@ -11,6 +11,7 @@
 # v128: note上部サマリーからステップ式ブロックを削除。軸判定と長期スパン妙味2車複だけを表示。
 # v130: 長期スパン妙味2車複を、的中期待・妙味期待・総合評価A/B/C/Dの2軸表示へ変更。
 # v131: 長期スパン妙味2車複の購入目安を20倍以上から総合B以上へ変更。点数過多時はA優先。
+# v132: 長期スパン妙味2車複の見出しを2車複フォーメーションへ整理。Aを推奨買い候補へ変更し、C/Dも20倍以上なら買い推奨の注記を追加。
 # v129: ステップ式削除後に残っていた軸判定の「上限：ステップ◯まで」表示を削除。
 # v126: 長期スパン妙味2車複を締切3分前13倍以上推奨へ変更。評価1・2 × 評価2〜5のフォーメーション表示へ拡張。
 # v124: 後位信頼をselectboxからチェックボックス式へ変更。複数チェック時は単騎寄り＞流動＞地区まとめ＞明確追走の優先順で1つの内部ラベルに変換。
@@ -11468,7 +11469,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         pass
 
             lines.append("")
-            lines.append("【長期スパン妙味２車複】")
+            lines.append("【２車複フォーメーション】")
             lines.append("")
             lines.append("フォーメーション")
             lines.append(long_span_forme)
@@ -11481,13 +11482,14 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append("該当なし")
             lines.append("")
             lines.append("目安：")
-            lines.append("A：買い候補")
+            lines.append("A：推奨買い候補")
             lines.append("B：買い候補")
             lines.append("C：記録")
             lines.append("D：見送り")
             lines.append("")
             lines.append("※購入は総合B以上を目安")
             lines.append("※点数が多い場合はA優先")
+            lines.append("※C、Dは20倍以上のオッズがつくなら買い推奨")
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
