@@ -12,6 +12,8 @@
 # v130: 長期スパン妙味2車複を、的中期待・妙味期待・総合評価A/B/C/Dの2軸表示へ変更。
 # v131: 長期スパン妙味2車複の購入目安を20倍以上から総合B以上へ変更。点数過多時はA優先。
 # v134: 的中期待の計算を掛け算から、打ち合わせ通り 0.6×VeloBi点 + 0.4×Win点 + 一致ボーナスへ修正。
+# v136: 2車単候補条件を「的中期待Aかつ総合C/D」へ拡張。
+# v135: 総合Cかつ的中期待Aの買い目を、2車複ではなく2車単候補として別表示。
 # v133: ２車複フォーメーションに総合評価別の買い目まとめ（A/B/C/D）を追加。C表記を「やや見送り」へ変更。
 # v132: 長期スパン妙味2車複の見出しを2車複フォーメーションへ整理。Aを推奨買い候補へ変更し、C/Dも20倍以上なら買い推奨の注記を追加。
 # v129: ステップ式削除後に残っていた軸判定の「上限：ステップ◯まで」表示を削除。
@@ -11460,6 +11462,19 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 }
                 return table.get((str(_hit_rank), str(_myoumi_rank)), "D")
 
+            def _longspan_nishatan_direction(_a, _b):
+                # 2車単候補用：2車複の小さい順表記ではなく、推奨流れ（xs）の上位→下位で表示する。
+                try:
+                    _a_i, _b_i = int(_a), int(_b)
+                    _order = [int(x) for x in xs]
+                    _ia = _order.index(_a_i) if _a_i in _order else 999
+                    _ib = _order.index(_b_i) if _b_i in _order else 999
+                    if _ia <= _ib:
+                        return f"{_a_i}→{_b_i}"
+                    return f"{_b_i}→{_a_i}"
+                except Exception:
+                    return f"{_a}→{_b}"
+
             for a in long_span_left:
                 for b in long_span_right:
                     try:
@@ -11476,10 +11491,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             sc = 0.0
                         # 2車複なので表示は小さい車番-大きい車番へ揃える。
                         disp = f"{key[0]}-{key[1]}"
+                        # 2車単候補は、推奨流れ上位→下位の向きで別表示する。
+                        nishatan_disp = _longspan_nishatan_direction(key[0], key[1])
                         hit_rank = _longspan_hit_rank(key[0], key[1])
                         myoumi_rank = _longspan_myoumi_rank(sc)
                         total_rank = _longspan_total_rank(hit_rank, myoumi_rank)
-                        long_span_pairs.append((disp, hit_rank, myoumi_rank, total_rank))
+                        long_span_pairs.append((disp, hit_rank, myoumi_rank, total_rank, nishatan_disp))
                     except Exception:
                         pass
 
@@ -11492,7 +11509,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             if long_span_pairs:
                 # 総合評価ごとの買い目まとめ。先にA/B/C/Dで見られるようにして、事前購入判断を簡単にする。
                 rank_groups = {"A": [], "B": [], "C": [], "D": []}
-                for disp, hit_rank, myoumi_rank, total_rank in long_span_pairs:
+                for disp, hit_rank, myoumi_rank, total_rank, nishatan_disp in long_span_pairs:
                     tr = str(total_rank)
                     if tr not in rank_groups:
                         rank_groups[tr] = []
@@ -11500,9 +11517,21 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 for rank in ["A", "B", "C", "D"]:
                     if rank_groups.get(rank):
                         lines.append(f"{rank}：{'、'.join(rank_groups[rank])}")
+
+                # 的中期待Aで総合C/Dに落ちた買い目は、2車複では妙味薄めだが来る形。
+                # 2車複表記は小さい順のため、別枠で推奨流れ上位→下位の2車単候補を出す。
+                nishatan_candidates = []
+                for disp, hit_rank, myoumi_rank, total_rank, nishatan_disp in long_span_pairs:
+                    if str(total_rank) in ("C", "D") and str(hit_rank) == "A":
+                        nishatan_candidates.append(nishatan_disp)
+                if nishatan_candidates:
+                    lines.append("")
+                    lines.append("２車単候補")
+                    lines.append("、".join(nishatan_candidates))
+
                 lines.append("")
                 lines.append("買い目　的中期待　妙味期待　総合評価")
-                for disp, hit_rank, myoumi_rank, total_rank in long_span_pairs:
+                for disp, hit_rank, myoumi_rank, total_rank, nishatan_disp in long_span_pairs:
                     lines.append(f"{disp}　　{hit_rank}　　　　　{myoumi_rank}　　　　　{total_rank}")
             else:
                 lines.append("該当なし")
@@ -11516,6 +11545,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("※購入は総合B以上を目安")
             lines.append("※点数が多い場合はA優先")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
+            lines.append("※総合C・Dでも的中期待Aは2車単候補")
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
