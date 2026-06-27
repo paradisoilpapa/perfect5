@@ -94,6 +94,7 @@
 # v148: 買い目表を縦線なしのまま、全角スペース主体の固定幅に変更。日本語見出しとA/A+/A++の見た目を揃える。
 # v149: 買い目表の列開始位置を固定幅10に統一。縦線なしで、見出し位置に合わせて各列を整列。
 # v150: 買い目表を「見出しは左寄せ、A/A+/A++等のランクは列内中央寄せ」に変更。縦線なしのまま視認性を改善。
+# v152: 全21通りの2車複内部数値から車番別平均（的中期待順・妙味順・総合順）を追加表示。
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11790,6 +11791,56 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         lines.append("3列目候補")
                         for car_no, pt3, tags3 in third_rows:
                             lines.append(f"{int(car_no)}（{float(pt3):.1f}pt｜{'・'.join(tags3[:3])}）")
+                    lines.append("")
+
+                # v152: 全21通りの2車複内部数値から、車番別の平均評価を作る。
+                # 各車番について「その車を含む2車複6通り」の平均を取り、
+                # 的中期待順・妙味順・総合順を短く表示する。
+                def _longspan_car_average_rows(_pairs, _cars):
+                    avg_rows = []
+                    try:
+                        for car in [int(x) for x in (_cars or []) if str(x).isdigit()]:
+                            hit_vals = []
+                            myoumi_vals = []
+                            total_vals = []
+                            for row in (_pairs or []):
+                                try:
+                                    if int(row.get("a")) == car or int(row.get("b")) == car:
+                                        hit_vals.append(float(row.get("hit_score", 0.0)))
+                                        myoumi_vals.append(float(row.get("myoumi_score", 0.0)))
+                                        total_vals.append(float(row.get("total_pt", 0.0)))
+                                except Exception:
+                                    pass
+                            if hit_vals and myoumi_vals and total_vals:
+                                avg_rows.append({
+                                    "car": car,
+                                    "hit_avg": round(sum(hit_vals) / len(hit_vals), 2),
+                                    "myoumi_avg": round(sum(myoumi_vals) / len(myoumi_vals), 2),
+                                    "total_avg": round(sum(total_vals) / len(total_vals), 2),
+                                })
+                    except Exception:
+                        avg_rows = []
+                    return avg_rows
+
+                def _longspan_car_average_line(_avg_rows, _key):
+                    try:
+                        rows = sorted(_avg_rows or [], key=lambda r: (float(r.get(_key, 0.0)), -_longspan_velobi_rank(r.get("car"))), reverse=True)
+                        return " → ".join(f"{int(r.get('car'))}（{float(r.get(_key, 0.0)):.1f}）" for r in rows)
+                    except Exception:
+                        return ""
+
+                car_avg_rows = _longspan_car_average_rows(sorted_pairs, long_span_all_cars)
+                if car_avg_rows:
+                    hit_avg_line = _longspan_car_average_line(car_avg_rows, "hit_avg")
+                    myoumi_avg_line = _longspan_car_average_line(car_avg_rows, "myoumi_avg")
+                    total_avg_line = _longspan_car_average_line(car_avg_rows, "total_avg")
+                    lines.append("車番別平均評価")
+                    if hit_avg_line:
+                        lines.append(f"的中順：{hit_avg_line}")
+                    if myoumi_avg_line:
+                        lines.append(f"妙味順：{myoumi_avg_line}")
+                    if total_avg_line:
+                        lines.append(f"総合順：{total_avg_line}")
                     lines.append("")
 
                 def _longspan_display_width(_text):
