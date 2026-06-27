@@ -13,6 +13,7 @@
 # v131: 長期スパン妙味2車複の購入目安を20倍以上から総合B以上へ変更。点数過多時はA優先。
 # v134: 的中期待の計算を掛け算から、打ち合わせ通り 0.6×VeloBi点 + 0.4×Win点 + 一致ボーナスへ修正。
 # v136: 2車単候補条件を「的中期待Aかつ総合C/D」へ拡張。
+# v137: 2車単候補を廃止。2車複は総合pt上位2点（微差なら3点）に絞り、3連複まとめ候補を追加。3列目は評価別3着内率＋ライン/展開/妙味補正で7車全体から再計算。
 # v135: 総合Cかつ的中期待Aの買い目を、2車複ではなく2車単候補として別表示。
 # v133: ２車複フォーメーションに総合評価別の買い目まとめ（A/B/C/D）を追加。C表記を「やや見送り」へ変更。
 # v132: 長期スパン妙味2車複の見出しを2車複フォーメーションへ整理。Aを推奨買い候補へ変更し、C/Dも20倍以上なら買い推奨の注記を追加。
@@ -11462,18 +11463,152 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 }
                 return table.get((str(_hit_rank), str(_myoumi_rank)), "D")
 
-            def _longspan_nishatan_direction(_a, _b):
-                # 2車単候補用：2車複の小さい順表記ではなく、推奨流れ（xs）の上位→下位で表示する。
+            def _longspan_rank_value(_rank):
+                return {"A": 4.0, "B": 3.0, "C": 2.0, "D": 1.0}.get(str(_rank), 0.0)
+
+            def _longspan_hit_score_pair(_a, _b):
                 try:
-                    _a_i, _b_i = int(_a), int(_b)
-                    _order = [int(x) for x in xs]
-                    _ia = _order.index(_a_i) if _a_i in _order else 999
-                    _ib = _order.index(_b_i) if _b_i in _order else 999
-                    if _ia <= _ib:
-                        return f"{_a_i}→{_b_i}"
-                    return f"{_b_i}→{_a_i}"
+                    return float(_longspan_hit_score_one(_a)) + float(_longspan_hit_score_one(_b))
                 except Exception:
-                    return f"{_a}→{_b}"
+                    return 0.0
+
+            def _longspan_total_score(_hit_score, _myoumi_score, _hit_rank, _myoumi_rank, _total_rank):
+                """
+                総合pt：2車複購入候補を上位2点＋微差3点へ絞るための内部点。
+                A/B/C/Dだけでは同ランク内の差が見えないため、打ち合わせ通り数値で並べる。
+                """
+                try:
+                    hs = float(_hit_score)
+                except Exception:
+                    hs = 0.0
+                try:
+                    ms = float(_myoumi_score)
+                except Exception:
+                    ms = 0.0
+                # 的中と妙味を半々に近く見る。総合ランクで軽く床上げし、同ランク内は実点差で並べる。
+                base = 0.55 * hs + 0.45 * ms
+                rank_bonus = {"A": 1.00, "B": 0.45, "C": 0.00, "D": -0.50}.get(str(_total_rank), -0.50)
+                return round(base + rank_bonus, 1)
+
+            def _longspan_pair_sort_key(_row):
+                # row = dict
+                rank_order = {"A": 4, "B": 3, "C": 2, "D": 1}
+                return (
+                    rank_order.get(str(_row.get("total_rank")), 0),
+                    float(_row.get("total_pt", 0.0)),
+                    rank_order.get(str(_row.get("hit_rank")), 0),
+                    rank_order.get(str(_row.get("myoumi_rank")), 0),
+                )
+
+            # 評価別3着内率（181R集計｜欠車対応）を3連複3列目の基礎点にする。
+            # 3列目基礎pt = 3着内率 ÷ 10
+            _TRIO_THIRD_BASE_BY_RANK = {
+                1: 6.63,
+                2: 6.69,
+                3: 4.81,
+                4: 4.75,
+                5: 2.76,
+                6: 2.46,
+                7: 2.16,
+            }
+
+            def _longspan_velobi_rank(_car_no):
+                try:
+                    return [int(x) for x in xs].index(int(_car_no)) + 1
+                except Exception:
+                    return 99
+
+            def _longspan_best_myoumi_score_for_third(_axis_cars, _car_no):
+                """
+                3連複3列目用の妙味補正。
+                2車複表に出ていない評価6・7位も拾うため、軸候補との2車複妙味を再計算して最大値を使う。
+                """
+                best = 0.0
+                try:
+                    for ax in (_axis_cars or []):
+                        if int(ax) == int(_car_no):
+                            continue
+                        try:
+                            best = max(best, float(_myoumi_score_2kei(int(ax), int(_car_no), int(A), mark_map or {})))
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                return best
+
+            def _longspan_third_myoumi_bonus(_score):
+                try:
+                    s = float(_score)
+                    if s >= 9.0:
+                        return 1.5, "妙味A"
+                    if s >= 7.0:
+                        return 1.0, "妙味B"
+                    if s >= 5.0:
+                        return 0.4, "妙味C"
+                except Exception:
+                    pass
+                return 0.0, "妙味D"
+
+            def _longspan_third_line_bonus(_car_no):
+                bonus = 0.0
+                tags = []
+                try:
+                    _line_def = globals().get("line_def", {}) or {}
+                    _home_top_gid = globals().get("home_top_gid", None)
+                    _trust = globals().get("line_follow_trust", {}) or {}
+                    role = role_in_line(int(_car_no), _line_def)
+                    gid = None
+                    for g, mem in (_line_def or {}).items():
+                        if int(_car_no) in [int(x) for x in (mem or []) if str(x).isdigit()]:
+                            gid = g
+                            break
+                    if role == "thirdplus":
+                        bonus += 0.8
+                        tags.append("ライン3番手以降")
+                    if gid is not None and _home_top_gid is not None and gid == _home_top_gid and role == "thirdplus":
+                        bonus += 0.7
+                        tags.append("H主導ライン残り")
+                    elif gid is not None and role in ("second", "thirdplus"):
+                        bonus += 0.3
+                        tags.append("ライン内残り")
+                    trust_label = str(_trust.get(int(_car_no), _trust.get(str(int(_car_no)), "通常")) or "通常")
+                    if "地区" in trust_label:
+                        bonus -= 0.4
+                        tags.append("地区まとめ弱め")
+                    if "流動" in trust_label or "単騎" in trust_label:
+                        bonus -= 0.3
+                        tags.append("流動/単騎寄り")
+                except Exception:
+                    pass
+                return bonus, tags
+
+            def _longspan_third_flow_bonus(_car_no):
+                # 推奨流れ上の6・7位固定は少し減点。3〜5位は流れ込み補正。
+                try:
+                    r = _longspan_velobi_rank(_car_no)
+                    if r <= 4:
+                        return 0.6, ["展開4位以内"]
+                    if r == 5:
+                        return 0.3, ["展開5位"]
+                    if r >= 7:
+                        return -0.3, ["展開後方"]
+                except Exception:
+                    pass
+                return 0.0, []
+
+            def _longspan_trio_third_score(_car_no, _axis_cars):
+                try:
+                    r = _longspan_velobi_rank(_car_no)
+                    base = float(_TRIO_THIRD_BASE_BY_RANK.get(r, 0.0))
+                    my_score = _longspan_best_myoumi_score_for_third(_axis_cars, _car_no)
+                    my_bonus, my_tag = _longspan_third_myoumi_bonus(my_score)
+                    line_bonus, line_tags = _longspan_third_line_bonus(_car_no)
+                    flow_bonus, flow_tags = _longspan_third_flow_bonus(_car_no)
+                    pt = round(base + my_bonus + line_bonus + flow_bonus, 1)
+                    tags = [f"評価{r}基礎{base:.1f}", my_tag] + line_tags + flow_tags
+                    return pt, [t for t in tags if t]
+                except Exception:
+                    return 0.0, []
 
             for a in long_span_left:
                 for b in long_span_right:
@@ -11491,12 +11626,22 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             sc = 0.0
                         # 2車複なので表示は小さい車番-大きい車番へ揃える。
                         disp = f"{key[0]}-{key[1]}"
-                        # 2車単候補は、推奨流れ上位→下位の向きで別表示する。
-                        nishatan_disp = _longspan_nishatan_direction(key[0], key[1])
+                        hit_score = _longspan_hit_score_pair(key[0], key[1])
                         hit_rank = _longspan_hit_rank(key[0], key[1])
                         myoumi_rank = _longspan_myoumi_rank(sc)
                         total_rank = _longspan_total_rank(hit_rank, myoumi_rank)
-                        long_span_pairs.append((disp, hit_rank, myoumi_rank, total_rank, nishatan_disp))
+                        total_pt = _longspan_total_score(hit_score, sc, hit_rank, myoumi_rank, total_rank)
+                        long_span_pairs.append({
+                            "disp": disp,
+                            "a": key[0],
+                            "b": key[1],
+                            "hit_rank": hit_rank,
+                            "hit_score": round(float(hit_score), 2),
+                            "myoumi_rank": myoumi_rank,
+                            "myoumi_score": round(float(sc), 2),
+                            "total_rank": total_rank,
+                            "total_pt": total_pt,
+                        })
                     except Exception:
                         pass
 
@@ -11507,32 +11652,94 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append(long_span_forme)
             lines.append("")
             if long_span_pairs:
-                # 総合評価ごとの買い目まとめ。先にA/B/C/Dで見られるようにして、事前購入判断を簡単にする。
+                # 数値順で並べる。2車複は上位2点を基本、3点目が微差なら最大3点まで。
+                sorted_pairs = sorted(long_span_pairs, key=_longspan_pair_sort_key, reverse=True)
+
+                nifuku_buy = sorted_pairs[:2]
+                if len(sorted_pairs) >= 3:
+                    try:
+                        # 2点目と3点目が0.5pt以内なら3点目も採用。
+                        if abs(float(sorted_pairs[1].get("total_pt", 0.0)) - float(sorted_pairs[2].get("total_pt", 0.0))) <= 0.5:
+                            nifuku_buy.append(sorted_pairs[2])
+                    except Exception:
+                        pass
+
+                lines.append("2車複購入候補")
+                lines.append("　".join(str(x.get("disp")) for x in nifuku_buy) if nifuku_buy else "該当なし")
+                lines.append("")
+
+                # 3連複まとめ候補：
+                # 2車複上位2点に共通軸がある場合、その共通軸＋相手2車を軸側にし、
+                # 3列目は7車全体から評価別3着内率＋ライン/展開/妙味補正で再計算する。
+                trio_forme_text = ""
+                third_rows = []
+                try:
+                    top2 = nifuku_buy[:2]
+                    common = None
+                    if len(top2) >= 2:
+                        s1 = {int(top2[0].get("a")), int(top2[0].get("b"))}
+                        s2 = {int(top2[1].get("a")), int(top2[1].get("b"))}
+                        inter = list(s1 & s2)
+                        if inter:
+                            # 推奨流れ上で上位に近い共通軸を優先。
+                            order = [int(x) for x in xs]
+                            inter.sort(key=lambda z: order.index(int(z)) if int(z) in order else 999)
+                            common = int(inter[0])
+                            side_axis = []
+                            for row in top2:
+                                for z in [int(row.get("a")), int(row.get("b"))]:
+                                    if z != common and z not in side_axis:
+                                        side_axis.append(z)
+
+                            axis_cars = [common] + side_axis
+
+                            third_candidates = []
+                            for z in [int(x) for x in xs if str(x).isdigit()]:
+                                zi = int(z)
+                                if zi in axis_cars:
+                                    continue
+                                pt3, tags3 = _longspan_trio_third_score(zi, axis_cars)
+                                # 候補基準：4.5pt以上。評価6・7も数字で候補入りできる。
+                                if pt3 >= 4.5:
+                                    third_candidates.append((zi, pt3, tags3))
+                            third_candidates.sort(key=lambda t: (float(t[1]), -_longspan_velobi_rank(t[0])), reverse=True)
+
+                            if side_axis and third_candidates:
+                                left_txt = _merge_car_text(side_axis)
+                                third_txt = _merge_car_text([x[0] for x in third_candidates])
+                                trio_forme_text = f"{left_txt}-{common}-{third_txt}"
+                                third_rows = third_candidates
+                except Exception:
+                    trio_forme_text = ""
+                    third_rows = []
+
+                if trio_forme_text:
+                    lines.append("3連複まとめ候補")
+                    lines.append(trio_forme_text)
+                    if third_rows:
+                        lines.append("")
+                        lines.append("3列目候補")
+                        for car_no, pt3, tags3 in third_rows:
+                            lines.append(f"{int(car_no)}（{float(pt3):.1f}pt｜{'・'.join(tags3[:3])}）")
+                    lines.append("")
+
+                # 総合評価ごとの買い目まとめ。pt付きで同ランク内の強弱を見える化する。
                 rank_groups = {"A": [], "B": [], "C": [], "D": []}
-                for disp, hit_rank, myoumi_rank, total_rank, nishatan_disp in long_span_pairs:
-                    tr = str(total_rank)
+                for row in sorted_pairs:
+                    tr = str(row.get("total_rank"))
                     if tr not in rank_groups:
                         rank_groups[tr] = []
-                    rank_groups[tr].append(disp)
+                    rank_groups[tr].append(f"{row.get('disp')}（{float(row.get('total_pt', 0.0)):.1f}pt）")
                 for rank in ["A", "B", "C", "D"]:
                     if rank_groups.get(rank):
                         lines.append(f"{rank}：{'、'.join(rank_groups[rank])}")
 
-                # 的中期待Aで総合C/Dに落ちた買い目は、2車複では妙味薄めだが来る形。
-                # 2車複表記は小さい順のため、別枠で推奨流れ上位→下位の2車単候補を出す。
-                nishatan_candidates = []
-                for disp, hit_rank, myoumi_rank, total_rank, nishatan_disp in long_span_pairs:
-                    if str(total_rank) in ("C", "D") and str(hit_rank) == "A":
-                        nishatan_candidates.append(nishatan_disp)
-                if nishatan_candidates:
-                    lines.append("")
-                    lines.append("２車単候補")
-                    lines.append("、".join(nishatan_candidates))
-
                 lines.append("")
-                lines.append("買い目　的中期待　妙味期待　総合評価")
-                for disp, hit_rank, myoumi_rank, total_rank, nishatan_disp in long_span_pairs:
-                    lines.append(f"{disp}　　{hit_rank}　　　　　{myoumi_rank}　　　　　{total_rank}")
+                lines.append("買い目　的中期待　妙味期待　総合評価　総合pt")
+                for row in sorted_pairs:
+                    lines.append(
+                        f"{row.get('disp')}　　{row.get('hit_rank')}　　　　　{row.get('myoumi_rank')}　　　　　{row.get('total_rank')}　　　　{float(row.get('total_pt', 0.0)):.1f}"
+                    )
             else:
                 lines.append("該当なし")
             lines.append("")
@@ -11542,10 +11749,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("C：やや見送り")
             lines.append("D：見送り")
             lines.append("")
-            lines.append("※購入は総合B以上を目安")
-            lines.append("※点数が多い場合はA優先")
+            lines.append("※2車複は総合pt上位2点を基本")
+            lines.append("※3点目が2点目と0.5pt以内なら最大3点まで")
+            lines.append("※3連複は、2車複から外した妙味候補を3列目でまとめる")
+            lines.append("※3列目は評価別3着内率＋ライン/展開/妙味補正で7車全体から再評価")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
-            lines.append("※総合C・Dでも的中期待Aは2車単候補")
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
