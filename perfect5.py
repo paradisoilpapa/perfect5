@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v167: 推奨流れをKO上位3車の流域多数決で補正。順流/渦/逆流の所属が2車以上ならその流れ、3車が割れた場合は逆流扱い。H主導寄せより後で適用。
 # v166: 【２車複考察】を【買目考察】へ変更。総合評価B以上の2車複候補から車番を抽出し、的中順単騎評価上位2車を軸、残りを3列目にした3連複購入候補を追加。
 # v165: 2車複候補を総合評価B以上のpt順表示へ戻し、車番別平均評価の結論順1:2/1:3を非表示。的中順/妙味順を単騎評価表記へ変更。
 # v108: note上部サマリーに「2車複｜妙味通過（7.0pt以上）」だけを復活。評価重複・三連複妙味・三連複評価重複はnote上部へ出さない。
@@ -7101,6 +7102,78 @@ try:
                     recommend_reason.append("H反映=戦法変更あり")
                 else:
                     recommend_reason.append("H反映=戦法変更なし")
+        except Exception:
+            pass
+
+        # =====================================================
+        # v167: KO上位3車の所属流域で推奨流れを補正
+        #   ・順流域が2車以上 → 順流
+        #   ・渦域が2車以上 → 渦
+        #   ・逆流域が2車以上 → 逆流
+        #   ・3車がそれぞれ別流域、または判定不能 → 逆流
+        #   ※H主導寄せより後で適用し、主導ラインだけで順流へ戻りすぎるのを防ぐ。
+        # =====================================================
+        try:
+            if not is_girls_like:
+                def _zone_for_car_from_current_groups(_car_no):
+                    try:
+                        _car_no = int(_car_no)
+                        if isinstance(line_def, dict):
+                            for _gid, _members in line_def.items():
+                                _members_i = [int(x) for x in (_members or []) if str(x).isdigit()]
+                                if _car_no in _members_i:
+                                    return _current_zone_for_line(_members_i)
+                    except Exception:
+                        pass
+                    return "その他"
+
+                _ko_top3 = []
+                try:
+                    _ko_top3 = [
+                        int(c) for c, _ in sorted(
+                            [(int(c), float(score_map.get(int(c), 0.0))) for c in score_map.keys()],
+                            key=lambda x: (-x[1], x[0])
+                        )[:3]
+                    ]
+                except Exception:
+                    _ko_top3 = []
+
+                if len(_ko_top3) >= 3:
+                    _zone_counts = {"順流": 0, "渦": 0, "逆流": 0}
+                    _zone_detail = []
+
+                    for _c in _ko_top3:
+                        _z = _zone_for_car_from_current_groups(_c)
+                        if _z in _zone_counts:
+                            _zone_counts[_z] += 1
+                        else:
+                            _z = "その他"
+                        _zone_detail.append(f"{_c}:{_z}")
+
+                    _ko_style = None
+                    if _zone_counts.get("順流", 0) >= 2:
+                        _ko_style = "順流"
+                    elif _zone_counts.get("渦", 0) >= 2:
+                        _ko_style = "渦"
+                    elif _zone_counts.get("逆流", 0) >= 2:
+                        _ko_style = "逆流"
+                    else:
+                        _ko_style = "逆流"
+
+                    if _ko_style and _ko_style != recommend_style:
+                        recommend_reason.append(
+                            "KO上位3車流域多数決により"
+                            f"{_ko_style}寄せ（" + "／".join(_zone_detail) + "）"
+                        )
+                        recommend_style = _ko_style
+                        # KO上位3車の偏りは買い目に直結するため、最低B扱いにする
+                        if confidence == "C":
+                            confidence = "B"
+                    elif _ko_style:
+                        recommend_reason.append(
+                            "KO上位3車流域多数決="
+                            f"{_ko_style}（" + "／".join(_zone_detail) + "）"
+                        )
         except Exception:
             pass
 
