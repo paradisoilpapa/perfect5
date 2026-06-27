@@ -11821,34 +11821,36 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             txt +
                             ("　" * (right // 2)) + (" " * (right % 2)))
 
-                # v150: 縦線なし。見出しは左寄せ、ランクは列内中央寄せ。
+                # v151: 縦線なし。見出し・評価・数値を同じ列幅の中央にそろえる。
+                # 「A」「A+」「A++」で妙味期待列が左右にズレないよう、各セルを表示幅で中央寄せ。
                 # 例：
                 # 買い目　　的中期待　妙味期待　総合評価　総合pt
-                # 1-4　　　　　 A　　　　 C　　　　 B　　　　 8.9
-                # 2-4　　　　　 C　　　　 A+　　　　B　　　　 8.2
+                # 1-4　　　 　　A　　 　　C　　 　　B　　 　8.9
+                # 2-4　　　 　　C　　 　　A+　　　  B　　 　8.2
                 col_w = {
                     "disp": 10,      # 買い目
                     "hit": 10,       # 的中期待
                     "myoumi": 10,    # 妙味期待
                     "total": 10,     # 総合評価
+                    "pt": 8,         # 総合pt
                 }
                 sep = ""
                 lines.append("")
                 lines.append(
                     sep.join([
-                        _longspan_pad_right("買い目", col_w["disp"]),
-                        _longspan_pad_right("的中期待", col_w["hit"]),
-                        _longspan_pad_right("妙味期待", col_w["myoumi"]),
-                        _longspan_pad_right("総合評価", col_w["total"]),
-                        "総合pt",
+                        _longspan_pad_center("買い目", col_w["disp"]),
+                        _longspan_pad_center("的中期待", col_w["hit"]),
+                        _longspan_pad_center("妙味期待", col_w["myoumi"]),
+                        _longspan_pad_center("総合評価", col_w["total"]),
+                        _longspan_pad_center("総合pt", col_w["pt"]),
                     ])
                 )
                 for row in sorted_pairs:
-                    disp_cell = _longspan_pad_right(row.get('disp'), col_w["disp"])
+                    disp_cell = _longspan_pad_center(row.get('disp'), col_w["disp"])
                     hit_cell = _longspan_pad_center(row.get('hit_rank'), col_w["hit"])
                     myoumi_cell = _longspan_pad_center(row.get('myoumi_rank'), col_w["myoumi"])
                     total_cell = _longspan_pad_center(row.get('total_rank'), col_w["total"])
-                    pt_cell = f"{float(row.get('total_pt', 0.0)):.1f}"
+                    pt_cell = _longspan_pad_center(f"{float(row.get('total_pt', 0.0)):.1f}", col_w["pt"])
                     lines.append(sep.join([disp_cell, hit_cell, myoumi_cell, total_cell, pt_cell]))
             else:
                 lines.append("該当なし")
