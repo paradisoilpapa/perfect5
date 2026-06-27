@@ -15,6 +15,7 @@
 # v136: 2車単候補条件を「的中期待Aかつ総合C/D」へ拡張。
 # v137: 2車単候補を廃止。2車複は総合pt上位2点（微差なら3点）に絞り、3連複まとめ候補を追加。3列目は評価別3着内率＋ライン/展開/妙味補正で7車全体から再計算。
 # v138: 3連複まとめ候補の3列目を、3列目pt上位2車までに制限。買い目増加で合成オッズを下げすぎないため。
+# v139: 2車複候補をフォーメーション固定から全車BOX（全21通り）総合pt順へ変更。表示も全候補を総合pt順に出す。
 # v135: 総合Cかつ的中期待Aの買い目を、2車複ではなく2車単候補として別表示。
 # v133: ２車複フォーメーションに総合評価別の買い目まとめ（A/B/C/D）を追加。C表記を「やや見送り」へ変更。
 # v132: 長期スパン妙味2車複の見出しを2車複フォーメーションへ整理。Aを推奨買い候補へ変更し、C/Dも20倍以上なら買い推奨の注記を追加。
@@ -11381,14 +11382,14 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # v128: ステップ式ブロックはnote上部から削除。
             # 軸判定は残し、実際の確認対象は下の長期スパン妙味2車複に集約する。
 
-            # 長期スパン妙味：評価1・2 × 評価2〜5を2車複フォーメーションで表示する。
+            # 2車複：全車BOXを総合pt順に評価し、上位2点（微差なら3点）を購入候補にする。
             # v130: 妙味ptだけで買い推奨にせず、ヴェロビ順位とウィンチケット印の重なりを
             #       的中期待として別表示し、的中期待×妙味期待で総合評価A/B/C/Dを出す。
             long_span_pairs = []
             long_span_keys = set()
-            long_span_left = [x for x in [A, B] if x is not None]
-            long_span_right = [x for x in [B, C, D, E] if x is not None]
-            long_span_forme = f"{_merge_car_text(long_span_left)}-{_merge_car_text(long_span_right)}" if long_span_left and long_span_right else "—"
+            # v139: 2車複はフォーメーション固定ではなく、出走全車BOX（7車なら21通り）を総合pt順で評価する。
+            long_span_all_cars = [int(x) for x in xs if str(x).isdigit()]
+            long_span_forme = _merge_car_text(long_span_all_cars) + " BOX" if long_span_all_cars else "—"
 
             def _longspan_velobi_point(_car_no):
                 try:
@@ -11611,45 +11612,52 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return 0.0, []
 
-            for a in long_span_left:
-                for b in long_span_right:
+            # v139: 全車BOXの2車複を全通りスコア化する。
+            # 妙味ptは方向の影響があるため、推奨流れ上位→下位の順で _myoumi_score_2kei に渡す。
+            for a, b in combinations(long_span_all_cars, 2):
+                try:
+                    a_i, b_i = int(a), int(b)
+                    if a_i == b_i:
+                        continue
+                    key = tuple(sorted((a_i, b_i)))
+                    if key in long_span_keys:
+                        continue
+                    long_span_keys.add(key)
+
+                    order_pair = sorted([a_i, b_i], key=lambda z: _longspan_velobi_rank(z))
+                    score_head, score_tail = int(order_pair[0]), int(order_pair[1])
                     try:
-                        a_i, b_i = int(a), int(b)
-                        if a_i == b_i:
-                            continue
-                        key = tuple(sorted((a_i, b_i)))
-                        if key in long_span_keys:
-                            continue
-                        long_span_keys.add(key)
-                        try:
-                            sc = float(_myoumi_score_2kei(a_i, b_i, int(A), mark_map or {}))
-                        except Exception:
-                            sc = 0.0
-                        # 2車複なので表示は小さい車番-大きい車番へ揃える。
-                        disp = f"{key[0]}-{key[1]}"
-                        hit_score = _longspan_hit_score_pair(key[0], key[1])
-                        hit_rank = _longspan_hit_rank(key[0], key[1])
-                        myoumi_rank = _longspan_myoumi_rank(sc)
-                        total_rank = _longspan_total_rank(hit_rank, myoumi_rank)
-                        total_pt = _longspan_total_score(hit_score, sc, hit_rank, myoumi_rank, total_rank)
-                        long_span_pairs.append({
-                            "disp": disp,
-                            "a": key[0],
-                            "b": key[1],
-                            "hit_rank": hit_rank,
-                            "hit_score": round(float(hit_score), 2),
-                            "myoumi_rank": myoumi_rank,
-                            "myoumi_score": round(float(sc), 2),
-                            "total_rank": total_rank,
-                            "total_pt": total_pt,
-                        })
+                        sc = float(_myoumi_score_2kei(score_head, score_tail, int(A), mark_map or {}))
                     except Exception:
-                        pass
+                        sc = 0.0
+
+                    # 2車複なので表示は小さい車番-大きい車番へ揃える。
+                    disp = f"{key[0]}-{key[1]}"
+                    hit_score = _longspan_hit_score_pair(key[0], key[1])
+                    hit_rank = _longspan_hit_rank(key[0], key[1])
+                    myoumi_rank = _longspan_myoumi_rank(sc)
+                    total_rank = _longspan_total_rank(hit_rank, myoumi_rank)
+                    total_pt = _longspan_total_score(hit_score, sc, hit_rank, myoumi_rank, total_rank)
+                    long_span_pairs.append({
+                        "disp": disp,
+                        "a": key[0],
+                        "b": key[1],
+                        "score_head": score_head,
+                        "score_tail": score_tail,
+                        "hit_rank": hit_rank,
+                        "hit_score": round(float(hit_score), 2),
+                        "myoumi_rank": myoumi_rank,
+                        "myoumi_score": round(float(sc), 2),
+                        "total_rank": total_rank,
+                        "total_pt": total_pt,
+                    })
+                except Exception:
+                    pass
 
             lines.append("")
             lines.append("【２車複フォーメーション】")
             lines.append("")
-            lines.append("フォーメーション")
+            lines.append("2車複BOX評価")
             lines.append(long_span_forme)
             lines.append("")
             if long_span_pairs:
@@ -11676,14 +11684,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 third_rows = []
                 try:
                     top2 = nifuku_buy[:2]
-                    common = None
                     if len(top2) >= 2:
                         s1 = {int(top2[0].get("a")), int(top2[0].get("b"))}
                         s2 = {int(top2[1].get("a")), int(top2[1].get("b"))}
                         inter = list(s1 & s2)
+                        order = [int(x) for x in xs]
+
+                        # 共通軸型：例 1-7 / 2-7 → 12-7-56
+                        # 非共通軸型：例 1-2 / 3-4 → 12-34-56
                         if inter:
-                            # 推奨流れ上で上位に近い共通軸を優先。
-                            order = [int(x) for x in xs]
                             inter.sort(key=lambda z: order.index(int(z)) if int(z) in order else 999)
                             common = int(inter[0])
                             side_axis = []
@@ -11691,28 +11700,40 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                 for z in [int(row.get("a")), int(row.get("b"))]:
                                     if z != common and z not in side_axis:
                                         side_axis.append(z)
-
                             axis_cars = [common] + side_axis
+                        else:
+                            common = None
+                            pair1 = sorted([int(top2[0].get("a")), int(top2[0].get("b"))], key=lambda z: order.index(int(z)) if int(z) in order else 999)
+                            pair2 = sorted([int(top2[1].get("a")), int(top2[1].get("b"))], key=lambda z: order.index(int(z)) if int(z) in order else 999)
+                            side_axis = pair1
+                            axis_cars = pair1 + pair2
 
-                            third_candidates = []
-                            for z in [int(x) for x in xs if str(x).isdigit()]:
-                                zi = int(z)
-                                if zi in axis_cars:
-                                    continue
-                                pt3, tags3 = _longspan_trio_third_score(zi, axis_cars)
-                                # 候補基準：4.5pt以上。評価6・7も数字で候補入りできる。
-                                if pt3 >= 4.5:
-                                    third_candidates.append((zi, pt3, tags3))
-                            third_candidates.sort(key=lambda t: (float(t[1]), -_longspan_velobi_rank(t[0])), reverse=True)
-                            # v138: 3連複の3列目は上位2車まで。
-                            # 候補を広げすぎると合成オッズを下げるため、表示・購入候補とも2車に制限する。
-                            third_candidates = third_candidates[:2]
+                        third_candidates = []
+                        for z in [int(x) for x in xs if str(x).isdigit()]:
+                            zi = int(z)
+                            if zi in axis_cars:
+                                continue
+                            pt3, tags3 = _longspan_trio_third_score(zi, axis_cars)
+                            # 候補基準：4.5pt以上。評価6・7も数字で候補入りできる。
+                            if pt3 >= 4.5:
+                                third_candidates.append((zi, pt3, tags3))
+                        third_candidates.sort(key=lambda t: (float(t[1]), -_longspan_velobi_rank(t[0])), reverse=True)
+                        # v138: 3連複の3列目は上位2車まで。
+                        # 候補を広げすぎると合成オッズを下げるため、表示・購入候補とも2車に制限する。
+                        third_candidates = third_candidates[:2]
 
-                            if side_axis and third_candidates:
+                        if third_candidates:
+                            third_txt = _merge_car_text([x[0] for x in third_candidates])
+                            if common is not None and side_axis:
                                 left_txt = _merge_car_text(side_axis)
-                                third_txt = _merge_car_text([x[0] for x in third_candidates])
                                 trio_forme_text = f"{left_txt}-{common}-{third_txt}"
-                                third_rows = third_candidates
+                            elif len(top2) >= 2:
+                                p1_txt = _merge_car_text(side_axis)
+                                pair2_vals = [int(top2[1].get("a")), int(top2[1].get("b"))]
+                                pair2_vals = sorted(pair2_vals, key=lambda z: order.index(int(z)) if int(z) in order else 999)
+                                p2_txt = _merge_car_text(pair2_vals)
+                                trio_forme_text = f"{p1_txt}-{p2_txt}-{third_txt}"
+                            third_rows = third_candidates
                 except Exception:
                     trio_forme_text = ""
                     third_rows = []
@@ -11753,7 +11774,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("C：やや見送り")
             lines.append("D：見送り")
             lines.append("")
-            lines.append("※2車複は総合pt上位2点を基本")
+            lines.append("※2車複は全通りBOXから総合pt上位2点を基本")
             lines.append("※3点目が2点目と0.5pt以内なら最大3点まで")
             lines.append("※3連複は、2車複から外した妙味候補を3列目でまとめる")
             lines.append("※3列目は7車全体から再評価し、pt上位2車まで")
