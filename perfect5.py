@@ -3,6 +3,7 @@
 # v111: 選択コピー欄の2車複妙味通過表示を簡潔化。旧妙味通過＋34-12内通過ペアを統合し、説明文は表示しない。基準8.5pt。
 # v114: note上部推奨を二強軸フォメ＋安め上位4点表記へ変更。補助2車複は妙味8.5pt通過のみを短く表示。
 # v120: 全体妙味A/B/C変換の二重適用を修正。旧ラベルは表示直前に一度だけ変換し、青網掛けとコピー欄を一致させる。
+# v163: note用コピーエリア上部の青網掛け情報ボックス（推奨戦法・全体妙味/旧フォメ表示）を非表示化。
 # v161: 車番別平均評価（極端値除外）を上下1本ずつ除外したトリム平均に変更。結論順1:2/1:3はトリム平均で計算。
 # v162: 棚卸版。表示していない旧3連複まとめ候補/3列目候補の計算ブロックを削除し、現行中核を2車複BOX評価＋車番別トリム平均評価へ整理。
 # v160: 車番別平均評価（極端値除外）を着順率係数なしの素平均に戻し、結論順を 的中:妙味=1:2 / 1:3 の2系統で表示。
@@ -10412,11 +10413,9 @@ try:
     if _rec_style and _rec_seq:
         _rec_display_seq = " → ".join(str(int(x)) for x in _rec_seq)
 
-        st.info(
-            f"✅ 推奨戦法：{_rec_style}\n\n"
-            f"【{_rec_style}メイン着順予想】　{_rec_display_seq}\n\n"
-            f"コピー用：{_rec_copy}"
-        )
+        # v163: note用コピーエリア上部の青網掛けボックスは表示しない。
+        # 推奨戦法・メイン着順・コピー用は note_text 本文側に残す。
+        pass
 
 except Exception as _e:
     st.caption(f"推奨戦法表示生成不可：{_e}")
@@ -11016,14 +11015,9 @@ try:
             rec_order_for_forme,
         )
 
-        st.info(
-            f"全体妙味：{_display_expect_myoumi_label(expect_axis_label)}\n\n"
-            f"{column_eval_block}\n\n"
-            f"{nishatan_forme_line}\n"
-            f"{sanpuku_forme_line}"
-            + (f"\n\n{rule_buy_block}" if rule_buy_block else "")
-            + (f"\n\n{myoumi_point_block}" if myoumi_point_block else "")
-        )
+        # v163: 全体妙味・旧フォメ・妙味ポイントの青網掛けボックスは表示しない。
+        # 必要な情報は note_text / 2車複考察側へ集約する。
+        pass
     else:
         nishatan_forme_line = "2車系フォメ：生成不可"
         sanpuku_forme_line = "三連複フォメ：生成不可"
