@@ -11562,18 +11562,17 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return 99
 
-            def _longspan_car_win_rate(_car_no):
+            def _longspan_car_second_in_rate(_car_no):
                 """
-                車番ごとの想定1着率を取得する。
+                車番ごとの想定2着内率を取得する。
                 優先：入力済みの x1/x2/x3/x_out から算出。
-                取れない場合は、評価順位別の簡易1着率を使う。
-                実効妙味は「妙味が高いだけの最弱評価車」を軸扱いしすぎないため、
-                この1着率を補正として加味する。
+                取れない場合は、評価順位別の簡易2着内率を使う。
+                的中順は2車複総流し平均の現実性を見るため、1着率ではなく2着内率を係数として加味する。
                 """
                 try:
                     car = int(_car_no)
                 except Exception:
-                    return 1.0 / 7.0
+                    return 2.0 / 7.0
 
                 try:
                     _x1 = globals().get("x1", {}) or {}
@@ -11587,22 +11586,22 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     no = float(_xo.get(car, _xo.get(str(car), 0)) or 0)
                     total = n1 + n2 + n3 + no
                     if total > 0:
-                        return max(0.0, min(1.0, n1 / total))
+                        return max(0.0, min(1.0, (n1 + n2) / total))
                 except Exception:
                     pass
 
-                # フォールバック：7車立ての評価順位別1着率の簡易分布。
-                # 合計がおおむね100%になるようにし、評価下位の妙味だけが暴れすぎないようにする。
+                # フォールバック：7車立ての評価順位別2着内率の簡易分布。
+                # 的中順に1着率を使うと評価1・2位へ偏りやすいため、2車複用途に合わせて2着内率を使う。
                 fallback_by_rank = {
-                    1: 0.26,
-                    2: 0.22,
-                    3: 0.17,
-                    4: 0.13,
-                    5: 0.09,
-                    6: 0.07,
-                    7: 0.06,
+                    1: 0.46,
+                    2: 0.41,
+                    3: 0.34,
+                    4: 0.29,
+                    5: 0.22,
+                    6: 0.17,
+                    7: 0.14,
                 }
-                return float(fallback_by_rank.get(_longspan_velobi_rank(car), 1.0 / 7.0))
+                return float(fallback_by_rank.get(_longspan_velobi_rank(car), 2.0 / 7.0))
 
             def _longspan_car_third_in_rate(_car_no):
                 """
@@ -11648,7 +11647,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             def _longspan_rate_factor(_rate, _baseline=None):
                 """
                 着順率をスコアへ掛けるための係数。
-                1着率は平均1/7、3着内率は平均3/7を1.0基準にし、過補正防止で上下限を置く。
+                2着内率は平均2/7、3着内率は平均3/7を1.0基準にし、過補正防止で上下限を置く。
                 """
                 try:
                     rate = float(_rate)
@@ -11662,13 +11661,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 raw_factor = max(0.35, min(1.60, raw_factor))
                 return 0.65 + 0.35 * raw_factor
 
-            def _longspan_hit_with_win_rate(_hit_score, _car_no):
-                """的中順用：的中平均に想定1着率係数を掛ける。"""
+            def _longspan_hit_with_second_in_rate(_hit_score, _car_no):
+                """的中順用：的中平均に想定2着内率係数を掛ける。"""
                 try:
                     base = float(_hit_score)
                 except Exception:
                     base = 0.0
-                return round(base * _longspan_rate_factor(_longspan_car_win_rate(_car_no), 1.0 / 7.0), 2)
+                return round(base * _longspan_rate_factor(_longspan_car_second_in_rate(_car_no), 2.0 / 7.0), 2)
 
             def _longspan_myoumi_with_third_in_rate(_myoumi_score, _car_no):
                 """妙味順用：妙味平均に想定3着内率係数を掛ける。"""
@@ -11819,10 +11818,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     pass
 
             lines.append("")
-            lines.append("【２車複フォーメーション】")
-            lines.append("")
-            lines.append("2車複BOX評価")
-            lines.append(long_span_forme)
+            lines.append("【２車複考察】")
             lines.append("")
             if long_span_pairs:
                 # 数値順で並べる。2車複は上位2点を基本、3点目が微差なら最大3点まで。
@@ -11837,6 +11833,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     except Exception:
                         pass
 
+                lines.append("【総合pt上位２set】")
                 lines.append("2車複購入候補")
                 lines.append("　".join(str(x.get("disp")) for x in nifuku_buy) if nifuku_buy else "該当なし")
                 lines.append("")
@@ -11906,7 +11903,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 # 3連複の再設計は、車番別の結論順・妙味順を見て別枠で検討する。
 
                 # v157: 全21通りの2車複内部数値から、車番別の平均評価を作る。
-                # 的中順：的中平均に想定1着率係数を掛ける。
+                # 的中順：的中平均に想定2着内率係数を掛ける。
                 # 妙味順：妙味平均に想定3着内率係数を掛ける。
                 # 結論順：（的中順スコア＋妙味順スコア）/2 で最終化する。
                 def _longspan_car_average_rows(_pairs, _cars):
@@ -11927,7 +11924,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             if hit_vals and myoumi_vals and total_vals:
                                 raw_hit_avg = round(sum(hit_vals) / len(hit_vals), 2)
                                 raw_myoumi_avg = round(sum(myoumi_vals) / len(myoumi_vals), 2)
-                                hit_rank_score = _longspan_hit_with_win_rate(raw_hit_avg, car)
+                                hit_rank_score = _longspan_hit_with_second_in_rate(raw_hit_avg, car)
                                 myoumi_rank_score = _longspan_myoumi_with_third_in_rate(raw_myoumi_avg, car)
                                 final_rank_score = round((hit_rank_score + myoumi_rank_score) / 2.0, 2)
                                 avg_rows.append({
@@ -12039,7 +12036,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("※3点目が2点目と0.5pt以内なら最大3点まで")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
             lines.append("※妙味期待のA++/A+/Aは、総合ptではなく妙味ptだけで判定（A++は10.0pt以上）")
-            lines.append("※車番別の的中順は、的中平均に想定1着率係数を加味")
+            lines.append("※車番別の的中順は、的中平均に想定2着内率係数を加味")
             lines.append("※車番別の妙味順は、妙味平均に想定3着内率係数を加味")
             lines.append("※車番別の結論順は、的中順スコアと妙味順スコアの平均")
         else:
