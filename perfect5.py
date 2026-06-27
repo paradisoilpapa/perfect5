@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v166: 【２車複考察】を【買目考察】へ変更。総合評価B以上の2車複候補から車番を抽出し、的中順単騎評価上位2車を軸、残りを3列目にした3連複購入候補を追加。
 # v165: 2車複候補を総合評価B以上のpt順表示へ戻し、車番別平均評価の結論順1:2/1:3を非表示。的中順/妙味順を単騎評価表記へ変更。
 # v108: note上部サマリーに「2車複｜妙味通過（7.0pt以上）」だけを復活。評価重複・三連複妙味・三連複評価重複はnote上部へ出さない。
 # v111: 選択コピー欄の2車複妙味通過表示を簡潔化。旧妙味通過＋34-12内通過ペアを統合し、説明文は表示しない。基準8.5pt。
@@ -11644,7 +11645,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     pass
 
             lines.append("")
-            lines.append("【２車複考察】")
+            lines.append("【買目考察】")
             lines.append("")
             if long_span_pairs:
                 # 数値順で並べる。表示候補は「総合評価B以上」を総合pt順で並べる。
@@ -11719,7 +11720,61 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         return ""
 
                 car_avg_rows = _longspan_car_average_rows(sorted_pairs, long_span_all_cars)
+
+                # v166: 3連複購入候補
+                # 総合評価B以上の2車複候補に含まれる車番だけを対象にする。
+                # その中で、的中順単騎評価の上位2車を軸にし、残りを3列目へ置く。
+                # 例：2車複候補 2-3 / 5-7、的中順 7→2→3→5 なら 7-2-35。
+                def _longspan_make_trio_candidate(_nifuku_buy, _car_avg_rows):
+                    try:
+                        if not _nifuku_buy or not _car_avg_rows:
+                            return "該当なし"
+
+                        # 候補車は、2車複B以上の表示順で出現した順序を保つ。
+                        cand_order = []
+                        seen = set()
+                        for row in (_nifuku_buy or []):
+                            for k in ("a", "b"):
+                                try:
+                                    c = int(row.get(k))
+                                except Exception:
+                                    continue
+                                if c not in seen:
+                                    cand_order.append(c)
+                                    seen.add(c)
+
+                        if len(cand_order) < 3:
+                            return "該当なし"
+
+                        hit_map = {}
+                        for r in (_car_avg_rows or []):
+                            try:
+                                hit_map[int(r.get("car"))] = float(r.get("hit_avg", 0.0))
+                            except Exception:
+                                pass
+
+                        # 軸2車：候補車の中で的中順単騎評価が高い順。
+                        # 同点時はVeloBi順位が高い方を優先。
+                        axes = sorted(
+                            cand_order,
+                            key=lambda c: (float(hit_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
+                            reverse=True,
+                        )[:2]
+
+                        rest = [c for c in cand_order if c not in set(axes)]
+                        if not axes or len(axes) < 2 or not rest:
+                            return "該当なし"
+
+                        return f"{int(axes[0])}-{int(axes[1])}-{''.join(str(int(c)) for c in rest)}"
+                    except Exception:
+                        return "該当なし"
+
                 if car_avg_rows:
+                    trio_candidate = _longspan_make_trio_candidate(nifuku_buy, car_avg_rows)
+                    lines.append("3連複購入候補")
+                    lines.append(trio_candidate)
+                    lines.append("")
+
                     final_12_line = _longspan_car_average_line(car_avg_rows, "final_12")
                     final_13_line = _longspan_car_average_line(car_avg_rows, "final_13")
                     hit_avg_line = _longspan_car_average_line(car_avg_rows, "hit_avg")
@@ -11801,6 +11856,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("D：見送り")
             lines.append("")
             lines.append("※2車複候補は、総合評価B以上を総合pt順で表示")
+            lines.append("※3連複候補は、総合評価B以上の2車複候補に含まれる車番から、的中順単騎評価上位2車を軸、残りを3列目として表示")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
             lines.append("※妙味期待のA++/A+/Aは、総合ptではなく妙味ptだけで判定（A++は10.0pt以上）")
             lines.append("※車番別の的中順単騎評価・妙味順単騎評価は、各車を含む2車複6通りから最高値1本・最低値1本を除外した平均")
