@@ -13,6 +13,7 @@
 # v131: 長期スパン妙味2車複の購入目安を20倍以上から総合B以上へ変更。点数過多時はA優先。
 # v134: 的中期待の計算を掛け算から、打ち合わせ通り 0.6×VeloBi点 + 0.4×Win点 + 一致ボーナスへ修正。
 # v136: 2車単候補条件を「的中期待Aかつ総合C/D」へ拡張。
+# v142: 妙味期待を妙味ptだけでA++/A+/A/B/C/Dに細分化。総合評価はA++/A+/Aを妙味A扱いに正規化。
 # v137: 2車単候補を廃止。2車複は総合pt上位2点（微差なら3点）に絞り、3連複まとめ候補を追加。3列目は評価別3着内率＋ライン/展開/妙味補正で7車全体から再計算。
 # v138: 3連複まとめ候補の3列目を、3列目pt上位2車までに制限。買い目増加で合成オッズを下げすぎないため。
 # v139: 2車複候補をフォーメーション固定から全車BOX（全21通り）総合pt順へ変更。表示も全候補を総合pt順に出す。
@@ -88,6 +89,7 @@
 # v47: 市場印snapshotが—入りでfallbackされない問題を修正。2車複の軸印キャップも通過基準未満へ強化。
 # v48: snapshotだけでなく現在のst.session_state上の車番別市場印も後段で再取得し、2車複ptへ確実に反映。
 # v140: 2車複BOX評価のB/C/Dランク別まとめ行を削除。全21通りの買い目表だけを総合pt順で表示する。
+# v141: 全21通りの買い目表と2車複購入候補の並びを、総合評価ランク優先ではなく総合pt降順へ修正。
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11441,13 +11443,17 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     return "D"
 
             def _longspan_myoumi_rank(_score):
-                # 妙味期待：従来の妙味ptをA/B/C/Dへ丸める。
-                # 高ptでも的中期待が低ければ総合側で抑える。
+                # 妙味期待：総合ptとは切り離し、純粋な妙味ptだけで細分化する。
+                # A++/A+/A は総合評価計算ではすべて「妙味A」として扱う。
                 try:
                     _score = float(_score)
                     if _score >= 9.0:
-                        return "A"
+                        return "A++"
+                    if _score >= 8.0:
+                        return "A+"
                     if _score >= 7.0:
+                        return "A"
+                    if _score >= 6.0:
                         return "B"
                     if _score >= 5.0:
                         return "C"
@@ -11455,16 +11461,26 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return "D"
 
+            def _longspan_myoumi_core_rank(_myoumi_rank):
+                # 総合評価表用の正規化。表示上はA++/A+/Aを分けるが、総合判定では妙味A扱い。
+                r = str(_myoumi_rank)
+                if r in ("A++", "A+", "A"):
+                    return "A"
+                if r in ("B", "C", "D"):
+                    return r
+                return "D"
+
             def _longspan_total_rank(_hit_rank, _myoumi_rank):
                 # 総合評価：事前購入の見やすさ用。
                 # 的中A×妙味Dは「来そうだが安い」ためC、的中Dは原則抑える。
+                _mr = _longspan_myoumi_core_rank(_myoumi_rank)
                 table = {
                     ("A", "A"): "A", ("A", "B"): "A", ("A", "C"): "B", ("A", "D"): "C",
                     ("B", "A"): "A", ("B", "B"): "B", ("B", "C"): "B", ("B", "D"): "C",
                     ("C", "A"): "B", ("C", "B"): "C", ("C", "C"): "C", ("C", "D"): "D",
                     ("D", "A"): "C", ("D", "B"): "D", ("D", "C"): "D", ("D", "D"): "D",
                 }
-                return table.get((str(_hit_rank), str(_myoumi_rank)), "D")
+                return table.get((str(_hit_rank), _mr), "D")
 
             def _longspan_rank_value(_rank):
                 return {"A": 4.0, "B": 3.0, "C": 2.0, "D": 1.0}.get(str(_rank), 0.0)
@@ -11495,10 +11511,26 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             def _longspan_pair_sort_key(_row):
                 # row = dict
-                rank_order = {"A": 4, "B": 3, "C": 2, "D": 1}
+                # v141: 全21通り表は「総合ptが高い順」を最優先にする。
+                # A/B/C/Dランクは同点時の補助だけに使う。
+                rank_order = {"A++": 6, "A+": 5, "A": 4, "B": 3, "C": 2, "D": 1}
+                try:
+                    total_pt = float(_row.get("total_pt", 0.0))
+                except Exception:
+                    total_pt = 0.0
+                try:
+                    hit_score = float(_row.get("hit_score", 0.0))
+                except Exception:
+                    hit_score = 0.0
+                try:
+                    myoumi_score = float(_row.get("myoumi_score", 0.0))
+                except Exception:
+                    myoumi_score = 0.0
                 return (
+                    total_pt,
                     rank_order.get(str(_row.get("total_rank")), 0),
-                    float(_row.get("total_pt", 0.0)),
+                    hit_score,
+                    myoumi_score,
                     rank_order.get(str(_row.get("hit_rank")), 0),
                     rank_order.get(str(_row.get("myoumi_rank")), 0),
                 )
@@ -11540,12 +11572,17 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 return best
 
             def _longspan_third_myoumi_bonus(_score):
+                # 3列目候補でも、妙味表示は総合ptではなく純粋な妙味ptだけで判定する。
                 try:
                     s = float(_score)
                     if s >= 9.0:
-                        return 1.5, "妙味A"
+                        return 1.5, "妙味A++"
+                    if s >= 8.0:
+                        return 1.3, "妙味A+"
                     if s >= 7.0:
-                        return 1.0, "妙味B"
+                        return 1.0, "妙味A"
+                    if s >= 6.0:
+                        return 0.7, "妙味B"
                     if s >= 5.0:
                         return 0.4, "妙味C"
                 except Exception:
@@ -11769,6 +11806,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("※3連複は、2車複から外した妙味候補を3列目でまとめる")
             lines.append("※3列目は7車全体から再評価し、pt上位2車まで")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
+            lines.append("※妙味期待のA++/A+/Aは、妙味ptだけで判定")
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
