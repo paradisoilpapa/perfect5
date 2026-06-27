@@ -14,6 +14,7 @@
 # v134: 的中期待の計算を掛け算から、打ち合わせ通り 0.6×VeloBi点 + 0.4×Win点 + 一致ボーナスへ修正。
 # v136: 2車単候補条件を「的中期待Aかつ総合C/D」へ拡張。
 # v137: 2車単候補を廃止。2車複は総合pt上位2点（微差なら3点）に絞り、3連複まとめ候補を追加。3列目は評価別3着内率＋ライン/展開/妙味補正で7車全体から再計算。
+# v138: 3連複まとめ候補の3列目を、3列目pt上位2車までに制限。買い目増加で合成オッズを下げすぎないため。
 # v135: 総合Cかつ的中期待Aの買い目を、2車複ではなく2車単候補として別表示。
 # v133: ２車複フォーメーションに総合評価別の買い目まとめ（A/B/C/D）を追加。C表記を「やや見送り」へ変更。
 # v132: 長期スパン妙味2車複の見出しを2車複フォーメーションへ整理。Aを推奨買い候補へ変更し、C/Dも20倍以上なら買い推奨の注記を追加。
@@ -11703,6 +11704,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                 if pt3 >= 4.5:
                                     third_candidates.append((zi, pt3, tags3))
                             third_candidates.sort(key=lambda t: (float(t[1]), -_longspan_velobi_rank(t[0])), reverse=True)
+                            # v138: 3連複の3列目は上位2車まで。
+                            # 候補を広げすぎると合成オッズを下げるため、表示・購入候補とも2車に制限する。
+                            third_candidates = third_candidates[:2]
 
                             if side_axis and third_candidates:
                                 left_txt = _merge_car_text(side_axis)
@@ -11752,7 +11756,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("※2車複は総合pt上位2点を基本")
             lines.append("※3点目が2点目と0.5pt以内なら最大3点まで")
             lines.append("※3連複は、2車複から外した妙味候補を3列目でまとめる")
-            lines.append("※3列目は評価別3着内率＋ライン/展開/妙味補正で7車全体から再評価")
+            lines.append("※3列目は7車全体から再評価し、pt上位2車まで")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
         else:
             lines.append("【ヴェロビ三連複推奨】")
