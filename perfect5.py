@@ -11789,22 +11789,22 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             lines.append(f"{int(car_no)}（{float(pt3):.1f}pt｜{'・'.join(tags3[:3])}）")
                     lines.append("")
 
-                def _longspan_rank_cell(_rank, _width=5):
+                def _longspan_rank_cell(_rank, _width=10):
                     # A++ / A+ / A の文字数差で表が崩れないよう固定幅にする。
-                    # 例：A    / A+   / A++  （+ が後ろの半角スペースと差し替わる形）
+                    # 縦線は使わず、+ が後ろの半角スペースと差し替わる形にする。
+                    # 例：A         / A+        / A++
                     txt = str(_rank)
                     return txt + " " * max(0, int(_width) - len(txt))
 
                 lines.append("")
-                lines.append("買い目｜的中期待｜妙味期待｜総合評価｜総合pt")
+                lines.append("買い目  的中期待  妙味期待  総合評価  総合pt")
                 for row in sorted_pairs:
-                    lines.append(
-                        f"{str(row.get('disp')).ljust(6)}｜"
-                        f"{_longspan_rank_cell(row.get('hit_rank'))}｜"
-                        f"{_longspan_rank_cell(row.get('myoumi_rank'))}｜"
-                        f"{_longspan_rank_cell(row.get('total_rank'))}｜"
-                        f"{float(row.get('total_pt', 0.0)):.1f}"
-                    )
+                    disp_cell = str(row.get('disp')).ljust(8)
+                    hit_cell = _longspan_rank_cell(row.get('hit_rank'), 10)
+                    myoumi_cell = _longspan_rank_cell(row.get('myoumi_rank'), 10)
+                    total_cell = _longspan_rank_cell(row.get('total_rank'), 10)
+                    pt_cell = f"{float(row.get('total_pt', 0.0)):.1f}"
+                    lines.append(f"{disp_cell}{hit_cell}{myoumi_cell}{total_cell}{pt_cell}")
             else:
                 lines.append("該当なし")
             lines.append("")
