@@ -93,6 +93,7 @@
 # v141: 全21通りの買い目表と2車複購入候補の並びを、総合評価ランク優先ではなく総合pt降順へ修正。
 # v148: 買い目表を縦線なしのまま、全角スペース主体の固定幅に変更。日本語見出しとA/A+/A++の見た目を揃える。
 # v149: 買い目表の列開始位置を固定幅10に統一。縦線なしで、見出し位置に合わせて各列を整列。
+# v150: 買い目表を「見出しは左寄せ、A/A+/A++等のランクは列内中央寄せ」に変更。縦線なしのまま視認性を改善。
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11801,21 +11802,30 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         w += 2 if unicodedata.east_asian_width(ch) in ("F", "W", "A") else 1
                     return w
 
-                def _longspan_pad_cell(_text, _width):
-                    # v148: 半角スペースだけだと、日本語見出しの下で列が詰まって見えるため、
-                    #       全角スペースを主体にして固定幅化する。
-                    #       A / A+ / A++ は「+」が増えた分だけ後ろの空白が減る。
+                def _longspan_pad_right(_text, _width):
+                    # 見出し・買い目用：左寄せで右側に全角スペース主体の余白を入れる。
                     txt = str(_text)
                     pad = max(0, int(_width) - _longspan_display_width(txt))
                     fw = pad // 2
                     hw = pad % 2
                     return txt + ("　" * fw) + (" " * hw)
 
-                # v149: 縦線なし。列の開始位置を固定するため、各列幅を表示幅10で統一。
+                def _longspan_pad_center(_text, _width):
+                    # ランク用：A / A+ / A++ を列内中央寄せ。
+                    # 「+」が増えた分だけ左右の空白が自然に減る。
+                    txt = str(_text)
+                    pad = max(0, int(_width) - _longspan_display_width(txt))
+                    left = pad // 2
+                    right = pad - left
+                    return (("　" * (left // 2)) + (" " * (left % 2)) +
+                            txt +
+                            ("　" * (right // 2)) + (" " * (right % 2)))
+
+                # v150: 縦線なし。見出しは左寄せ、ランクは列内中央寄せ。
                 # 例：
                 # 買い目　　的中期待　妙味期待　総合評価　総合pt
-                # 1-4　　 　A　　　 　C　　　 　B　　　 　8.9
-                # A / A+ / A++ は「+」が増えた分だけ後ろの空白が減る。
+                # 1-4　　　　　 A　　　　 C　　　　 B　　　　 8.9
+                # 2-4　　　　　 C　　　　 A+　　　　B　　　　 8.2
                 col_w = {
                     "disp": 10,      # 買い目
                     "hit": 10,       # 的中期待
@@ -11826,18 +11836,18 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append("")
                 lines.append(
                     sep.join([
-                        _longspan_pad_cell("買い目", col_w["disp"]),
-                        _longspan_pad_cell("的中期待", col_w["hit"]),
-                        _longspan_pad_cell("妙味期待", col_w["myoumi"]),
-                        _longspan_pad_cell("総合評価", col_w["total"]),
+                        _longspan_pad_right("買い目", col_w["disp"]),
+                        _longspan_pad_right("的中期待", col_w["hit"]),
+                        _longspan_pad_right("妙味期待", col_w["myoumi"]),
+                        _longspan_pad_right("総合評価", col_w["total"]),
                         "総合pt",
                     ])
                 )
                 for row in sorted_pairs:
-                    disp_cell = _longspan_pad_cell(row.get('disp'), col_w["disp"])
-                    hit_cell = _longspan_pad_cell(row.get('hit_rank'), col_w["hit"])
-                    myoumi_cell = _longspan_pad_cell(row.get('myoumi_rank'), col_w["myoumi"])
-                    total_cell = _longspan_pad_cell(row.get('total_rank'), col_w["total"])
+                    disp_cell = _longspan_pad_right(row.get('disp'), col_w["disp"])
+                    hit_cell = _longspan_pad_center(row.get('hit_rank'), col_w["hit"])
+                    myoumi_cell = _longspan_pad_center(row.get('myoumi_rank'), col_w["myoumi"])
+                    total_cell = _longspan_pad_center(row.get('total_rank'), col_w["total"])
                     pt_cell = f"{float(row.get('total_pt', 0.0)):.1f}"
                     lines.append(sep.join([disp_cell, hit_cell, myoumi_cell, total_cell, pt_cell]))
             else:
