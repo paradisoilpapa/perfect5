@@ -87,6 +87,7 @@
 # v50: 2車複妙味ptの市場印取得と相手印評価を修正。軸印より相手印の濃淡を強く反映し、◎軸×無印相手と◎軸×△相手を同点にしない。
 # v47: 市場印snapshotが—入りでfallbackされない問題を修正。2車複の軸印キャップも通過基準未満へ強化。
 # v48: snapshotだけでなく現在のst.session_state上の車番別市場印も後段で再取得し、2車複ptへ確実に反映。
+# v140: 2車複BOX評価のB/C/Dランク別まとめ行を削除。全21通りの買い目表だけを総合pt順で表示する。
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11747,17 +11748,6 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         for car_no, pt3, tags3 in third_rows:
                             lines.append(f"{int(car_no)}（{float(pt3):.1f}pt｜{'・'.join(tags3[:3])}）")
                     lines.append("")
-
-                # 総合評価ごとの買い目まとめ。pt付きで同ランク内の強弱を見える化する。
-                rank_groups = {"A": [], "B": [], "C": [], "D": []}
-                for row in sorted_pairs:
-                    tr = str(row.get("total_rank"))
-                    if tr not in rank_groups:
-                        rank_groups[tr] = []
-                    rank_groups[tr].append(f"{row.get('disp')}（{float(row.get('total_pt', 0.0)):.1f}pt）")
-                for rank in ["A", "B", "C", "D"]:
-                    if rank_groups.get(rank):
-                        lines.append(f"{rank}：{'、'.join(rank_groups[rank])}")
 
                 lines.append("")
                 lines.append("買い目　的中期待　妙味期待　総合評価　総合pt")
