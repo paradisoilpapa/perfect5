@@ -92,6 +92,7 @@
 # v140: 2車複BOX評価のB/C/Dランク別まとめ行を削除。全21通りの買い目表だけを総合pt順で表示する。
 # v141: 全21通りの買い目表と2車複購入候補の並びを、総合評価ランク優先ではなく総合pt降順へ修正。
 # v148: 買い目表を縦線なしのまま、全角スペース主体の固定幅に変更。日本語見出しとA/A+/A++の見た目を揃える。
+# v149: 買い目表の列開始位置を固定幅10に統一。縦線なしで、見出し位置に合わせて各列を整列。
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11810,14 +11811,18 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     hw = pad % 2
                     return txt + ("　" * fw) + (" " * hw)
 
-                # ヘッダーの日本語幅に合わせる。列間も全角スペースにして見た目を揃える。
+                # v149: 縦線なし。列の開始位置を固定するため、各列幅を表示幅10で統一。
+                # 例：
+                # 買い目　　的中期待　妙味期待　総合評価　総合pt
+                # 1-4　　 　A　　　 　C　　　 　B　　　 　8.9
+                # A / A+ / A++ は「+」が増えた分だけ後ろの空白が減る。
                 col_w = {
-                    "disp": 8,      # 買い目
-                    "hit": 8,       # 的中期待
-                    "myoumi": 8,    # 妙味期待
-                    "total": 8,     # 総合評価
+                    "disp": 10,      # 買い目
+                    "hit": 10,       # 的中期待
+                    "myoumi": 10,    # 妙味期待
+                    "total": 10,     # 総合評価
                 }
-                sep = "　"
+                sep = ""
                 lines.append("")
                 lines.append(
                     sep.join([
