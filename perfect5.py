@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v165: 2車複候補を総合評価B以上のpt順表示へ戻し、車番別平均評価の結論順1:2/1:3を非表示。的中順/妙味順を単騎評価表記へ変更。
 # v108: note上部サマリーに「2車複｜妙味通過（7.0pt以上）」だけを復活。評価重複・三連複妙味・三連複評価重複はnote上部へ出さない。
 # v111: 選択コピー欄の2車複妙味通過表示を簡潔化。旧妙味通過＋34-12内通過ペアを統合し、説明文は表示しない。基準8.5pt。
 # v114: note上部推奨を二強軸フォメ＋安め上位4点表記へ変更。補助2車複は妙味8.5pt通過のみを短く表示。
@@ -11646,28 +11647,23 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("【２車複考察】")
             lines.append("")
             if long_span_pairs:
-                # 数値順で並べる。2車複は上位2点を基本、3点目が微差なら最大3点まで。
+                # 数値順で並べる。表示候補は「総合評価B以上」を総合pt順で並べる。
                 sorted_pairs = sorted(long_span_pairs, key=_longspan_pair_sort_key, reverse=True)
 
-                nifuku_buy = sorted_pairs[:2]
-                if len(sorted_pairs) >= 3:
-                    try:
-                        # 2点目と3点目が0.5pt以内なら3点目も採用。
-                        if abs(float(sorted_pairs[1].get("total_pt", 0.0)) - float(sorted_pairs[2].get("total_pt", 0.0))) <= 0.5:
-                            nifuku_buy.append(sorted_pairs[2])
-                    except Exception:
-                        pass
+                nifuku_buy = [
+                    row for row in sorted_pairs
+                    if str(row.get("total_rank", "")).strip() in ("A", "B")
+                ]
 
-                lines.append("【総合pt上位２set】")
+                lines.append("【総合評価B以上】")
                 lines.append("2車複購入候補")
                 lines.append("　".join(str(x.get("disp")) for x in nifuku_buy) if nifuku_buy else "該当なし")
                 lines.append("")
 
 
-                # v161: 全21通りの2車複内部数値から、車番別の平均評価を作る。
+                # v165: 全21通りの2車複内部数値から、車番別の単騎評価を作る。
                 # 各車を含む2車複6通りから、最高値1本・最低値1本を除外した4本平均を使う。
-                # 極端な的中/妙味に平均が引っ張られすぎないようにするためのトリム平均。
-                # 結論順は「的中:妙味=1:2」と「的中:妙味=1:3」の2系統で表示する。
+                # 表示は的中順単騎評価・妙味順単騎評価のみ。結論順1:2/1:3は非表示。
                 def _longspan_trimmed_avg(_vals):
                     try:
                         vals = sorted([float(v) for v in (_vals or [])])
@@ -11729,14 +11725,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     hit_avg_line = _longspan_car_average_line(car_avg_rows, "hit_avg")
                     myoumi_avg_line = _longspan_car_average_line(car_avg_rows, "myoumi_avg")
                     lines.append("車番別平均評価（極端値除外）")
-                    if final_12_line:
-                        lines.append(f"結論順1:2：{final_12_line}")
-                    if final_13_line:
-                        lines.append(f"結論順1:3：{final_13_line}")
                     if hit_avg_line:
-                        lines.append(f"的中順：{hit_avg_line}")
+                        lines.append(f"的中順単騎評価：{hit_avg_line}")
                     if myoumi_avg_line:
-                        lines.append(f"妙味順：{myoumi_avg_line}")
+                        lines.append(f"妙味順単騎評価：{myoumi_avg_line}")
                     lines.append("")
 
                 def _longspan_display_width(_text):
@@ -11808,13 +11800,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("C：やや見送り")
             lines.append("D：見送り")
             lines.append("")
-            lines.append("※2車複は全通りBOXから総合pt上位2点を基本")
-            lines.append("※3点目が2点目と0.5pt以内なら最大3点まで")
+            lines.append("※2車複候補は、総合評価B以上を総合pt順で表示")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
             lines.append("※妙味期待のA++/A+/Aは、総合ptではなく妙味ptだけで判定（A++は10.0pt以上）")
-            lines.append("※車番別の的中順・妙味順は、各車を含む2車複6通りから最高値1本・最低値1本を除外した平均")
-            lines.append("※車番別の結論順1:2は、極端値除外後の的中平均1：妙味平均2で計算")
-            lines.append("※車番別の結論順1:3は、極端値除外後の的中平均1：妙味平均3で計算")
+            lines.append("※車番別の的中順単騎評価・妙味順単騎評価は、各車を含む2車複6通りから最高値1本・最低値1本を除外した平均")
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
