@@ -11789,22 +11789,46 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             lines.append(f"{int(car_no)}（{float(pt3):.1f}pt｜{'・'.join(tags3[:3])}）")
                     lines.append("")
 
-                def _longspan_rank_cell(_rank, _width=10):
-                    # A++ / A+ / A の文字数差で表が崩れないよう固定幅にする。
-                    # 縦線は使わず、+ が後ろの半角スペースと差し替わる形にする。
-                    # 例：A         / A+        / A++
-                    txt = str(_rank)
-                    return txt + " " * max(0, int(_width) - len(txt))
+                def _longspan_display_width(_text):
+                    # 日本語見出しは全角幅になるため、len() ではなく表示幅で揃える。
+                    # East Asian Width: F/W/A を2幅、それ以外を1幅として扱う。
+                    import unicodedata
+                    s = str(_text)
+                    w = 0
+                    for ch in s:
+                        w += 2 if unicodedata.east_asian_width(ch) in ("F", "W", "A") else 1
+                    return w
 
+                def _longspan_pad_cell(_text, _width):
+                    txt = str(_text)
+                    pad = max(0, int(_width) - _longspan_display_width(txt))
+                    return txt + " " * pad
+
+                # ヘッダーの日本語幅に合わせる。列間は半角2スペース固定。
+                col_w = {
+                    "disp": 6,      # 買い目
+                    "hit": 8,       # 的中期待
+                    "myoumi": 8,    # 妙味期待
+                    "total": 8,     # 総合評価
+                }
+                sep = "  "
                 lines.append("")
-                lines.append("買い目  的中期待  妙味期待  総合評価  総合pt")
+                lines.append(
+                    sep.join([
+                        _longspan_pad_cell("買い目", col_w["disp"]),
+                        _longspan_pad_cell("的中期待", col_w["hit"]),
+                        _longspan_pad_cell("妙味期待", col_w["myoumi"]),
+                        _longspan_pad_cell("総合評価", col_w["total"]),
+                        "総合pt",
+                    ])
+                )
                 for row in sorted_pairs:
-                    disp_cell = str(row.get('disp')).ljust(8)
-                    hit_cell = _longspan_rank_cell(row.get('hit_rank'), 10)
-                    myoumi_cell = _longspan_rank_cell(row.get('myoumi_rank'), 10)
-                    total_cell = _longspan_rank_cell(row.get('total_rank'), 10)
+                    disp_cell = _longspan_pad_cell(row.get('disp'), col_w["disp"])
+                    hit_cell = _longspan_pad_cell(row.get('hit_rank'), col_w["hit"])
+                    myoumi_cell = _longspan_pad_cell(row.get('myoumi_rank'), col_w["myoumi"])
+                    total_cell = _longspan_pad_cell(row.get('total_rank'), col_w["total"])
                     pt_cell = f"{float(row.get('total_pt', 0.0)):.1f}"
-                    lines.append(f"{disp_cell}{hit_cell}{myoumi_cell}{total_cell}{pt_cell}")
+                    lines.append(sep.join([disp_cell, hit_cell, myoumi_cell, total_cell, pt_cell]))
             else:
                 lines.append("該当なし")
             lines.append("")
