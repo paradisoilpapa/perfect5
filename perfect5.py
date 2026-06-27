@@ -3,6 +3,7 @@
 # v111: 選択コピー欄の2車複妙味通過表示を簡潔化。旧妙味通過＋34-12内通過ペアを統合し、説明文は表示しない。基準8.5pt。
 # v114: note上部推奨を二強軸フォメ＋安め上位4点表記へ変更。補助2車複は妙味8.5pt通過のみを短く表示。
 # v120: 全体妙味A/B/C変換の二重適用を修正。旧ラベルは表示直前に一度だけ変換し、青網掛けとコピー欄を一致させる。
+# v153: 車番別平均評価に「妙味軸順」を追加。純妙味平均に想定1着率を加味し、妙味だけ高い最弱評価車の過大評価を抑える。
 # v121: note上部推奨を三連複固定表示からステップ式（1-2幹確認→123BOX→1/2軸拡張）へ変更。
 # v122: A-B同一ライン時、B後ろの3番手以降をライン残り候補としてステップ3に保護。地区まとめは弱めるが即消ししない。
 # v122: コメントチェックに自在・競り相手・3番手以降追走信頼を追加。競り相手同士の弱者追加減点、3番手以降の結束補正、KO差＋競り＋脚質による1軸/二強/混戦判定をnote上部ステップ式へ反映。
@@ -11559,6 +11560,71 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return 99
 
+            def _longspan_car_win_rate(_car_no):
+                """
+                車番ごとの想定1着率を取得する。
+                優先：入力済みの x1/x2/x3/x_out から算出。
+                取れない場合は、評価順位別の簡易1着率を使う。
+                実効妙味は「妙味が高いだけの最弱評価車」を軸扱いしすぎないため、
+                この1着率を補正として加味する。
+                """
+                try:
+                    car = int(_car_no)
+                except Exception:
+                    return 1.0 / 7.0
+
+                try:
+                    _x1 = globals().get("x1", {}) or {}
+                    _x2 = globals().get("x2", {}) or {}
+                    _x3 = globals().get("x3", {}) or {}
+                    _xo = globals().get("x_out", {}) or {}
+
+                    n1 = float(_x1.get(car, _x1.get(str(car), 0)) or 0)
+                    n2 = float(_x2.get(car, _x2.get(str(car), 0)) or 0)
+                    n3 = float(_x3.get(car, _x3.get(str(car), 0)) or 0)
+                    no = float(_xo.get(car, _xo.get(str(car), 0)) or 0)
+                    total = n1 + n2 + n3 + no
+                    if total > 0:
+                        return max(0.0, min(1.0, n1 / total))
+                except Exception:
+                    pass
+
+                # フォールバック：7車立ての評価順位別1着率の簡易分布。
+                # 合計がおおむね100%になるようにし、評価下位の妙味だけが暴れすぎないようにする。
+                fallback_by_rank = {
+                    1: 0.26,
+                    2: 0.22,
+                    3: 0.17,
+                    4: 0.13,
+                    5: 0.09,
+                    6: 0.07,
+                    7: 0.06,
+                }
+                return float(fallback_by_rank.get(_longspan_velobi_rank(car), 1.0 / 7.0))
+
+            def _longspan_effective_myoumi_score(_myoumi_score, _car_no):
+                """
+                実効妙味pt。
+                純粋な妙味ptに、その車の想定1着率を加味する。
+                期待値の考え方（的中率×想定オッズ）に寄せつつ、
+                妙味pt自体はオッズそのものではないため、急激に潰しすぎないブレンド補正にする。
+                """
+                try:
+                    my = float(_myoumi_score)
+                except Exception:
+                    my = 0.0
+                try:
+                    rate = float(_longspan_car_win_rate(_car_no))
+                except Exception:
+                    rate = 1.0 / 7.0
+
+                baseline = 1.0 / 7.0
+                raw_factor = rate / baseline if baseline > 0 else 1.0
+                # 下位評価は抑え、上位評価は少しだけ伸ばす。過補正防止で上下限を設定。
+                raw_factor = max(0.35, min(1.60, raw_factor))
+                blend_factor = 0.65 + 0.35 * raw_factor
+                return round(my * blend_factor, 2)
+
             def _longspan_best_myoumi_score_for_third(_axis_cars, _car_no):
                 """
                 3連複3列目用の妙味補正。
@@ -11812,10 +11878,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                 except Exception:
                                     pass
                             if hit_vals and myoumi_vals and total_vals:
+                                myoumi_avg = round(sum(myoumi_vals) / len(myoumi_vals), 2)
                                 avg_rows.append({
                                     "car": car,
                                     "hit_avg": round(sum(hit_vals) / len(hit_vals), 2),
-                                    "myoumi_avg": round(sum(myoumi_vals) / len(myoumi_vals), 2),
+                                    "myoumi_avg": myoumi_avg,
+                                    "axis_myoumi_avg": _longspan_effective_myoumi_score(myoumi_avg, car),
                                     "total_avg": round(sum(total_vals) / len(total_vals), 2),
                                 })
                     except Exception:
@@ -11833,12 +11901,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 if car_avg_rows:
                     hit_avg_line = _longspan_car_average_line(car_avg_rows, "hit_avg")
                     myoumi_avg_line = _longspan_car_average_line(car_avg_rows, "myoumi_avg")
+                    axis_myoumi_avg_line = _longspan_car_average_line(car_avg_rows, "axis_myoumi_avg")
                     total_avg_line = _longspan_car_average_line(car_avg_rows, "total_avg")
                     lines.append("車番別平均評価")
                     if hit_avg_line:
                         lines.append(f"的中順：{hit_avg_line}")
                     if myoumi_avg_line:
                         lines.append(f"妙味順：{myoumi_avg_line}")
+                    if axis_myoumi_avg_line:
+                        lines.append(f"妙味軸順：{axis_myoumi_avg_line}")
                     if total_avg_line:
                         lines.append(f"総合順：{total_avg_line}")
                     lines.append("")
@@ -11918,6 +11989,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("※3列目は7車全体から再評価し、pt上位2車まで")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
             lines.append("※妙味期待のA++/A+/Aは、総合ptではなく妙味ptだけで判定（A++は10.0pt以上）")
+            lines.append("※車番別の妙味軸順は、妙味平均に想定1着率を加味した実効妙味順")
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
