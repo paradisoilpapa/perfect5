@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v174: 3連複3列目を「最大3車」ではなく常に3車へ固定。v173の1列目/2列目定義は維持し、不足時は全車候補から補完する。
+# v173: 3連複候補の2列目を、的中順2位固定から「総合評価B以上候補に出ている車のうち、1列目を除外して妙味順位下位側の車」へ変更。3列目ロジックはv169を維持。
+# v172: 2車複購入候補を「総合評価B以上の総合pt上位2点のみ」に固定。妙味A+/pt差による条件付き3点目追加を廃止。3連複候補の土台は従来どおり総合評価B以上候補。
+# v171: 2車複購入候補を「総合評価B以上の総合pt上位2点＋条件付き3点目（妙味A+以上、または2点目との差0.3以内）」へ修正。総合評価B上位を妙味A+縛りで落とさない。
 # v170: 2車複購入候補を「総合評価B以上 かつ 妙味期待A+以上」に絞る。3連複候補の軸・3列目生成は従来どおり総合評価B以上候補を土台にして本線を拾う。
 # v169: 3連複3列目は採用された推奨流れの流域ラインを最優先。軸は従来通り的中順単騎評価で選び、3列目は推奨流れ側ラインのヒモ→突っ込む別線側の直近1車→B以上残り→妙味補助の順で最大3車に絞る。
 # v168: 3連複購入候補の3列目を、B以上残りの単純スライドから、軸2車のライン直近相手・推奨流れ上位・妙味順単騎評価を加点して最大3車まで再選別する方式へ変更。
@@ -11727,21 +11731,21 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 # 数値順で並べる。表示候補は「総合評価B以上」を総合pt順で並べる。
                 sorted_pairs = sorted(long_span_pairs, key=_longspan_pair_sort_key, reverse=True)
 
-                # v170:
+                # v172:
                 # 3連複候補は本線・準本線を拾うため、従来どおり「総合評価B以上」全体を土台にする。
-                # 一方、2車複は3連複と役割を分け、ズレた妙味だけを買うため、
-                # 「総合評価B以上 かつ 妙味期待A+以上」に絞る。
+                # 2車複購入候補は、総合評価B以上を土台にして総合pt上位2点のみ。
+                # 妙味A+/pt差による条件付き3点目追加はしない。
                 nifuku_trio_base = [
                     row for row in sorted_pairs
                     if str(row.get("total_rank", "")).strip() in ("A", "B")
                 ]
 
-                nifuku_buy = [
-                    row for row in nifuku_trio_base
-                    if str(row.get("myoumi_rank", "")).strip() in ("A+", "A++")
-                ]
+                try:
+                    nifuku_buy = list(nifuku_trio_base or [])[:2]
+                except Exception:
+                    nifuku_buy = []
 
-                lines.append("【総合評価B以上・妙味期待A+以上】")
+                lines.append("【総合評価B以上・総合pt上位2点】")
                 lines.append("2車複購入候補")
                 lines.append("　".join(str(x.get("disp")) for x in nifuku_buy) if nifuku_buy else "該当なし")
                 lines.append("")
@@ -11806,14 +11810,16 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                 car_avg_rows = _longspan_car_average_rows(sorted_pairs, long_span_all_cars)
 
-                # v168/v170: 3連複購入候補
-                # 軸2車は従来通り「総合評価B以上の2車複評価候補」に含まれる車から、的中順単騎評価上位2車を採用。
-                # 3列目はB以上残りの単純スライドではなく、展開イメージに合わせて再選別する。
-                #   ・B以上2車複候補の残り車
-                #   ・軸2車のライン直近相手
-                #   ・推奨流れ上位5車以内
-                #   ・妙味順単騎評価上位
-                # を加点し、ライン末尾・単騎薄め・推奨流れ下位を抑えながら最大3車までに絞る。
+                # v174: 3連複購入候補
+                # 1列目は「総合評価B以上の2車複評価候補」に含まれる車から、的中順単騎評価1位を採用。
+                # 2列目は同候補に含まれる車から1列目を除外し、妙味順位下位側（myoumi_avgが低い側）の車を採用。
+                # 3列目はv169の展開イメージを維持しつつ、最大3車ではなく常に3車に固定する。
+                #   ・推奨流れ側ラインのヒモ
+                #   ・別線側の直近1車
+                #   ・B以上残り
+                #   ・推奨流れ上位
+                #   ・妙味順単騎評価
+                # を優先順とスコアで再選別し、不足時は全車候補から補完する。
                 def _longspan_make_trio_candidate(_nifuku_buy, _car_avg_rows):
                     try:
                         if not _nifuku_buy or not _car_avg_rows:
@@ -11845,15 +11851,32 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             except Exception:
                                 pass
 
-                        # 軸2車：候補車の中で的中順単騎評価が高い順。
-                        # 同点時はVeloBi順位が高い方を優先。
-                        axes = sorted(
+                        # v173: 軸2車の作り方を分離する。
+                        # 1列目：候補車の中で的中順単騎評価が最も高い車。
+                        first_axis_list = sorted(
                             cand_order,
                             key=lambda c: (float(hit_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
                             reverse=True,
-                        )[:2]
+                        )[:1]
+                        if not first_axis_list:
+                            return "該当なし"
+                        first_axis = int(first_axis_list[0])
 
-                        if not axes or len(axes) < 2:
+                        # 2列目：総合評価B以上候補に出ている車から1列目を除外し、
+                        # 妙味順位下位側（myoumi_avgが低い側）を採用する。
+                        # ここで3連複候補全体や3列目候補を母集団に広げない。
+                        second_candidates = [int(c) for c in cand_order if int(c) != first_axis]
+                        second_axis_list = sorted(
+                            second_candidates,
+                            key=lambda c: (float(myoumi_map.get(int(c), 0.0)), -float(hit_map.get(int(c), 0.0)), _longspan_velobi_rank(c)),
+                        )[:1]
+
+                        if not second_axis_list:
+                            return "該当なし"
+
+                        axes = [first_axis, int(second_axis_list[0])]
+
+                        if len(axes) < 2:
                             return "該当なし"
 
                         axes_set = {int(x) for x in axes}
@@ -11985,6 +12008,17 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                 if c not in third_pool:
                                     third_pool.append(c)
 
+                        # v174: 3列目は常に3車にするため、候補が不足する場合に備えて
+                        # 全車から軸以外を補完候補として追加する。
+                        try:
+                            for c in [int(x) for x in (long_span_all_cars or []) if str(x).isdigit()]:
+                                if c in axes_set:
+                                    continue
+                                if c not in third_pool:
+                                    third_pool.append(c)
+                        except Exception:
+                            pass
+
                         if not third_pool:
                             return "該当なし"
 
@@ -12071,7 +12105,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             reverse=True,
                         )[:3]
 
-                        if not third:
+                        # v174: 3列目は常に3車。通常の5〜9車立てなら軸2車を除いて3車以上ある。
+                        if len(third) < 3:
                             return "該当なし"
 
                         return f"{int(axes[0])}-{int(axes[1])}-{''.join(str(int(c)) for c in third)}"
@@ -12164,8 +12199,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("C：やや見送り")
             lines.append("D：見送り")
             lines.append("")
-            lines.append("※2車複候補は、総合評価B以上かつ妙味期待A+以上を総合pt順で表示")
-            lines.append("※3連複候補は、2車複購入候補とは分けて総合評価B以上の2車複評価候補に含まれる車番から的中順単騎評価上位2車を軸にし、3列目は採用された推奨流れ側ラインのヒモを最優先、別線側は直近1車まで、B以上残り・妙味順は補助として最大3車まで再選別")
+            lines.append("※2車複候補は、総合評価B以上を総合pt順で上位2点まで表示")
+            lines.append("※3連複候補は、2車複購入候補とは分けて総合評価B以上の2車複評価候補を土台にし、1列目は同候補内の的中順単騎評価最上位、2列目は同候補内で妙味順位下位側の車を採用。3列目は採用された推奨流れ側ラインのヒモを最優先、別線側は直近1車まで、B以上残り・妙味順を補助として常に3車選別")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
             lines.append("※妙味期待のA++/A+/Aは、総合ptではなく妙味ptだけで判定（A++は10.0pt以上）")
             lines.append("※車番別の的中順単騎評価・妙味順単騎評価は、各車を含む2車複6通りから最高値1本・最低値1本を除外した平均")
