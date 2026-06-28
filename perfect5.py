@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v177: 3連複候補の軸母集団を「総合評価B以上・総合pt上位2点の2車複購入候補」に変更。軸1は同候補内の的中順最上位、軸2は残りから妙味順位下位側を採用。3列目は推奨流れ側ライン優先で常に3車。
 # v176: 3連複候補の1列目・2列目で、妙味順位下位側を選ぶ際に「的中順単騎評価1位」は除外。的中順1位は3列目へ保護する。
 # v175: 3連複候補を、B以上候補内の妙味順位下位1位-下位2位を軸にし、的中順1位を3列目へ保護。残り2車はv174の推奨流れ側ライン優先ロジックで常に3車。
 # v174: 3連複3列目を「最大3車」ではなく常に3車へ固定。v173の1列目/2列目定義は維持し、不足時は全車候補から補完する。
@@ -11812,10 +11813,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                 car_avg_rows = _longspan_car_average_rows(sorted_pairs, long_span_all_cars)
 
-                # v176: 3連複購入候補
-                # 1列目・2列目は「総合評価B以上の2車複評価候補」に含まれる車から、
-                # 的中順単騎評価1位を除外した上で、妙味順位下位側（myoumi_avgが低い側）1位・2位を採用する。
-                # 的中順単騎評価1位は軸に固定せず、3列目へ保護する。
+                # v177: 3連複購入候補
+                # 1列目・2列目の母集団は「2車複購入候補＝総合評価B以上・総合pt上位2点」に限定する。
+                # 1列目は同候補内で的中順単騎評価が最上位の車。
+                # 2列目は同候補内から1列目を除外し、妙味順位下位側（myoumi_avgが低い側）の車。
                 # 3列目はv174の展開イメージを維持し、常に3車に固定する。
                 #   ・的中順単騎評価1位
                 #   ・推奨流れ側ラインのヒモ
@@ -11855,28 +11856,30 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             except Exception:
                                 pass
 
-                        # 的中順単騎評価1位は3列目へ保護する。
-                        hit_protect_list = sorted(
+                        # v177: 軸1は、2車複購入候補（総合B以上・総合pt上位2点）に出ている車の中で、
+                        # 的中順単騎評価が最上位の車を採用する。
+                        axis1_list = sorted(
                             [int(c) for c in cand_order],
                             key=lambda c: (float(hit_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
                             reverse=True,
                         )[:1]
-                        hit_protect = int(hit_protect_list[0]) if hit_protect_list else None
-
-                        # v176: 軸2車は、総合評価B以上候補に出ている車の中から、
-                        # 的中順単騎評価1位を除外したうえで、妙味順位下位側（myoumi_avgが低い側）1位・2位を採用する。
-                        # ここで3連複候補全体や3列目候補を母集団に広げない。
-                        axis_pool = [int(c) for c in cand_order if hit_protect is None or int(c) != int(hit_protect)]
-                        axes = sorted(
-                            axis_pool,
-                            key=lambda c: (float(myoumi_map.get(int(c), 0.0)), -float(hit_map.get(int(c), 0.0)), _longspan_velobi_rank(c)),
-                        )[:2]
-
-                        if len(axes) < 2:
+                        if not axis1_list:
                             return "該当なし"
+                        axis1 = int(axis1_list[0])
 
-                        axes = [int(axes[0]), int(axes[1])]
+                        # 軸2は、同じ母集団から軸1を除外し、妙味順位下位側（myoumi_avgが低い側）を採用する。
+                        axis2_pool = [int(c) for c in cand_order if int(c) != int(axis1)]
+                        axis2_list = sorted(
+                            axis2_pool,
+                            key=lambda c: (float(myoumi_map.get(int(c), 0.0)), -float(hit_map.get(int(c), 0.0)), _longspan_velobi_rank(c)),
+                        )[:1]
+                        if not axis2_list:
+                            return "該当なし"
+                        axis2 = int(axis2_list[0])
+
+                        axes = [axis1, axis2]
                         axes_set = {int(x) for x in axes}
+                        hit_protect = axis1
 
                         bplus_rest = [int(c) for c in cand_order if int(c) not in axes_set]
 
@@ -11998,7 +12001,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         # v169: 推奨流れ側ラインのヒモを先に置き、別線側は直近1車まで。
                         # B以上残り・推奨流れ上位・妙味順は補助材料に下げる。
                         third_pool = []
-                        # v175: 的中順単騎評価1位は3列目へ保護する。
+                        # v177: 軸1はすでに的中順最上位。3列目では重複除外する。
                         if hit_protect is not None and int(hit_protect) not in axes_set:
                             third_pool.append(int(hit_protect))
 
@@ -12048,7 +12051,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             c = int(c)
                             score = 0.0
 
-                            # v175: 的中順単騎評価1位は3列目へ必ず残す優先枠。
+                            # v177: 軸1が3列目に重複しないよう、通常はここでは加点されない。
                             if hit_protect is not None and c == int(hit_protect):
                                 score += 160.0
 
@@ -12120,7 +12123,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         return "該当なし"
 
                 if car_avg_rows:
-                    trio_candidate = _longspan_make_trio_candidate(nifuku_trio_base, car_avg_rows)
+                    trio_candidate = _longspan_make_trio_candidate(nifuku_buy, car_avg_rows)
                     lines.append("3連複購入候補")
                     lines.append(trio_candidate)
                     lines.append("")
@@ -12206,7 +12209,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("D：見送り")
             lines.append("")
             lines.append("※2車複候補は、総合評価B以上を総合pt順で上位2点まで表示")
-            lines.append("※3連複候補は、2車複購入候補とは分けて総合評価B以上の2車複評価候補を土台にし、的中順単騎評価1位を除外して、1列目・2列目は同候補内で妙味順位下位側の1位・2位を採用。3列目は的中順単騎評価1位を保護し、採用された推奨流れ側ラインのヒモを優先して常に3車選別")
+            lines.append("※3連複候補は、2車複購入候補（総合評価B以上・総合pt上位2点）を土台にし、1列目は同候補内の的中順単騎評価最上位、2列目は同候補内から1列目を除外して妙味順位下位側を採用。3列目は採用された推奨流れ側ラインのヒモを優先して常に3車選別")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
             lines.append("※妙味期待のA++/A+/Aは、総合ptではなく妙味ptだけで判定（A++は10.0pt以上）")
             lines.append("※車番別の的中順単騎評価・妙味順単騎評価は、各車を含む2車複6通りから最高値1本・最低値1本を除外した平均")
