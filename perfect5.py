@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v170: 2車複購入候補を「総合評価B以上 かつ 妙味期待A+以上」に絞る。3連複候補の軸・3列目生成は従来どおり総合評価B以上候補を土台にして本線を拾う。
 # v169: 3連複3列目は採用された推奨流れの流域ラインを最優先。軸は従来通り的中順単騎評価で選び、3列目は推奨流れ側ラインのヒモ→突っ込む別線側の直近1車→B以上残り→妙味補助の順で最大3車に絞る。
 # v168: 3連複購入候補の3列目を、B以上残りの単純スライドから、軸2車のライン直近相手・推奨流れ上位・妙味順単騎評価を加点して最大3車まで再選別する方式へ変更。
 # v167: 推奨流れをKO上位3車の流域多数決で補正。順流/渦/逆流の所属が2車以上ならその流れ、3車が割れた場合は逆流扱い。H主導寄せより後で適用。
@@ -11726,12 +11727,21 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 # 数値順で並べる。表示候補は「総合評価B以上」を総合pt順で並べる。
                 sorted_pairs = sorted(long_span_pairs, key=_longspan_pair_sort_key, reverse=True)
 
-                nifuku_buy = [
+                # v170:
+                # 3連複候補は本線・準本線を拾うため、従来どおり「総合評価B以上」全体を土台にする。
+                # 一方、2車複は3連複と役割を分け、ズレた妙味だけを買うため、
+                # 「総合評価B以上 かつ 妙味期待A+以上」に絞る。
+                nifuku_trio_base = [
                     row for row in sorted_pairs
                     if str(row.get("total_rank", "")).strip() in ("A", "B")
                 ]
 
-                lines.append("【総合評価B以上】")
+                nifuku_buy = [
+                    row for row in nifuku_trio_base
+                    if str(row.get("myoumi_rank", "")).strip() in ("A+", "A++")
+                ]
+
+                lines.append("【総合評価B以上・妙味期待A+以上】")
                 lines.append("2車複購入候補")
                 lines.append("　".join(str(x.get("disp")) for x in nifuku_buy) if nifuku_buy else "該当なし")
                 lines.append("")
@@ -11796,8 +11806,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                 car_avg_rows = _longspan_car_average_rows(sorted_pairs, long_span_all_cars)
 
-                # v168: 3連複購入候補
-                # 軸2車は従来通り「総合評価B以上の2車複候補に含まれる車」から、的中順単騎評価上位2車を採用。
+                # v168/v170: 3連複購入候補
+                # 軸2車は従来通り「総合評価B以上の2車複評価候補」に含まれる車から、的中順単騎評価上位2車を採用。
                 # 3列目はB以上残りの単純スライドではなく、展開イメージに合わせて再選別する。
                 #   ・B以上2車複候補の残り車
                 #   ・軸2車のライン直近相手
@@ -12069,7 +12079,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         return "該当なし"
 
                 if car_avg_rows:
-                    trio_candidate = _longspan_make_trio_candidate(nifuku_buy, car_avg_rows)
+                    trio_candidate = _longspan_make_trio_candidate(nifuku_trio_base, car_avg_rows)
                     lines.append("3連複購入候補")
                     lines.append(trio_candidate)
                     lines.append("")
@@ -12154,8 +12164,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("C：やや見送り")
             lines.append("D：見送り")
             lines.append("")
-            lines.append("※2車複候補は、総合評価B以上を総合pt順で表示")
-            lines.append("※3連複候補は、総合評価B以上の2車複候補に含まれる車番から的中順単騎評価上位2車を軸にし、3列目は採用された推奨流れ側ラインのヒモを最優先、別線側は直近1車まで、B以上残り・妙味順は補助として最大3車まで再選別")
+            lines.append("※2車複候補は、総合評価B以上かつ妙味期待A+以上を総合pt順で表示")
+            lines.append("※3連複候補は、2車複購入候補とは分けて総合評価B以上の2車複評価候補に含まれる車番から的中順単騎評価上位2車を軸にし、3列目は採用された推奨流れ側ラインのヒモを最優先、別線側は直近1車まで、B以上残り・妙味順は補助として最大3車まで再選別")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
             lines.append("※妙味期待のA++/A+/Aは、総合ptではなく妙味ptだけで判定（A++は10.0pt以上）")
             lines.append("※車番別の的中順単騎評価・妙味順単騎評価は、各車を含む2車複6通りから最高値1本・最低値1本を除外した平均")
