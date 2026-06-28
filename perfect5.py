@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v168: 3連複購入候補の3列目を、B以上残りの単純スライドから、軸2車のライン直近相手・推奨流れ上位・妙味順単騎評価を加点して最大3車まで再選別する方式へ変更。
 # v167: 推奨流れをKO上位3車の流域多数決で補正。順流/渦/逆流の所属が2車以上ならその流れ、3車が割れた場合は逆流扱い。H主導寄せより後で適用。
 # v166: 【２車複考察】を【買目考察】へ変更。総合評価B以上の2車複候補から車番を抽出し、的中順単騎評価上位2車を軸、残りを3列目にした3連複購入候補を追加。
 # v165: 2車複候補を総合評価B以上のpt順表示へ戻し、車番別平均評価の結論順1:2/1:3を非表示。的中順/妙味順を単騎評価表記へ変更。
@@ -11794,10 +11795,14 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                 car_avg_rows = _longspan_car_average_rows(sorted_pairs, long_span_all_cars)
 
-                # v166: 3連複購入候補
-                # 総合評価B以上の2車複候補に含まれる車番だけを対象にする。
-                # その中で、的中順単騎評価の上位2車を軸にし、残りを3列目へ置く。
-                # 例：2車複候補 2-3 / 5-7、的中順 7→2→3→5 なら 7-2-35。
+                # v168: 3連複購入候補
+                # 軸2車は従来通り「総合評価B以上の2車複候補に含まれる車」から、的中順単騎評価上位2車を採用。
+                # 3列目はB以上残りの単純スライドではなく、展開イメージに合わせて再選別する。
+                #   ・B以上2車複候補の残り車
+                #   ・軸2車のライン直近相手
+                #   ・推奨流れ上位5車以内
+                #   ・妙味順単騎評価上位
+                # を加点し、ライン末尾・単騎薄め・推奨流れ下位を抑えながら最大3車までに絞る。
                 def _longspan_make_trio_candidate(_nifuku_buy, _car_avg_rows):
                     try:
                         if not _nifuku_buy or not _car_avg_rows:
@@ -11820,9 +11825,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             return "該当なし"
 
                         hit_map = {}
+                        myoumi_map = {}
                         for r in (_car_avg_rows or []):
                             try:
-                                hit_map[int(r.get("car"))] = float(r.get("hit_avg", 0.0))
+                                c = int(r.get("car"))
+                                hit_map[c] = float(r.get("hit_avg", 0.0))
+                                myoumi_map[c] = float(r.get("myoumi_avg", 0.0))
                             except Exception:
                                 pass
 
@@ -11834,11 +11842,146 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             reverse=True,
                         )[:2]
 
-                        rest = [c for c in cand_order if c not in set(axes)]
-                        if not axes or len(axes) < 2 or not rest:
+                        if not axes or len(axes) < 2:
                             return "該当なし"
 
-                        return f"{int(axes[0])}-{int(axes[1])}-{''.join(str(int(c)) for c in rest)}"
+                        axes_set = {int(x) for x in axes}
+                        bplus_rest = [int(c) for c in cand_order if int(c) not in axes_set]
+
+                        # 推奨流れ順。なければSTYLE_SEQ_MAPの推奨戦法から拾う。
+                        rec_seq = []
+                        try:
+                            rec_seq = [int(x) for x in (globals().get("RECOMMENDED_STYLE_SEQ", []) or []) if str(x).isdigit()]
+                        except Exception:
+                            rec_seq = []
+                        if not rec_seq:
+                            try:
+                                _style = globals().get("RECOMMENDED_STYLE", "")
+                                rec_seq = [int(x) for x in (globals().get("STYLE_SEQ_MAP", {}) or {}).get(_style, []) if str(x).isdigit()]
+                            except Exception:
+                                rec_seq = []
+                        flow_rank = {int(c): i for i, c in enumerate(rec_seq)}
+                        flow_top5 = [int(c) for c in rec_seq[:5] if int(c) not in axes_set]
+
+                        # 軸2車のライン直近相手を拾う。
+                        # 例：413の4なら1、526の2なら5/6。ただし後段スコアで末尾・下位は落ちやすくする。
+                        line_near = []
+                        try:
+                            _line_def = globals().get("line_def", {}) or {}
+                            if isinstance(_line_def, dict):
+                                for ax in axes:
+                                    ax = int(ax)
+                                    for _gid, _mem in _line_def.items():
+                                        mem = [int(x) for x in (_mem or []) if str(x).isdigit()]
+                                        if ax not in mem:
+                                            continue
+                                        idx = mem.index(ax)
+                                        for ni in (idx - 1, idx + 1):
+                                            if 0 <= ni < len(mem):
+                                                c = int(mem[ni])
+                                                if c not in axes_set and c not in line_near:
+                                                    line_near.append(c)
+                        except Exception:
+                            line_near = []
+
+                        # 妙味順単騎評価上位。軸以外を候補化。
+                        myoumi_order = sorted(
+                            [int(r.get("car")) for r in (_car_avg_rows or []) if str(r.get("car")).isdigit()],
+                            key=lambda c: (float(myoumi_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
+                            reverse=True,
+                        )
+                        myoumi_top = [int(c) for c in myoumi_order if int(c) not in axes_set][:3]
+
+                        # 候補を集約。B以上残り・ライン直近・推奨流れ・妙味をすべて見る。
+                        third_pool = []
+                        for src in (bplus_rest, line_near, flow_top5, myoumi_top):
+                            for c in src:
+                                c = int(c)
+                                if c in axes_set:
+                                    continue
+                                if c not in third_pool:
+                                    third_pool.append(c)
+
+                        if not third_pool:
+                            return "該当なし"
+
+                        # 役割とライン内位置。
+                        def _role_and_pos(_car):
+                            try:
+                                _line_def = globals().get("line_def", {}) or {}
+                                if isinstance(_line_def, dict):
+                                    for _gid, _mem in _line_def.items():
+                                        mem = [int(x) for x in (_mem or []) if str(x).isdigit()]
+                                        if int(_car) in mem:
+                                            idx = mem.index(int(_car))
+                                            if len(mem) <= 1:
+                                                return "single", idx, len(mem)
+                                            if idx == 0:
+                                                return "head", idx, len(mem)
+                                            if idx == 1:
+                                                return "second", idx, len(mem)
+                                            return "thirdplus", idx, len(mem)
+                            except Exception:
+                                pass
+                            return "single", 0, 1
+
+                        def _third_score(c):
+                            c = int(c)
+                            score = 0.0
+
+                            # B以上2車複候補の残りは、元ロジックの根拠として強めに残す。
+                            if c in bplus_rest:
+                                score += 100.0
+
+                            # 軸ラインの直近相手は、展開上の3着候補として強く残す。
+                            if c in line_near:
+                                score += 85.0
+
+                            # 推奨流れ上位は現実性を加点。上にいるほど強い。
+                            if c in flow_rank:
+                                r = int(flow_rank[c])
+                                if r <= 4:
+                                    score += 70.0 - r * 8.0
+                                elif r <= 6:
+                                    score += 20.0
+                                else:
+                                    score -= 15.0
+
+                            # 妙味順は3着穴として加点。ただしこれだけで末尾・単騎を拾いすぎない。
+                            score += float(myoumi_map.get(c, 0.0)) * 4.0
+                            score += float(hit_map.get(c, 0.0)) * 2.0
+
+                            role, idx, ln = _role_and_pos(c)
+                            if role == "second":
+                                score += 18.0
+                            elif role == "head":
+                                score += 8.0
+                            elif role == "thirdplus":
+                                score -= 8.0
+                                # 4車以上ラインの深い位置はさらに落とす。
+                                if ln >= 4 and idx >= 2:
+                                    score -= 8.0
+                            elif role == "single":
+                                score -= 18.0
+
+                            # 推奨流れに出ていない、または下位すぎる候補は薄くする。
+                            if rec_seq and c not in flow_rank:
+                                score -= 20.0
+                            elif rec_seq and flow_rank.get(c, 99) >= 6:
+                                score -= 12.0
+
+                            return score
+
+                        third = sorted(
+                            third_pool,
+                            key=lambda c: (_third_score(c), -flow_rank.get(int(c), 99), float(hit_map.get(int(c), 0.0)), float(myoumi_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
+                            reverse=True,
+                        )[:3]
+
+                        if not third:
+                            return "該当なし"
+
+                        return f"{int(axes[0])}-{int(axes[1])}-{''.join(str(int(c)) for c in third)}"
                     except Exception:
                         return "該当なし"
 
@@ -11929,7 +12072,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("D：見送り")
             lines.append("")
             lines.append("※2車複候補は、総合評価B以上を総合pt順で表示")
-            lines.append("※3連複候補は、総合評価B以上の2車複候補に含まれる車番から、的中順単騎評価上位2車を軸、残りを3列目として表示")
+            lines.append("※3連複候補は、総合評価B以上の2車複候補に含まれる車番から的中順単騎評価上位2車を軸にし、3列目はライン直近相手・推奨流れ上位・妙味順単騎評価から最大3車まで再選別")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
             lines.append("※妙味期待のA++/A+/Aは、総合ptではなく妙味ptだけで判定（A++は10.0pt以上）")
             lines.append("※車番別の的中順単騎評価・妙味順単騎評価は、各車を含む2車複6通りから最高値1本・最低値1本を除外した平均")
