@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v169: 3連複3列目は採用された推奨流れの流域ラインを最優先。軸は従来通り的中順単騎評価で選び、3列目は推奨流れ側ラインのヒモ→突っ込む別線側の直近1車→B以上残り→妙味補助の順で最大3車に絞る。
 # v168: 3連複購入候補の3列目を、B以上残りの単純スライドから、軸2車のライン直近相手・推奨流れ上位・妙味順単騎評価を加点して最大3車まで再選別する方式へ変更。
 # v167: 推奨流れをKO上位3車の流域多数決で補正。順流/渦/逆流の所属が2車以上ならその流れ、3車が割れた場合は逆流扱い。H主導寄せより後で適用。
 # v166: 【２車複考察】を【買目考察】へ変更。総合評価B以上の2車複候補から車番を抽出し、的中順単騎評価上位2車を軸、残りを3列目にした3連複購入候補を追加。
@@ -11863,26 +11864,96 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         flow_rank = {int(c): i for i, c in enumerate(rec_seq)}
                         flow_top5 = [int(c) for c in rec_seq[:5] if int(c) not in axes_set]
 
-                        # 軸2車のライン直近相手を拾う。
-                        # 例：413の4なら1、526の2なら5/6。ただし後段スコアで末尾・下位は落ちやすくする。
-                        line_near = []
-                        try:
-                            _line_def = globals().get("line_def", {}) or {}
-                            if isinstance(_line_def, dict):
-                                for ax in axes:
-                                    ax = int(ax)
+                        # v169: 3列目は、採用された推奨流れの流域ラインを最優先する。
+                        # 例：推奨流れ【順流】で順流域=413、軸=2-4なら、
+                        # 4側のヒモ 1・3 を優先し、2側(別線から突っ込む車)は直近1車の5まで。
+                        selected_style = str(globals().get("RECOMMENDED_STYLE", "") or "").strip()
+
+                        def _norm_line_key_for_trio(_ln):
+                            try:
+                                if isinstance(_ln, (list, tuple)):
+                                    return "".join(str(int(x)) for x in _ln if str(x).isdigit())
+                            except Exception:
+                                pass
+                            return "".join(ch for ch in str(_ln) if ch.isdigit())
+
+                        def _zone_for_line_trio(_mem):
+                            try:
+                                key = _norm_line_key_for_trio(_mem)
+                                zmap = globals().get("LINE_ZONE_MAP", {}) or {}
+                                if isinstance(zmap, dict) and key in zmap:
+                                    return str(zmap.get(key, "その他"))
+                            except Exception:
+                                pass
+                            return "その他"
+
+                        def _find_line_for_car(_car):
+                            try:
+                                _line_def = globals().get("line_def", {}) or {}
+                                if isinstance(_line_def, dict):
                                     for _gid, _mem in _line_def.items():
                                         mem = [int(x) for x in (_mem or []) if str(x).isdigit()]
-                                        if ax not in mem:
-                                            continue
-                                        idx = mem.index(ax)
-                                        for ni in (idx - 1, idx + 1):
-                                            if 0 <= ni < len(mem):
-                                                c = int(mem[ni])
-                                                if c not in axes_set and c not in line_near:
-                                                    line_near.append(c)
+                                        if int(_car) in mem:
+                                            return _gid, mem, _zone_for_line_trio(mem)
+                            except Exception:
+                                pass
+                            return None, [], "その他"
+
+                        flow_line_himo = []      # 採用流れ側ラインのヒモ。最優先。
+                        nonflow_direct = []      # 別線から突っ込む軸の直近1車だけ。
+                        try:
+                            for ax in axes:
+                                ax = int(ax)
+                                _gid, mem, z = _find_line_for_car(ax)
+                                if not mem:
+                                    continue
+                                idx = mem.index(ax)
+
+                                if selected_style and z == selected_style:
+                                    # 採用された推奨流れ側の軸なら、そのライン残りを優先。
+                                    # 3番手も「推奨流れ側ラインのヒモ」として残す余地を持つ。
+                                    for c in mem:
+                                        c = int(c)
+                                        if c not in axes_set and c not in flow_line_himo:
+                                            flow_line_himo.append(c)
+                                else:
+                                    # 推奨流れ側ではない軸は「突っ込んでくる車」と見て、
+                                    # ラインを丸ごと拾わず、直近1車だけにする。
+                                    # 番手なら前の車、先頭なら後ろの車、3番手なら番手を優先。
+                                    near = None
+                                    if idx - 1 >= 0:
+                                        near = int(mem[idx - 1])
+                                    elif idx + 1 < len(mem):
+                                        near = int(mem[idx + 1])
+                                    if near is not None and near not in axes_set and near not in nonflow_direct:
+                                        nonflow_direct.append(near)
                         except Exception:
-                            line_near = []
+                            flow_line_himo = []
+                            nonflow_direct = []
+
+                        # 保険：軸に推奨流れ側ラインが含まれない場合でも、
+                        # 採用流れラインの上位ヒモを1〜2車だけ候補化する。
+                        try:
+                            if selected_style and not flow_line_himo:
+                                _line_def = globals().get("line_def", {}) or {}
+                                if isinstance(_line_def, dict):
+                                    for _gid, _mem in _line_def.items():
+                                        mem = [int(x) for x in (_mem or []) if str(x).isdigit()]
+                                        if not mem or _zone_for_line_trio(mem) != selected_style:
+                                            continue
+                                        for c in mem:
+                                            c = int(c)
+                                            if c not in axes_set and c not in flow_line_himo:
+                                                flow_line_himo.append(c)
+                                            if len(flow_line_himo) >= 2:
+                                                break
+                                        if flow_line_himo:
+                                            break
+                        except Exception:
+                            pass
+
+                        # 旧名互換：後段の表示/スコア参照用。
+                        line_near = list(dict.fromkeys(flow_line_himo + nonflow_direct))
 
                         # 妙味順単騎評価上位。軸以外を候補化。
                         myoumi_order = sorted(
@@ -11892,9 +11963,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         )
                         myoumi_top = [int(c) for c in myoumi_order if int(c) not in axes_set][:3]
 
-                        # 候補を集約。B以上残り・ライン直近・推奨流れ・妙味をすべて見る。
+                        # 候補を集約。
+                        # v169: 推奨流れ側ラインのヒモを先に置き、別線側は直近1車まで。
+                        # B以上残り・推奨流れ上位・妙味順は補助材料に下げる。
                         third_pool = []
-                        for src in (bplus_rest, line_near, flow_top5, myoumi_top):
+                        for src in (flow_line_himo, nonflow_direct, bplus_rest, flow_top5, myoumi_top):
                             for c in src:
                                 c = int(c)
                                 if c in axes_set:
@@ -11929,46 +12002,56 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             c = int(c)
                             score = 0.0
 
-                            # B以上2車複候補の残りは、元ロジックの根拠として強めに残す。
-                            if c in bplus_rest:
+                            # v169: 採用された推奨流れ側ラインのヒモを最優先。
+                            # 例：順流413の4が軸なら、1・3を優先する。
+                            if c in flow_line_himo:
+                                score += 130.0
+
+                            # 別線から突っ込む軸の相手は、直近1車だけ強めに残す。
+                            # 例：526の2が突っ込むなら5まで。6はここに入れない。
+                            if c in nonflow_direct:
                                 score += 100.0
 
-                            # 軸ラインの直近相手は、展開上の3着候補として強く残す。
-                            if c in line_near:
-                                score += 85.0
+                            # B以上2車複候補の残りは根拠として残すが、推奨流れ側ヒモよりは下げる。
+                            if c in bplus_rest:
+                                score += 75.0
 
                             # 推奨流れ上位は現実性を加点。上にいるほど強い。
                             if c in flow_rank:
                                 r = int(flow_rank[c])
                                 if r <= 4:
-                                    score += 70.0 - r * 8.0
+                                    score += 58.0 - r * 7.0
                                 elif r <= 6:
-                                    score += 20.0
+                                    score += 12.0
                                 else:
-                                    score -= 15.0
+                                    score -= 20.0
 
-                            # 妙味順は3着穴として加点。ただしこれだけで末尾・単騎を拾いすぎない。
-                            score += float(myoumi_map.get(c, 0.0)) * 4.0
+                            # 妙味順は最後の補助。推奨流れ側ラインのヒモを押しのけない。
+                            score += float(myoumi_map.get(c, 0.0)) * 3.0
                             score += float(hit_map.get(c, 0.0)) * 2.0
 
                             role, idx, ln = _role_and_pos(c)
                             if role == "second":
-                                score += 18.0
+                                score += 14.0
                             elif role == "head":
-                                score += 8.0
+                                score += 6.0
                             elif role == "thirdplus":
-                                score -= 8.0
-                                # 4車以上ラインの深い位置はさらに落とす。
-                                if ln >= 4 and idx >= 2:
-                                    score -= 8.0
+                                # 推奨流れ側ラインの3番手は残す余地を持つ。
+                                # 別線側の3番手・末尾はかなり落とす。
+                                if c in flow_line_himo:
+                                    score -= 2.0
+                                else:
+                                    score -= 26.0
+                                    if ln >= 4 and idx >= 2:
+                                        score -= 10.0
                             elif role == "single":
-                                score -= 18.0
+                                score -= 24.0
 
                             # 推奨流れに出ていない、または下位すぎる候補は薄くする。
                             if rec_seq and c not in flow_rank:
-                                score -= 20.0
+                                score -= 24.0
                             elif rec_seq and flow_rank.get(c, 99) >= 6:
-                                score -= 12.0
+                                score -= 16.0
 
                             return score
 
@@ -12072,7 +12155,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("D：見送り")
             lines.append("")
             lines.append("※2車複候補は、総合評価B以上を総合pt順で表示")
-            lines.append("※3連複候補は、総合評価B以上の2車複候補に含まれる車番から的中順単騎評価上位2車を軸にし、3列目はライン直近相手・推奨流れ上位・妙味順単騎評価から最大3車まで再選別")
+            lines.append("※3連複候補は、総合評価B以上の2車複候補に含まれる車番から的中順単騎評価上位2車を軸にし、3列目は採用された推奨流れ側ラインのヒモを最優先、別線側は直近1車まで、B以上残り・妙味順は補助として最大3車まで再選別")
             lines.append("※C、Dは20倍以上なら穴押さえ候補")
             lines.append("※妙味期待のA++/A+/Aは、総合ptではなく妙味ptだけで判定（A++は10.0pt以上）")
             lines.append("※車番別の的中順単騎評価・妙味順単騎評価は、各車を含む2車複6通りから最高値1本・最低値1本を除外した平均")
