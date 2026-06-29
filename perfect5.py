@@ -2129,7 +2129,8 @@ st.session_state["venue_profile"] = venue_profile
 st.session_state["venue_home_flow_mult"] = venue_home_flow_mult
 st.session_state["venue_min_odds_mult"] = venue_min_odds_mult
 
-with st.sidebar.expander("🏟️ 開催場決まり手成績", expanded=False):
+st.sidebar.markdown("### 🏟️ 開催場決まり手成績")
+with st.sidebar.expander("数値入力（オッズパーク等の表をそのまま％入力）", expanded=True):
     venue_kimarite_enabled = st.checkbox(
         "決まり手補正を使う",
         value=bool(st.session_state.get("venue_kimarite_enabled", False)),
