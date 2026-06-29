@@ -12048,8 +12048,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 # v177: 3連複購入候補
                 # 1列目・2列目の母集団は「2車複購入候補＝総合評価B以上・総合pt上位2点」に限定する。
                 # 1列目は同候補内で的中順単騎評価が最上位の車。
-                # 2列目は同候補内から1列目を除外し、妙味順位下位側（myoumi_avgが低い側）の車。
-                # 3列目はv174の展開イメージを維持し、常に3車に固定する。
+                # 2列目は同候補内から1列目を除外し、推奨流れ4位以内の中で妙味順単騎評価が最も高い車。
+                # 3列目はv181の同ライン保護を維持し、常に3車に固定する。
                 #   ・的中順単騎評価1位
                 #   ・推奨流れ側ラインのヒモ
                 #   ・別線側の直近1車
@@ -12099,11 +12099,31 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             return "該当なし"
                         axis1 = int(axis1_list[0])
 
-                        # 軸2は、同じ母集団から軸1を除外し、妙味順位下位側（myoumi_avgが低い側）を採用する。
-                        axis2_pool = [int(c) for c in cand_order if int(c) != int(axis1)]
+                        # 推奨流れ順。軸B選定にも使うため、軸2決定前に取得する。
+                        rec_seq = []
+                        try:
+                            rec_seq = [int(x) for x in (globals().get("RECOMMENDED_STYLE_SEQ", []) or []) if str(x).isdigit()]
+                        except Exception:
+                            rec_seq = []
+                        if not rec_seq:
+                            try:
+                                _style = globals().get("RECOMMENDED_STYLE", "")
+                                rec_seq = [int(x) for x in (globals().get("STYLE_SEQ_MAP", {}) or {}).get(_style, []) if str(x).isdigit()]
+                            except Exception:
+                                rec_seq = []
+                        flow_rank = {int(c): i for i, c in enumerate(rec_seq)}
+                        flow_top4_set = {int(c) for c in rec_seq[:4]}
+
+                        # v184: 軸2は、2車複購入候補に含まれる軸1以外の車から選ぶ。
+                        # 条件は「推奨流れ4位以内」。その中で妙味順単騎評価が最も高い車を採用する。
+                        axis2_pool_all = [int(c) for c in cand_order if int(c) != int(axis1)]
+                        axis2_pool = [int(c) for c in axis2_pool_all if int(c) in flow_top4_set]
+                        if not axis2_pool:
+                            return "該当なし"
                         axis2_list = sorted(
                             axis2_pool,
-                            key=lambda c: (float(myoumi_map.get(int(c), 0.0)), -float(hit_map.get(int(c), 0.0)), _longspan_velobi_rank(c)),
+                            key=lambda c: (float(myoumi_map.get(int(c), 0.0)), float(hit_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
+                            reverse=True,
                         )[:1]
                         if not axis2_list:
                             return "該当なし"
