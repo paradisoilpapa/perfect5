@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v180: 開催場決まり手補正の先頭車・番手車補正をv179比50%へ弱化。毎レース表示の買目説明注記5行を削除。
 # v179: ライン入力で単騎（1桁ライン）が入力済み車番として認識されない不具合を修正。単騎も1ラインとしてカウントし、入力確認表示を追加。
 # v178: オッズパーク等の開催場決まり手成績をサイドバーで数値入力し、1着/2着決まり手率と回数から会場決まり手補正を自動算出。雨天バイアスとは別枠で常時小幅反映.
 # v177: 3連複候補の軸母集団を「総合評価B以上・総合pt上位2点の2車複購入候補」に変更。軸1は同候補内の的中順最上位、軸2は残りから妙味順位下位側を採用。3列目は推奨流れ側ライン優先で常に3車。
@@ -418,10 +419,13 @@ def _calc_venue_kimarite_role_bonus_map(stats, max_abs=0.35):
         for k in base.keys()
     }
 
-    # 1%差を何ptに変換するか。強くしすぎない。
+    # 1%差を何ptに変換するか。
+    # v180: 先頭車・番手車の補正だけv179比50%へ弱化。
+    #       先行を過剰に消さず、番手を過剰に軸化しないため。
+    #       3列目保護に関わる thirdplus / single は据え置き。
     raw = {
-        "head":      0.020*d["win_escape"] + 0.010*d["sec_escape"],
-        "second":    0.020*d["win_sashi"]  + 0.010*d["sec_mark"] + 0.006*d["sec_sashi"],
+        "head":      0.010*d["win_escape"] + 0.005*d["sec_escape"],
+        "second":    0.010*d["win_sashi"]  + 0.005*d["sec_mark"] + 0.003*d["sec_sashi"],
         "thirdplus": 0.012*d["sec_mark"]   + 0.004*d["sec_sashi"],
         "single":    0.018*d["win_makuri"] + 0.010*d["sec_makuri"],
     }
@@ -12435,11 +12439,6 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("C：やや見送り")
             lines.append("D：見送り")
             lines.append("")
-            lines.append("※2車複候補は、総合評価B以上を総合pt順で上位2点まで表示")
-            lines.append("※3連複候補は、2車複購入候補（総合評価B以上・総合pt上位2点）を土台にし、1列目は同候補内の的中順単騎評価最上位、2列目は同候補内から1列目を除外して妙味順位下位側を採用。3列目は採用された推奨流れ側ラインのヒモを優先して常に3車選別")
-            lines.append("※C、Dは20倍以上なら穴押さえ候補")
-            lines.append("※妙味期待のA++/A+/Aは、総合ptではなく妙味ptだけで判定（A++は10.0pt以上）")
-            lines.append("※車番別の的中順単騎評価・妙味順単騎評価は、各車を含む2車複6通りから最高値1本・最低値1本を除外した平均")
         else:
             lines.append("【ヴェロビ三連複推奨】")
             lines.append("")
