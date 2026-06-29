@@ -2,6 +2,8 @@
 # v180: 開催場決まり手補正の先頭車・番手車補正をv179比50%へ弱化。毎レース表示の買目説明注記5行を削除。
 # v179: ライン入力で単騎（1桁ライン）が入力済み車番として認識されない不具合を修正。単騎も1ラインとしてカウントし、入力確認表示を追加。
 # v178: オッズパーク等の開催場決まり手成績をサイドバーで数値入力し、1着/2着決まり手率と回数から会場決まり手補正を自動算出。雨天バイアスとは別枠で常時小幅反映.
+# v181: 3連複3列目で、軸1・軸2の同ライン残りをスコア選別より先に固定保護。開催場決まり手補正が同ライン保護へ干渉しないよう修正。
+# v180: 開催場決まり手補正の先頭・番手補正を50%へ弱化。毎レース表示の長い説明注記を削除。
 # v177: 3連複候補の軸母集団を「総合評価B以上・総合pt上位2点の2車複購入候補」に変更。軸1は同候補内の的中順最上位、軸2は残りから妙味順位下位側を採用。3列目は推奨流れ側ライン優先で常に3車。
 # v176: 3連複候補の1列目・2列目で、妙味順位下位側を選ぶ際に「的中順単騎評価1位」は除外。的中順1位は3列目へ保護する。
 # v175: 3連複候補を、B以上候補内の妙味順位下位1位-下位2位を軸にし、的中順1位を3列目へ保護。残り2車はv174の推奨流れ側ライン優先ロジックで常に3車。
@@ -421,13 +423,12 @@ def _calc_venue_kimarite_role_bonus_map(stats, max_abs=0.35):
 
     # 1%差を何ptに変換するか。
     # v180: 先頭車・番手車の補正だけv179比50%へ弱化。
-    #       先行を過剰に消さず、番手を過剰に軸化しないため。
-    #       3列目保護に関わる thirdplus / single は据え置き。
+    # v181: 3列目保護へ干渉させないため、thirdplus / single への会場決まり手補正は使わない。
     raw = {
         "head":      0.010*d["win_escape"] + 0.005*d["sec_escape"],
         "second":    0.010*d["win_sashi"]  + 0.005*d["sec_mark"] + 0.003*d["sec_sashi"],
-        "thirdplus": 0.012*d["sec_mark"]   + 0.004*d["sec_sashi"],
-        "single":    0.018*d["win_makuri"] + 0.010*d["sec_makuri"],
+        "thirdplus": 0.0,
+        "single":    0.0,
     }
 
     role_bonus = {
@@ -12196,6 +12197,24 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             flow_line_himo = []
                             nonflow_direct = []
 
+                        # v181: 軸1・軸2の同ライン残りはスコア選別より先に固定保護する。
+                        # ここは会場決まり手補正・妙味順・推奨流れ順位で押し出さない。
+                        fixed_same_line_rest = []
+                        try:
+                            for ax in axes:
+                                ax = int(ax)
+                                _gid, mem, z = _find_line_for_car(ax)
+                                if not mem or len(mem) <= 1:
+                                    continue
+                                for c in mem:
+                                    c = int(c)
+                                    if c in axes_set:
+                                        continue
+                                    if c not in fixed_same_line_rest:
+                                        fixed_same_line_rest.append(c)
+                        except Exception:
+                            fixed_same_line_rest = []
+
                         # 保険：軸に推奨流れ側ラインが含まれない場合でも、
                         # 採用流れラインの上位ヒモを1〜2車だけ候補化する。
                         try:
@@ -12339,11 +12358,31 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                             return score
 
-                        third = sorted(
-                            third_pool,
-                            key=lambda c: (_third_score(c), -flow_rank.get(int(c), 99), float(hit_map.get(int(c), 0.0)), float(myoumi_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
-                            reverse=True,
-                        )[:3]
+                        # v181: 同ライン残りを先に固定し、残り枠だけを従来スコアで補完する。
+                        third = []
+                        try:
+                            for c in fixed_same_line_rest:
+                                c = int(c)
+                                if c in axes_set:
+                                    continue
+                                if c not in third:
+                                    third.append(c)
+                                if len(third) >= 3:
+                                    break
+                        except Exception:
+                            third = []
+
+                        if len(third) < 3:
+                            rest_sorted = sorted(
+                                [int(c) for c in third_pool if int(c) not in axes_set and int(c) not in third],
+                                key=lambda c: (_third_score(c), -flow_rank.get(int(c), 99), float(hit_map.get(int(c), 0.0)), float(myoumi_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
+                                reverse=True,
+                            )
+                            for c in rest_sorted:
+                                if c not in third:
+                                    third.append(int(c))
+                                if len(third) >= 3:
+                                    break
 
                         # v174: 3列目は常に3車。通常の5〜9車立てなら軸2車を除いて3車以上ある。
                         if len(third) < 3:
