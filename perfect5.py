@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-# v178: オッズパーク等の開催場決まり手成績をサイドバーで数値入力し、1着/2着決まり手率と回数から会場決まり手補正を自動算出。雨天バイアスとは別枠で常時小幅反映。
+# v179: ライン入力で単騎（1桁ライン）が入力済み車番として認識されない不具合を修正。単騎も1ラインとしてカウントし、入力確認表示を追加。
+# v178: オッズパーク等の開催場決まり手成績をサイドバーで数値入力し、1着/2着決まり手率と回数から会場決まり手補正を自動算出。雨天バイアスとは別枠で常時小幅反映.
 # v177: 3連複候補の軸母集団を「総合評価B以上・総合pt上位2点の2車複購入候補」に変更。軸1は同候補内の的中順最上位、軸2は残りから妙味順位下位側を採用。3列目は推奨流れ側ライン優先で常に3車。
 # v176: 3連複候補の1列目・2列目で、妙味順位下位側を選ぶ際に「的中順単騎評価1位」は除外。的中順1位は3列目へ保護する。
 # v175: 3連複候補を、B以上候補内の妙味順位下位1位-下位2位を軸にし、的中順1位を3列目へ保護。残り2車はv174の推奨流れ側ライン優先ロジックで常に3車。
@@ -1015,36 +1016,62 @@ def t_score_from_finite(values: np.ndarray, eps: float = 1e-9):
 def extract_car_list(s, n_cars=None):
     """
     ライン入力文字列から車番を抽出する。
-    出走数n_carsでは車番を制限しない。
-    5車立てでも 12346 のような欠番ありを許可する。
+
+    v179修正：
+    ・単騎の「6」も [6] として必ず有効扱いする。
+    ・2桁以上のラインだけを有効にする判定は行わない。
+    ・出走数 n_cars では車番を制限しない。
+      5車立てでも欠番あり入力を許可するため。
+    ・同一ライン内の重複は先頭1回だけ残す。
     """
     cars = []
     seen = set()
 
-    for ch in str(s):
+    raw = "" if s is None else str(s)
+    for ch in raw:
         if not ch.isdigit():
             continue
-
         v = int(ch)
-
-        # 競輪の車番として1〜9だけ許可
         if 1 <= v <= 9 and v not in seen:
             cars.append(v)
             seen.add(v)
 
     return cars
+
+
 def build_line_maps(lines):
-    labels = "ABCDEFG"
-    line_def = {labels[i]: lst for i,lst in enumerate(lines) if lst}
-    car_to_group = {c:g for g,mem in line_def.items() for c in mem}
+    # 最大9ラインまで対応。単騎も1ライン。
+    labels = "ABCDEFGHI"
+    line_def = {}
+    for i, lst in enumerate(lines):
+        if not lst:
+            continue
+        label = labels[i] if i < len(labels) else f"L{i+1}"
+        line_def[label] = list(lst)
+    car_to_group = {c: g for g, mem in line_def.items() for c in mem}
     return line_def, car_to_group
+
+
+def _format_lines_for_check(lines):
+    """入力確認用：[[7,1,4],[5,3,2],[6]] → '714 / 532 / 6'"""
+    try:
+        parts = []
+        for lst in lines:
+            if not lst:
+                continue
+            parts.append("".join(str(int(x)) for x in lst))
+        return " / ".join(parts) if parts else "—"
+    except Exception:
+        return "—"
+
 
 def role_in_line(car, line_def):
     for g, mem in line_def.items():
         if car in mem:
-            if len(mem)==1: return 'single'
+            if len(mem) == 1:
+                return 'single'
             idx = mem.index(car)
-            return ['head','second','thirdplus'][idx] if idx<3 else 'thirdplus'
+            return ['head', 'second', 'thirdplus'][idx] if idx < 3 else 'thirdplus'
     return 'single'
 # =====================================================
 # ラスト半周補正：番手差し・前で動ける上位補正
@@ -2481,7 +2508,15 @@ lines_live = [extract_car_list(x, n_cars) for x in line_inputs_live if str(x).st
 line_def_live, car_to_group_live = build_line_maps(lines_live)
 active_cars_live = sorted({c for lst in lines_live for c in lst}) if lines_live else list(range(1, n_cars+1))
 
-# 5〜9車対応：ライン入力漏れチェック
+# v179：単騎ラインも含めた認識確認
+if lines_live:
+    st.caption(
+        f"ライン認識：{_format_lines_for_check(lines_live)} "
+        f"｜入力済み車番：{''.join(str(x) for x in active_cars_live)} "
+        f"（{len(active_cars_live)}/{int(n_cars)}車）"
+    )
+
+# 5〜9車対応：ライン入力漏れチェック（単騎も1車としてカウント）
 if len(active_cars_live) != int(n_cars):
     st.warning(
         f"出走数{n_cars}に対して、ライン入力済みは{len(active_cars_live)}車です。"
