@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v178: オッズパーク等の開催場決まり手成績をサイドバーで数値入力し、1着/2着決まり手率と回数から会場決まり手補正を自動算出。雨天バイアスとは別枠で常時小幅反映。
 # v177: 3連複候補の軸母集団を「総合評価B以上・総合pt上位2点の2車複購入候補」に変更。軸1は同候補内の的中順最上位、軸2は残りから妙味順位下位側を採用。3列目は推奨流れ側ライン優先で常に3車。
 # v176: 3連複候補の1列目・2列目で、妙味順位下位側を選ぶ際に「的中順単騎評価1位」は除外。的中順1位は3列目へ保護する。
 # v175: 3連複候補を、B以上候補内の妙味順位下位1位-下位2位を軸にし、的中順1位を3列目へ保護。残り2車はv174の推奨流れ側ライン優先ロジックで常に3車。
@@ -352,6 +353,111 @@ def _safe_float_or_none(v):
     except Exception:
         return None
 
+
+
+
+# ==============================
+# v178：開催場決まり手成績 → 会場決まり手補正
+# ==============================
+# 入力値はオッズパーク等の表をそのまま転記する想定。
+# 補正量はコード側で作るため、後から係数だけ調整できる。
+
+VENUE_KIMARITE_BASELINE = {
+    "win_escape": 25.0,
+    "win_sashi": 50.0,
+    "win_makuri": 25.0,
+    "sec_escape": 20.0,
+    "sec_sashi": 30.0,
+    "sec_makuri": 15.0,
+    "sec_mark": 35.0,
+}
+
+def _pct_input_to_float(v, default=0.0):
+    """13.9 / 13.9% / 0.139 のどれでも受ける。戻り値は％値。"""
+    try:
+        if v is None or v == "":
+            return float(default)
+        x = float(str(v).replace("%", "").strip())
+        if 0.0 < x <= 1.0:
+            x *= 100.0
+        if not math.isfinite(x):
+            return float(default)
+        return float(clamp(x, 0.0, 100.0))
+    except Exception:
+        return float(default)
+
+def _venue_kimarite_reliability(sample_count):
+    """回数が少ない時は補正を弱める。150回以上は満額。"""
+    try:
+        n = int(float(sample_count or 0))
+    except Exception:
+        n = 0
+    if n <= 0:
+        return 0.0
+    return float(clamp((n / 150.0) ** 0.5, 0.35, 1.0))
+
+def _calc_venue_kimarite_role_bonus_map(stats, max_abs=0.35):
+    """
+    開催場決まり手成績から、ライン役割別の小幅補正を作る。
+    head      : 逃げ/先行残り
+    second    : 番手差し・2着マーク
+    thirdplus : 後位マーク残り
+    single    : 捲り/単騎一撃
+    """
+    if not isinstance(stats, dict) or not stats.get("enabled", False):
+        return {"head":0.0, "second":0.0, "thirdplus":0.0, "single":0.0}, 0.0, {}
+
+    base = VENUE_KIMARITE_BASELINE
+    rel = _venue_kimarite_reliability(stats.get("sample_count", 0))
+    if rel <= 0.0:
+        return {"head":0.0, "second":0.0, "thirdplus":0.0, "single":0.0}, 0.0, {}
+
+    d = {
+        k: _pct_input_to_float(stats.get(k, base[k]), base[k]) - base[k]
+        for k in base.keys()
+    }
+
+    # 1%差を何ptに変換するか。強くしすぎない。
+    raw = {
+        "head":      0.020*d["win_escape"] + 0.010*d["sec_escape"],
+        "second":    0.020*d["win_sashi"]  + 0.010*d["sec_mark"] + 0.006*d["sec_sashi"],
+        "thirdplus": 0.012*d["sec_mark"]   + 0.004*d["sec_sashi"],
+        "single":    0.018*d["win_makuri"] + 0.010*d["sec_makuri"],
+    }
+
+    role_bonus = {
+        k: float(clamp(v * rel, -float(max_abs), float(max_abs)))
+        for k, v in raw.items()
+    }
+
+    detail = {"diff": d, "raw": raw, "reliability": rel, "max_abs": float(max_abs)}
+    return role_bonus, rel, detail
+
+def _fmt_signed_pt(v):
+    try:
+        return f"{float(v):+.2f}pt"
+    except Exception:
+        return "+0.00pt"
+
+def _apply_venue_kimarite_to_score_map(score_map, line_def, stats):
+    """score_mapへ会場決まり手補正を常時小幅反映する。"""
+    role_bonus, rel, detail = _calc_venue_kimarite_role_bonus_map(stats)
+    reason_map = {}
+    out = dict(score_map or {})
+
+    for k in list(out.keys()):
+        try:
+            car = int(k)
+            role = role_in_line(car, line_def) if isinstance(line_def, dict) else "single"
+            if role not in role_bonus:
+                role = "single"
+            b = float(role_bonus.get(role, 0.0) or 0.0)
+            out[k] = float(out.get(k, 0.0) or 0.0) + b
+            reason_map[car] = f"{role}:{_fmt_signed_pt(b)}"
+        except Exception:
+            continue
+
+    return out, role_bonus, rel, detail, reason_map
 
 def _safe_div_float(a, b, default=None):
     try:
@@ -2022,6 +2128,66 @@ st.session_state["venue_return_rate"] = venue_return_rate
 st.session_state["venue_profile"] = venue_profile
 st.session_state["venue_home_flow_mult"] = venue_home_flow_mult
 st.session_state["venue_min_odds_mult"] = venue_min_odds_mult
+
+with st.sidebar.expander("🏟️ 開催場決まり手成績", expanded=False):
+    venue_kimarite_enabled = st.checkbox(
+        "決まり手補正を使う",
+        value=bool(st.session_state.get("venue_kimarite_enabled", False)),
+        key="venue_kimarite_enabled",
+    )
+    st.caption("オッズパーク等の表をそのまま％で入力。例：13.9 / 62.4 / 24.2")
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        vk_win_escape = st.number_input("1着 逃げ%", 0.0, 100.0, float(st.session_state.get("vk_win_escape", 0.0) or 0.0), 0.1, key="vk_win_escape")
+    with c2:
+        vk_win_sashi = st.number_input("1着 差し%", 0.0, 100.0, float(st.session_state.get("vk_win_sashi", 0.0) or 0.0), 0.1, key="vk_win_sashi")
+    with c3:
+        vk_win_makuri = st.number_input("1着 捲り%", 0.0, 100.0, float(st.session_state.get("vk_win_makuri", 0.0) or 0.0), 0.1, key="vk_win_makuri")
+
+    c4, c5, c6, c7 = st.columns(4)
+    with c4:
+        vk_sec_escape = st.number_input("2着 逃げ%", 0.0, 100.0, float(st.session_state.get("vk_sec_escape", 0.0) or 0.0), 0.1, key="vk_sec_escape")
+    with c5:
+        vk_sec_sashi = st.number_input("2着 差し%", 0.0, 100.0, float(st.session_state.get("vk_sec_sashi", 0.0) or 0.0), 0.1, key="vk_sec_sashi")
+    with c6:
+        vk_sec_makuri = st.number_input("2着 捲り%", 0.0, 100.0, float(st.session_state.get("vk_sec_makuri", 0.0) or 0.0), 0.1, key="vk_sec_makuri")
+    with c7:
+        vk_sec_mark = st.number_input("2着 マーク%", 0.0, 100.0, float(st.session_state.get("vk_sec_mark", 0.0) or 0.0), 0.1, key="vk_sec_mark")
+
+    vk_sample_count = st.number_input(
+        "回数",
+        min_value=0,
+        max_value=10000,
+        value=int(st.session_state.get("vk_sample_count", 0) or 0),
+        step=1,
+        key="vk_sample_count",
+    )
+
+    VENUE_KIMARITE_STATS = {
+        "enabled": bool(venue_kimarite_enabled),
+        "win_escape": float(vk_win_escape),
+        "win_sashi": float(vk_win_sashi),
+        "win_makuri": float(vk_win_makuri),
+        "sec_escape": float(vk_sec_escape),
+        "sec_sashi": float(vk_sec_sashi),
+        "sec_makuri": float(vk_sec_makuri),
+        "sec_mark": float(vk_sec_mark),
+        "sample_count": int(vk_sample_count),
+    }
+
+    _vk_role_bonus_preview, _vk_rel_preview, _vk_detail_preview = _calc_venue_kimarite_role_bonus_map(VENUE_KIMARITE_STATS)
+    st.caption(
+        "補正プレビュー："
+        f"先頭 {_fmt_signed_pt(_vk_role_bonus_preview.get('head', 0.0))} / "
+        f"番手 {_fmt_signed_pt(_vk_role_bonus_preview.get('second', 0.0))} / "
+        f"3番手以降 {_fmt_signed_pt(_vk_role_bonus_preview.get('thirdplus', 0.0))} / "
+        f"単騎 {_fmt_signed_pt(_vk_role_bonus_preview.get('single', 0.0))} "
+        f"｜信頼係数 {_vk_rel_preview:.2f}"
+    )
+
+globals()["VENUE_KIMARITE_STATS"] = VENUE_KIMARITE_STATS
+st.session_state["VENUE_KIMARITE_STATS"] = VENUE_KIMARITE_STATS
 
 with st.sidebar.expander("🎯 流れ1-2｜下限計算", expanded=False):
     flow_switch_total_races = st.text_input(
@@ -5669,6 +5835,31 @@ try:
 
     except Exception as _e:
         note_sections.append(f"※会場×最終H補正エラー：{_e}")
+
+    # =========================================================
+    # v178：開催場決まり手補正（常時適用・雨天補正とは別枠）
+    # 入力された1着/2着決まり手率を、役割別の小幅ptへ変換して加算。
+    # =========================================================
+    try:
+        _vk_stats = globals().get("VENUE_KIMARITE_STATS", st.session_state.get("VENUE_KIMARITE_STATS", {}))
+        _line_def_for_vk = globals().get("line_def", {})
+        _before_vk_score_map = dict(score_map)
+
+        score_map, _vk_role_bonus_map, _vk_reliability, _vk_detail, _vk_reason_map = _apply_venue_kimarite_to_score_map(
+            score_map=score_map,
+            line_def=_line_def_for_vk,
+            stats=_vk_stats,
+        )
+
+        globals()["score_map_before_venue_kimarite"] = dict(_before_vk_score_map)
+        globals()["score_map_venue_kimarite_applied"] = dict(score_map)
+        globals()["venue_kimarite_role_bonus_map"] = dict(_vk_role_bonus_map)
+        globals()["venue_kimarite_reliability"] = float(_vk_reliability)
+        globals()["venue_kimarite_detail"] = dict(_vk_detail or {})
+        globals()["venue_kimarite_reason_map"] = dict(_vk_reason_map)
+
+    except Exception as _e:
+        note_sections.append(f"※開催場決まり手補正エラー：{_e}")
 
     # 0/None/NaN の床値補完
     vals_pos = [
