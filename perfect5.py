@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v188: 会場判定middle系は3連複のみ表示（2車複は該当なし）。2車複＋3連複の同時表示はgood系だけに限定。
 # v187: 会場判定に応じて購入表示を切替。good系は現行5点、middle系はA-下位4-下位4の三連複6点、bad系は下位4車の2車複BOX6点。
 # v186: 競り関与車同士が3連複の軸A・軸Bになる場合、的中1位ではない軸Bを3列目へ降格し、次候補を軸Bへ繰り上げる。
 # v180: 開催場決まり手補正の先頭車・番手車補正をv179比50%へ弱化。毎レース表示の買目説明注記5行を削除。
@@ -12524,7 +12525,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     if _bet_mode == "bad" and _adjusted_nifuku:
                         lines.append("2車複購入候補（会場判定bad系：下位4車BOX）")
                         lines.append("　".join(str(x) for x in _adjusted_nifuku) if _adjusted_nifuku else "該当なし")
+                    elif _bet_mode == "middle":
+                        # v188: middle系は三連複だけ。2車複と三連複の同時表示はgood系だけ。
+                        lines.append("2車複購入候補")
+                        lines.append("該当なし")
                     else:
+                        # good系のみ、現行の2車複2点＋三連複を同時表示する。
                         lines.append("2車複購入候補")
                         lines.append("　".join(str(x.get("disp")) for x in nifuku_buy) if nifuku_buy else "該当なし")
                     lines.append("")
