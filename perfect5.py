@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v186: 競り関与車同士が3連複の軸A・軸Bになる場合、的中1位ではない軸Bを3列目へ降格し、次候補を軸Bへ繰り上げる。
 # v180: 開催場決まり手補正の先頭車・番手車補正をv179比50%へ弱化。毎レース表示の買目説明注記5行を削除。
 # v179: ライン入力で単騎（1桁ライン）が入力済み車番として認識されない不具合を修正。単騎も1ラインとしてカウントし、入力確認表示を追加。
 # v178: オッズパーク等の開催場決まり手成績をサイドバーで数値入力し、1着/2着決まり手率と回数から会場決まり手補正を自動算出。雨天バイアスとは別枠で常時小幅反映.
@@ -12128,14 +12129,38 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             axis2_pool = list(axis2_pool_all)
                         if not axis2_pool:
                             return "該当なし"
-                        axis2_list = sorted(
+                        axis2_ranked = sorted(
                             axis2_pool,
                             key=lambda c: (float(myoumi_map.get(int(c), 0.0)), float(hit_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
                             reverse=True,
-                        )[:1]
+                        )
+                        axis2_list = axis2_ranked[:1]
                         if not axis2_list:
                             return "該当なし"
                         axis2 = int(axis2_list[0])
+
+                        # v186: 競り関与車同士が軸A・軸Bになる場合だけ、
+                        # 的中1位ではない軸Bを3列目へ降格し、次候補を軸Bへ繰り上げる。
+                        # 競り車は消さず、3列目で保護する。次候補が無い場合は従来どおり。
+                        seri_axisB_demoted = []
+                        try:
+                            _axis1_seri = bool(_is_car_seri_involved_for_axis(int(axis1)))
+                            _axis2_seri = bool(_is_car_seri_involved_for_axis(int(axis2)))
+                        except Exception:
+                            _axis1_seri = False
+                            _axis2_seri = False
+
+                        if _axis1_seri and _axis2_seri:
+                            _next_axis2 = None
+                            for _c in axis2_ranked:
+                                _c = int(_c)
+                                if _c == int(axis2):
+                                    continue
+                                _next_axis2 = _c
+                                break
+                            if _next_axis2 is not None:
+                                seri_axisB_demoted.append(int(axis2))
+                                axis2 = int(_next_axis2)
 
                         axes = [axis1, axis2]
                         axes_set = {int(x) for x in axes}
@@ -12242,6 +12267,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                         fixed_same_line_rest.append(c)
                         except Exception:
                             fixed_same_line_rest = []
+
+                        # v186: 競りで軸Bから降格した車は、軸からは外すが3列目で固定保護する。
+                        try:
+                            for c in (seri_axisB_demoted or []):
+                                c = int(c)
+                                if c not in axes_set and c not in fixed_same_line_rest:
+                                    fixed_same_line_rest.append(c)
+                        except Exception:
+                            pass
 
                         # 保険：軸に推奨流れ側ラインが含まれない場合でも、
                         # 採用流れラインの上位ヒモを1〜2車だけ候補化する。
