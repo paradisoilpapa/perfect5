@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-# v189: 会場判定middle系は3連複を出さず、2車複を総合評価B以上・総合pt上位4点に切替。good/bad系はv188維持。
+# v190: 反映済み市場印だけで妙味計算。未反映/未入力時の妙味10.0張り付きと、session_state再取得による反映ズレを防止。
+# v189: 会場判定middle系は3連複を出さず、2車複を総合評価B以上・総合pt上位4点に切替。good/bad系はv188維持.
 # v188: 会場判定middle系は3連複のみ表示（2車複は該当なし）。2車複＋3連複の同時表示はgood系だけに限定。
 # v187: 会場判定に応じて購入表示を切替。good系は現行5点、middle系はA-下位4-下位4の三連複6点、bad系は下位4車の2車複BOX6点。
 # v186: 競り関与車同士が3連複の軸A・軸Bになる場合、的中1位ではない軸Bを3列目へ降格し、次候補を軸Bへ繰り上げる。
@@ -8044,21 +8045,11 @@ if isinstance(_market_mark_snapshot, dict) and _market_mark_snapshot:
         if _mk in _VALID_MARKS_LOCAL:
             market_mark_map[_ci] = _mk
 
-# v48: 後段計算時点でも、現在のst.session_state上の車番別市場印を再取得して上書きする。
-# v49: 市場印の取得自体は維持するが、点数側の強すぎる上限キャップは撤廃。
-#      軸が△なら減点はするが、妙味そのものを殺さない。
-try:
-    _active_for_marks = snapshot.get("active_cars", []) or list(range(1, 10))
-    for _no in _active_for_marks:
-        try:
-            _ci = int(_no)
-        except Exception:
-            continue
-        _mk_live = _normalize_market_mark_local(st.session_state.get(f"market_mark_by_car_r{race_no}_{_ci}", "—"))
-        if _mk_live in _VALID_MARKS_LOCAL:
-            market_mark_map[_ci] = _mk_live
-except Exception:
-    pass
+# v190:
+# 反映後の計算では snapshot に保存した市場印だけを使う。
+# ここで st.session_state の現在値を再取得すると、
+# 「反映ボタンを押した固定値」と「画面上の未反映値」が混ざり、
+# 市場印が空扱い/旧R扱いになって妙味ptが10.0に張り付く原因になる。
 
 # 旧snapshot用・または market_mark_by_car が「—」だけだった時の補完。
 # ここは setdefault ではなく、有効な旧rawがある場合は上書きする。
@@ -8380,14 +8371,27 @@ def _myoumi_market_pair_penalty(marks) -> float:
         return 0.2
     return 0.0
 
+
+def _has_valid_market_marks_for_myoumi(mark_map: dict) -> bool:
+    """市場印が1つ以上反映されているか。未反映時に妙味10.0張り付きを防ぐための保険。"""
+    try:
+        valid = {"◎", "〇", "○", "△", "▲", "×"}
+        for v in (mark_map or {}).values():
+            mk = str(v or "").strip()
+            if mk in valid:
+                return True
+        return False
+    except Exception:
+        return False
+
 def _resolve_market_mark_for_car_myoumi(car: int, mark_map: dict) -> str:
     """
     妙味計算専用の市場印取得。
 
-    v50:
-    v46〜v49では「点数式を直しても表示が変わらない」ケースがあった。
-    原因は、mark_map へ現在の車番別市場印が渡っていない/古いraw値だけが残る場合。
-    ここで mark_map → session_state の車番別radio → 旧raw値の順で再解決する。
+    v190:
+    反映済み snapshot から作った mark_map だけを信用する。
+    st.session_state をここで再検索すると、未反映の画面値や別Rのradio値を拾い、
+    反映ボタンの固定計算とズレるため使わない。
     """
     try:
         c = int(car)
@@ -8408,50 +8412,9 @@ def _resolve_market_mark_for_car_myoumi(car: int, mark_map: dict) -> str:
 
     try:
         mm = {int(k): norm(v) for k, v in (mark_map or {}).items()}
-        if mm.get(c, "無印") != "無印":
-            return mm[c]
+        return mm.get(c, "無印")
     except Exception:
-        pass
-
-    # 現在のrace_noキーを最優先で読む。
-    try:
-        mk = norm(st.session_state.get(f"market_mark_by_car_r{race_no}_{c}", "—"))
-        if mk != "無印":
-            return mk
-    except Exception:
-        pass
-
-    # race_noがズレた時の保険。全session_stateから車番別radioを探す。
-    try:
-        suffix = f"_{c}"
-        for k, v in st.session_state.items():
-            ks = str(k)
-            if "market_mark_by_car" in ks and ks.endswith(suffix):
-                mk = norm(v)
-                if mk != "無印":
-                    return mk
-    except Exception:
-        pass
-
-    # 旧rawの保険。
-    try:
-        raw_pairs = [
-            (globals().get("market_honmei"), "◎"),
-            (globals().get("market_taikou"), "〇"),
-            (globals().get("market_tan"), "△"),
-            (globals().get("market_batsu"), "×"),
-        ]
-        for raw_car, mk in raw_pairs:
-            try:
-                if raw_car is not None and int(raw_car) == c:
-                    return mk
-            except Exception:
-                continue
-    except Exception:
-        pass
-
-    return "無印"
-
+        return "無印"
 
 
 def _myoumi_market_trio_penalty(marks) -> float:
@@ -8495,6 +8458,13 @@ def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
     ・市場印を mark_map だけに頼らず、session_state からも再取得する。
     """
     mm = {int(k): str(v) for k, v in (mark_map or {}).items()}
+
+    # v190:
+    # 市場印が1つも反映されていない状態を「全車無印＝全買い目が超妙味」と誤解しない。
+    # 反映失敗・未入力時は中立値に落とし、A++張り付きを防ぐ。
+    if not _has_valid_market_marks_for_myoumi(mm):
+        return 7.0
+
     ma = _resolve_market_mark_for_car_myoumi(int(a), mm)
     mb = _resolve_market_mark_for_car_myoumi(int(b), mm)
 
