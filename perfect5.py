@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v187: 会場判定に応じて購入表示を切替。good系は現行5点、middle系はA-下位4-下位4の三連複6点、bad系は下位4車の2車複BOX6点。
 # v186: 競り関与車同士が3連複の軸A・軸Bになる場合、的中1位ではない軸Bを3列目へ降格し、次候補を軸Bへ繰り上げる。
 # v180: 開催場決まり手補正の先頭車・番手車補正をv179比50%へ弱化。毎レース表示の買目説明注記5行を削除。
 # v179: ライン入力で単騎（1桁ライン）が入力済み車番として認識されない不具合を修正。単騎も1ラインとしてカウントし、入力確認表示を追加。
@@ -11983,10 +11984,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     nifuku_buy = []
 
-                lines.append("【総合評価B以上・総合pt上位2点】")
-                lines.append("2車複購入候補")
-                lines.append("　".join(str(x.get("disp")) for x in nifuku_buy) if nifuku_buy else "該当なし")
-                lines.append("")
+                # v187: 2車複購入候補の表示は、3連複候補5車を作った後で
+                # 会場判定別に切り替えるため、ここではまだ出力しない。
 
 
                 # v165: 全21通りの2車複内部数値から、車番別の単騎評価を作る。
@@ -12047,6 +12046,39 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         return ""
 
                 car_avg_rows = _longspan_car_average_rows(sorted_pairs, long_span_all_cars)
+
+                # v187: 会場判定に応じて、同じ候補5車から買い方だけを切り替える。
+                # good系   : 現行どおり 2車複2点 + 三連複 A-B-3車
+                # middle系 : 三連複 A-下位4-下位4（6点）。軸Aだけ信用し、軸B固定を薄める。
+                # bad系    : 三連複は買わず、下位4車の2車複BOX（6点）。軸A/B固定を信用しない。
+                def _venue_bet_mode_from_profile():
+                    try:
+                        vp = str(globals().get("venue_profile", "unknown") or "unknown").strip()
+                    except Exception:
+                        vp = "unknown"
+                    if vp in ("strong_good", "swing_return"):
+                        return "good"
+                    if vp in ("normal", "normal_watch", "cheap_hit"):
+                        return "middle"
+                    if vp in ("bad", "low_hit_risk", "very_bad"):
+                        return "bad"
+                    return "good"
+
+                def _pair_disp_from_cars(_cars):
+                    pairs = []
+                    seen = set()
+                    try:
+                        for a, b in combinations([int(x) for x in (_cars or [])], 2):
+                            key = tuple(sorted((int(a), int(b))))
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            pairs.append(f"{key[0]}-{key[1]}")
+                    except Exception:
+                        return []
+                    return pairs
+
+                trio_build_info = {}
 
                 # v177: 3連複購入候補
                 # 1列目・2列目の母集団は「2車複購入候補＝総合評価B以上・総合pt上位2点」に限定する。
@@ -12450,12 +12482,53 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         if len(third) < 3:
                             return "該当なし"
 
-                        return f"{int(axes[0])}-{int(axes[1])}-{''.join(str(int(c)) for c in third)}"
+                        # v187: 候補5車 = 軸A + 軸B + 3列目3車。
+                        # 会場判定が悪いほど、軸固定から離して買い方だけを広げる。
+                        candidate_five = []
+                        for _c in [int(axes[0]), int(axes[1])] + [int(c) for c in third[:3]]:
+                            if _c not in candidate_five:
+                                candidate_five.append(_c)
+
+                        lower4 = [int(c) for c in candidate_five if int(c) != int(axes[0])][:4]
+                        mode = _venue_bet_mode_from_profile()
+                        adjusted_nifuku = None
+
+                        if mode == "middle" and len(lower4) >= 4:
+                            trio_text = f"{int(axes[0])}-{''.join(str(int(c)) for c in lower4)}-{''.join(str(int(c)) for c in lower4)}"
+                        elif mode == "bad" and len(lower4) >= 4:
+                            trio_text = "該当なし"
+                            adjusted_nifuku = _pair_disp_from_cars(lower4)
+                        else:
+                            trio_text = f"{int(axes[0])}-{int(axes[1])}-{''.join(str(int(c)) for c in third)}"
+
+                        trio_build_info.clear()
+                        trio_build_info.update({
+                            "mode": mode,
+                            "axes": [int(axes[0]), int(axes[1])],
+                            "third": [int(c) for c in third[:3]],
+                            "candidate_five": candidate_five,
+                            "lower4": lower4,
+                            "adjusted_nifuku": adjusted_nifuku,
+                            "trio_text": trio_text,
+                        })
+                        return trio_text
                     except Exception:
                         return "該当なし"
 
                 if car_avg_rows:
                     trio_candidate = _longspan_make_trio_candidate(nifuku_buy, car_avg_rows)
+                    _bet_mode = str((trio_build_info or {}).get("mode") or _venue_bet_mode_from_profile())
+                    _adjusted_nifuku = (trio_build_info or {}).get("adjusted_nifuku")
+
+                    lines.append("【総合評価B以上・総合pt上位2点】")
+                    if _bet_mode == "bad" and _adjusted_nifuku:
+                        lines.append("2車複購入候補（会場判定bad系：下位4車BOX）")
+                        lines.append("　".join(str(x) for x in _adjusted_nifuku) if _adjusted_nifuku else "該当なし")
+                    else:
+                        lines.append("2車複購入候補")
+                        lines.append("　".join(str(x.get("disp")) for x in nifuku_buy) if nifuku_buy else "該当なし")
+                    lines.append("")
+
                     lines.append("3連複購入候補")
                     lines.append(trio_candidate)
                     lines.append("")
