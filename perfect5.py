@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v189: 会場判定middle系は3連複を出さず、2車複を総合評価B以上・総合pt上位4点に切替。good/bad系はv188維持。
 # v188: 会場判定middle系は3連複のみ表示（2車複は該当なし）。2車複＋3連複の同時表示はgood系だけに限定。
 # v187: 会場判定に応じて購入表示を切替。good系は現行5点、middle系はA-下位4-下位4の三連複6点、bad系は下位4車の2車複BOX6点。
 # v186: 競り関与車同士が3連複の軸A・軸Bになる場合、的中1位ではない軸Bを3列目へ降格し、次候補を軸Bへ繰り上げる。
@@ -12050,7 +12051,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                 # v187: 会場判定に応じて、同じ候補5車から買い方だけを切り替える。
                 # good系   : 現行どおり 2車複2点 + 三連複 A-B-3車
-                # middle系 : 三連複 A-下位4-下位4（6点）。軸Aだけ信用し、軸B固定を薄める。
+                # middle系 : 三連複は買わず、2車複を総合評価B以上・総合pt上位4点にする。
                 # bad系    : 三連複は買わず、下位4車の2車複BOX（6点）。軸A/B固定を信用しない。
                 def _venue_bet_mode_from_profile():
                     try:
@@ -12494,8 +12495,14 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         mode = _venue_bet_mode_from_profile()
                         adjusted_nifuku = None
 
-                        if mode == "middle" and len(lower4) >= 4:
-                            trio_text = f"{int(axes[0])}-{''.join(str(int(c)) for c in lower4)}-{''.join(str(int(c)) for c in lower4)}"
+                        if mode == "middle":
+                            # v189: middle系は3連複を出さない。
+                            # 2車複は「総合評価B以上」を総合pt順で上位4点まで表示する。
+                            trio_text = "該当なし"
+                            try:
+                                adjusted_nifuku = [str(row.get("disp")) for row in (nifuku_trio_base or [])[:4] if row.get("disp")]
+                            except Exception:
+                                adjusted_nifuku = []
                         elif mode == "bad" and len(lower4) >= 4:
                             trio_text = "該当なし"
                             adjusted_nifuku = _pair_disp_from_cars(lower4)
@@ -12526,9 +12533,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         lines.append("2車複購入候補（会場判定bad系：下位4車BOX）")
                         lines.append("　".join(str(x) for x in _adjusted_nifuku) if _adjusted_nifuku else "該当なし")
                     elif _bet_mode == "middle":
-                        # v188: middle系は三連複だけ。2車複と三連複の同時表示はgood系だけ。
-                        lines.append("2車複購入候補")
-                        lines.append("該当なし")
+                        # v189: middle系は3連複なし。2車複は総合評価B以上・総合pt上位4点。
+                        lines.append("2車複購入候補（会場判定middle系：総合B以上・総合pt上位4点）")
+                        lines.append("　".join(str(x) for x in _adjusted_nifuku) if _adjusted_nifuku else "該当なし")
                     else:
                         # good系のみ、現行の2車複2点＋三連複を同時表示する。
                         lines.append("2車複購入候補")
