@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 # v191: 会場判定good系は2車複を出さず、3連複を軸A-候補4車-候補4車の6点型へ変更。middle/bad系はv190維持。
+# v192: good系で2車複を出さない場合、「2車複購入候補 該当なし」ブロックを非表示化。
+# v191: good系は2車複を出さず、3連複 A-2345-2345 に一本化。
 # v190: 反映済み市場印だけで妙味計算。未反映/未入力時の妙味10.0張り付きと、session_state再取得による反映ズレを防止。
 # v189: 会場判定middle系は3連複を出さず、2車複を総合評価B以上・総合pt上位4点に切替。good/bad系はv188維持.
 # v188: 会場判定middle系は3連複のみ表示（2車複は該当なし）。2車複＋3連複の同時表示はgood系だけに限定。
@@ -12506,19 +12508,19 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     _bet_mode = str((trio_build_info or {}).get("mode") or _venue_bet_mode_from_profile())
                     _adjusted_nifuku = (trio_build_info or {}).get("adjusted_nifuku")
 
-                    lines.append("【総合評価2車複推奨】")
+                    # v192: good系は3連複へ一本化するため、2車複の「該当なし」表示自体を出さない。
+                    # middle/bad系のみ2車複推奨ブロックを表示する。
                     if _bet_mode == "bad" and _adjusted_nifuku:
-                        lines.append("2車複購入候補（会場判定bad系：下位4車BOX）")
+                        lines.append("【総合評価2車複推奨】")
+                        lines.append("2車複購入候補（会場判定bad系：候補5車内・軸A除外4車BOX）")
                         lines.append("　".join(str(x) for x in _adjusted_nifuku) if _adjusted_nifuku else "該当なし")
+                        lines.append("")
                     elif _bet_mode == "middle":
                         # v189: middle系は3連複なし。2車複は総合評価B以上・総合pt上位4点。
+                        lines.append("【総合評価2車複推奨】")
                         lines.append("2車複購入候補（会場判定middle系：総合B以上・総合pt上位4点）")
                         lines.append("　".join(str(x) for x in _adjusted_nifuku) if _adjusted_nifuku else "該当なし")
-                    else:
-                        # v191: good系は3連複へ一本化するため、2車複は出さない。
-                        lines.append("2車複購入候補")
-                        lines.append("該当なし")
-                    lines.append("")
+                        lines.append("")
 
                     lines.append("3連複購入候補")
                     lines.append(trio_candidate)
