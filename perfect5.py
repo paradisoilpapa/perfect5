@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v191: 会場判定good系は2車複を出さず、3連複を軸A-候補4車-候補4車の6点型へ変更。middle/bad系はv190維持。
 # v190: 反映済み市場印だけで妙味計算。未反映/未入力時の妙味10.0張り付きと、session_state再取得による反映ズレを防止。
 # v189: 会場判定middle系は3連複を出さず、2車複を総合評価B以上・総合pt上位4点に切替。good/bad系はv188維持.
 # v188: 会場判定middle系は3連複のみ表示（2車複は該当なし）。2車複＋3連複の同時表示はgood系だけに限定。
@@ -12020,7 +12021,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 car_avg_rows = _longspan_car_average_rows(sorted_pairs, long_span_all_cars)
 
                 # v187: 会場判定に応じて、同じ候補5車から買い方だけを切り替える。
-                # good系   : 現行どおり 2車複2点 + 三連複 A-B-3車
+                # good系   : 2車複は出さず、三連複を軸A-候補4車-候補4車の6点型へ変更。
                 # middle系 : 三連複は買わず、2車複を総合評価B以上・総合pt上位4点にする。
                 # bad系    : 三連複は買わず、下位4車の2車複BOX（6点）。軸A/B固定を信用しない。
                 def _venue_bet_mode_from_profile():
@@ -12465,7 +12466,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         mode = _venue_bet_mode_from_profile()
                         adjusted_nifuku = None
 
-                        if mode == "middle":
+                        if mode == "good" and len(lower4) >= 4:
+                            # v191: good系は2車複を出さず、軸Aだけ残して軸B固定を外す。
+                            # 形は A-2345-2345（候補5車から軸Aを除いた4車同士）= 三連複6点。
+                            adjusted_nifuku = []
+                            trio_4 = ''.join(str(int(c)) for c in lower4[:4])
+                            trio_text = f"{int(axes[0])}-{trio_4}-{trio_4}"
+                        elif mode == "middle":
                             # v189: middle系は3連複を出さない。
                             # 2車複は「総合評価B以上」を総合pt順で上位4点まで表示する。
                             trio_text = "該当なし"
@@ -12477,6 +12484,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             trio_text = "該当なし"
                             adjusted_nifuku = _pair_disp_from_cars(lower4)
                         else:
+                            # フォールバック：候補4車が作れない場合だけ従来のA-B-3車に戻す。
                             trio_text = f"{int(axes[0])}-{int(axes[1])}-{''.join(str(int(c)) for c in third)}"
 
                         trio_build_info.clear()
@@ -12507,9 +12515,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         lines.append("2車複購入候補（会場判定middle系：総合B以上・総合pt上位4点）")
                         lines.append("　".join(str(x) for x in _adjusted_nifuku) if _adjusted_nifuku else "該当なし")
                     else:
-                        # good系のみ、現行の2車複2点＋三連複を同時表示する。
+                        # v191: good系は3連複へ一本化するため、2車複は出さない。
                         lines.append("2車複購入候補")
-                        lines.append("　".join(str(x.get("disp")) for x in nifuku_buy) if nifuku_buy else "該当なし")
+                        lines.append("該当なし")
                     lines.append("")
 
                     lines.append("3連複購入候補")
