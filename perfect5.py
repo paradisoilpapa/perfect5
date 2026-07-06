@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v199: 各流れの総合B以上候補を先に一覧化し、複数流れで重複する買目をイチオシ表示。その後に従来の全体推奨2車複（各流れ上位2点）を表示。
 # v197: 2ライン等で渦/逆流が同一主役ラインになる重複を禁止。実ラインが存在しない流れは買目考察から除外。
 # v196: 流れ別シナリオの主役ラインを2車複妙味ptへ反映。主役ライン相手を上位保護し、順流/渦/逆流の買目差を強化。
 # v195: 順流・渦・逆流の着順予想を、各流域ラインが主役になったシナリオ補正版へ変更。逆流域空欄でも旧逆流ラインを逆流シナリオに補完。
@@ -11998,6 +11999,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
         # v194: 詳細考察の前に、各流れで選ばれた2車複だけを一覧表示するための保持。
         flow_buy_summary = []
 
+        # v199:
+        # 「買目採用」は従来通り各流れの総合B以上・総合pt上位2点。
+        # ただし判断材料として、まず各流れの総合B以上候補を全点表示し、
+        # その候補同士で複数流れに重複する買目をイチオシとして抽出する。
+        flow_b_candidate_summary = []
+
         def _append_one_flow_bet_review(_style_name, _seq):
             try:
                 _xs = []
@@ -12014,6 +12021,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                 if len(_xs) < 2:
                     flow_buy_summary.append((_style_name, []))
+                    flow_b_candidate_summary.append((_style_name, []))
                     lines.append("該当なし")
                     lines.append("")
                     return
@@ -12267,6 +12275,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                 if not _long_span_pairs:
                     flow_buy_summary.append((_style_name, []))
+                    flow_b_candidate_summary.append((_style_name, []))
                     lines.append("該当なし")
                     lines.append("")
                     return
@@ -12276,6 +12285,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     _row for _row in _sorted_pairs
                     if str(_row.get("total_rank", "")).strip() in ("A", "B")
                 ]
+                _b_candidate_disp = [str(_row.get("disp")) for _row in (_nifuku_buy_base or []) if _row.get("disp")]
+                flow_b_candidate_summary.append((_style_name, list(_b_candidate_disp)))
+
                 _nifuku_buy = list(_nifuku_buy_base or [])[:2]
                 _nifuku_buy_disp = [str(_row.get("disp")) for _row in _nifuku_buy if _row.get("disp")]
                 flow_buy_summary.append((_style_name, list(_nifuku_buy_disp)))
@@ -12385,6 +12397,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append("")
             except Exception as _e:
                 flow_buy_summary.append((_style_name, []))
+                flow_b_candidate_summary.append((_style_name, []))
                 lines.append(f"【買目考察｜{_style_name}】")
                 lines.append(f"生成不可（{_e}）")
                 lines.append("")
@@ -12411,25 +12424,70 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             lines = _main_lines_ref
 
-            # v194: 買目考察の冒頭サマリー。各流れの上位2点と、その重複除外の全体候補を出す。
+            # v199: 冒頭サマリーは、
+            # 1) 各流れの総合B以上候補（全点）
+            # 2) 複数流れで重複するイチオシ
+            # 3) 従来の全体推奨2車複（各流れ上位2点）
+            # の順で表示する。買目採用ルール自体は変えない。
             _summary_map = {}
+            _b_candidate_map = {}
             _overall_pairs = []
             _overall_seen = set()
+
+            def _pair_key_from_disp(_p):
+                try:
+                    _m = re.search(r"([1-9])\s*[-=]\s*([1-9])", str(_p))
+                    if not _m:
+                        return None
+                    _a, _b = int(_m.group(1)), int(_m.group(2))
+                    return tuple(sorted((_a, _b)))
+                except Exception:
+                    return None
+
             for _style_name, _pairs in (flow_buy_summary or []):
                 _summary_map[str(_style_name)] = list(_pairs or [])
                 for _p in (_pairs or []):
-                    try:
-                        _m = re.search(r"([1-9])\s*[-=]\s*([1-9])", str(_p))
-                        if not _m:
-                            continue
-                        _a, _b = int(_m.group(1)), int(_m.group(2))
-                        _key = tuple(sorted((_a, _b)))
-                        if _key in _overall_seen:
-                            continue
-                        _overall_seen.add(_key)
-                        _overall_pairs.append(f"{_key[0]}-{_key[1]}")
-                    except Exception:
-                        pass
+                    _key = _pair_key_from_disp(_p)
+                    if not _key or _key in _overall_seen:
+                        continue
+                    _overall_seen.add(_key)
+                    _overall_pairs.append(f"{_key[0]}-{_key[1]}")
+
+            _candidate_pair_styles = {}
+            _candidate_pair_order = []
+            for _style_name, _pairs in (flow_b_candidate_summary or []):
+                _b_candidate_map[str(_style_name)] = list(_pairs or [])
+                for _p in (_pairs or []):
+                    _key = _pair_key_from_disp(_p)
+                    if not _key:
+                        continue
+                    if _key not in _candidate_pair_styles:
+                        _candidate_pair_styles[_key] = []
+                        _candidate_pair_order.append(_key)
+                    if str(_style_name) not in _candidate_pair_styles[_key]:
+                        _candidate_pair_styles[_key].append(str(_style_name))
+
+            _ichioshi_parts = []
+            for _key in _candidate_pair_order:
+                _styles = _candidate_pair_styles.get(_key, []) or []
+                if len(_styles) >= 2:
+                    _ichioshi_parts.append(f"{_key[0]}-{_key[1]}（{'・'.join(_styles)}）")
+
+            lines.append("【2車複 総合B以上候補】")
+            lines.append("")
+            for _style_name, _seq in flow_items:
+                lines.append(f"{_flow_summary_label(_style_name)}】{_fmt_flow_buy_pairs(_b_candidate_map.get(str(_style_name), []))}")
+            lines.append("")
+
+            lines.append("【イチオシ2車複】")
+            lines.append("")
+            if _ichioshi_parts:
+                lines.append("　".join(_ichioshi_parts))
+                lines.append("※複数の流れで総合B以上に重複した買目")
+            else:
+                lines.append("該当なし")
+                lines.append("※複数の流れで重複した総合B以上候補なし")
+            lines.append("")
 
             lines.append("【全体推奨２車複】")
             lines.append("")
