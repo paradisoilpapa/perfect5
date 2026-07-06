@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-# v199: 各流れの総合B以上候補を先に一覧化し、複数流れで重複する買目をイチオシ表示。その後に従来の全体推奨2車複（各流れ上位2点）を表示。
+# v200: 冒頭サマリーを1ブロック化。「イチオシ（重複）→全体推奨→流れ別 採用/総合B以上候補」の順に整理して視認性を改善。
+# v199: 各流れの総合B以上候補を先に一覧化し、複数流れで重複する買目をイチオシ表示。その後に従来の全体推奨2車複（各流れ上位2点）を表示.
 # v197: 2ライン等で渦/逆流が同一主役ラインになる重複を禁止。実ラインが存在しない流れは買目考察から除外。
 # v196: 流れ別シナリオの主役ラインを2車複妙味ptへ反映。主役ライン相手を上位保護し、順流/渦/逆流の買目差を強化。
 # v195: 順流・渦・逆流の着順予想を、各流域ラインが主役になったシナリオ補正版へ変更。逆流域空欄でも旧逆流ラインを逆流シナリオに補完。
@@ -12424,11 +12425,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             lines = _main_lines_ref
 
-            # v199: 冒頭サマリーは、
-            # 1) 各流れの総合B以上候補（全点）
-            # 2) 複数流れで重複するイチオシ
-            # 3) 従来の全体推奨2車複（各流れ上位2点）
-            # の順で表示する。買目採用ルール自体は変えない。
+            # v200: 冒頭サマリーを1ブロックへ整理する。
+            # 表示順は、
+            # 1) イチオシ（複数流れで重複した総合B以上候補）
+            # 2) 全体推奨（従来どおり各流れ上位2点を重複除外）
+            # 3) 流れ別：採用2点 / 総合B以上候補
+            # 買目採用ルール自体は変えない。
             _summary_map = {}
             _b_candidate_map = {}
             _overall_pairs = []
@@ -12443,6 +12445,20 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     return tuple(sorted((_a, _b)))
                 except Exception:
                     return None
+
+            def _fmt_flow_buy_pairs(_pairs):
+                _pairs = [str(x) for x in (_pairs or []) if str(x).strip()]
+                return "　".join(_pairs) if _pairs else "該当なし"
+
+            def _same_pair_list(_a, _b):
+                try:
+                    _ka = [_pair_key_from_disp(x) for x in (_a or [])]
+                    _kb = [_pair_key_from_disp(x) for x in (_b or [])]
+                    _ka = [x for x in _ka if x]
+                    _kb = [x for x in _kb if x]
+                    return _ka == _kb
+                except Exception:
+                    return False
 
             for _style_name, _pairs in (flow_buy_summary or []):
                 _summary_map[str(_style_name)] = list(_pairs or [])
@@ -12473,28 +12489,23 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 if len(_styles) >= 2:
                     _ichioshi_parts.append(f"{_key[0]}-{_key[1]}（{'・'.join(_styles)}）")
 
-            lines.append("【2車複 総合B以上候補】")
-            lines.append("")
-            for _style_name, _seq in flow_items:
-                lines.append(f"{_flow_summary_label(_style_name)}】{_fmt_flow_buy_pairs(_b_candidate_map.get(str(_style_name), []))}")
-            lines.append("")
-
-            lines.append("【イチオシ2車複】")
+            lines.append("【2車複サマリー】")
             lines.append("")
             if _ichioshi_parts:
-                lines.append("　".join(_ichioshi_parts))
-                lines.append("※複数の流れで総合B以上に重複した買目")
+                lines.append(f"イチオシ】{_fmt_flow_buy_pairs(_ichioshi_parts)}")
             else:
-                lines.append("該当なし")
-                lines.append("※複数の流れで重複した総合B以上候補なし")
+                lines.append("イチオシ】該当なし（重複なし）")
+            lines.append(f"全体推奨】{_fmt_flow_buy_pairs(_overall_pairs)}")
             lines.append("")
-
-            lines.append("【全体推奨２車複】")
-            lines.append("")
-            lines.append(f"全体】{_fmt_flow_buy_pairs(_overall_pairs)}")
-            lines.append("")
+            lines.append("流れ別：採用2点／総合B以上候補")
             for _style_name, _seq in flow_items:
-                lines.append(f"{_flow_summary_label(_style_name)}】{_fmt_flow_buy_pairs(_summary_map.get(str(_style_name), []))}")
+                _name = _flow_summary_label(_style_name)
+                _adopted = _summary_map.get(str(_style_name), [])
+                _cands = _b_candidate_map.get(str(_style_name), [])
+                if _same_pair_list(_adopted, _cands):
+                    lines.append(f"{_name}】採用：{_fmt_flow_buy_pairs(_adopted)}")
+                else:
+                    lines.append(f"{_name}】採用：{_fmt_flow_buy_pairs(_adopted)}／B候補：{_fmt_flow_buy_pairs(_cands)}")
             lines.append("")
             lines.extend(_detail_lines)
 
