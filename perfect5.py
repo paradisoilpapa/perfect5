@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v201: 2車複サマリーの全体推奨を総合pt 9.0以上/9.0未満に分割し、強弱を見やすく整理。
 # v200: 冒頭サマリーを1ブロック化。「イチオシ（重複）→全体推奨→流れ別 採用/総合B以上候補」の順に整理して視認性を改善。
 # v199: 各流れの総合B以上候補を先に一覧化し、複数流れで重複する買目をイチオシ表示。その後に従来の全体推奨2車複（各流れ上位2点）を表示.
 # v197: 2ライン等で渦/逆流が同一主役ラインになる重複を禁止。実ラインが存在しない流れは買目考察から除外。
@@ -11999,6 +12000,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
         # v194: 詳細考察の前に、各流れで選ばれた2車複だけを一覧表示するための保持。
         flow_buy_summary = []
+        # v201: 採用2点の総合ptも上部サマリーで使うため保持する。
+        flow_buy_pt_summary = []
 
         # v199:
         # 「買目採用」は従来通り各流れの総合B以上・総合pt上位2点。
@@ -12022,6 +12025,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                 if len(_xs) < 2:
                     flow_buy_summary.append((_style_name, []))
+                    flow_buy_pt_summary.append((_style_name, []))
                     flow_b_candidate_summary.append((_style_name, []))
                     lines.append("該当なし")
                     lines.append("")
@@ -12276,6 +12280,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                 if not _long_span_pairs:
                     flow_buy_summary.append((_style_name, []))
+                    flow_buy_pt_summary.append((_style_name, []))
                     flow_b_candidate_summary.append((_style_name, []))
                     lines.append("該当なし")
                     lines.append("")
@@ -12292,6 +12297,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _nifuku_buy = list(_nifuku_buy_base or [])[:2]
                 _nifuku_buy_disp = [str(_row.get("disp")) for _row in _nifuku_buy if _row.get("disp")]
                 flow_buy_summary.append((_style_name, list(_nifuku_buy_disp)))
+                flow_buy_pt_summary.append((_style_name, [
+                    {"disp": str(_row.get("disp")), "total_pt": float(_row.get("total_pt", 0.0) or 0.0)}
+                    for _row in _nifuku_buy if _row.get("disp")
+                ]))
 
                 lines.append("【総合評価2車複推奨】")
                 lines.append("2車複購入候補（総合B以上・総合pt上位2点）")
@@ -12398,6 +12407,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append("")
             except Exception as _e:
                 flow_buy_summary.append((_style_name, []))
+                flow_buy_pt_summary.append((_style_name, []))
                 flow_b_candidate_summary.append((_style_name, []))
                 lines.append(f"【買目考察｜{_style_name}】")
                 lines.append(f"生成不可（{_e}）")
@@ -12425,15 +12435,17 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             lines = _main_lines_ref
 
-            # v200: 冒頭サマリーを1ブロックへ整理する。
+            # v201: 冒頭サマリーを1ブロックへ整理する。
             # 表示順は、
             # 1) イチオシ（複数流れで重複した総合B以上候補）
-            # 2) 全体推奨（従来どおり各流れ上位2点を重複除外）
+            # 2) 全体推奨を総合pt 9.0以上 / 9.0未満で強弱分け
             # 3) 流れ別：採用2点 / 総合B以上候補
             # 買目採用ルール自体は変えない。
             _summary_map = {}
+            _summary_pt_map = {}
             _b_candidate_map = {}
             _overall_pairs = []
+            _overall_pair_rows = []
             _overall_seen = set()
 
             def _pair_key_from_disp(_p):
@@ -12460,14 +12472,28 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return False
 
+            for _style_name, _rows in (flow_buy_pt_summary or []):
+                _summary_pt_map[str(_style_name)] = list(_rows or [])
+
             for _style_name, _pairs in (flow_buy_summary or []):
                 _summary_map[str(_style_name)] = list(_pairs or [])
+                _pt_by_key = {}
+                for _row in _summary_pt_map.get(str(_style_name), []) or []:
+                    try:
+                        _k = _pair_key_from_disp(_row.get("disp"))
+                        if _k:
+                            _pt_by_key[_k] = float(_row.get("total_pt", 0.0) or 0.0)
+                    except Exception:
+                        pass
                 for _p in (_pairs or []):
                     _key = _pair_key_from_disp(_p)
                     if not _key or _key in _overall_seen:
                         continue
                     _overall_seen.add(_key)
-                    _overall_pairs.append(f"{_key[0]}-{_key[1]}")
+                    _disp = f"{_key[0]}-{_key[1]}"
+                    _pt = float(_pt_by_key.get(_key, 0.0) or 0.0)
+                    _overall_pairs.append(_disp)
+                    _overall_pair_rows.append({"disp": _disp, "total_pt": _pt})
 
             _candidate_pair_styles = {}
             _candidate_pair_order = []
@@ -12489,13 +12515,38 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 if len(_styles) >= 2:
                     _ichioshi_parts.append(f"{_key[0]}-{_key[1]}（{'・'.join(_styles)}）")
 
+            def _fmt_overall_rows_with_pt(_rows):
+                _parts = []
+                for _r in (_rows or []):
+                    try:
+                        _disp = str(_r.get("disp", "")).strip()
+                        if not _disp:
+                            continue
+                        _pt = float(_r.get("total_pt", 0.0) or 0.0)
+                        _parts.append(f"{_disp}（{_pt:.1f}）")
+                    except Exception:
+                        pass
+                return "　".join(_parts) if _parts else "該当なし"
+
+            _overall_high_rows = []
+            _overall_low_rows = []
+            for _r in (_overall_pair_rows or []):
+                try:
+                    if float(_r.get("total_pt", 0.0) or 0.0) >= 9.0:
+                        _overall_high_rows.append(_r)
+                    else:
+                        _overall_low_rows.append(_r)
+                except Exception:
+                    _overall_low_rows.append(_r)
+
             lines.append("【2車複サマリー】")
             lines.append("")
             if _ichioshi_parts:
                 lines.append(f"イチオシ】{_fmt_flow_buy_pairs(_ichioshi_parts)}")
             else:
                 lines.append("イチオシ】該当なし（重複なし）")
-            lines.append(f"全体推奨】{_fmt_flow_buy_pairs(_overall_pairs)}")
+            lines.append(f"全体推奨 9pt以上】{_fmt_overall_rows_with_pt(_overall_high_rows)}")
+            lines.append(f"全体推奨 9pt未満】{_fmt_overall_rows_with_pt(_overall_low_rows)}")
             lines.append("")
             lines.append("流れ別：採用2点／総合B以上候補")
             for _style_name, _seq in flow_items:
