@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v203: 会場成績を的中期待/妙味期待の小幅係数へ変換。的中率→的中期待、回収率→妙味期待に反映し、苦手会場で総合B候補が自然に絞られるよう修正。
 # v202: 2車複サマリーの全体推奨9pt以上/未満を総合pt降順に並べ替え。流れ別は採用表示を消し、総合B以上候補だけ表示。
 # v201: 2車複サマリーの全体推奨を総合pt 9.0以上/9.0未満に分割し、強弱を見やすく整理。
 # v200: 冒頭サマリーを1ブロック化。「イチオシ（重複）→全体推奨→流れ別 採用/総合B以上候補」の順に整理して視認性を改善。
@@ -1467,6 +1468,72 @@ def judge_venue_profile(hit_rate, return_rate):
     return "normal"
 
 
+def _venue_fit_hit_coef(hit_rate):
+    """
+    v203:
+    会場別の的中率を、2車複の「的中期待」へ小幅倍率として反映する。
+    hit_rate は％値（例：25.3）。未入力時は 1.00。
+
+    強くしすぎると会場判定に振り回されるため、概ね 0.90〜1.08 に収める。
+    """
+    try:
+        if hit_rate is None:
+            return 1.00
+        hr = float(hit_rate)
+        if not math.isfinite(hr):
+            return 1.00
+        if hr >= 35.0:
+            return 1.08
+        if hr >= 30.0:
+            return 1.04
+        if hr >= 25.0:
+            return 1.00
+        if hr >= 22.0:
+            return 0.96
+        if hr >= 18.0:
+            return 0.92
+        return 0.90
+    except Exception:
+        return 1.00
+
+
+def _venue_fit_myoumi_coef(return_rate):
+    """
+    v203:
+    会場別の回収率を、2車複の「妙味期待」へ小幅倍率として反映する。
+    return_rate は％値（例：75.5）。未入力時は 1.00。
+
+    回収率が低い開催では、妙味A++頼みの買目が自然に下がる。
+    逆に回収率が高い開催では、妙味期待を少し信頼する。
+    """
+    try:
+        if return_rate is None:
+            return 1.00
+        rr = float(return_rate)
+        if not math.isfinite(rr):
+            return 1.00
+        if rr >= 120.0:
+            return 1.10
+        if rr >= 100.0:
+            return 1.06
+        if rr >= 85.0:
+            return 1.00
+        if rr >= 70.0:
+            return 0.94
+        if rr >= 50.0:
+            return 0.90
+        return 0.88
+    except Exception:
+        return 1.00
+
+
+def _fmt_venue_fit_coef(v):
+    try:
+        return f"{float(v):.2f}"
+    except Exception:
+        return "1.00"
+
+
 VENUE_HOME_FLOW_MULT = {
     "strong_good": 0.50,
     "swing_return": 0.85,
@@ -2158,6 +2225,8 @@ with st.sidebar.expander("📊 会場別 成績補正", expanded=True):
 
     venue_home_flow_mult = venue_home_flow_multiplier(track, venue_profile)
     venue_min_odds_mult = float(VENUE_MIN_ODDS_MULT.get(venue_profile, 1.00))
+    venue_hit_expect_coef = _venue_fit_hit_coef(venue_hit_rate)
+    venue_myoumi_expect_coef = _venue_fit_myoumi_coef(venue_return_rate)
 
     venue_shape = calc_venue_shape_index(track)
 
@@ -2167,6 +2236,7 @@ with st.sidebar.expander("📊 会場別 成績補正", expanded=True):
     st.write(f"的中率：**{hit_txt}**")
     st.write(f"回収率：**{ret_txt}**")
     st.write(f"会場判定：**{venue_profile}**")
+    st.write(f"開催適合補正：的中期待×**{venue_hit_expect_coef:.2f}** ／ 妙味期待×**{venue_myoumi_expect_coef:.2f}**")
     st.write(f"最終H補正倍率：**{venue_home_flow_mult:.2f}**")
     st.write(f"必要オッズ倍率：**{venue_min_odds_mult:.2f}**")
     st.caption(
@@ -2180,6 +2250,8 @@ st.session_state["venue_return_rate"] = venue_return_rate
 st.session_state["venue_profile"] = venue_profile
 st.session_state["venue_home_flow_mult"] = venue_home_flow_mult
 st.session_state["venue_min_odds_mult"] = venue_min_odds_mult
+st.session_state["venue_hit_expect_coef"] = venue_hit_expect_coef
+st.session_state["venue_myoumi_expect_coef"] = venue_myoumi_expect_coef
 
 st.sidebar.markdown("### 🏟️ 開催場決まり手成績")
 with st.sidebar.expander("数値入力（オッズパーク等の表をそのまま％入力）", expanded=True):
@@ -2470,6 +2542,8 @@ globals()["race_class"]      = str(race_class)
 globals()["venue_profile"]   = str(st.session_state.get("venue_profile", "unknown"))
 globals()["venue_home_flow_mult"] = float(st.session_state.get("venue_home_flow_mult", 1.00))
 globals()["venue_min_odds_mult"]  = float(st.session_state.get("venue_min_odds_mult", 1.00))
+globals()["venue_hit_expect_coef"] = float(st.session_state.get("venue_hit_expect_coef", 1.00))
+globals()["venue_myoumi_expect_coef"] = float(st.session_state.get("venue_myoumi_expect_coef", 1.00))
 globals()["n_cars"]          = int(n_cars)
 globals()["day_label"] = str(day_label)
 globals()["eff_laps"]  = int(eff_laps)
@@ -12237,6 +12311,18 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         _rank_order.get(str(_row.get("myoumi_rank")), 0),
                     )
 
+                # v203: 会場成績を2車複BOX評価の内部ptへ小幅反映する。
+                # 的中率 → 的中期待係数、回収率 → 妙味期待係数。
+                # 買目採用ルールは変えず、総合pt計算前の材料だけを補正する。
+                try:
+                    _venue_hit_coef = float(globals().get("venue_hit_expect_coef", st.session_state.get("venue_hit_expect_coef", 1.00)) or 1.00)
+                except Exception:
+                    _venue_hit_coef = 1.00
+                try:
+                    _venue_myoumi_coef = float(globals().get("venue_myoumi_expect_coef", st.session_state.get("venue_myoumi_expect_coef", 1.00)) or 1.00)
+                except Exception:
+                    _venue_myoumi_coef = 1.00
+
                 _long_span_pairs = []
                 _long_span_keys = set()
                 for _a, _b in combinations(_long_span_all_cars, 2):
@@ -12256,10 +12342,21 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         except Exception:
                             _base_sc = 0.0
                         _sc = _scenario_myoumi_bonus_2kei(_key[0], _key[1], _base_sc)
+                        # v203: 回収率が低い開催では妙味期待を少し弱め、回収率が高い開催では少し強める。
+                        _sc = round(max(0.0, min(10.8, float(_sc) * float(_venue_myoumi_coef))), 2)
 
                         _disp = f"{_key[0]}-{_key[1]}"
                         _hit_score = _longspan_hit_score_pair(_key[0], _key[1])
-                        _hit_rank = _longspan_hit_rank(_key[0], _key[1])
+                        # v203: 的中率が低い開催では的中期待を少し弱め、的中率が高い開催では少し強める。
+                        _hit_score = round(max(0.0, min(12.0, float(_hit_score) * float(_venue_hit_coef))), 2)
+                        if _hit_score >= 10.0:
+                            _hit_rank = "A"
+                        elif _hit_score >= 8.0:
+                            _hit_rank = "B"
+                        elif _hit_score >= 6.0:
+                            _hit_rank = "C"
+                        else:
+                            _hit_rank = "D"
                         _myoumi_rank = _longspan_myoumi_rank(_sc)
                         _total_rank = _longspan_total_rank(_hit_rank, _myoumi_rank)
                         _total_pt = _longspan_total_score(_hit_score, _sc, _hit_rank, _myoumi_rank, _total_rank)
@@ -12560,6 +12657,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             lines.append("【2車複サマリー】")
             lines.append("")
+            try:
+                _vhc = float(globals().get("venue_hit_expect_coef", st.session_state.get("venue_hit_expect_coef", 1.00)) or 1.00)
+                _vmc = float(globals().get("venue_myoumi_expect_coef", st.session_state.get("venue_myoumi_expect_coef", 1.00)) or 1.00)
+                if abs(_vhc - 1.0) > 0.001 or abs(_vmc - 1.0) > 0.001:
+                    lines.append(f"開催適合補正】的中期待×{_vhc:.2f}／妙味期待×{_vmc:.2f}")
+            except Exception:
+                pass
             if _ichioshi_parts:
                 lines.append(f"イチオシ】{_fmt_flow_buy_pairs(_ichioshi_parts)}")
             else:
