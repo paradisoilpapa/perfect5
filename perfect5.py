@@ -12564,8 +12564,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append(f"イチオシ】{_fmt_flow_buy_pairs(_ichioshi_parts)}")
             else:
                 lines.append("イチオシ】該当なし（重複なし）")
-            lines.append(f"全体推奨 9pt以上】{_fmt_overall_rows_with_pt(_overall_high_rows)}")
-            lines.append(f"全体推奨 9pt未満】{_fmt_overall_rows_with_pt(_overall_low_rows)}")
+            lines.append(f"本線 9pt以上】{_fmt_overall_rows_with_pt(_overall_high_rows)}")
+            lines.append(f"抑え 9pt未満】{_fmt_overall_rows_with_pt(_overall_low_rows)}")
             lines.append("")
             lines.append("流れ別：総合B以上候補")
             for _style_name, _seq in flow_items:
