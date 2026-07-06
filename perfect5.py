@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# v195: 順流・渦・逆流の着順予想を、各流域ラインが主役になったシナリオ補正版へ変更。逆流域空欄でも旧逆流ラインを逆流シナリオに補完。
+# v194: 買目考察の前に全体推奨2車複サマリー（全体/順流/逆流/渦）を追加。
 # v193: 買目考察を順流・逆流・渦の3流れ並列表示へ変更。会場判定good/middle/badによる買目提案を廃止し、各流れの総合B以上・総合pt上位2点を表示。
 # v191: 会場判定good系は2車複を出さず、3連複を軸A-候補4車-候補4車の6点型へ変更。middle/bad系はv190維持。
 # v192: good系で2車複を出さない場合、「2車複購入候補 該当なし」ブロックを非表示化。
@@ -6812,9 +6814,233 @@ try:
 
             return xs
 
-        out_j = _display_score_guard(out_j, FR_line)
-        out_v = _display_score_guard(out_v, VTX_line)
-        out_u = _display_score_guard(out_u, U_line)
+        # ======================================================
+        # v195：戦法別シナリオ補正
+        # 順流・渦・逆流は「同じ全体順位の別名」ではなく、
+        # それぞれの流域ラインが主役になった場合の着順予想として組み立てる。
+        #
+        # 重要：
+        # ・無条件にライン先頭を1着固定するのではなく、ライン内のKO/役割で頭候補を選ぶ。
+        # ・ただし、その戦法のシナリオでは主役ラインのいずれかが1着候補になる前提を守る。
+        # ・逆流域がLINE_ZONE_MAP上で空でも、旧U_lineがあれば逆流シナリオの主役ラインとして使う。
+        # ======================================================
+        def _scenario_line_digits(_ln):
+            try:
+                if isinstance(_ln, (list, tuple)):
+                    return [int(x) for x in _ln if str(x).isdigit()]
+            except Exception:
+                pass
+            return [int(ch) for ch in str(_ln) if ch.isdigit()]
+
+        def _scenario_line_key(_ln):
+            return "".join(str(int(x)) for x in _scenario_line_digits(_ln))
+
+        def _scenario_same_line(_a, _b):
+            return _scenario_line_key(_a) == _scenario_line_key(_b) and bool(_scenario_line_key(_a))
+
+        def _scenario_lines_for_zone(_zone_name):
+            """LINE_ZONE_MAPから該当ゾーンのラインを取得。line_defを優先して実ライン順を復元する。"""
+            out_lines = []
+            seen_keys = set()
+            try:
+                zmap = globals().get("LINE_ZONE_MAP", {}) or {}
+                _line_def_local = globals().get("line_def", {}) or {}
+                if isinstance(_line_def_local, dict):
+                    for _gid, _mem in _line_def_local.items():
+                        _xs = _scenario_line_digits(_mem)
+                        _key = _scenario_line_key(_xs)
+                        if not _key or _key in seen_keys:
+                            continue
+                        if str(zmap.get(_key, "")) == str(_zone_name):
+                            seen_keys.add(_key)
+                            out_lines.append(_xs)
+                # line_defに無いキーがあれば保険で拾う
+                if isinstance(zmap, dict):
+                    for _key, _z in zmap.items():
+                        if str(_z) != str(_zone_name):
+                            continue
+                        if str(_key) in seen_keys:
+                            continue
+                        _xs = _scenario_line_digits(_key)
+                        if _xs:
+                            seen_keys.add(str(_key))
+                            out_lines.append(_xs)
+            except Exception:
+                out_lines = []
+            try:
+                out_lines = sorted(out_lines, key=lambda _ln: float(_lfr(_ln)), reverse=True)
+            except Exception:
+                pass
+            return out_lines
+
+        def _scenario_main_line(_style_name):
+            """各戦法の主役ライン。逆流はLINE_ZONE_MAPが空でも旧U_lineを優先して補完する。"""
+            try:
+                if _style_name == "順流":
+                    if FR_line:
+                        return _scenario_line_digits(FR_line)
+                    _ls = _scenario_lines_for_zone("順流")
+                    return _ls[0] if _ls else []
+                if _style_name == "渦":
+                    if VTX_line:
+                        return _scenario_line_digits(VTX_line)
+                    _ls = _scenario_lines_for_zone("渦")
+                    return _ls[0] if _ls else []
+                if _style_name == "逆流":
+                    # ここが今回の主修正。
+                    # LINE_ZONE_MAPで逆流域が空でも、数値上の旧逆流ライン U_line を逆流シナリオの主役にする。
+                    if U_line:
+                        return _scenario_line_digits(U_line)
+                    _ls = _scenario_lines_for_zone("逆流")
+                    return _ls[0] if _ls else []
+            except Exception:
+                return []
+            return []
+
+        def _scenario_queue_for_main(_main_line, _zone_order):
+            """主役ラインを先頭に置いた仮想隊列。残りはゾーン順＋FR順で並べる。"""
+            main = _scenario_line_digits(_main_line)
+            main_key = _scenario_line_key(main)
+            queue = []
+            seen_cars = set()
+
+            for c in main:
+                if int(c) not in seen_cars:
+                    seen_cars.add(int(c))
+                    queue.append(int(c))
+
+            # all_linesが取れる場合はライン単位、無い場合は既存のSTYLE_SEQ_MAP相当で補完。
+            used_line_keys = {main_key} if main_key else set()
+            try:
+                lines_src = list(all_lines or [])
+            except Exception:
+                lines_src = []
+
+            bucket = {"順流": [], "渦": [], "逆流": [], "その他": []}
+            for ln in lines_src:
+                key = _scenario_line_key(ln)
+                if key and key in used_line_keys:
+                    continue
+                z = _infer_line_zone(ln)
+                # U_lineは逆流シナリオでは既に主役として使うため、渦側に重複させない。
+                bucket.setdefault(z, []).append(ln)
+
+            for z in (_zone_order or []):
+                xs = sorted(bucket.get(z, []), key=lambda ln: float(_lfr(ln)), reverse=True)
+                for ln in xs:
+                    key = _scenario_line_key(ln)
+                    if key and key in used_line_keys:
+                        continue
+                    used_line_keys.add(key)
+                    for c in _scenario_line_digits(ln):
+                        if int(c) not in seen_cars:
+                            seen_cars.add(int(c))
+                            queue.append(int(c))
+
+            for z in ["順流", "渦", "逆流", "その他"]:
+                if z in (_zone_order or []):
+                    continue
+                xs = sorted(bucket.get(z, []), key=lambda ln: float(_lfr(ln)), reverse=True)
+                for ln in xs:
+                    key = _scenario_line_key(ln)
+                    if key and key in used_line_keys:
+                        continue
+                    used_line_keys.add(key)
+                    for c in _scenario_line_digits(ln):
+                        if int(c) not in seen_cars:
+                            seen_cars.add(int(c))
+                            queue.append(int(c))
+
+            # 保険：score_mapに存在する車を全て補完
+            try:
+                tail = sorted([int(c) for c in score_map.keys() if int(c) not in seen_cars], key=lambda c: float(score_map.get(c, 0.0)), reverse=True)
+                queue.extend(tail)
+            except Exception:
+                pass
+            return queue
+
+        def _scenario_best_head_from_main_line(_main_line):
+            """主役ライン内で最も頭に置きやすい車を選ぶ。ライン先頭固定ではない。"""
+            main = _scenario_line_digits(_main_line)
+            if not main:
+                return None
+            def _role_bonus(_car):
+                try:
+                    pos = main.index(int(_car))
+                except Exception:
+                    pos = 0
+                # 先頭と番手を主に見る。3番手以降は頭固定しにくいが、KOが抜けていれば上がれる。
+                if len(main) <= 1:
+                    return 0.00
+                if pos == 0:
+                    return 0.035
+                if pos == 1:
+                    return 0.025
+                return -0.015
+            try:
+                return max(main, key=lambda c: float(score_map.get(int(c), 0.0)) + _role_bonus(c))
+            except Exception:
+                return int(main[0])
+
+        def _scenario_force_main_head(_seq, _main_line):
+            """シナリオの前提として、主役ラインのいずれかを1着候補へ置く。"""
+            xs = [int(x) for x in (_seq or []) if str(x).isdigit()]
+            main = _scenario_line_digits(_main_line)
+            if not xs or not main:
+                return xs
+            main_set = {int(c) for c in main}
+            if int(xs[0]) in main_set:
+                return xs
+
+            head = _scenario_best_head_from_main_line(main)
+            if head is None or int(head) not in xs:
+                return xs
+
+            # 主役ラインの頭候補を先頭へ。ただしライン内の他車は元のKO結果順を尊重する。
+            xs.remove(int(head))
+            xs.insert(0, int(head))
+            return xs
+
+        def _make_style_scenario_seq(_style_name, _fallback_seq):
+            main_line = _scenario_main_line(_style_name)
+            if not main_line:
+                return [int(x) for x in (_fallback_seq or []) if str(x).isdigit()]
+
+            if _style_name == "順流":
+                zone_order = ["順流", "渦", "逆流"]
+                fallback_main = FR_line
+            elif _style_name == "渦":
+                zone_order = ["渦", "順流", "逆流"]
+                fallback_main = VTX_line
+            else:
+                zone_order = ["逆流", "順流", "渦"]
+                fallback_main = U_line
+
+            q = _scenario_queue_for_main(main_line, zone_order)
+            seq = _run_ko(q, _style_name)
+            seq = _display_score_guard(seq, main_line or fallback_main)
+            seq = _scenario_force_main_head(seq, main_line)
+            return [int(x) for x in (seq or []) if str(x).isdigit()]
+
+        # 旧表示順は保持しておく。以後の買目考察にはシナリオ補正版を使う。
+        out_j_raw = _display_score_guard(out_j, FR_line)
+        out_v_raw = _display_score_guard(out_v, VTX_line)
+        out_u_raw = _display_score_guard(out_u, U_line)
+
+        out_j = _make_style_scenario_seq("順流", out_j_raw)
+        out_v = _make_style_scenario_seq("渦", out_v_raw)
+        out_u = _make_style_scenario_seq("逆流", out_u_raw)
+
+        globals()["STYLE_BASE_SEQ_MAP"] = {
+            "順流": [int(x) for x in (out_j_raw or []) if str(x).isdigit()],
+            "渦":   [int(x) for x in (out_v_raw or []) if str(x).isdigit()],
+            "逆流": [int(x) for x in (out_u_raw or []) if str(x).isdigit()],
+        }
+        globals()["STYLE_SCENARIO_MAIN_LINE_MAP"] = {
+            "順流": _scenario_main_line("順流"),
+            "渦":   _scenario_main_line("渦"),
+            "逆流": _scenario_main_line("逆流"),
+        }
 
         # ======================================================
         # H主導ライン3番手以降：
@@ -6926,13 +7152,16 @@ try:
 
         # ======================================================
         # 戦法別評価順を保存
-        # 後段の「戦法別想定決着率」「2車複候補」で使う
+        # v195以降：STYLE_SEQ_MAPは、流域ライン主役のシナリオ補正版を保存する。
+        # 後段の「戦法別想定決着率」「2車複候補」「買目考察」はこの補正版を使う。
+        # 元の全体KO寄り順位は STYLE_BASE_SEQ_MAP に保持済み。
         # ======================================================
-        globals()["STYLE_SEQ_MAP"] = {
+        globals()["STYLE_SCENARIO_SEQ_MAP"] = {
             "順流": [int(x) for x in (out_j or []) if str(x).isdigit()],
             "渦":   [int(x) for x in (out_v or []) if str(x).isdigit()],
             "逆流": [int(x) for x in (out_u or []) if str(x).isdigit()],
         }
+        globals()["STYLE_SEQ_MAP"] = dict(globals().get("STYLE_SCENARIO_SEQ_MAP", {}) or {})
 
         # ======================================================
         # 戦法別着順予想を全表示
@@ -11698,6 +11927,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
         if not flow_items and len(xs) >= 3:
             flow_items.append((str(rec_style or "推奨"), list(xs)))
 
+        # v194: 詳細考察の前に、各流れで選ばれた2車複だけを一覧表示するための保持。
+        flow_buy_summary = []
+
         def _append_one_flow_bet_review(_style_name, _seq):
             try:
                 _xs = []
@@ -11713,6 +11945,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append("")
 
                 if len(_xs) < 2:
+                    flow_buy_summary.append((_style_name, []))
                     lines.append("生成不可")
                     lines.append("")
                     return
@@ -11903,6 +12136,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         pass
 
                 if not _long_span_pairs:
+                    flow_buy_summary.append((_style_name, []))
                     lines.append("該当なし")
                     lines.append("")
                     return
@@ -11913,10 +12147,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     if str(_row.get("total_rank", "")).strip() in ("A", "B")
                 ]
                 _nifuku_buy = list(_nifuku_buy_base or [])[:2]
+                _nifuku_buy_disp = [str(_row.get("disp")) for _row in _nifuku_buy if _row.get("disp")]
+                flow_buy_summary.append((_style_name, list(_nifuku_buy_disp)))
 
                 lines.append("【総合評価2車複推奨】")
                 lines.append("2車複購入候補（総合B以上・総合pt上位2点）")
-                lines.append("　".join(str(_row.get("disp")) for _row in _nifuku_buy if _row.get("disp")) if _nifuku_buy else "該当なし")
+                lines.append("　".join(_nifuku_buy_disp) if _nifuku_buy_disp else "該当なし")
                 lines.append("")
 
                 def _longspan_trimmed_avg(_vals):
@@ -12018,16 +12254,61 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                 lines.append("")
             except Exception as _e:
+                flow_buy_summary.append((_style_name, []))
                 lines.append(f"【買目考察｜{_style_name}】")
                 lines.append(f"生成不可（{_e}）")
                 lines.append("")
 
+        def _fmt_flow_buy_pairs(_pairs):
+            _pairs = [str(x) for x in (_pairs or []) if str(x).strip()]
+            return "　".join(_pairs) if _pairs else "該当なし"
+
+        def _flow_summary_label(_style_name):
+            # 「渦」は1文字なので、順流/逆流と縦位置が近くなるよう全角空白を足す。
+            return "渦　" if str(_style_name) == "渦" else str(_style_name)
+
         if flow_items:
+            # v194: まず詳細を一度組み立て、その過程で flow_buy_summary に各流れの購入候補を保持する。
+            _main_lines_ref = lines
+            _detail_lines = []
+            lines = _detail_lines
+
             for _i, (_style_name, _seq) in enumerate(flow_items):
                 if _i > 0:
                     lines.append("＊＊＊＊")
                     lines.append("")
                 _append_one_flow_bet_review(_style_name, _seq)
+
+            lines = _main_lines_ref
+
+            # v194: 買目考察の冒頭サマリー。各流れの上位2点と、その重複除外の全体候補を出す。
+            _summary_map = {}
+            _overall_pairs = []
+            _overall_seen = set()
+            for _style_name, _pairs in (flow_buy_summary or []):
+                _summary_map[str(_style_name)] = list(_pairs or [])
+                for _p in (_pairs or []):
+                    try:
+                        _m = re.search(r"([1-9])\s*[-=]\s*([1-9])", str(_p))
+                        if not _m:
+                            continue
+                        _a, _b = int(_m.group(1)), int(_m.group(2))
+                        _key = tuple(sorted((_a, _b)))
+                        if _key in _overall_seen:
+                            continue
+                        _overall_seen.add(_key)
+                        _overall_pairs.append(f"{_key[0]}-{_key[1]}")
+                    except Exception:
+                        pass
+
+            lines.append("【全体推奨２車複】")
+            lines.append("")
+            lines.append(f"全体】{_fmt_flow_buy_pairs(_overall_pairs)}")
+            lines.append("")
+            for _style_name, _seq in flow_items:
+                lines.append(f"{_flow_summary_label(_style_name)}】{_fmt_flow_buy_pairs(_summary_map.get(str(_style_name), []))}")
+            lines.append("")
+            lines.extend(_detail_lines)
 
             lines.append("目安：")
             lines.append("A：推奨買い候補")
