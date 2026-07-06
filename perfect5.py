@@ -12083,6 +12083,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
         # ただし判断材料として、まず各流れの総合B以上候補を全点表示し、
         # その候補同士で複数流れに重複する買目をイチオシとして抽出する。
         flow_b_candidate_summary = []
+        # v204: サマリーの本線/抑えは「採用2点」ではなく、総合B以上候補全体から作る。
+        # そのため、総合B以上候補のptも保持する。
+        flow_b_candidate_pt_summary = []
 
         def _append_one_flow_bet_review(_style_name, _seq):
             try:
@@ -12102,6 +12105,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     flow_buy_summary.append((_style_name, []))
                     flow_buy_pt_summary.append((_style_name, []))
                     flow_b_candidate_summary.append((_style_name, []))
+                    flow_b_candidate_pt_summary.append((_style_name, []))
                     lines.append("該当なし")
                     lines.append("")
                     return
@@ -12380,6 +12384,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     flow_buy_summary.append((_style_name, []))
                     flow_buy_pt_summary.append((_style_name, []))
                     flow_b_candidate_summary.append((_style_name, []))
+                    flow_b_candidate_pt_summary.append((_style_name, []))
                     lines.append("該当なし")
                     lines.append("")
                     return
@@ -12391,6 +12396,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 ]
                 _b_candidate_disp = [str(_row.get("disp")) for _row in (_nifuku_buy_base or []) if _row.get("disp")]
                 flow_b_candidate_summary.append((_style_name, list(_b_candidate_disp)))
+                flow_b_candidate_pt_summary.append((_style_name, [
+                    {"disp": str(_row.get("disp")), "total_pt": float(_row.get("total_pt", 0.0) or 0.0)}
+                    for _row in (_nifuku_buy_base or []) if _row.get("disp")
+                ]))
 
                 _nifuku_buy = list(_nifuku_buy_base or [])[:2]
                 _nifuku_buy_disp = [str(_row.get("disp")) for _row in _nifuku_buy if _row.get("disp")]
@@ -12507,6 +12516,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 flow_buy_summary.append((_style_name, []))
                 flow_buy_pt_summary.append((_style_name, []))
                 flow_b_candidate_summary.append((_style_name, []))
+                flow_b_candidate_pt_summary.append((_style_name, []))
                 lines.append(f"【買目考察｜{_style_name}】")
                 lines.append(f"生成不可（{_e}）")
                 lines.append("")
@@ -12533,12 +12543,14 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             lines = _main_lines_ref
 
-            # v202: 冒頭サマリーを1ブロックへ整理する。
+            # v204: 冒頭サマリーを1ブロックへ整理する。
             # 表示順は、
             # 1) イチオシ（複数流れで重複した総合B以上候補）
-            # 2) 全体推奨を総合pt 9.0以上 / 9.0未満で強弱分けし、各欄はpt降順
-            # 3) 流れ別：総合B以上候補だけ表示（採用2点表示は全体推奨に集約）
-            # 買目採用ルール自体は変えない。
+            # 2) 本線/抑えは「各流れ上位2点」ではなく、全流れの総合B以上候補全体から作る
+            #    - 本線：総合pt 9.0以上
+            #    - 抑え：総合pt 9.0未満
+            # 3) 流れ別：総合B以上候補だけ表示
+            # ※各流れ採用2点をサマリーの母集団には使わない。
             _summary_map = {}
             _summary_pt_map = {}
             _b_candidate_map = {}
@@ -12573,34 +12585,35 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             for _style_name, _rows in (flow_buy_pt_summary or []):
                 _summary_pt_map[str(_style_name)] = list(_rows or [])
 
-            for _style_name, _pairs in (flow_buy_summary or []):
-                _summary_map[str(_style_name)] = list(_pairs or [])
-                _pt_by_key = {}
-                for _row in _summary_pt_map.get(str(_style_name), []) or []:
+            # v204:
+            # 全体の本線/抑えは、各流れの「上位2点」ではなく、
+            # 総合B以上候補全体を重複除外して作る。
+            # 同じ買目が複数流れに出た場合、表示ptは最も高い流れのptを採用する。
+            for _style_name, _rows in (flow_b_candidate_pt_summary or []):
+                for _row in (_rows or []):
                     try:
-                        _k = _pair_key_from_disp(_row.get("disp"))
-                        if _k:
-                            _pt_by_key[_k] = float(_row.get("total_pt", 0.0) or 0.0)
+                        _key = _pair_key_from_disp(_row.get("disp"))
+                        if not _key:
+                            continue
+                        _disp = f"{_key[0]}-{_key[1]}"
+                        _pt = float(_row.get("total_pt", 0.0) or 0.0)
+                        if _key in _overall_seen:
+                            for _old in _overall_pair_rows:
+                                try:
+                                    if _pair_key_from_disp(_old.get("disp")) == _key and _pt > float(_old.get("total_pt", 0.0) or 0.0):
+                                        _old["total_pt"] = _pt
+                                except Exception:
+                                    pass
+                            continue
+                        _overall_seen.add(_key)
+                        _overall_pairs.append(_disp)
+                        _overall_pair_rows.append({"disp": _disp, "total_pt": _pt})
                     except Exception:
                         pass
-                for _p in (_pairs or []):
-                    _key = _pair_key_from_disp(_p)
-                    if not _key:
-                        continue
-                    _disp = f"{_key[0]}-{_key[1]}"
-                    _pt = float(_pt_by_key.get(_key, 0.0) or 0.0)
-                    if _key in _overall_seen:
-                        # 同じ買目が複数流れで採用された場合は、表示用ptは高い方を残す。
-                        for _old in _overall_pair_rows:
-                            try:
-                                if _pair_key_from_disp(_old.get("disp")) == _key and _pt > float(_old.get("total_pt", 0.0) or 0.0):
-                                    _old["total_pt"] = _pt
-                            except Exception:
-                                pass
-                        continue
-                    _overall_seen.add(_key)
-                    _overall_pairs.append(_disp)
-                    _overall_pair_rows.append({"disp": _disp, "total_pt": _pt})
+
+            # 流れ別表示用には総合B以上候補の車券名だけを保持する。
+            for _style_name, _pairs in (flow_b_candidate_summary or []):
+                _b_candidate_map[str(_style_name)] = list(_pairs or [])
 
             _candidate_pair_styles = {}
             _candidate_pair_order = []
