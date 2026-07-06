@@ -5,6 +5,7 @@
 # v194: 買目考察の前に全体推奨2車複サマリー（全体/順流/逆流/渦）を追加。
 # v193: 買目考察を順流・逆流・渦の3流れ並列表示へ変更。会場判定good/middle/badによる買目提案を廃止し、各流れの総合B以上・総合pt上位2点を表示。
 # v191: 会場判定good系は2車複を出さず、3連複を軸A-候補4車-候補4車の6点型へ変更。middle/bad系はv190維持。
+# v198: 2ライン戦などで独立シナリオが成立しない流れは削除せず「該当なし」と表示。
 # v192: good系で2車複を出さない場合、「2車複購入候補 該当なし」ブロックを非表示化。
 # v191: good系は2車複を出さず、3連複 A-2345-2345 に一本化。
 # v190: 反映済み市場印だけで妙味計算。未反映/未入力時の妙味10.0張り付きと、session_state再取得による反映ズレを防止。
@@ -7235,7 +7236,7 @@ try:
         try:
             def _fmt_seq_full(_seq):
                 _xs = [int(x) for x in (_seq or []) if str(x).isdigit()]
-                return " → ".join(str(x) for x in _xs) if _xs else "—"
+                return " → ".join(str(x) for x in _xs) if _xs else "該当なし"
 
             note_sections.append("【順流メイン着順予想】")
             note_sections.append(_fmt_seq_full(out_j))
@@ -11974,6 +11975,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             style_seq_map = {}
 
         flow_items = []
+        # v198:
+        # 順流・逆流・渦の表示枠は常に残す。
+        # 2ライン戦などで独立した逆流シナリオが成立しない場合は、
+        # 逆流を削除せず「該当なし」と表示する。
         for _style_name in ["順流", "逆流", "渦"]:
             _seq = style_seq_map.get(_style_name, []) or []
             _flow_xs = []
@@ -11984,12 +11989,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     if _c not in _seen_flow:
                         _seen_flow.add(_c)
                         _flow_xs.append(_c)
-            if _flow_xs:
-                flow_items.append((_style_name, _flow_xs))
+            flow_items.append((_style_name, _flow_xs))
 
         # 保険：STYLE_SEQ_MAP が未生成の場合のみ、従来の推奨1本を表示対象にする。
-        if not flow_items and len(xs) >= 3:
-            flow_items.append((str(rec_style or "推奨"), list(xs)))
+        if not any(_seq for _, _seq in flow_items) and len(xs) >= 3:
+            flow_items = [(str(rec_style or "推奨"), list(xs))]
 
         # v194: 詳細考察の前に、各流れで選ばれた2車複だけを一覧表示するための保持。
         flow_buy_summary = []
@@ -12010,7 +12014,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                 if len(_xs) < 2:
                     flow_buy_summary.append((_style_name, []))
-                    lines.append("生成不可")
+                    lines.append("該当なし")
                     lines.append("")
                     return
 
