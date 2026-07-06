@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v202: 2車複サマリーの全体推奨9pt以上/未満を総合pt降順に並べ替え。流れ別は採用表示を消し、総合B以上候補だけ表示。
 # v201: 2車複サマリーの全体推奨を総合pt 9.0以上/9.0未満に分割し、強弱を見やすく整理。
 # v200: 冒頭サマリーを1ブロック化。「イチオシ（重複）→全体推奨→流れ別 採用/総合B以上候補」の順に整理して視認性を改善。
 # v199: 各流れの総合B以上候補を先に一覧化し、複数流れで重複する買目をイチオシ表示。その後に従来の全体推奨2車複（各流れ上位2点）を表示.
@@ -12435,11 +12436,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             lines = _main_lines_ref
 
-            # v201: 冒頭サマリーを1ブロックへ整理する。
+            # v202: 冒頭サマリーを1ブロックへ整理する。
             # 表示順は、
             # 1) イチオシ（複数流れで重複した総合B以上候補）
-            # 2) 全体推奨を総合pt 9.0以上 / 9.0未満で強弱分け
-            # 3) 流れ別：採用2点 / 総合B以上候補
+            # 2) 全体推奨を総合pt 9.0以上 / 9.0未満で強弱分けし、各欄はpt降順
+            # 3) 流れ別：総合B以上候補だけ表示（採用2点表示は全体推奨に集約）
             # 買目採用ルール自体は変えない。
             _summary_map = {}
             _summary_pt_map = {}
@@ -12487,11 +12488,20 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         pass
                 for _p in (_pairs or []):
                     _key = _pair_key_from_disp(_p)
-                    if not _key or _key in _overall_seen:
+                    if not _key:
                         continue
-                    _overall_seen.add(_key)
                     _disp = f"{_key[0]}-{_key[1]}"
                     _pt = float(_pt_by_key.get(_key, 0.0) or 0.0)
+                    if _key in _overall_seen:
+                        # 同じ買目が複数流れで採用された場合は、表示用ptは高い方を残す。
+                        for _old in _overall_pair_rows:
+                            try:
+                                if _pair_key_from_disp(_old.get("disp")) == _key and _pt > float(_old.get("total_pt", 0.0) or 0.0):
+                                    _old["total_pt"] = _pt
+                            except Exception:
+                                pass
+                        continue
+                    _overall_seen.add(_key)
                     _overall_pairs.append(_disp)
                     _overall_pair_rows.append({"disp": _disp, "total_pt": _pt})
 
@@ -12539,6 +12549,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     _overall_low_rows.append(_r)
 
+            def _sort_rows_by_pt_desc(_rows):
+                try:
+                    return sorted(list(_rows or []), key=lambda _r: float((_r or {}).get("total_pt", 0.0) or 0.0), reverse=True)
+                except Exception:
+                    return list(_rows or [])
+
+            _overall_high_rows = _sort_rows_by_pt_desc(_overall_high_rows)
+            _overall_low_rows = _sort_rows_by_pt_desc(_overall_low_rows)
+
             lines.append("【2車複サマリー】")
             lines.append("")
             if _ichioshi_parts:
@@ -12548,15 +12567,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append(f"全体推奨 9pt以上】{_fmt_overall_rows_with_pt(_overall_high_rows)}")
             lines.append(f"全体推奨 9pt未満】{_fmt_overall_rows_with_pt(_overall_low_rows)}")
             lines.append("")
-            lines.append("流れ別：採用2点／総合B以上候補")
+            lines.append("流れ別：総合B以上候補")
             for _style_name, _seq in flow_items:
                 _name = _flow_summary_label(_style_name)
-                _adopted = _summary_map.get(str(_style_name), [])
                 _cands = _b_candidate_map.get(str(_style_name), [])
-                if _same_pair_list(_adopted, _cands):
-                    lines.append(f"{_name}】採用：{_fmt_flow_buy_pairs(_adopted)}")
-                else:
-                    lines.append(f"{_name}】採用：{_fmt_flow_buy_pairs(_adopted)}／B候補：{_fmt_flow_buy_pairs(_cands)}")
+                lines.append(f"{_name}】{_fmt_flow_buy_pairs(_cands)}")
             lines.append("")
             lines.extend(_detail_lines)
 
