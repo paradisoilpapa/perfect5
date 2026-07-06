@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v193: 買目考察を順流・逆流・渦の3流れ並列表示へ変更。会場判定good/middle/badによる買目提案を廃止し、各流れの総合B以上・総合pt上位2点を表示。
 # v191: 会場判定good系は2車複を出さず、3連複を軸A-候補4車-候補4車の6点型へ変更。middle/bad系はv190維持。
 # v192: good系で2車複を出さない場合、「2車複購入候補 該当なし」ブロックを非表示化。
 # v191: good系は2車複を出さず、3連複 A-2345-2345 に一本化。
@@ -11671,935 +11672,363 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
         lines = []
 
-        if len(xs) >= 3:
-            A, B = int(xs[0]), int(xs[1])
-            rest = [int(x) for x in xs[2:] if int(x) not in (A, B)]
-            pairs = _make_flow_switch_pairs(xs)
-            rest_text = "".join(str(int(x)) for x in rest)
+        # v193:
+        # 買目考察は「推奨戦法1本」ではなく、順流・逆流・渦を全て並列表示する。
+        # 会場判定 good/middle/bad による買目切替は廃止し、各流れごとに
+        # 「総合評価B以上・総合pt上位2点」の2車複購入候補だけを表示する。
+        style_seq_map = globals().get("STYLE_SEQ_MAP", {}) or {}
+        if not isinstance(style_seq_map, dict):
+            style_seq_map = {}
 
-            # ステップ式表示：
-            # 評価1・2の幹確認 → 評価1・2・3の上位圧縮 → 評価1・2から評価3・4へ拡張。
-            # 例：推奨流れ 5→3→1→7→2→4→6
-            #   ステップ1：5-3
-            #   ステップ2：531 BOX
-            #   ステップ3：5-317 / 3-17
-            C = int(xs[2])
-            D = int(xs[3]) if len(xs) >= 4 else None
-            E = int(xs[4]) if len(xs) >= 5 else None
-            line_tail_after_ab = _axis_pair_line_tail_candidates(A, B)
-            axis_judge = _make_axis_trust_judgement(xs)
-            axis_type = str(axis_judge.get("type", "未判定"))
-            axis_cap = str(axis_judge.get("cap", "通常"))
-            axis_reasons = [str(x) for x in (axis_judge.get("reasons", []) or [])]
-            axis_line_note = str(axis_judge.get("line_note", "ライン後位：未判定"))
+        flow_items = []
+        for _style_name in ["順流", "逆流", "渦"]:
+            _seq = style_seq_map.get(_style_name, []) or []
+            _flow_xs = []
+            _seen_flow = set()
+            for _x in (_seq or []):
+                if str(_x).isdigit():
+                    _c = int(_x)
+                    if _c not in _seen_flow:
+                        _seen_flow.add(_c)
+                        _flow_xs.append(_c)
+            if _flow_xs:
+                flow_items.append((_style_name, _flow_xs))
 
-            step1_pair = f"{A}-{B}"
+        # 保険：STYLE_SEQ_MAP が未生成の場合のみ、従来の推奨1本を表示対象にする。
+        if not flow_items and len(xs) >= 3:
+            flow_items.append((str(rec_style or "推奨"), list(xs)))
 
-            if axis_type in ("1軸型", "1軸寄り"):
-                # 1軸型：評価1を主軸にし、評価2との二強BOXに寄せすぎない。
-                # ただしA-Bが同一ラインで、B後ろに3番手以降がいる場合は、
-                # 個人評価が低くてもライン残り候補としてステップ3に保護する。
-                step2_box = f"{A}-{B}{C}"
-                step3_tail = [B, C]
-                if D is not None:
-                    step3_tail.append(D)
-                step3_tail += line_tail_after_ab
-                step3_text = f"{A}-{_merge_car_text(step3_tail)}"
-            elif axis_type == "混戦寄り" or "見送り" in axis_type:
-                # 混戦：通常ステップ上限を下げる
-                step2_box = "見送り寄り"
-                step3_text = "上限下げ"
-            else:
-                # 標準：評価1・2二強型。
-                # 二強型でもA-B同ラインの後ろは、ライン決着の3着候補として残す。
-                step2_box = f"{A}{B}{C} BOX"
-                if D is not None:
-                    left_tail = [B, C, D] + line_tail_after_ab
-                    right_tail = [C, D]
-                    step3_left = f"{A}-{_merge_car_text(left_tail)}"
-                    step3_right = f"{B}-{_merge_car_text(right_tail)}"
-                    step3_text = f"{step3_left} / {step3_right}"
-                else:
-                    left_tail = [B, C] + line_tail_after_ab
-                    step3_text = f"{A}-{_merge_car_text(left_tail)} / {B}-{C}"
+        def _append_one_flow_bet_review(_style_name, _seq):
+            try:
+                _xs = []
+                _seen = set()
+                for _x in (_seq or []):
+                    if str(_x).isdigit():
+                        _c = int(_x)
+                        if _c not in _seen:
+                            _seen.add(_c)
+                            _xs.append(_c)
 
-            lines.append(f"推奨流れ【{rec_style or '推奨'}】：")
-            lines.append(" → ".join(str(int(x)) for x in xs))
-            lines.append("")
-            lines.append("【軸判定】")
-            lines.append(f"{axis_type}")
-            if axis_reasons:
-                lines.append("理由：" + "／".join(axis_reasons[:4]))
-            lines.append(axis_line_note)
-            if line_tail_after_ab:
-                lines.append("ライン残り保護：" + ",".join(str(int(x)) for x in line_tail_after_ab))
+                lines.append(f"【買目考察｜{_style_name}】")
+                lines.append("")
 
-            # v128: ステップ式ブロックはnote上部から削除。
-            # 軸判定は残し、実際の確認対象は下の長期スパン妙味2車複に集約する。
+                if len(_xs) < 2:
+                    lines.append("生成不可")
+                    lines.append("")
+                    return
 
-            # 2車複：全車BOXを総合pt順に評価し、上位2点（微差なら3点）を購入候補にする。
-            # v130: 妙味ptだけで買い推奨にせず、ヴェロビ順位とウィンチケット印の重なりを
-            #       的中期待として別表示し、的中期待×妙味期待で総合評価A/B/C/Dを出す。
-            long_span_pairs = []
-            long_span_keys = set()
-            # v139: 2車複はフォーメーション固定ではなく、出走全車BOX（7車なら21通り）を総合pt順で評価する。
-            long_span_all_cars = [int(x) for x in xs if str(x).isdigit()]
+                _A = int(_xs[0])
+                _long_span_all_cars = [int(x) for x in _xs if str(x).isdigit()]
 
-            def _longspan_velobi_point(_car_no):
-                try:
-                    _car_no = int(_car_no)
-                    _rank = [int(x) for x in xs].index(_car_no) + 1
-                    return {1: 5, 2: 4, 3: 3, 4: 2, 5: 1}.get(_rank, 0)
-                except Exception:
-                    return 0
+                lines.append(f"推奨流れ【{_style_name}】：")
+                lines.append(" → ".join(str(int(x)) for x in _xs))
+                lines.append("")
 
-            def _longspan_win_point(_car_no):
-                try:
-                    _car_no = int(_car_no)
-                    _mk = str((mark_map or {}).get(_car_no, (mark_map or {}).get(str(_car_no), "")) or "").strip()
-                    _mk = _mk.replace("○", "〇")
-                    return {"◎": 4, "〇": 3, "△": 2, "×": 1}.get(_mk, 0)
-                except Exception:
-                    return 0
+                _axis_judge = _make_axis_trust_judgement(_xs)
+                _axis_type = str(_axis_judge.get("type", "未判定"))
+                _axis_reasons = [str(x) for x in (_axis_judge.get("reasons", []) or [])]
+                _axis_line_note = str(_axis_judge.get("line_note", "ライン後位：未判定"))
 
-            def _longspan_hit_score_one(_car_no):
-                # 的中期待：打ち合わせ通り、ヴェロビ順位点(5,4,3,2,1)と
-                # ウィンチケット印点(◎4,〇3,△2,×1)の「重なり」を見る。
-                # 掛け算ではなく、車別に 0.6×VeloBi + 0.4×Win + 一致ボーナス。
-                try:
-                    _v = float(_longspan_velobi_point(_car_no))
-                    _w = float(_longspan_win_point(_car_no))
-                    _bonus = 0.0
-                    if _v >= 4 and _w >= 3:
-                        _bonus = 1.5
-                    elif _v >= 3 and _w >= 2:
-                        _bonus = 1.0
-                    return 0.6 * _v + 0.4 * _w + _bonus
-                except Exception:
-                    return 0.0
+                lines.append("【軸判定】")
+                lines.append(_axis_type)
+                if _axis_reasons:
+                    lines.append("理由：" + "／".join(_axis_reasons[:4]))
+                lines.append(_axis_line_note)
+                lines.append("")
 
-            def _longspan_hit_rank(_a, _b):
-                # 2車複の的中期待点 = 2車の車別的中期待点の合計。
-                # 最大目安：1位◎(6.1) + 2位〇(5.1) = 11.2点程度。
-                try:
-                    _s = _longspan_hit_score_one(_a) + _longspan_hit_score_one(_b)
-                    if _s >= 10.0:
-                        return "A"
-                    if _s >= 8.0:
-                        return "B"
-                    if _s >= 6.0:
-                        return "C"
-                    return "D"
-                except Exception:
-                    return "D"
-
-            def _longspan_myoumi_rank(_score):
-                # 妙味期待：総合ptとは切り離し、純粋な妙味ptだけで細分化する。
-                # v143: A++が多く出すぎたため、A++/A+の基準を厳格化。
-                # A++/A+/A は総合評価計算ではすべて「妙味A」として扱う。
-                try:
-                    _score = float(_score)
-                    if _score >= 10.0:
-                        return "A++"
-                    if _score >= 9.4:
-                        return "A+"
-                    if _score >= 8.4:
-                        return "A"
-                    if _score >= 7.0:
-                        return "B"
-                    if _score >= 5.5:
-                        return "C"
-                    return "D"
-                except Exception:
-                    return "D"
-
-            def _longspan_myoumi_core_rank(_myoumi_rank):
-                # 総合評価表用の正規化。表示上はA++/A+/Aを分けるが、総合判定では妙味A扱い。
-                r = str(_myoumi_rank)
-                if r in ("A++", "A+", "A"):
-                    return "A"
-                if r in ("B", "C", "D"):
-                    return r
-                return "D"
-
-            def _longspan_total_rank(_hit_rank, _myoumi_rank):
-                # 総合評価：事前購入の見やすさ用。
-                # 的中A×妙味Dは「来そうだが安い」ためC、的中Dは原則抑える。
-                _mr = _longspan_myoumi_core_rank(_myoumi_rank)
-                table = {
-                    ("A", "A"): "A", ("A", "B"): "A", ("A", "C"): "B", ("A", "D"): "C",
-                    ("B", "A"): "A", ("B", "B"): "B", ("B", "C"): "B", ("B", "D"): "C",
-                    ("C", "A"): "B", ("C", "B"): "C", ("C", "C"): "C", ("C", "D"): "D",
-                    ("D", "A"): "C", ("D", "B"): "D", ("D", "C"): "D", ("D", "D"): "D",
-                }
-                return table.get((str(_hit_rank), _mr), "D")
-
-            def _longspan_rank_value(_rank):
-                return {"A": 4.0, "B": 3.0, "C": 2.0, "D": 1.0}.get(str(_rank), 0.0)
-
-            def _longspan_hit_score_pair(_a, _b):
-                try:
-                    return float(_longspan_hit_score_one(_a)) + float(_longspan_hit_score_one(_b))
-                except Exception:
-                    return 0.0
-
-            def _longspan_total_score(_hit_score, _myoumi_score, _hit_rank, _myoumi_rank, _total_rank):
-                """
-                総合pt：2車複購入候補を上位2点＋微差3点へ絞るための内部点。
-                A/B/C/Dだけでは同ランク内の差が見えないため、打ち合わせ通り数値で並べる。
-                """
-                try:
-                    hs = float(_hit_score)
-                except Exception:
-                    hs = 0.0
-                try:
-                    ms = float(_myoumi_score)
-                except Exception:
-                    ms = 0.0
-                # 的中と妙味を半々に近く見る。総合ランクで軽く床上げし、同ランク内は実点差で並べる。
-                base = 0.55 * hs + 0.45 * ms
-                rank_bonus = {"A": 1.00, "B": 0.45, "C": 0.00, "D": -0.50}.get(str(_total_rank), -0.50)
-                return round(base + rank_bonus, 1)
-
-            def _longspan_pair_sort_key(_row):
-                # row = dict
-                # v141: 全21通り表は「総合ptが高い順」を最優先にする。
-                # A/B/C/Dランクは同点時の補助だけに使う。
-                rank_order = {"A++": 6, "A+": 5, "A": 4, "B": 3, "C": 2, "D": 1}
-                try:
-                    total_pt = float(_row.get("total_pt", 0.0))
-                except Exception:
-                    total_pt = 0.0
-                try:
-                    hit_score = float(_row.get("hit_score", 0.0))
-                except Exception:
-                    hit_score = 0.0
-                try:
-                    myoumi_score = float(_row.get("myoumi_score", 0.0))
-                except Exception:
-                    myoumi_score = 0.0
-                return (
-                    total_pt,
-                    rank_order.get(str(_row.get("total_rank")), 0),
-                    hit_score,
-                    myoumi_score,
-                    rank_order.get(str(_row.get("hit_rank")), 0),
-                    rank_order.get(str(_row.get("myoumi_rank")), 0),
-                )
-
-
-            def _longspan_velobi_rank(_car_no):
-                try:
-                    return [int(x) for x in xs].index(int(_car_no)) + 1
-                except Exception:
-                    return 99
-
-
-
-            # v139: 全車BOXの2車複を全通りスコア化する。
-            # 妙味ptは方向の影響があるため、推奨流れ上位→下位の順で _myoumi_score_2kei に渡す。
-            for a, b in combinations(long_span_all_cars, 2):
-                try:
-                    a_i, b_i = int(a), int(b)
-                    if a_i == b_i:
-                        continue
-                    key = tuple(sorted((a_i, b_i)))
-                    if key in long_span_keys:
-                        continue
-                    long_span_keys.add(key)
-
-                    order_pair = sorted([a_i, b_i], key=lambda z: _longspan_velobi_rank(z))
-                    score_head, score_tail = int(order_pair[0]), int(order_pair[1])
+                def _longspan_velobi_rank(_car_no):
                     try:
-                        sc = float(_myoumi_score_2kei(score_head, score_tail, int(A), mark_map or {}))
+                        return [int(x) for x in _xs].index(int(_car_no)) + 1
                     except Exception:
-                        sc = 0.0
+                        return 99
 
-                    # 2車複なので表示は小さい車番-大きい車番へ揃える。
-                    disp = f"{key[0]}-{key[1]}"
-                    hit_score = _longspan_hit_score_pair(key[0], key[1])
-                    hit_rank = _longspan_hit_rank(key[0], key[1])
-                    myoumi_rank = _longspan_myoumi_rank(sc)
-                    total_rank = _longspan_total_rank(hit_rank, myoumi_rank)
-                    total_pt = _longspan_total_score(hit_score, sc, hit_rank, myoumi_rank, total_rank)
-                    long_span_pairs.append({
-                        "disp": disp,
-                        "a": key[0],
-                        "b": key[1],
-                        "score_head": score_head,
-                        "score_tail": score_tail,
-                        "hit_rank": hit_rank,
-                        "hit_score": round(float(hit_score), 2),
-                        "myoumi_rank": myoumi_rank,
-                        "myoumi_score": round(float(sc), 2),
-                        "total_rank": total_rank,
-                        "total_pt": total_pt,
-                    })
-                except Exception:
-                    pass
+                def _longspan_velobi_point(_car_no):
+                    try:
+                        _rank = _longspan_velobi_rank(_car_no)
+                        return {1: 5, 2: 4, 3: 3, 4: 2, 5: 1}.get(_rank, 0)
+                    except Exception:
+                        return 0
 
-            lines.append("")
-            lines.append("【買目考察】")
-            lines.append("")
-            if long_span_pairs:
-                # 数値順で並べる。表示候補は「総合評価B以上」を総合pt順で並べる。
-                sorted_pairs = sorted(long_span_pairs, key=_longspan_pair_sort_key, reverse=True)
+                def _longspan_win_point(_car_no):
+                    try:
+                        _car_no = int(_car_no)
+                        _mk = str((mark_map or {}).get(_car_no, (mark_map or {}).get(str(_car_no), "")) or "").strip()
+                        _mk = _mk.replace("○", "〇")
+                        return {"◎": 4, "〇": 3, "△": 2, "×": 1}.get(_mk, 0)
+                    except Exception:
+                        return 0
 
-                # v172:
-                # 3連複候補は本線・準本線を拾うため、従来どおり「総合評価B以上」全体を土台にする。
-                # 2車複購入候補は、総合評価B以上を土台にして総合pt上位2点のみ。
-                # 妙味A+/pt差による条件付き3点目追加はしない。
-                nifuku_trio_base = [
-                    row for row in sorted_pairs
-                    if str(row.get("total_rank", "")).strip() in ("A", "B")
+                def _longspan_hit_score_one(_car_no):
+                    try:
+                        _v = float(_longspan_velobi_point(_car_no))
+                        _w = float(_longspan_win_point(_car_no))
+                        _bonus = 0.0
+                        if _v >= 4 and _w >= 3:
+                            _bonus = 1.5
+                        elif _v >= 3 and _w >= 2:
+                            _bonus = 1.0
+                        return 0.6 * _v + 0.4 * _w + _bonus
+                    except Exception:
+                        return 0.0
+
+                def _longspan_hit_score_pair(_a, _b):
+                    try:
+                        return float(_longspan_hit_score_one(_a)) + float(_longspan_hit_score_one(_b))
+                    except Exception:
+                        return 0.0
+
+                def _longspan_hit_rank(_a, _b):
+                    try:
+                        _s = _longspan_hit_score_pair(_a, _b)
+                        if _s >= 10.0:
+                            return "A"
+                        if _s >= 8.0:
+                            return "B"
+                        if _s >= 6.0:
+                            return "C"
+                        return "D"
+                    except Exception:
+                        return "D"
+
+                def _longspan_myoumi_rank(_score):
+                    try:
+                        _score = float(_score)
+                        if _score >= 10.0:
+                            return "A++"
+                        if _score >= 9.4:
+                            return "A+"
+                        if _score >= 8.4:
+                            return "A"
+                        if _score >= 7.0:
+                            return "B"
+                        if _score >= 5.5:
+                            return "C"
+                        return "D"
+                    except Exception:
+                        return "D"
+
+                def _longspan_myoumi_core_rank(_myoumi_rank):
+                    _r = str(_myoumi_rank)
+                    if _r in ("A++", "A+", "A"):
+                        return "A"
+                    if _r in ("B", "C", "D"):
+                        return _r
+                    return "D"
+
+                def _longspan_total_rank(_hit_rank, _myoumi_rank):
+                    _mr = _longspan_myoumi_core_rank(_myoumi_rank)
+                    _table = {
+                        ("A", "A"): "A", ("A", "B"): "A", ("A", "C"): "B", ("A", "D"): "C",
+                        ("B", "A"): "A", ("B", "B"): "B", ("B", "C"): "B", ("B", "D"): "C",
+                        ("C", "A"): "B", ("C", "B"): "C", ("C", "C"): "C", ("C", "D"): "D",
+                        ("D", "A"): "C", ("D", "B"): "D", ("D", "C"): "D", ("D", "D"): "D",
+                    }
+                    return _table.get((str(_hit_rank), _mr), "D")
+
+                def _longspan_total_score(_hit_score, _myoumi_score, _hit_rank, _myoumi_rank, _total_rank):
+                    try:
+                        _hs = float(_hit_score)
+                    except Exception:
+                        _hs = 0.0
+                    try:
+                        _ms = float(_myoumi_score)
+                    except Exception:
+                        _ms = 0.0
+                    _base = 0.55 * _hs + 0.45 * _ms
+                    _rank_bonus = {"A": 1.00, "B": 0.45, "C": 0.00, "D": -0.50}.get(str(_total_rank), -0.50)
+                    return round(_base + _rank_bonus, 1)
+
+                def _longspan_pair_sort_key(_row):
+                    _rank_order = {"A++": 6, "A+": 5, "A": 4, "B": 3, "C": 2, "D": 1}
+                    try:
+                        _total_pt = float(_row.get("total_pt", 0.0))
+                    except Exception:
+                        _total_pt = 0.0
+                    try:
+                        _hit_score = float(_row.get("hit_score", 0.0))
+                    except Exception:
+                        _hit_score = 0.0
+                    try:
+                        _myoumi_score = float(_row.get("myoumi_score", 0.0))
+                    except Exception:
+                        _myoumi_score = 0.0
+                    return (
+                        _total_pt,
+                        _rank_order.get(str(_row.get("total_rank")), 0),
+                        _hit_score,
+                        _myoumi_score,
+                        _rank_order.get(str(_row.get("hit_rank")), 0),
+                        _rank_order.get(str(_row.get("myoumi_rank")), 0),
+                    )
+
+                _long_span_pairs = []
+                _long_span_keys = set()
+                for _a, _b in combinations(_long_span_all_cars, 2):
+                    try:
+                        _a_i, _b_i = int(_a), int(_b)
+                        if _a_i == _b_i:
+                            continue
+                        _key = tuple(sorted((_a_i, _b_i)))
+                        if _key in _long_span_keys:
+                            continue
+                        _long_span_keys.add(_key)
+
+                        _order_pair = sorted([_a_i, _b_i], key=lambda z: _longspan_velobi_rank(z))
+                        _score_head, _score_tail = int(_order_pair[0]), int(_order_pair[1])
+                        try:
+                            _sc = float(_myoumi_score_2kei(_score_head, _score_tail, int(_A), mark_map or {}))
+                        except Exception:
+                            _sc = 0.0
+
+                        _disp = f"{_key[0]}-{_key[1]}"
+                        _hit_score = _longspan_hit_score_pair(_key[0], _key[1])
+                        _hit_rank = _longspan_hit_rank(_key[0], _key[1])
+                        _myoumi_rank = _longspan_myoumi_rank(_sc)
+                        _total_rank = _longspan_total_rank(_hit_rank, _myoumi_rank)
+                        _total_pt = _longspan_total_score(_hit_score, _sc, _hit_rank, _myoumi_rank, _total_rank)
+                        _long_span_pairs.append({
+                            "disp": _disp,
+                            "a": _key[0],
+                            "b": _key[1],
+                            "score_head": _score_head,
+                            "score_tail": _score_tail,
+                            "hit_rank": _hit_rank,
+                            "hit_score": round(float(_hit_score), 2),
+                            "myoumi_rank": _myoumi_rank,
+                            "myoumi_score": round(float(_sc), 2),
+                            "total_rank": _total_rank,
+                            "total_pt": _total_pt,
+                        })
+                    except Exception:
+                        pass
+
+                if not _long_span_pairs:
+                    lines.append("該当なし")
+                    lines.append("")
+                    return
+
+                _sorted_pairs = sorted(_long_span_pairs, key=_longspan_pair_sort_key, reverse=True)
+                _nifuku_buy_base = [
+                    _row for _row in _sorted_pairs
+                    if str(_row.get("total_rank", "")).strip() in ("A", "B")
                 ]
+                _nifuku_buy = list(_nifuku_buy_base or [])[:2]
 
-                try:
-                    nifuku_buy = list(nifuku_trio_base or [])[:2]
-                except Exception:
-                    nifuku_buy = []
+                lines.append("【総合評価2車複推奨】")
+                lines.append("2車複購入候補（総合B以上・総合pt上位2点）")
+                lines.append("　".join(str(_row.get("disp")) for _row in _nifuku_buy if _row.get("disp")) if _nifuku_buy else "該当なし")
+                lines.append("")
 
-                # v187: 2車複購入候補の表示は、3連複候補5車を作った後で
-                # 会場判定別に切り替えるため、ここではまだ出力しない。
-
-
-                # v165: 全21通りの2車複内部数値から、車番別の単騎評価を作る。
-                # 各車を含む2車複6通りから、最高値1本・最低値1本を除外した4本平均を使う。
-                # 表示は的中順単騎評価・妙味順単騎評価のみ。結論順1:2/1:3は非表示。
                 def _longspan_trimmed_avg(_vals):
                     try:
-                        vals = sorted([float(v) for v in (_vals or [])])
-                        # 7車立て2車複総流しなら通常6本。
-                        # 3本以上ある場合だけ上下1本ずつ除外し、残りで平均する。
-                        if len(vals) >= 3:
-                            vals = vals[1:-1]
-                        if not vals:
+                        _vals = sorted([float(v) for v in (_vals or [])])
+                        if len(_vals) >= 3:
+                            _vals = _vals[1:-1]
+                        if not _vals:
                             return 0.0
-                        return round(sum(vals) / len(vals), 2)
+                        return round(sum(_vals) / len(_vals), 2)
                     except Exception:
                         return 0.0
 
                 def _longspan_car_average_rows(_pairs, _cars):
-                    avg_rows = []
+                    _avg_rows = []
                     try:
-                        for car in [int(x) for x in (_cars or []) if str(x).isdigit()]:
-                            hit_vals = []
-                            myoumi_vals = []
-                            total_vals = []
-                            for row in (_pairs or []):
+                        for _car in [int(x) for x in (_cars or []) if str(x).isdigit()]:
+                            _hit_vals = []
+                            _myoumi_vals = []
+                            _total_vals = []
+                            for _row in (_pairs or []):
                                 try:
-                                    if int(row.get("a")) == car or int(row.get("b")) == car:
-                                        hit_vals.append(float(row.get("hit_score", 0.0)))
-                                        myoumi_vals.append(float(row.get("myoumi_score", 0.0)))
-                                        total_vals.append(float(row.get("total_pt", 0.0)))
+                                    if int(_row.get("a")) == _car or int(_row.get("b")) == _car:
+                                        _hit_vals.append(float(_row.get("hit_score", 0.0)))
+                                        _myoumi_vals.append(float(_row.get("myoumi_score", 0.0)))
+                                        _total_vals.append(float(_row.get("total_pt", 0.0)))
                                 except Exception:
                                     pass
-                            if hit_vals and myoumi_vals and total_vals:
-                                # v161: 着順率係数は掛けず、2車複総流し6本から上下1本ずつ除外したトリム平均で見る。
-                                hit_avg = _longspan_trimmed_avg(hit_vals)
-                                myoumi_avg = _longspan_trimmed_avg(myoumi_vals)
-                                final_12 = round((hit_avg + myoumi_avg * 2.0) / 3.0, 2)
-                                final_13 = round((hit_avg + myoumi_avg * 3.0) / 4.0, 2)
-                                avg_rows.append({
-                                    "car": car,
-                                    "hit_avg": hit_avg,
-                                    "myoumi_avg": myoumi_avg,
-                                    "final_12": final_12,
-                                    "final_13": final_13,
-                                    # 検証用に総合pt平均も内部保持。表示には出さない。
-                                    "total_avg": _longspan_trimmed_avg(total_vals),
+                            if _hit_vals and _myoumi_vals and _total_vals:
+                                _hit_avg = _longspan_trimmed_avg(_hit_vals)
+                                _myoumi_avg = _longspan_trimmed_avg(_myoumi_vals)
+                                _avg_rows.append({
+                                    "car": _car,
+                                    "hit_avg": _hit_avg,
+                                    "myoumi_avg": _myoumi_avg,
+                                    "total_avg": _longspan_trimmed_avg(_total_vals),
                                 })
                     except Exception:
-                        avg_rows = []
-                    return avg_rows
+                        _avg_rows = []
+                    return _avg_rows
 
                 def _longspan_car_average_line(_avg_rows, _key):
                     try:
-                        rows = sorted(_avg_rows or [], key=lambda r: (float(r.get(_key, 0.0)), -_longspan_velobi_rank(r.get("car"))), reverse=True)
-                        return " → ".join(f"{int(r.get('car'))}（{float(r.get(_key, 0.0)):.1f}）" for r in rows)
+                        _rows = sorted(_avg_rows or [], key=lambda r: (float(r.get(_key, 0.0)), -_longspan_velobi_rank(r.get("car"))), reverse=True)
+                        return " → ".join(f"{int(r.get('car'))}（{float(r.get(_key, 0.0)):.1f}）" for r in _rows)
                     except Exception:
                         return ""
 
-                car_avg_rows = _longspan_car_average_rows(sorted_pairs, long_span_all_cars)
+                _car_avg_rows = _longspan_car_average_rows(_sorted_pairs, _long_span_all_cars)
+                _hit_avg_line = _longspan_car_average_line(_car_avg_rows, "hit_avg")
+                _myoumi_avg_line = _longspan_car_average_line(_car_avg_rows, "myoumi_avg")
 
-                # v187: 会場判定に応じて、同じ候補5車から買い方だけを切り替える。
-                # good系   : 2車複は出さず、三連複を軸A-候補4車-候補4車の6点型へ変更。
-                # middle系 : 三連複は買わず、2車複を総合評価B以上・総合pt上位4点にする。
-                # bad系    : 三連複は買わず、下位4車の2車複BOX（6点）。軸A/B固定を信用しない。
-                def _venue_bet_mode_from_profile():
-                    try:
-                        vp = str(globals().get("venue_profile", "unknown") or "unknown").strip()
-                    except Exception:
-                        vp = "unknown"
-                    if vp in ("strong_good", "swing_return"):
-                        return "good"
-                    if vp in ("normal", "normal_watch", "cheap_hit"):
-                        return "middle"
-                    if vp in ("bad", "low_hit_risk", "very_bad"):
-                        return "bad"
-                    return "good"
-
-                def _pair_disp_from_cars(_cars):
-                    pairs = []
-                    seen = set()
-                    try:
-                        for a, b in combinations([int(x) for x in (_cars or [])], 2):
-                            key = tuple(sorted((int(a), int(b))))
-                            if key in seen:
-                                continue
-                            seen.add(key)
-                            pairs.append(f"{key[0]}-{key[1]}")
-                    except Exception:
-                        return []
-                    return pairs
-
-                trio_build_info = {}
-
-                # v177: 3連複購入候補
-                # 1列目・2列目の母集団は「2車複購入候補＝総合評価2車複推奨」に限定する。
-                # 1列目は同候補内で的中順単騎評価が最上位の車。
-                # 2列目は同候補内から1列目を除外し、推奨流れ4位以内の中で妙味順単騎評価が最も高い車。
-                # 3列目はv181の同ライン保護を維持し、常に3車に固定する。
-                #   ・的中順単騎評価1位
-                #   ・推奨流れ側ラインのヒモ
-                #   ・別線側の直近1車
-                #   ・B以上残り
-                #   ・推奨流れ上位
-                #   ・妙味順単騎評価
-                # を優先順とスコアで再選別し、不足時は全車候補から補完する。
-                def _longspan_make_trio_candidate(_nifuku_buy, _car_avg_rows):
-                    try:
-                        if not _nifuku_buy or not _car_avg_rows:
-                            return "該当なし"
-
-                        # 候補車は、2車複B以上の表示順で出現した順序を保つ。
-                        cand_order = []
-                        seen = set()
-                        for row in (_nifuku_buy or []):
-                            for k in ("a", "b"):
-                                try:
-                                    c = int(row.get(k))
-                                except Exception:
-                                    continue
-                                if c not in seen:
-                                    cand_order.append(c)
-                                    seen.add(c)
-
-                        # v185: 2車複購入候補が1点だけでも、2車複が成立しているなら3連複を生成する。
-                        # 候補車が2車だけの場合は、その2車を軸にして3列目だけ生成する。
-                        if len(cand_order) < 2:
-                            return "該当なし"
-
-                        hit_map = {}
-                        myoumi_map = {}
-                        for r in (_car_avg_rows or []):
-                            try:
-                                c = int(r.get("car"))
-                                hit_map[c] = float(r.get("hit_avg", 0.0))
-                                myoumi_map[c] = float(r.get("myoumi_avg", 0.0))
-                            except Exception:
-                                pass
-
-                        # v177: 軸1は、2車複購入候補（総合B以上・総合pt上位2点）に出ている車の中で、
-                        # 的中順単騎評価が最上位の車を採用する。
-                        axis1_list = sorted(
-                            [int(c) for c in cand_order],
-                            key=lambda c: (float(hit_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
-                            reverse=True,
-                        )[:1]
-                        if not axis1_list:
-                            return "該当なし"
-                        axis1 = int(axis1_list[0])
-
-                        # 推奨流れ順。軸B選定にも使うため、軸2決定前に取得する。
-                        rec_seq = []
-                        try:
-                            rec_seq = [int(x) for x in (globals().get("RECOMMENDED_STYLE_SEQ", []) or []) if str(x).isdigit()]
-                        except Exception:
-                            rec_seq = []
-                        if not rec_seq:
-                            try:
-                                _style = globals().get("RECOMMENDED_STYLE", "")
-                                rec_seq = [int(x) for x in (globals().get("STYLE_SEQ_MAP", {}) or {}).get(_style, []) if str(x).isdigit()]
-                            except Exception:
-                                rec_seq = []
-                        flow_rank = {int(c): i for i, c in enumerate(rec_seq)}
-                        flow_top4_set = {int(c) for c in rec_seq[:4]}
-
-                        # v184: 軸2は、2車複購入候補に含まれる軸1以外の車から選ぶ。
-                        # 条件は「推奨流れ4位以内」。その中で妙味順単騎評価が最も高い車を採用する。
-                        # v185: ただし2車複候補が1点だけで候補車が2車しかない場合は、
-                        #       その2車複が成立している以上、残り1車を軸2として採用し、3列目を生成する。
-                        axis2_pool_all = [int(c) for c in cand_order if int(c) != int(axis1)]
-                        axis2_pool = [int(c) for c in axis2_pool_all if int(c) in flow_top4_set]
-                        if not axis2_pool and len(cand_order) == 2:
-                            axis2_pool = list(axis2_pool_all)
-                        if not axis2_pool:
-                            return "該当なし"
-                        axis2_ranked = sorted(
-                            axis2_pool,
-                            key=lambda c: (float(myoumi_map.get(int(c), 0.0)), float(hit_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
-                            reverse=True,
-                        )
-                        axis2_list = axis2_ranked[:1]
-                        if not axis2_list:
-                            return "該当なし"
-                        axis2 = int(axis2_list[0])
-
-                        # v186: 競り関与車同士が軸A・軸Bになる場合だけ、
-                        # 的中1位ではない軸Bを3列目へ降格し、次候補を軸Bへ繰り上げる。
-                        # 競り車は消さず、3列目で保護する。次候補が無い場合は従来どおり。
-                        seri_axisB_demoted = []
-                        try:
-                            _axis1_seri = bool(_is_car_seri_involved_for_axis(int(axis1)))
-                            _axis2_seri = bool(_is_car_seri_involved_for_axis(int(axis2)))
-                        except Exception:
-                            _axis1_seri = False
-                            _axis2_seri = False
-
-                        if _axis1_seri and _axis2_seri:
-                            _next_axis2 = None
-                            for _c in axis2_ranked:
-                                _c = int(_c)
-                                if _c == int(axis2):
-                                    continue
-                                _next_axis2 = _c
-                                break
-                            if _next_axis2 is not None:
-                                seri_axisB_demoted.append(int(axis2))
-                                axis2 = int(_next_axis2)
-
-                        axes = [axis1, axis2]
-                        axes_set = {int(x) for x in axes}
-                        hit_protect = axis1
-
-                        bplus_rest = [int(c) for c in cand_order if int(c) not in axes_set]
-
-                        # 推奨流れ順。なければSTYLE_SEQ_MAPの推奨戦法から拾う。
-                        rec_seq = []
-                        try:
-                            rec_seq = [int(x) for x in (globals().get("RECOMMENDED_STYLE_SEQ", []) or []) if str(x).isdigit()]
-                        except Exception:
-                            rec_seq = []
-                        if not rec_seq:
-                            try:
-                                _style = globals().get("RECOMMENDED_STYLE", "")
-                                rec_seq = [int(x) for x in (globals().get("STYLE_SEQ_MAP", {}) or {}).get(_style, []) if str(x).isdigit()]
-                            except Exception:
-                                rec_seq = []
-                        flow_rank = {int(c): i for i, c in enumerate(rec_seq)}
-                        flow_top5 = [int(c) for c in rec_seq[:5] if int(c) not in axes_set]
-
-                        # v169: 3列目は、採用された推奨流れの流域ラインを最優先する。
-                        # 例：推奨流れ【順流】で順流域=413、軸=2-4なら、
-                        # 4側のヒモ 1・3 を優先し、2側(別線から突っ込む車)は直近1車の5まで。
-                        selected_style = str(globals().get("RECOMMENDED_STYLE", "") or "").strip()
-
-                        def _norm_line_key_for_trio(_ln):
-                            try:
-                                if isinstance(_ln, (list, tuple)):
-                                    return "".join(str(int(x)) for x in _ln if str(x).isdigit())
-                            except Exception:
-                                pass
-                            return "".join(ch for ch in str(_ln) if ch.isdigit())
-
-                        def _zone_for_line_trio(_mem):
-                            try:
-                                key = _norm_line_key_for_trio(_mem)
-                                zmap = globals().get("LINE_ZONE_MAP", {}) or {}
-                                if isinstance(zmap, dict) and key in zmap:
-                                    return str(zmap.get(key, "その他"))
-                            except Exception:
-                                pass
-                            return "その他"
-
-                        def _find_line_for_car(_car):
-                            try:
-                                _line_def = globals().get("line_def", {}) or {}
-                                if isinstance(_line_def, dict):
-                                    for _gid, _mem in _line_def.items():
-                                        mem = [int(x) for x in (_mem or []) if str(x).isdigit()]
-                                        if int(_car) in mem:
-                                            return _gid, mem, _zone_for_line_trio(mem)
-                            except Exception:
-                                pass
-                            return None, [], "その他"
-
-                        flow_line_himo = []      # 採用流れ側ラインのヒモ。最優先。
-                        nonflow_direct = []      # 別線から突っ込む軸の直近1車だけ。
-                        try:
-                            for ax in axes:
-                                ax = int(ax)
-                                _gid, mem, z = _find_line_for_car(ax)
-                                if not mem:
-                                    continue
-                                idx = mem.index(ax)
-
-                                if selected_style and z == selected_style:
-                                    # 採用された推奨流れ側の軸なら、そのライン残りを優先。
-                                    # 3番手も「推奨流れ側ラインのヒモ」として残す余地を持つ。
-                                    for c in mem:
-                                        c = int(c)
-                                        if c not in axes_set and c not in flow_line_himo:
-                                            flow_line_himo.append(c)
-                                else:
-                                    # 推奨流れ側ではない軸は「突っ込んでくる車」と見て、
-                                    # ラインを丸ごと拾わず、直近1車だけにする。
-                                    # 番手なら前の車、先頭なら後ろの車、3番手なら番手を優先。
-                                    near = None
-                                    if idx - 1 >= 0:
-                                        near = int(mem[idx - 1])
-                                    elif idx + 1 < len(mem):
-                                        near = int(mem[idx + 1])
-                                    if near is not None and near not in axes_set and near not in nonflow_direct:
-                                        nonflow_direct.append(near)
-                        except Exception:
-                            flow_line_himo = []
-                            nonflow_direct = []
-
-                        # v181: 軸1・軸2の同ライン残りはスコア選別より先に固定保護する。
-                        # ここは会場決まり手補正・妙味順・推奨流れ順位で押し出さない。
-                        fixed_same_line_rest = []
-                        try:
-                            for ax in axes:
-                                ax = int(ax)
-                                _gid, mem, z = _find_line_for_car(ax)
-                                if not mem or len(mem) <= 1:
-                                    continue
-                                for c in mem:
-                                    c = int(c)
-                                    if c in axes_set:
-                                        continue
-                                    if c not in fixed_same_line_rest:
-                                        fixed_same_line_rest.append(c)
-                        except Exception:
-                            fixed_same_line_rest = []
-
-                        # v186: 競りで軸Bから降格した車は、軸からは外すが3列目で固定保護する。
-                        try:
-                            for c in (seri_axisB_demoted or []):
-                                c = int(c)
-                                if c not in axes_set and c not in fixed_same_line_rest:
-                                    fixed_same_line_rest.append(c)
-                        except Exception:
-                            pass
-
-                        # 保険：軸に推奨流れ側ラインが含まれない場合でも、
-                        # 採用流れラインの上位ヒモを1〜2車だけ候補化する。
-                        try:
-                            if selected_style and not flow_line_himo:
-                                _line_def = globals().get("line_def", {}) or {}
-                                if isinstance(_line_def, dict):
-                                    for _gid, _mem in _line_def.items():
-                                        mem = [int(x) for x in (_mem or []) if str(x).isdigit()]
-                                        if not mem or _zone_for_line_trio(mem) != selected_style:
-                                            continue
-                                        for c in mem:
-                                            c = int(c)
-                                            if c not in axes_set and c not in flow_line_himo:
-                                                flow_line_himo.append(c)
-                                            if len(flow_line_himo) >= 2:
-                                                break
-                                        if flow_line_himo:
-                                            break
-                        except Exception:
-                            pass
-
-                        # 旧名互換：後段の表示/スコア参照用。
-                        line_near = list(dict.fromkeys(flow_line_himo + nonflow_direct))
-
-                        # 妙味順単騎評価上位。軸以外を候補化。
-                        myoumi_order = sorted(
-                            [int(r.get("car")) for r in (_car_avg_rows or []) if str(r.get("car")).isdigit()],
-                            key=lambda c: (float(myoumi_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
-                            reverse=True,
-                        )
-                        myoumi_top = [int(c) for c in myoumi_order if int(c) not in axes_set][:3]
-
-                        # 候補を集約。
-                        # v169: 推奨流れ側ラインのヒモを先に置き、別線側は直近1車まで。
-                        # B以上残り・推奨流れ上位・妙味順は補助材料に下げる。
-                        third_pool = []
-                        # v177: 軸1はすでに的中順最上位。3列目では重複除外する。
-                        if hit_protect is not None and int(hit_protect) not in axes_set:
-                            third_pool.append(int(hit_protect))
-
-                        for src in (flow_line_himo, nonflow_direct, bplus_rest, flow_top5, myoumi_top):
-                            for c in src:
-                                c = int(c)
-                                if c in axes_set:
-                                    continue
-                                if c not in third_pool:
-                                    third_pool.append(c)
-
-                        # v174: 3列目は常に3車にするため、候補が不足する場合に備えて
-                        # 全車から軸以外を補完候補として追加する。
-                        try:
-                            for c in [int(x) for x in (long_span_all_cars or []) if str(x).isdigit()]:
-                                if c in axes_set:
-                                    continue
-                                if c not in third_pool:
-                                    third_pool.append(c)
-                        except Exception:
-                            pass
-
-                        if not third_pool:
-                            return "該当なし"
-
-                        # 役割とライン内位置。
-                        def _role_and_pos(_car):
-                            try:
-                                _line_def = globals().get("line_def", {}) or {}
-                                if isinstance(_line_def, dict):
-                                    for _gid, _mem in _line_def.items():
-                                        mem = [int(x) for x in (_mem or []) if str(x).isdigit()]
-                                        if int(_car) in mem:
-                                            idx = mem.index(int(_car))
-                                            if len(mem) <= 1:
-                                                return "single", idx, len(mem)
-                                            if idx == 0:
-                                                return "head", idx, len(mem)
-                                            if idx == 1:
-                                                return "second", idx, len(mem)
-                                            return "thirdplus", idx, len(mem)
-                            except Exception:
-                                pass
-                            return "single", 0, 1
-
-                        def _third_score(c):
-                            c = int(c)
-                            score = 0.0
-
-                            # v177: 軸1が3列目に重複しないよう、通常はここでは加点されない。
-                            if hit_protect is not None and c == int(hit_protect):
-                                score += 160.0
-
-                            # v169: 採用された推奨流れ側ラインのヒモを最優先。
-                            # 例：順流413の4が軸なら、1・3を優先する。
-                            if c in flow_line_himo:
-                                score += 130.0
-
-                            # 別線から突っ込む軸の相手は、直近1車だけ強めに残す。
-                            # 例：526の2が突っ込むなら5まで。6はここに入れない。
-                            if c in nonflow_direct:
-                                score += 100.0
-
-                            # B以上2車複候補の残りは根拠として残すが、推奨流れ側ヒモよりは下げる。
-                            if c in bplus_rest:
-                                score += 75.0
-
-                            # 推奨流れ上位は現実性を加点。上にいるほど強い。
-                            if c in flow_rank:
-                                r = int(flow_rank[c])
-                                if r <= 4:
-                                    score += 58.0 - r * 7.0
-                                elif r <= 6:
-                                    score += 12.0
-                                else:
-                                    score -= 20.0
-
-                            # 妙味順は最後の補助。推奨流れ側ラインのヒモを押しのけない。
-                            score += float(myoumi_map.get(c, 0.0)) * 3.0
-                            score += float(hit_map.get(c, 0.0)) * 2.0
-
-                            role, idx, ln = _role_and_pos(c)
-                            if role == "second":
-                                score += 14.0
-                            elif role == "head":
-                                score += 6.0
-                            elif role == "thirdplus":
-                                # 推奨流れ側ラインの3番手は残す余地を持つ。
-                                # 別線側の3番手・末尾はかなり落とす。
-                                if c in flow_line_himo:
-                                    score -= 2.0
-                                else:
-                                    score -= 26.0
-                                    if ln >= 4 and idx >= 2:
-                                        score -= 10.0
-                            elif role == "single":
-                                score -= 24.0
-
-                            # 推奨流れに出ていない、または下位すぎる候補は薄くする。
-                            if rec_seq and c not in flow_rank:
-                                score -= 24.0
-                            elif rec_seq and flow_rank.get(c, 99) >= 6:
-                                score -= 16.0
-
-                            return score
-
-                        # v181: 同ライン残りを先に固定し、残り枠だけを従来スコアで補完する。
-                        third = []
-                        try:
-                            for c in fixed_same_line_rest:
-                                c = int(c)
-                                if c in axes_set:
-                                    continue
-                                if c not in third:
-                                    third.append(c)
-                                if len(third) >= 3:
-                                    break
-                        except Exception:
-                            third = []
-
-                        if len(third) < 3:
-                            rest_sorted = sorted(
-                                [int(c) for c in third_pool if int(c) not in axes_set and int(c) not in third],
-                                key=lambda c: (_third_score(c), -flow_rank.get(int(c), 99), float(hit_map.get(int(c), 0.0)), float(myoumi_map.get(int(c), 0.0)), -_longspan_velobi_rank(c)),
-                                reverse=True,
-                            )
-                            for c in rest_sorted:
-                                if c not in third:
-                                    third.append(int(c))
-                                if len(third) >= 3:
-                                    break
-
-                        # v174: 3列目は常に3車。通常の5〜9車立てなら軸2車を除いて3車以上ある。
-                        if len(third) < 3:
-                            return "該当なし"
-
-                        # v187: 候補5車 = 軸A + 軸B + 3列目3車。
-                        # 会場判定が悪いほど、軸固定から離して買い方だけを広げる。
-                        candidate_five = []
-                        for _c in [int(axes[0]), int(axes[1])] + [int(c) for c in third[:3]]:
-                            if _c not in candidate_five:
-                                candidate_five.append(_c)
-
-                        lower4 = [int(c) for c in candidate_five if int(c) != int(axes[0])][:4]
-                        mode = _venue_bet_mode_from_profile()
-                        adjusted_nifuku = None
-
-                        if mode == "good" and len(lower4) >= 4:
-                            # v191: good系は2車複を出さず、軸Aだけ残して軸B固定を外す。
-                            # 形は A-2345-2345（候補5車から軸Aを除いた4車同士）= 三連複6点。
-                            adjusted_nifuku = []
-                            trio_4 = ''.join(str(int(c)) for c in lower4[:4])
-                            trio_text = f"{int(axes[0])}-{trio_4}-{trio_4}"
-                        elif mode == "middle":
-                            # v189: middle系は3連複を出さない。
-                            # 2車複は「総合評価B以上」を総合pt順で上位4点まで表示する。
-                            trio_text = "該当なし"
-                            try:
-                                adjusted_nifuku = [str(row.get("disp")) for row in (nifuku_trio_base or [])[:4] if row.get("disp")]
-                            except Exception:
-                                adjusted_nifuku = []
-                        elif mode == "bad" and len(lower4) >= 4:
-                            trio_text = "該当なし"
-                            adjusted_nifuku = _pair_disp_from_cars(lower4)
-                        else:
-                            # フォールバック：候補4車が作れない場合だけ従来のA-B-3車に戻す。
-                            trio_text = f"{int(axes[0])}-{int(axes[1])}-{''.join(str(int(c)) for c in third)}"
-
-                        trio_build_info.clear()
-                        trio_build_info.update({
-                            "mode": mode,
-                            "axes": [int(axes[0]), int(axes[1])],
-                            "third": [int(c) for c in third[:3]],
-                            "candidate_five": candidate_five,
-                            "lower4": lower4,
-                            "adjusted_nifuku": adjusted_nifuku,
-                            "trio_text": trio_text,
-                        })
-                        return trio_text
-                    except Exception:
-                        return "該当なし"
-
-                if car_avg_rows:
-                    trio_candidate = _longspan_make_trio_candidate(nifuku_buy, car_avg_rows)
-                    _bet_mode = str((trio_build_info or {}).get("mode") or _venue_bet_mode_from_profile())
-                    _adjusted_nifuku = (trio_build_info or {}).get("adjusted_nifuku")
-
-                    # v192: good系は3連複へ一本化するため、2車複の「該当なし」表示自体を出さない。
-                    # middle/bad系のみ2車複推奨ブロックを表示する。
-                    if _bet_mode == "bad" and _adjusted_nifuku:
-                        lines.append("【総合評価2車複推奨】")
-                        lines.append("2車複購入候補（会場判定bad系：候補5車内・軸A除外4車BOX）")
-                        lines.append("　".join(str(x) for x in _adjusted_nifuku) if _adjusted_nifuku else "該当なし")
-                        lines.append("")
-                    elif _bet_mode == "middle":
-                        # v189: middle系は3連複なし。2車複は総合評価B以上・総合pt上位4点。
-                        lines.append("【総合評価2車複推奨】")
-                        lines.append("2車複購入候補（会場判定middle系：総合B以上・総合pt上位4点）")
-                        lines.append("　".join(str(x) for x in _adjusted_nifuku) if _adjusted_nifuku else "該当なし")
-                        lines.append("")
-
-                    lines.append("3連複購入候補")
-                    lines.append(trio_candidate)
-                    lines.append("")
-
-                    final_12_line = _longspan_car_average_line(car_avg_rows, "final_12")
-                    final_13_line = _longspan_car_average_line(car_avg_rows, "final_13")
-                    hit_avg_line = _longspan_car_average_line(car_avg_rows, "hit_avg")
-                    myoumi_avg_line = _longspan_car_average_line(car_avg_rows, "myoumi_avg")
-                    lines.append("車番別平均評価（極端値除外）")
-                    if hit_avg_line:
-                        lines.append(f"的中順単騎評価：{hit_avg_line}")
-                    if myoumi_avg_line:
-                        lines.append(f"妙味順単騎評価：{myoumi_avg_line}")
-                    lines.append("")
+                lines.append("車番別平均評価（極端値除外）")
+                if _hit_avg_line:
+                    lines.append(f"的中順単騎評価：{_hit_avg_line}")
+                if _myoumi_avg_line:
+                    lines.append(f"妙味順単騎評価：{_myoumi_avg_line}")
+                lines.append("")
 
                 def _longspan_display_width(_text):
-                    # 日本語見出しは全角幅になるため、len() ではなく表示幅で揃える。
-                    # East Asian Width: F/W/A を2幅、それ以外を1幅として扱う。
                     import unicodedata
-                    s = str(_text)
-                    w = 0
-                    for ch in s:
-                        w += 2 if unicodedata.east_asian_width(ch) in ("F", "W", "A") else 1
-                    return w
-
-                def _longspan_pad_right(_text, _width):
-                    # 見出し・買い目用：左寄せで右側に全角スペース主体の余白を入れる。
-                    txt = str(_text)
-                    pad = max(0, int(_width) - _longspan_display_width(txt))
-                    fw = pad // 2
-                    hw = pad % 2
-                    return txt + ("　" * fw) + (" " * hw)
+                    _s = str(_text)
+                    _w = 0
+                    for _ch in _s:
+                        _w += 2 if unicodedata.east_asian_width(_ch) in ("F", "W", "A") else 1
+                    return _w
 
                 def _longspan_pad_center(_text, _width):
-                    # ランク用：A / A+ / A++ を列内中央寄せ。
-                    # 「+」が増えた分だけ左右の空白が自然に減る。
-                    txt = str(_text)
-                    pad = max(0, int(_width) - _longspan_display_width(txt))
-                    left = pad // 2
-                    right = pad - left
-                    return (("　" * (left // 2)) + (" " * (left % 2)) +
-                            txt +
-                            ("　" * (right // 2)) + (" " * (right % 2)))
+                    _txt = str(_text)
+                    _pad = max(0, int(_width) - _longspan_display_width(_txt))
+                    _left = _pad // 2
+                    _right = _pad - _left
+                    return (("　" * (_left // 2)) + (" " * (_left % 2)) +
+                            _txt +
+                            ("　" * (_right // 2)) + (" " * (_right % 2)))
 
-                # v151: 縦線なし。見出し・評価・数値を同じ列幅の中央にそろえる。
-                # 「A」「A+」「A++」で妙味期待列が左右にズレないよう、各セルを表示幅で中央寄せ。
-                # 例：
-                # 買い目　　的中期待　妙味期待　総合評価　総合pt
-                # 1-4　　　 　　A　　 　　C　　 　　B　　 　8.9
-                # 2-4　　　 　　C　　 　　A+　　　  B　　 　8.2
-                col_w = {
-                    "disp": 10,      # 買い目
-                    "hit": 10,       # 的中期待
-                    "myoumi": 10,    # 妙味期待
-                    "total": 10,     # 総合評価
-                    "pt": 8,         # 総合pt
+                _col_w = {
+                    "disp": 10,
+                    "hit": 10,
+                    "myoumi": 10,
+                    "total": 10,
+                    "pt": 8,
                 }
-                sep = ""
+                _sep = ""
+                lines.append(_sep.join([
+                    _longspan_pad_center("買い目", _col_w["disp"]),
+                    _longspan_pad_center("的中期待", _col_w["hit"]),
+                    _longspan_pad_center("妙味期待", _col_w["myoumi"]),
+                    _longspan_pad_center("総合評価", _col_w["total"]),
+                    _longspan_pad_center("総合pt", _col_w["pt"]),
+                ]))
+                for _row in _sorted_pairs:
+                    _disp_cell = _longspan_pad_center(_row.get("disp"), _col_w["disp"])
+                    _hit_cell = _longspan_pad_center(_row.get("hit_rank"), _col_w["hit"])
+                    _myoumi_cell = _longspan_pad_center(_row.get("myoumi_rank"), _col_w["myoumi"])
+                    _total_cell = _longspan_pad_center(_row.get("total_rank"), _col_w["total"])
+                    _pt_cell = _longspan_pad_center(f"{float(_row.get('total_pt', 0.0)):.1f}", _col_w["pt"])
+                    lines.append(_sep.join([_disp_cell, _hit_cell, _myoumi_cell, _total_cell, _pt_cell]))
+
                 lines.append("")
-                lines.append(
-                    sep.join([
-                        _longspan_pad_center("買い目", col_w["disp"]),
-                        _longspan_pad_center("的中期待", col_w["hit"]),
-                        _longspan_pad_center("妙味期待", col_w["myoumi"]),
-                        _longspan_pad_center("総合評価", col_w["total"]),
-                        _longspan_pad_center("総合pt", col_w["pt"]),
-                    ])
-                )
-                for row in sorted_pairs:
-                    disp_cell = _longspan_pad_center(row.get('disp'), col_w["disp"])
-                    hit_cell = _longspan_pad_center(row.get('hit_rank'), col_w["hit"])
-                    myoumi_cell = _longspan_pad_center(row.get('myoumi_rank'), col_w["myoumi"])
-                    total_cell = _longspan_pad_center(row.get('total_rank'), col_w["total"])
-                    pt_cell = _longspan_pad_center(f"{float(row.get('total_pt', 0.0)):.1f}", col_w["pt"])
-                    lines.append(sep.join([disp_cell, hit_cell, myoumi_cell, total_cell, pt_cell]))
-            else:
-                lines.append("該当なし")
-            lines.append("")
+            except Exception as _e:
+                lines.append(f"【買目考察｜{_style_name}】")
+                lines.append(f"生成不可（{_e}）")
+                lines.append("")
+
+        if flow_items:
+            for _i, (_style_name, _seq) in enumerate(flow_items):
+                if _i > 0:
+                    lines.append("＊＊＊＊")
+                    lines.append("")
+                _append_one_flow_bet_review(_style_name, _seq)
+
             lines.append("目安：")
             lines.append("A：推奨買い候補")
             lines.append("B：買い候補")
@@ -12607,10 +12036,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("D：見送り")
             lines.append("")
         else:
-            lines.append("【ヴェロビ三連複推奨】")
+            lines.append("【買目考察】")
             lines.append("")
             lines.append("生成不可")
-
+            lines.append("")
         if rec_copy:
             lines.append("")
             lines.append(f"コピー用：{rec_copy}")
