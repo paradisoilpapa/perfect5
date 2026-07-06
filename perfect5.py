@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v197: 2ライン等で渦/逆流が同一主役ラインになる重複を禁止。実ラインが存在しない流れは買目考察から除外。
 # v196: 流れ別シナリオの主役ラインを2車複妙味ptへ反映。主役ライン相手を上位保護し、順流/渦/逆流の買目差を強化。
 # v195: 順流・渦・逆流の着順予想を、各流域ラインが主役になったシナリオ補正版へ変更。逆流域空欄でも旧逆流ラインを逆流シナリオに補完。
 # v194: 買目考察の前に全体推奨2車複サマリー（全体/順流/逆流/渦）を追加。
@@ -6875,25 +6876,50 @@ try:
             return out_lines
 
         def _scenario_main_line(_style_name):
-            """各戦法の主役ライン。逆流はLINE_ZONE_MAPが空でも旧U_lineを優先して補完する。"""
+            """
+            各戦法の主役ライン。
+
+            v197:
+            2ライン戦などで、渦と逆流が同じラインを主役にして
+            同じ買目考察を二重表示するのを禁止する。
+            逆流は「LINE_ZONE_MAP上の逆流域」または「旧U_line」が、
+            順流/渦の主役ラインと別ラインとして存在する場合だけ採用する。
+            """
             try:
+                fr_key = _scenario_line_key(FR_line) if FR_line else ""
+                vtx_key = _scenario_line_key(VTX_line) if VTX_line else ""
+
                 if _style_name == "順流":
                     if FR_line:
                         return _scenario_line_digits(FR_line)
                     _ls = _scenario_lines_for_zone("順流")
                     return _ls[0] if _ls else []
+
                 if _style_name == "渦":
                     if VTX_line:
                         return _scenario_line_digits(VTX_line)
                     _ls = _scenario_lines_for_zone("渦")
                     return _ls[0] if _ls else []
+
                 if _style_name == "逆流":
-                    # ここが今回の主修正。
-                    # LINE_ZONE_MAPで逆流域が空でも、数値上の旧逆流ライン U_line を逆流シナリオの主役にする。
-                    if U_line:
-                        return _scenario_line_digits(U_line)
+                    used_keys = {k for k in (fr_key, vtx_key) if k}
+
+                    # まずLINE_ZONE_MAP上で明示された逆流域を優先。
+                    # ただし順流/渦の主役ラインと同一なら採用しない。
                     _ls = _scenario_lines_for_zone("逆流")
-                    return _ls[0] if _ls else []
+                    for _ln in (_ls or []):
+                        _key = _scenario_line_key(_ln)
+                        if _key and _key not in used_keys:
+                            return _scenario_line_digits(_ln)
+
+                    # 逆流域が空の場合のみ、旧U_lineを補完候補にする。
+                    # ただし旧U_lineが渦ライン等と同一なら、逆流を無理に作らない。
+                    if U_line:
+                        u_key = _scenario_line_key(U_line)
+                        if u_key and u_key not in used_keys:
+                            return _scenario_line_digits(U_line)
+
+                    return []
             except Exception:
                 return []
             return []
@@ -7038,7 +7064,11 @@ try:
         def _make_style_scenario_seq(_style_name, _fallback_seq):
             main_line = _scenario_main_line(_style_name)
             if not main_line:
-                return [int(x) for x in (_fallback_seq or []) if str(x).isdigit()]
+                # v197:
+                # シナリオ主役ラインが存在しない流れは、
+                # fallbackで無理に買目考察を作らない。
+                # 例：2ライン戦で渦=旧逆流ラインの場合、逆流は空扱い。
+                return []
 
             if _style_name == "順流":
                 zone_order = ["順流", "渦", "逆流"]
