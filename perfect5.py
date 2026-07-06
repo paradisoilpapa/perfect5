@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v196: 流れ別シナリオの主役ラインを2車複妙味ptへ反映。主役ライン相手を上位保護し、順流/渦/逆流の買目差を強化。
 # v195: 順流・渦・逆流の着順予想を、各流域ラインが主役になったシナリオ補正版へ変更。逆流域空欄でも旧逆流ラインを逆流シナリオに補完。
 # v194: 買目考察の前に全体推奨2車複サマリー（全体/順流/逆流/渦）を追加。
 # v193: 買目考察を順流・逆流・渦の3流れ並列表示へ変更。会場判定good/middle/badによる買目提案を廃止し、各流れの総合B以上・総合pt上位2点を表示。
@@ -6983,23 +6984,56 @@ try:
                 return int(main[0])
 
         def _scenario_force_main_head(_seq, _main_line):
-            """シナリオの前提として、主役ラインのいずれかを1着候補へ置く。"""
+            """
+            シナリオの前提として、主役ラインのいずれかを1着候補へ置く。
+
+            v196:
+            1着候補だけを先頭へ上げても、同ライン相手が後方へ沈むと
+            「そのラインが主役になった展開」として買目妙味が効かない。
+            そのため、主役ラインの残りも2〜4番手以内へ保護する。
+            ただしライン丸ごと無条件固定ではなく、KO/既存順位を見て並べる。
+            """
             xs = [int(x) for x in (_seq or []) if str(x).isdigit()]
             main = _scenario_line_digits(_main_line)
             if not xs or not main:
                 return xs
-            main_set = {int(c) for c in main}
-            if int(xs[0]) in main_set:
-                return xs
 
-            head = _scenario_best_head_from_main_line(main)
+            main_set = {int(c) for c in main}
+            head = int(xs[0]) if int(xs[0]) in main_set else _scenario_best_head_from_main_line(main)
             if head is None or int(head) not in xs:
                 return xs
+            head = int(head)
 
-            # 主役ラインの頭候補を先頭へ。ただしライン内の他車は元のKO結果順を尊重する。
-            xs.remove(int(head))
-            xs.insert(0, int(head))
-            return xs
+            # 主役ライン内の残りは、KOスコア＋既存順位で2〜4番手へ寄せる。
+            # 2車ラインなら相手を2番手へ、3車以上なら最大2車までを上位保護する。
+            main_rest = [int(c) for c in main if int(c) != head and int(c) in xs]
+            try:
+                rank_now = {int(c): i for i, c in enumerate(xs)}
+                main_rest = sorted(
+                    main_rest,
+                    key=lambda c: (float(score_map.get(int(c), 0.0)), -int(rank_now.get(int(c), 99))),
+                    reverse=True,
+                )
+            except Exception:
+                pass
+
+            protect_count = 1 if len(main) <= 2 else 2
+            protected = [head] + main_rest[:protect_count]
+
+            out = []
+            seen = set()
+            for c in protected:
+                c = int(c)
+                if c in xs and c not in seen:
+                    out.append(c)
+                    seen.add(c)
+
+            for c in xs:
+                c = int(c)
+                if c not in seen:
+                    out.append(c)
+                    seen.add(c)
+            return out
 
         def _make_style_scenario_seq(_style_name, _fallback_seq):
             main_line = _scenario_main_line(_style_name)
@@ -11953,6 +11987,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _A = int(_xs[0])
                 _long_span_all_cars = [int(x) for x in _xs if str(x).isdigit()]
 
+                # v196: 流れ別シナリオの主役ラインを、買目評価側にも渡す。
+                # ここを使って、順流/渦/逆流ごとの妙味ptに差を付ける。
+                try:
+                    _scenario_main_line_map = globals().get("STYLE_SCENARIO_MAIN_LINE_MAP", {}) or {}
+                    _scenario_main_line = [int(x) for x in (_scenario_main_line_map.get(str(_style_name), []) or []) if str(x).isdigit()]
+                except Exception:
+                    _scenario_main_line = []
+                _scenario_main_set = {int(x) for x in (_scenario_main_line or [])}
+
                 lines.append(f"推奨流れ【{_style_name}】：")
                 lines.append(" → ".join(str(int(x)) for x in _xs))
                 lines.append("")
@@ -12071,6 +12114,58 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     _rank_bonus = {"A": 1.00, "B": 0.45, "C": 0.00, "D": -0.50}.get(str(_total_rank), -0.50)
                     return round(_base + _rank_bonus, 1)
 
+                def _scenario_myoumi_bonus_2kei(_a, _b, _base_score):
+                    """
+                    v196:
+                    市場印だけの妙味ptだと、流れ別シナリオにしても妙味順位がほぼ変わらない。
+                    そこで、その流れの主役ラインが絡む2車複へ小幅補正を入れる。
+
+                    ・主役ライン内の2車複：強めに加点
+                    ・主役ライン頭候補×高評価別線：中加点
+                    ・主役ライン残り×高評価別線：小加点
+                    ・主役ライン非関与：微減点
+
+                    これは実オッズではなく、流れ別の仮説妙味を買目表へ反映するための内部pt。
+                    """
+                    try:
+                        a, b = int(_a), int(_b)
+                        base = float(_base_score)
+                    except Exception:
+                        return float(_base_score or 0.0)
+
+                    if not _scenario_main_set:
+                        return round(max(0.0, min(10.0, base)), 1)
+
+                    in_a = a in _scenario_main_set
+                    in_b = b in _scenario_main_set
+                    bonus = 0.0
+
+                    # 主役ライン内決着。2車複では頭裏の順序ブレを吸収できるので最優先で妙味を残す。
+                    if in_a and in_b:
+                        bonus += 1.25
+                    elif in_a or in_b:
+                        other = b if in_a else a
+                        main_car = a if in_a else b
+                        r_other = _longspan_velobi_rank(other)
+                        r_main = _longspan_velobi_rank(main_car)
+
+                        # 主役ラインが勝った時に、全体上位が2着へ突っ込む形。
+                        if r_other <= 2:
+                            bonus += 0.85
+                        elif r_other <= 4:
+                            bonus += 0.55
+                        else:
+                            bonus += 0.25
+
+                        # 主役ライン内でも頭候補に近い車を少し優先。
+                        if r_main <= 2:
+                            bonus += 0.25
+                    else:
+                        # その流れの主役ラインが絡まない買い目は、比較上少しだけ下げる。
+                        bonus -= 0.25
+
+                    return round(max(0.0, min(10.0, base + bonus)), 1)
+
                 def _longspan_pair_sort_key(_row):
                     _rank_order = {"A++": 6, "A+": 5, "A": 4, "B": 3, "C": 2, "D": 1}
                     try:
@@ -12109,9 +12204,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         _order_pair = sorted([_a_i, _b_i], key=lambda z: _longspan_velobi_rank(z))
                         _score_head, _score_tail = int(_order_pair[0]), int(_order_pair[1])
                         try:
-                            _sc = float(_myoumi_score_2kei(_score_head, _score_tail, int(_A), mark_map or {}))
+                            _base_sc = float(_myoumi_score_2kei(_score_head, _score_tail, int(_A), mark_map or {}))
                         except Exception:
-                            _sc = 0.0
+                            _base_sc = 0.0
+                        _sc = _scenario_myoumi_bonus_2kei(_key[0], _key[1], _base_sc)
 
                         _disp = f"{_key[0]}-{_key[1]}"
                         _hit_score = _longspan_hit_score_pair(_key[0], _key[1])
