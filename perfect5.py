@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v205: 2車複サマリーのイチオシ/本線に、採用ptが最も高い流れの妙味期待ランクを併記。抑えは従来通りptのみ。
 # v203: 会場成績を的中期待/妙味期待の小幅係数へ変換。的中率→的中期待、回収率→妙味期待に反映し、苦手会場で総合B候補が自然に絞られるよう修正。
 # v202: 2車複サマリーの全体推奨9pt以上/未満を総合pt降順に並べ替え。流れ別は採用表示を消し、総合B以上候補だけ表示。
 # v201: 2車複サマリーの全体推奨を総合pt 9.0以上/9.0未満に分割し、強弱を見やすく整理。
@@ -12397,7 +12398,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _b_candidate_disp = [str(_row.get("disp")) for _row in (_nifuku_buy_base or []) if _row.get("disp")]
                 flow_b_candidate_summary.append((_style_name, list(_b_candidate_disp)))
                 flow_b_candidate_pt_summary.append((_style_name, [
-                    {"disp": str(_row.get("disp")), "total_pt": float(_row.get("total_pt", 0.0) or 0.0)}
+                    {
+                        "disp": str(_row.get("disp")),
+                        "total_pt": float(_row.get("total_pt", 0.0) or 0.0),
+                        "myoumi_rank": str(_row.get("myoumi_rank", "") or ""),
+                    }
                     for _row in (_nifuku_buy_base or []) if _row.get("disp")
                 ]))
 
@@ -12585,10 +12590,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             for _style_name, _rows in (flow_buy_pt_summary or []):
                 _summary_pt_map[str(_style_name)] = list(_rows or [])
 
-            # v204:
+            # v204/v205:
             # 全体の本線/抑えは、各流れの「上位2点」ではなく、
             # 総合B以上候補全体を重複除外して作る。
-            # 同じ買目が複数流れに出た場合、表示ptは最も高い流れのptを採用する。
+            # 同じ買目が複数流れに出た場合、表示ptと妙味期待は最もptが高い流れの値を採用する。
             for _style_name, _rows in (flow_b_candidate_pt_summary or []):
                 for _row in (_rows or []):
                     try:
@@ -12597,17 +12602,19 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             continue
                         _disp = f"{_key[0]}-{_key[1]}"
                         _pt = float(_row.get("total_pt", 0.0) or 0.0)
+                        _myoumi_rank = str(_row.get("myoumi_rank", "") or "")
                         if _key in _overall_seen:
                             for _old in _overall_pair_rows:
                                 try:
                                     if _pair_key_from_disp(_old.get("disp")) == _key and _pt > float(_old.get("total_pt", 0.0) or 0.0):
                                         _old["total_pt"] = _pt
+                                        _old["myoumi_rank"] = _myoumi_rank
                                 except Exception:
                                     pass
                             continue
                         _overall_seen.add(_key)
                         _overall_pairs.append(_disp)
-                        _overall_pair_rows.append({"disp": _disp, "total_pt": _pt})
+                        _overall_pair_rows.append({"disp": _disp, "total_pt": _pt, "myoumi_rank": _myoumi_rank})
                     except Exception:
                         pass
 
@@ -12617,10 +12624,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             _candidate_pair_styles = {}
             _candidate_pair_order = []
-            for _style_name, _pairs in (flow_b_candidate_summary or []):
-                _b_candidate_map[str(_style_name)] = list(_pairs or [])
-                for _p in (_pairs or []):
-                    _key = _pair_key_from_disp(_p)
+            _candidate_pair_best_row = {}
+            for _style_name, _rows in (flow_b_candidate_pt_summary or []):
+                for _row in (_rows or []):
+                    _key = _pair_key_from_disp((_row or {}).get("disp"))
                     if not _key:
                         continue
                     if _key not in _candidate_pair_styles:
@@ -12628,14 +12635,33 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         _candidate_pair_order.append(_key)
                     if str(_style_name) not in _candidate_pair_styles[_key]:
                         _candidate_pair_styles[_key].append(str(_style_name))
+                    try:
+                        _pt = float((_row or {}).get("total_pt", 0.0) or 0.0)
+                        _old = _candidate_pair_best_row.get(_key)
+                        if _old is None or _pt > float((_old or {}).get("total_pt", 0.0) or 0.0):
+                            _candidate_pair_best_row[_key] = {
+                                "disp": f"{_key[0]}-{_key[1]}",
+                                "total_pt": _pt,
+                                "myoumi_rank": str((_row or {}).get("myoumi_rank", "") or ""),
+                            }
+                    except Exception:
+                        pass
 
             _ichioshi_parts = []
             for _key in _candidate_pair_order:
                 _styles = _candidate_pair_styles.get(_key, []) or []
                 if len(_styles) >= 2:
-                    _ichioshi_parts.append(f"{_key[0]}-{_key[1]}（{'・'.join(_styles)}）")
+                    _best = _candidate_pair_best_row.get(_key, {}) or {}
+                    _pt_txt = ""
+                    try:
+                        _pt_txt = f"／{float(_best.get('total_pt', 0.0) or 0.0):.1f}"
+                    except Exception:
+                        _pt_txt = ""
+                    _myoumi_rank = str(_best.get("myoumi_rank", "") or "").strip()
+                    _myoumi_txt = f" 妙味期待{_myoumi_rank}" if _myoumi_rank else ""
+                    _ichioshi_parts.append(f"{_key[0]}-{_key[1]}（{'・'.join(_styles)}{_pt_txt}{_myoumi_txt}）")
 
-            def _fmt_overall_rows_with_pt(_rows):
+            def _fmt_overall_rows_with_pt(_rows, include_myoumi=False):
                 _parts = []
                 for _r in (_rows or []):
                     try:
@@ -12643,7 +12669,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         if not _disp:
                             continue
                         _pt = float(_r.get("total_pt", 0.0) or 0.0)
-                        _parts.append(f"{_disp}（{_pt:.1f}）")
+                        if include_myoumi:
+                            _myoumi_rank = str(_r.get("myoumi_rank", "") or "").strip()
+                            _myoumi_txt = f" 妙味期待{_myoumi_rank}" if _myoumi_rank else ""
+                            _parts.append(f"{_disp}（{_pt:.1f}{_myoumi_txt}）")
+                        else:
+                            _parts.append(f"{_disp}（{_pt:.1f}）")
                     except Exception:
                         pass
                 return "　".join(_parts) if _parts else "該当なし"
@@ -12681,8 +12712,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append(f"イチオシ】{_fmt_flow_buy_pairs(_ichioshi_parts)}")
             else:
                 lines.append("イチオシ】該当なし（重複なし）")
-            lines.append(f"本線 9pt以上】{_fmt_overall_rows_with_pt(_overall_high_rows)}")
-            lines.append(f"抑え 9pt未満】{_fmt_overall_rows_with_pt(_overall_low_rows)}")
+            lines.append(f"本線 9pt以上】{_fmt_overall_rows_with_pt(_overall_high_rows, include_myoumi=True)}")
+            lines.append(f"抑え 9pt未満】{_fmt_overall_rows_with_pt(_overall_low_rows, include_myoumi=False)}")
             lines.append("")
             lines.append("流れ別：総合B以上候補")
             for _style_name, _seq in flow_items:
