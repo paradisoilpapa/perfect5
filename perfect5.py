@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# v206-fixed: v205の「イチオシ/本線に妙味期待ランク併記」を維持したまま、2車複総合ptだけを√(的中点×妙味点)へ変更。本線足切りは9.05（表示9.1pt以上）。
 # v205: 2車複サマリーのイチオシ/本線に、採用ptが最も高い流れの妙味期待ランクを併記。抑えは従来通りptのみ。
 # v203: 会場成績を的中期待/妙味期待の小幅係数へ変換。的中率→的中期待、回収率→妙味期待に反映し、苦手会場で総合B候補が自然に絞られるよう修正。
 # v202: 2車複サマリーの全体推奨9pt以上/未満を総合pt降順に並べ替え。流れ別は採用表示を消し、総合B以上候補だけ表示。
@@ -12229,17 +12230,29 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     return _table.get((str(_hit_rank), _mr), "D")
 
                 def _longspan_total_score(_hit_score, _myoumi_score, _hit_rank, _myoumi_rank, _total_rank):
+                    """
+                    v206-fixed:
+                    総合ptは、的中点と妙味点のバランスを見るため、加重平均ではなく幾何平均にする。
+                    10点満点には丸めず、現状上限（的中12.0・妙味10.8）から最大約11.4点のまま扱う。
+
+                    旧式：0.55 * 的中点 + 0.45 * 妙味点 + ランクボーナス
+                    新式：sqrt(的中点 * 妙味点)
+
+                    ※総合ランク表、的中期待ランク、妙味期待ランクは触らない。
+                    ※v205の「イチオシ/本線への妙味期待ランク併記」も維持する。
+                    """
                     try:
-                        _hs = float(_hit_score)
+                        _hs = max(0.0, float(_hit_score))
                     except Exception:
                         _hs = 0.0
                     try:
-                        _ms = float(_myoumi_score)
+                        _ms = max(0.0, float(_myoumi_score))
                     except Exception:
                         _ms = 0.0
-                    _base = 0.55 * _hs + 0.45 * _ms
-                    _rank_bonus = {"A": 1.00, "B": 0.45, "C": 0.00, "D": -0.50}.get(str(_total_rank), -0.50)
-                    return round(_base + _rank_bonus, 1)
+                    try:
+                        return round(math.sqrt(_hs * _ms), 1)
+                    except Exception:
+                        return 0.0
 
                 def _scenario_myoumi_bonus_2kei(_a, _b, _base_score):
                     """
@@ -12552,8 +12565,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # 表示順は、
             # 1) イチオシ（複数流れで重複した総合B以上候補）
             # 2) 本線/抑えは「各流れ上位2点」ではなく、全流れの総合B以上候補全体から作る
-            #    - 本線：総合pt 9.0以上
-            #    - 抑え：総合pt 9.0未満
+            #    - 本線：総合pt 9.05以上（表示は9.1pt以上）
+            #    - 抑え：総合pt 9.05未満
             # 3) 流れ別：総合B以上候補だけ表示
             # ※各流れ採用2点をサマリーの母集団には使わない。
             _summary_map = {}
@@ -12683,7 +12696,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             _overall_low_rows = []
             for _r in (_overall_pair_rows or []):
                 try:
-                    if float(_r.get("total_pt", 0.0) or 0.0) >= 9.0:
+                    if float(_r.get("total_pt", 0.0) or 0.0) >= 9.05:
                         _overall_high_rows.append(_r)
                     else:
                         _overall_low_rows.append(_r)
@@ -12712,8 +12725,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append(f"イチオシ】{_fmt_flow_buy_pairs(_ichioshi_parts)}")
             else:
                 lines.append("イチオシ】該当なし（重複なし）")
-            lines.append(f"本線 9pt以上】{_fmt_overall_rows_with_pt(_overall_high_rows, include_myoumi=True)}")
-            lines.append(f"抑え 9pt未満】{_fmt_overall_rows_with_pt(_overall_low_rows, include_myoumi=False)}")
+            lines.append(f"本線 9.1pt以上】{_fmt_overall_rows_with_pt(_overall_high_rows, include_myoumi=True)}")
+            lines.append(f"抑え 9.1pt未満】{_fmt_overall_rows_with_pt(_overall_low_rows, include_myoumi=False)}")
             lines.append("")
             lines.append("流れ別：総合B以上候補")
             for _style_name, _seq in flow_items:
