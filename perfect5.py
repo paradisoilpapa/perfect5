@@ -1,3 +1,4 @@
+# v211: v210をベースに、「イチオシ」を廃止し「ベスト10内重複」へ変更。各流れの総合B以上候補・総合pt上位10内で複数流れに重複した買目を表示。
 # v210: v209をベースに、2車複サマリーを固定pt足切りから「総合B以上候補内の順位割合」へ変更。本線=上位30%、抑え=上位50%以内（本線以外）。
 # -*- coding: utf-8 -*-
 # v207: v206-fixedをベースに、2車複総合ptは√(的中点×妙味点)のまま維持。本線足切りを8.5pt以上へ変更。
@@ -12569,7 +12570,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # 表示順は、
             # 1) 本線：総合B以上候補のうち、総合pt上位30%
             # 2) 抑え：総合B以上候補のうち、総合pt上位50%以内（本線以外）
-            # 3) イチオシ：複数流れで重複し、かつ本線/抑えの表示対象に入ったもの
+            # 3) ベスト10内重複：各流れの総合B以上候補・総合pt上位10内で複数流れに重複したもの
             # 4) 流れ別：総合B以上候補のうち、本線/抑えの表示対象に入ったものだけ表示
             # ※各流れ採用2点をサマリーの母集団には使わない。
             _NIFUKU_MAIN_PERCENT = 0.30
@@ -12693,23 +12694,51 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     pass
 
-            _ichioshi_parts = []
-            for _key in _candidate_pair_order:
-                _styles = _candidate_pair_styles.get(_key, []) or []
+            # v211: 「イチオシ」は廃止。
+            #       代わりに、各流れの総合B以上候補・総合pt上位10内で
+            #       複数流れに重複した買目を「ベスト10内重複」として表示する。
+            _best10_pair_styles = {}
+            _best10_pair_order = []
+            _best10_pair_best_row = {}
+            for _style_name, _rows in (flow_b_candidate_pt_summary or []):
+                try:
+                    _top10_rows = _sort_rows_by_pt_desc(_rows or [])[:10]
+                except Exception:
+                    _top10_rows = list(_rows or [])[:10]
+                for _row in (_top10_rows or []):
+                    _key = _pair_key_from_disp((_row or {}).get("disp"))
+                    if not _key:
+                        continue
+                    if _key not in _best10_pair_styles:
+                        _best10_pair_styles[_key] = []
+                        _best10_pair_order.append(_key)
+                    if str(_style_name) not in _best10_pair_styles[_key]:
+                        _best10_pair_styles[_key].append(str(_style_name))
+                    try:
+                        _pt = float((_row or {}).get("total_pt", 0.0) or 0.0)
+                        _old = _best10_pair_best_row.get(_key)
+                        if _old is None or _pt > float((_old or {}).get("total_pt", 0.0) or 0.0):
+                            _best10_pair_best_row[_key] = {
+                                "disp": f"{_key[0]}-{_key[1]}",
+                                "total_pt": _pt,
+                                "myoumi_rank": str((_row or {}).get("myoumi_rank", "") or ""),
+                            }
+                    except Exception:
+                        pass
+
+            _best10_overlap_parts = []
+            for _key in _best10_pair_order:
+                _styles = _best10_pair_styles.get(_key, []) or []
                 if len(_styles) >= 2:
-                    _best = _candidate_pair_best_row.get(_key, {}) or {}
+                    _best = _best10_pair_best_row.get(_key, {}) or {}
                     try:
                         _best_pt = float(_best.get("total_pt", 0.0) or 0.0)
                     except Exception:
                         _best_pt = 0.0
-                    # v210: イチオシも表示した時点で買われるため、
-                    #        本線/抑えの表示対象に入った重複候補だけ出す。
-                    if '_display_pair_key_set' in locals() and _key not in _display_pair_key_set:
-                        continue
                     _pt_txt = f"／{_best_pt:.1f}"
                     _myoumi_rank = str(_best.get("myoumi_rank", "") or "").strip()
                     _myoumi_txt = f" 妙味期待{_myoumi_rank}" if _myoumi_rank else ""
-                    _ichioshi_parts.append(f"{_key[0]}-{_key[1]}（{'・'.join(_styles)}{_pt_txt}{_myoumi_txt}）")
+                    _best10_overlap_parts.append(f"{_key[0]}-{_key[1]}（{'・'.join(_styles)}{_pt_txt}{_myoumi_txt}）")
 
             def _fmt_overall_rows_with_pt(_rows, include_myoumi=False):
                 _parts = []
@@ -12766,10 +12795,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     lines.append(f"開催適合補正】的中期待×{_vhc:.2f}／妙味期待×{_vmc:.2f}")
             except Exception:
                 pass
-            if _ichioshi_parts:
-                lines.append(f"イチオシ】{_fmt_flow_buy_pairs(_ichioshi_parts)}")
+            if _best10_overlap_parts:
+                lines.append(f"ベスト10内重複】{_fmt_flow_buy_pairs(_best10_overlap_parts)}")
             else:
-                lines.append("イチオシ】該当なし")
+                lines.append("ベスト10内重複】該当なし")
             lines.append(f"本線 上位30%】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=True)}")
             lines.append(f"抑え 上位50%以内】{_fmt_overall_rows_with_pt(_overall_sub_rows, include_myoumi=True)}")
             lines.append("")
