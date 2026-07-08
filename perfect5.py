@@ -1,4 +1,4 @@
-# v208: 2車複サマリー/流れ別/購入候補を新満点約11.4に合わせて整理。本線9.1以上、抑え8.5以上〜9.1未満、8.5未満は非表示。イチオシも8.5以上のみ。
+# v209: v208をベースに、2車複の表示下限を8.5ptから8.0ptへ緩和。本線9.1以上、抑え8.0以上〜9.1未満、8.0未満は非表示。イチオシも8.0以上のみ。
 # -*- coding: utf-8 -*-
 # v207: v206-fixedをベースに、2車複総合ptは√(的中点×妙味点)のまま維持。本線足切りを8.5pt以上へ変更。
 # v205: 2車複サマリーのイチオシ/本線に、採用ptが最も高い流れの妙味期待ランクを併記。抑えは従来通りptのみ。
@@ -12409,10 +12409,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     _row for _row in _sorted_pairs
                     if str(_row.get("total_rank", "")).strip() in ("A", "B")
                 ]
-                # v208: 「総合B以上」だけでは候補が広すぎるため、読者向けに出す候補は8.5pt以上へ絞る。
+                # v208: 「総合B以上」だけでは候補が広すぎるため、読者向けに出す候補は8.0pt以上へ絞る。
                 _nifuku_display_base = [
                     _row for _row in (_nifuku_buy_base or [])
-                    if float(_row.get("total_pt", 0.0) or 0.0) >= 8.5
+                    if float(_row.get("total_pt", 0.0) or 0.0) >= 8.0
                 ]
                 _b_candidate_disp = [str(_row.get("disp")) for _row in (_nifuku_display_base or []) if _row.get("disp")]
                 flow_b_candidate_summary.append((_style_name, list(_b_candidate_disp)))
@@ -12434,7 +12434,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 ]))
 
                 lines.append("【総合評価2車複推奨】")
-                lines.append("2車複購入候補（総合B以上・8.5pt以上・上位2点）")
+                lines.append("2車複購入候補（総合B以上・8.0pt以上・上位2点）")
                 lines.append("　".join(_nifuku_buy_disp) if _nifuku_buy_disp else "該当なし")
                 lines.append("")
 
@@ -12567,17 +12567,17 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             lines = _main_lines_ref
 
-            # v208: 冒頭サマリーを新満点（約11.4pt）基準で整理する。
+            # v209: 冒頭サマリーを新満点（約11.4pt）基準で整理する。
             # 表示順は、
-            # 1) イチオシ：複数流れで重複した候補のうち、総合pt 8.5以上だけ表示
+            # 1) イチオシ：複数流れで重複した候補のうち、総合pt 8.0以上だけ表示
             # 2) 本線/抑えは「総合B以上」だけでは拾わず、総合pt足切りも併用する
             #    - 本線：総合B以上 かつ 総合pt 9.1以上
-            #    - 抑え：総合B以上 かつ 総合pt 8.5以上〜9.1未満
-            #    - 8.5未満は読者向けには非表示
-            # 3) 流れ別：総合B以上かつ8.5pt以上の候補だけ表示
+            #    - 抑え：総合B以上 かつ 総合pt 8.0以上〜9.1未満
+            #    - 8.0未満は読者向けには非表示
+            # 3) 流れ別：総合B以上かつ8.0pt以上の候補だけ表示
             # ※各流れ採用2点をサマリーの母集団には使わない。
             _NIFUKU_MAIN_THRESHOLD = 9.1
-            _NIFUKU_SUB_THRESHOLD = 8.5
+            _NIFUKU_SUB_THRESHOLD = 8.0
             _summary_map = {}
             _summary_pt_map = {}
             _b_candidate_map = {}
@@ -12678,7 +12678,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         _best_pt = float(_best.get("total_pt", 0.0) or 0.0)
                     except Exception:
                         _best_pt = 0.0
-                    # v208: イチオシも表示した時点で買われるため、8.5pt未満は出さない。
+                    # v209: イチオシも表示した時点で買われるため、8.0pt未満は出さない。
                     if _best_pt < _NIFUKU_SUB_THRESHOLD:
                         continue
                     _pt_txt = f"／{_best_pt:.1f}"
@@ -12713,7 +12713,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         _overall_main_rows.append(_r)
                     elif _pt >= _NIFUKU_SUB_THRESHOLD:
                         _overall_sub_rows.append(_r)
-                    # 8.5pt未満は非表示
+                    # 8.0pt未満は非表示
                 except Exception:
                     pass
 
@@ -12740,9 +12740,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             else:
                 lines.append("イチオシ】該当なし")
             lines.append(f"本線 9.1pt以上】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=True)}")
-            lines.append(f"抑え 8.5pt以上】{_fmt_overall_rows_with_pt(_overall_sub_rows, include_myoumi=True)}")
+            lines.append(f"抑え 8.0pt以上】{_fmt_overall_rows_with_pt(_overall_sub_rows, include_myoumi=True)}")
             lines.append("")
-            lines.append("流れ別：総合B以上・8.5pt以上候補")
+            lines.append("流れ別：総合B以上・8.0pt以上候補")
             for _style_name, _seq in flow_items:
                 _name = _flow_summary_label(_style_name)
                 _cands = _b_candidate_map.get(str(_style_name), [])
