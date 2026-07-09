@@ -1,3 +1,4 @@
+# v212: 2車複サマリーの本線/抑えから、別流れハブ同士を交差軸にした3連複変換（例：3-56＋4-21→3-4-1256、本線は本線側3列目）を追加。
 # v211: v210をベースに、「イチオシ」を廃止し「ベスト10内重複」へ変更。各流れの総合B以上候補・総合pt上位10内で複数流れに重複した買目を表示。
 # v210: v209をベースに、2車複サマリーを固定pt足切りから「総合B以上候補内の順位割合」へ変更。本線=上位30%、抑え=上位50%以内（本線以外）。
 # -*- coding: utf-8 -*-
@@ -12685,6 +12686,107 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _display_n = min(4, _n_all)
             _overall_main_rows = list(_overall_sorted_rows[:_main_n])
             _overall_sub_rows = list(_overall_sorted_rows[_main_n:_display_n])
+
+            # v212: 2車複サマリーから3連複へ変換する。
+            # 例）本線 3-5/3-6 と、別流れ側 2-4/1-4 が出た場合、
+            #     3-56 ＋ 4-21 と見て、交差軸 3-4、3列目 1/2/5/6 を生成する。
+            #     本線表示は「本線 上位30%」側の相手だけを3列目にする。
+            def _make_nifuku_cross_axis_trio_lines(_main_rows, _sub_rows):
+                try:
+                    _main_rows = list(_main_rows or [])
+                    _sub_rows = list(_sub_rows or [])
+                    _display_rows = _main_rows + _sub_rows
+                    if len(_display_rows) < 3:
+                        return []
+
+                    def _row_pair_key(_r):
+                        return _pair_key_from_disp((_r or {}).get("disp"))
+
+                    def _row_pt(_r):
+                        try:
+                            return float((_r or {}).get("total_pt", 0.0) or 0.0)
+                        except Exception:
+                            return 0.0
+
+                    _edges_all = []
+                    _edges_main = []
+                    for _r in _display_rows:
+                        _k = _row_pair_key(_r)
+                        if _k:
+                            _edges_all.append((_k, _r))
+                    for _r in _main_rows:
+                        _k = _row_pair_key(_r)
+                        if _k:
+                            _edges_main.append((_k, _r))
+
+                    _hub_opp_all = {}
+                    _hub_opp_main = {}
+                    _hub_pt = {}
+                    for _k, _r in _edges_all:
+                        _a, _b = int(_k[0]), int(_k[1])
+                        _hub_opp_all.setdefault(_a, set()).add(_b)
+                        _hub_opp_all.setdefault(_b, set()).add(_a)
+                        _hub_pt[_a] = max(float(_hub_pt.get(_a, 0.0) or 0.0), _row_pt(_r))
+                        _hub_pt[_b] = max(float(_hub_pt.get(_b, 0.0) or 0.0), _row_pt(_r))
+                    for _k, _r in _edges_main:
+                        _a, _b = int(_k[0]), int(_k[1])
+                        _hub_opp_main.setdefault(_a, set()).add(_b)
+                        _hub_opp_main.setdefault(_b, set()).add(_a)
+
+                    # ハブは、表示対象内で相手を2車以上持つ車を優先する。
+                    _hubs = [
+                        _car for _car, _opps in _hub_opp_all.items()
+                        if len(set(_opps or [])) >= 2
+                    ]
+                    if len(_hubs) < 2:
+                        return []
+
+                    _hubs = sorted(
+                        _hubs,
+                        key=lambda _c: (len(_hub_opp_all.get(_c, set())), float(_hub_pt.get(_c, 0.0) or 0.0), -int(_c)),
+                        reverse=True,
+                    )
+                    _axis = sorted([int(_hubs[0]), int(_hubs[1])])
+                    _a, _b = _axis[0], _axis[1]
+
+                    _third_all = set()
+                    _third_all.update(_hub_opp_all.get(_a, set()))
+                    _third_all.update(_hub_opp_all.get(_b, set()))
+                    _third_all.discard(_a)
+                    _third_all.discard(_b)
+
+                    _third_main = set()
+                    _third_main.update(_hub_opp_main.get(_a, set()))
+                    _third_main.update(_hub_opp_main.get(_b, set()))
+                    _third_main.discard(_a)
+                    _third_main.discard(_b)
+
+                    if not _third_main:
+                        _third_main = set(_third_all)
+
+                    _third_all = sorted(int(x) for x in _third_all if str(x).isdigit())
+                    _third_main = sorted(int(x) for x in _third_main if str(x).isdigit())
+                    if not _third_all:
+                        return []
+
+                    def _cars_txt(_xs):
+                        return "".join(str(int(x)) for x in sorted(set(_xs)))
+
+                    _axis_txt = f"{_a}-{_b}"
+                    _main_txt = f"{_axis_txt}-{_cars_txt(_third_main)}"
+                    _all_txt = f"{_axis_txt}-{_cars_txt(_third_all)}"
+
+                    _out = []
+                    _out.append(f"交差軸3連複】軸 {_axis_txt}")
+                    _out.append(f"本線】{_main_txt}（{len(set(_third_main))}点）")
+                    if set(_third_all) != set(_third_main):
+                        _out.append(f"広め】{_all_txt}（{len(set(_third_all))}点）")
+                    return _out
+                except Exception:
+                    return []
+
+            _nifuku_cross_axis_trio_lines = _make_nifuku_cross_axis_trio_lines(_overall_main_rows, _overall_sub_rows)
+
             _display_pair_key_set = set()
             for _r in list(_overall_main_rows) + list(_overall_sub_rows):
                 try:
@@ -12801,6 +12903,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append("ベスト10内重複】該当なし")
             lines.append(f"本線 上位30%】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=True)}")
             lines.append(f"抑え 上位50%以内】{_fmt_overall_rows_with_pt(_overall_sub_rows, include_myoumi=True)}")
+            if _nifuku_cross_axis_trio_lines:
+                for _ln in _nifuku_cross_axis_trio_lines:
+                    lines.append(_ln)
             lines.append("")
             lines.append("流れ別：総合B以上・上位50%以内候補")
             for _style_name, _seq in flow_items:
