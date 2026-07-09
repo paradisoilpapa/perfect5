@@ -1,3 +1,4 @@
+# v227: v226ベース。note上部は買い目主役の短縮表示へ変更。2車複本線3点・3連複本線/広め・総合加重単騎評価だけを表示し、加重2車複評価表/買い目根拠/流れ別詳細考察は上部から削除。
 # v225: v224ベース。2車複本線は◎軸流しではなく、流れ加重的中単騎＋流れ加重妙味単騎から全21通りを再評価し、総合pt上位3点を採用。3連複は従来どおり軸A-BCD-BCDで生成。
 # v220: v219ベース。各流れの車番別平均評価（的中順単騎評価）に流れ想定比率を掛けて合算し、2車複サマリーと3連複生成の共通土台にする。
 # v221: v220の2車複サマリー改善。流れ加重単騎評価を平均ではなく合算で2車複的中期待へ反映し、本線/抑えが空になる問題を修正。
@@ -13247,6 +13248,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             _fw_trio_lines = _make_flow_weighted_trio_lines()
 
+            # v227: note上部は買い目主役で最小限にする。
+            # 詳細な加重2車複評価表・買い目根拠・流れ別買目考察は出さない。
             lines.append("【買い目サマリー】")
             lines.append(f"2車複 本線3点】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=True)}")
             if _fw_trio_lines:
@@ -13257,42 +13260,20 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     elif _s.startswith("本線】") or _s.startswith("広め】"):
                         lines.append(_s)
             lines.append("")
-
-            lines.append("【買い目根拠】")
-            lines.append("方式】流れ配分込みの加重的中評価＋加重妙味評価で全21通りを再評価し、2車複は総合pt上位3点を採用")
-            try:
-                _vhc = float(globals().get("venue_hit_expect_coef", st.session_state.get("venue_hit_expect_coef", 1.00)) or 1.00)
-                _vmc = float(globals().get("venue_myoumi_expect_coef", st.session_state.get("venue_myoumi_expect_coef", 1.00)) or 1.00)
-                if abs(_vhc - 1.0) > 0.001 or abs(_vmc - 1.0) > 0.001:
-                    lines.append(f"開催適合補正】的中期待×{_vhc:.2f}／妙味期待×{_vmc:.2f}")
-            except Exception:
-                pass
-            if _best10_overlap_parts:
-                lines.append(f"ベスト10内重複】{_fmt_flow_buy_pairs(_best10_overlap_parts)}")
-            else:
-                lines.append("ベスト10内重複】該当なし")
-            lines.append("加重2車複評価 上位7】")
-            lines.extend(_fmt_weighted_pair_table(_overall_sorted_rows, _limit=7))
             lines.append("")
 
-            # 加重単騎評価と3連複ロジックの確認用。買い目より下に置く。
+            # v227: 検証に必要な総合加重単騎評価だけ残す。
             if _fw_trio_lines:
-                _score_lines = [str(x) for x in _fw_trio_lines if str(x).startswith("流れ加重的中単騎評価】") or str(x).startswith("流れ加重妙味単騎評価】")]
+                _score_lines = [
+                    str(x) for x in _fw_trio_lines
+                    if str(x).startswith("流れ加重的中単騎評価】")
+                    or str(x).startswith("流れ加重妙味単騎評価】")
+                ]
                 if _score_lines:
-                    lines.append("【加重単騎評価】")
+                    lines.append("【総合加重単騎評価】")
                     lines.extend(_score_lines)
                     lines.append("")
-
-            lines.append("※流れ別候補は参考情報として下の詳細に表示")
-            lines.append("")
-            lines.extend(_detail_lines)
-
-            lines.append("目安：")
-            lines.append("A：推奨買い候補")
-            lines.append("B：買い候補")
-            lines.append("C：やや見送り")
-            lines.append("D：見送り")
-            lines.append("")
+                    lines.append("")
         else:
             lines.append("【買目考察】")
             lines.append("")
