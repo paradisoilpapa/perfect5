@@ -13324,36 +13324,66 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # 加重2車複評価表はABCDを出さず、的中点・妙味点・総合点を小数点第一位で表示する。
             def _fmt_weighted_pair_table(_rows, _limit=21):
                 """
-                v234:
-                加重2車複評価表は罫線を使わない。
-                半角スペースだけの固定幅で、買い目は左寄せ、数値は右寄せにする。
+                v236:
+                罫線なし。表示幅（全角=2、半角=1）で固定幅整列する。
+                ・買い目は左寄せ
+                ・数値は右寄せ
+                ・余計な先頭インデントは入れない
                 """
                 try:
                     _rows = list(_rows or [])[:int(_limit)]
                     if not _rows:
                         return ["該当なし"]
 
-                    def _fmt_disp(_v):
-                        _s = str(_v).strip()
-                        return f"{_s:<6}"
+                    def _disp_width(_text):
+                        try:
+                            _s = str(_text)
+                            _w = 0
+                            for _ch in _s:
+                                _w += 2 if unicodedata.east_asian_width(_ch) in ("F", "W", "A") else 1
+                            return _w
+                        except Exception:
+                            return len(str(_text))
+
+                    def _pad_right(_text, _width):
+                        _s = str(_text)
+                        _pad = max(0, int(_width) - _disp_width(_s))
+                        return _s + (" " * _pad)
+
+                    def _pad_left(_text, _width):
+                        _s = str(_text)
+                        _pad = max(0, int(_width) - _disp_width(_s))
+                        return (" " * _pad) + _s
 
                     def _fmt_num(_v):
                         try:
-                            return f"{float(_v):>5.1f}"
+                            return f"{float(_v):.1f}"
                         except Exception:
-                            return "    -"
+                            return "-"
+
+                    # 表示幅。ヘッダー・小数1桁の数値が崩れない最小幅に固定する。
+                    _w_disp = 8
+                    _w_num = 8
+                    _gap = "  "
 
                     _out = []
-                    _out.append("買い目    的中点  妙味点  総合点")
+                    _out.append(
+                        _pad_right("買い目", _w_disp) + _gap +
+                        _pad_left("的中点", _w_num) + _gap +
+                        _pad_left("妙味点", _w_num) + _gap +
+                        _pad_left("総合点", _w_num)
+                    )
                     for _r in _rows:
                         try:
                             _disp = str(_r.get("disp", "")).strip()
                             if not _disp:
                                 continue
-                            _hit = _fmt_num(_r.get("hit_score", 0.0))
-                            _myoumi = _fmt_num(_r.get("myoumi_score", 0.0))
-                            _total = _fmt_num(_r.get("total_pt", 0.0))
-                            _out.append(f"{_fmt_disp(_disp)}  {_hit}   {_myoumi}   {_total}")
+                            _out.append(
+                                _pad_right(_disp, _w_disp) + _gap +
+                                _pad_left(_fmt_num(_r.get("hit_score", 0.0)), _w_num) + _gap +
+                                _pad_left(_fmt_num(_r.get("myoumi_score", 0.0)), _w_num) + _gap +
+                                _pad_left(_fmt_num(_r.get("total_pt", 0.0)), _w_num)
+                            )
                         except Exception:
                             pass
                     return _out if _out else ["該当なし"]
