@@ -13220,27 +13220,17 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             lines.append(_fmt_flow_ratio_line(_flow_ratio_map_for_trio()))
             lines.append("")
-            lines.append("【2車複サマリー】")
-            lines.append("※2車複本線は、流れ配分込みの加重的中評価＋加重妙味評価から全21通りを再評価し、総合pt上位3点を採用")
-            lines.append("")
-            try:
-                _vhc = float(globals().get("venue_hit_expect_coef", st.session_state.get("venue_hit_expect_coef", 1.00)) or 1.00)
-                _vmc = float(globals().get("venue_myoumi_expect_coef", st.session_state.get("venue_myoumi_expect_coef", 1.00)) or 1.00)
-                if abs(_vhc - 1.0) > 0.001 or abs(_vmc - 1.0) > 0.001:
-                    lines.append(f"開催適合補正】的中期待×{_vhc:.2f}／妙味期待×{_vmc:.2f}")
-            except Exception:
-                pass
-            if _best10_overlap_parts:
-                lines.append(f"ベスト10内重複】{_fmt_flow_buy_pairs(_best10_overlap_parts)}")
-            else:
-                lines.append("ベスト10内重複】該当なし")
-            def _fmt_weighted_pair_table(_rows):
+
+            # v226:
+            # 上部サマリーは「買い目」を主役にする。
+            # 21通りの評価表は上部に全件出さず、確認用として上位だけ短く表示する。
+            def _fmt_weighted_pair_table(_rows, _limit=7):
                 try:
-                    _rows = list(_rows or [])
+                    _rows = list(_rows or [])[:int(_limit)]
                     if not _rows:
                         return ["該当なし"]
                     _out = []
-                    _out.append("買い目　 的中期待  妙味期待  総合評価  総合pt")
+                    _out.append("買い目　的中　妙味　総合　pt")
                     for _r in _rows:
                         try:
                             _disp = str(_r.get("disp", "")).strip()
@@ -13255,21 +13245,44 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return ["該当なし"]
 
-            lines.append(f"本線 総合pt上位3点】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=True)}")
-            lines.append("抑え】該当なし")
-            lines.append("")
-            lines.append("加重2車複評価表】")
-            lines.extend(_fmt_weighted_pair_table(_overall_sorted_rows))
-            lines.append("")
             _fw_trio_lines = _make_flow_weighted_trio_lines()
+
+            lines.append("【買い目サマリー】")
+            lines.append(f"2車複 本線3点】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=True)}")
             if _fw_trio_lines:
-                lines.extend(_fw_trio_lines)
-                lines.append("")
-            # v225:
-            # 2車複本線は流れ別候補でも◎軸流しでもなく、
-            # 的中単騎評価＋妙味単騎評価を流れ比率で加重した
-            # 全21通りの全体組み合わせ評価から作る。
-            # 流れ別候補は詳細内の参考情報に留める。
+                for _ln in _fw_trio_lines:
+                    _s = str(_ln)
+                    if _s.startswith("流れ加重3連複】"):
+                        lines.append("3連複 本線】")
+                    elif _s.startswith("本線】") or _s.startswith("広め】"):
+                        lines.append(_s)
+            lines.append("")
+
+            lines.append("【買い目根拠】")
+            lines.append("方式】流れ配分込みの加重的中評価＋加重妙味評価で全21通りを再評価し、2車複は総合pt上位3点を採用")
+            try:
+                _vhc = float(globals().get("venue_hit_expect_coef", st.session_state.get("venue_hit_expect_coef", 1.00)) or 1.00)
+                _vmc = float(globals().get("venue_myoumi_expect_coef", st.session_state.get("venue_myoumi_expect_coef", 1.00)) or 1.00)
+                if abs(_vhc - 1.0) > 0.001 or abs(_vmc - 1.0) > 0.001:
+                    lines.append(f"開催適合補正】的中期待×{_vhc:.2f}／妙味期待×{_vmc:.2f}")
+            except Exception:
+                pass
+            if _best10_overlap_parts:
+                lines.append(f"ベスト10内重複】{_fmt_flow_buy_pairs(_best10_overlap_parts)}")
+            else:
+                lines.append("ベスト10内重複】該当なし")
+            lines.append("加重2車複評価 上位7】")
+            lines.extend(_fmt_weighted_pair_table(_overall_sorted_rows, _limit=7))
+            lines.append("")
+
+            # 加重単騎評価と3連複ロジックの確認用。買い目より下に置く。
+            if _fw_trio_lines:
+                _score_lines = [str(x) for x in _fw_trio_lines if str(x).startswith("流れ加重的中単騎評価】") or str(x).startswith("流れ加重妙味単騎評価】")]
+                if _score_lines:
+                    lines.append("【加重単騎評価】")
+                    lines.extend(_score_lines)
+                    lines.append("")
+
             lines.append("※流れ別候補は参考情報として下の詳細に表示")
             lines.append("")
             lines.extend(_detail_lines)
