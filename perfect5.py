@@ -1,6 +1,6 @@
 # v229: v228ベース。総合加重単騎評価の直下に、加重2車複全21通り評価表を表示。
 # v228: v227ベース。note上部と本文整理から意味不明な「コピー用：xxxx」を完全非表示化。
-# v227: v226ベース。note上部は買い目主役の短縮表示へ変更。2車複本線3点・3連複本線/広め・総合加重単騎評価だけを表示し、加重2車複評価表/買い目根拠/流れ別詳細考察は上部から削除。
+# v230: v229ベース。加重2車複評価表を旧表と同じ固定幅センタリング表示へ修正。
 # v225: v224ベース。2車複本線は◎軸流しではなく、流れ加重的中単騎＋流れ加重妙味単騎から全21通りを再評価し、総合pt上位3点を採用。3連複は従来どおり軸A-BCD-BCDで生成。
 # v220: v219ベース。各流れの車番別平均評価（的中順単騎評価）に流れ想定比率を掛けて合算し、2車複サマリーと3連複生成の共通土台にする。
 # v221: v220の2車複サマリー改善。流れ加重単騎評価を平均ではなく合算で2車複的中期待へ反映し、本線/抑えが空になる問題を修正。
@@ -13232,16 +13232,59 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     _rows = list(_rows or [])[:int(_limit)]
                     if not _rows:
                         return ["該当なし"]
+
+                    def _display_width(_text):
+                        try:
+                            _s = str(_text)
+                            _w = 0
+                            for _ch in _s:
+                                _w += 2 if unicodedata.east_asian_width(_ch) in ("F", "W", "A") else 1
+                            return _w
+                        except Exception:
+                            return len(str(_text))
+
+                    def _pad_center(_text, _width):
+                        _txt = str(_text)
+                        _pad = max(0, int(_width) - _display_width(_txt))
+                        _left = _pad // 2
+                        _right = _pad - _left
+                        return (("　" * (_left // 2)) + (" " * (_left % 2)) +
+                                _txt +
+                                ("　" * (_right // 2)) + (" " * (_right % 2)))
+
+                    def _pad_right(_text, _width):
+                        _txt = str(_text)
+                        _pad = max(0, int(_width) - _display_width(_txt))
+                        return _txt + ("　" * (_pad // 2)) + (" " * (_pad % 2))
+
+                    _col_w = {
+                        "disp": 10,
+                        "hit": 10,
+                        "myoumi": 10,
+                        "total": 10,
+                        "pt": 8,
+                    }
+                    _sep = ""
                     _out = []
-                    _out.append("買い目　的中期待　妙味期待　総合評価　総合pt")
+                    _out.append(_sep.join([
+                        _pad_center("買い目", _col_w["disp"]),
+                        _pad_center("的中期待", _col_w["hit"]),
+                        _pad_center("妙味期待", _col_w["myoumi"]),
+                        _pad_center("総合評価", _col_w["total"]),
+                        _pad_center("総合pt", _col_w["pt"]),
+                    ]))
                     for _r in _rows:
                         try:
                             _disp = str(_r.get("disp", "")).strip()
                             if not _disp:
                                 continue
-                            _out.append(
-                                f"{_disp}　{str(_r.get('hit_rank',''))}　{str(_r.get('myoumi_rank',''))}　{str(_r.get('total_rank',''))}　{float(_r.get('total_pt',0.0)):.1f}"
-                            )
+                            _out.append(_sep.join([
+                                _pad_center(_disp, _col_w["disp"]),
+                                _pad_center(str(_r.get("hit_rank", "") or ""), _col_w["hit"]),
+                                _pad_center(str(_r.get("myoumi_rank", "") or ""), _col_w["myoumi"]),
+                                _pad_center(str(_r.get("total_rank", "") or ""), _col_w["total"]),
+                                _pad_center(f"{float(_r.get('total_pt', 0.0) or 0.0):.1f}", _col_w["pt"]),
+                            ]))
                         except Exception:
                             pass
                     return _out if _out else ["該当なし"]
