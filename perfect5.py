@@ -1,3 +1,4 @@
+# v213: 交差軸3連複を、順流・渦・逆流の想定比率で加重評価する方式へ変更。流れ想定比率もサマリーに表示。
 # v212: 2車複サマリーの本線/抑えから、別流れハブ同士を交差軸にした3連複変換（例：3-56＋4-21→3-4-1256、本線は本線側3列目）を追加。
 # v211: v210をベースに、「イチオシ」を廃止し「ベスト10内重複」へ変更。各流れの総合B以上候補・総合pt上位10内で複数流れに重複した買目を表示。
 # v210: v209をベースに、2車複サマリーを固定pt足切りから「総合B以上候補内の順位割合」へ変更。本線=上位30%、抑え=上位50%以内（本線以外）。
@@ -12687,11 +12688,61 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             _overall_main_rows = list(_overall_sorted_rows[:_main_n])
             _overall_sub_rows = list(_overall_sorted_rows[_main_n:_display_n])
 
-            # v212: 2車複サマリーから3連複へ変換する。
+            # v213: 順流・渦・逆流を均等扱いせず、レースごとの想定比率で加重する。
+            # 基本は _flow の FR/VTX/U 指標を使い、薄すぎる流れを完全消ししないため基準比率 5:3:2 とブレンドする。
+            def _calc_flow_scenario_weight_map(_flow_items_ref=None):
+                try:
+                    _base = {"順流": 0.50, "渦": 0.30, "逆流": 0.20}
+                    _flow_obj = globals().get("_flow", {})
+                    if not isinstance(_flow_obj, dict):
+                        _flow_obj = {}
+                    _raw = {
+                        "順流": float(_flow_obj.get("FR", 0.0) or 0.0),
+                        "渦":   float(_flow_obj.get("VTX", 0.0) or 0.0),
+                        "逆流": float(_flow_obj.get("U", 0.0) or 0.0),
+                    }
+                    _raw = {k: max(0.0, float(v or 0.0)) for k, v in _raw.items()}
+                    _raw_sum = sum(_raw.values())
+                    if _raw_sum > 1e-12:
+                        _raw = {k: v / _raw_sum for k, v in _raw.items()}
+                    else:
+                        _raw = dict(_base)
+
+                    # 0.65を実データ、0.35を基準比率。極端なブレを抑えつつ流れの濃淡を出す。
+                    _w = {k: 0.65 * _raw.get(k, 0.0) + 0.35 * _base.get(k, 0.0) for k in _base.keys()}
+
+                    # その流れの着順想定が成立していない場合は重みを0にする。
+                    _available = {}
+                    for _name, _seq in (_flow_items_ref or []):
+                        _available[str(_name)] = len([x for x in (_seq or []) if str(x).isdigit()]) >= 2
+                    for _k in list(_w.keys()):
+                        if _k in _available and not _available.get(_k, False):
+                            _w[_k] = 0.0
+
+                    _sum = sum(_w.values())
+                    if _sum <= 1e-12:
+                        _w = dict(_base)
+                        _sum = sum(_w.values())
+                    _w = {k: float(v / _sum) for k, v in _w.items()}
+                    return _w
+                except Exception:
+                    return {"順流": 0.50, "渦": 0.30, "逆流": 0.20}
+
+            _flow_weight_map = _calc_flow_scenario_weight_map(flow_items)
+
+            def _fmt_flow_weight_line(_w):
+                try:
+                    _order = ["順流", "渦", "逆流"]
+                    return "流れ想定比率】" + "／".join(f"{_k}{float((_w or {}).get(_k, 0.0))*100:.0f}%" for _k in _order)
+                except Exception:
+                    return "流れ想定比率】順流50%／渦30%／逆流20%"
+
+            _nifuku_flow_weight_line = _fmt_flow_weight_line(_flow_weight_map)
+
+            # v213: 2車複サマリーから3連複へ変換する。
             # 例）本線 3-5/3-6 と、別流れ側 2-4/1-4 が出た場合、
-            #     3-56 ＋ 4-21 と見て、交差軸 3-4、3列目 1/2/5/6 を生成する。
-            #     本線表示は「本線 上位30%」側の相手だけを3列目にする。
-            def _make_nifuku_cross_axis_trio_lines(_main_rows, _sub_rows):
+            #     流れ想定比率で加重した2車複ネットワークを作り、交差軸 3-4、3列目 1/2/5/6 を生成する。
+            def _make_nifuku_cross_axis_trio_lines(_main_rows, _sub_rows, _flow_rows, _flow_weights):
                 try:
                     _main_rows = list(_main_rows or [])
                     _sub_rows = list(_sub_rows or [])
@@ -12708,66 +12759,106 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         except Exception:
                             return 0.0
 
-                    _edges_all = []
-                    _edges_main = []
+                    _display_keys = set()
+                    _main_keys = set()
                     for _r in _display_rows:
                         _k = _row_pair_key(_r)
                         if _k:
-                            _edges_all.append((_k, _r))
+                            _display_keys.add(_k)
                     for _r in _main_rows:
                         _k = _row_pair_key(_r)
                         if _k:
-                            _edges_main.append((_k, _r))
+                            _main_keys.add(_k)
+
+                    _edge_weighted = {}
+                    _edge_best_pt = {}
+                    _edge_main_score = {}
+
+                    # 各流れの候補ptを、流れ想定比率で加重して統合する。
+                    for _style_name, _rows in (_flow_rows or []):
+                        _style = str(_style_name)
+                        _fw = float((_flow_weights or {}).get(_style, 0.0) or 0.0)
+                        if _fw <= 0.0:
+                            continue
+                        for _r in (_rows or []):
+                            _k = _row_pair_key(_r)
+                            if not _k or _k not in _display_keys:
+                                continue
+                            _pt = _row_pt(_r)
+                            _edge_weighted[_k] = float(_edge_weighted.get(_k, 0.0) or 0.0) + (_pt * _fw)
+                            _edge_best_pt[_k] = max(float(_edge_best_pt.get(_k, 0.0) or 0.0), _pt)
+                            if _k in _main_keys:
+                                _edge_main_score[_k] = float(_edge_main_score.get(_k, 0.0) or 0.0) + (_pt * _fw)
+
+                    # フォールバック：流れ別ptが取れない場合は、表示ptをそのまま使う。
+                    if not _edge_weighted:
+                        for _r in _display_rows:
+                            _k = _row_pair_key(_r)
+                            if not _k:
+                                continue
+                            _pt = _row_pt(_r)
+                            _edge_weighted[_k] = _pt
+                            _edge_best_pt[_k] = _pt
+                            if _k in _main_keys:
+                                _edge_main_score[_k] = _pt
 
                     _hub_opp_all = {}
-                    _hub_opp_main = {}
-                    _hub_pt = {}
-                    for _k, _r in _edges_all:
+                    _hub_score = {}
+                    _hub_best_pt = {}
+                    for _k, _score in _edge_weighted.items():
                         _a, _b = int(_k[0]), int(_k[1])
                         _hub_opp_all.setdefault(_a, set()).add(_b)
                         _hub_opp_all.setdefault(_b, set()).add(_a)
-                        _hub_pt[_a] = max(float(_hub_pt.get(_a, 0.0) or 0.0), _row_pt(_r))
-                        _hub_pt[_b] = max(float(_hub_pt.get(_b, 0.0) or 0.0), _row_pt(_r))
-                    for _k, _r in _edges_main:
-                        _a, _b = int(_k[0]), int(_k[1])
-                        _hub_opp_main.setdefault(_a, set()).add(_b)
-                        _hub_opp_main.setdefault(_b, set()).add(_a)
+                        _hub_score[_a] = float(_hub_score.get(_a, 0.0) or 0.0) + float(_score or 0.0)
+                        _hub_score[_b] = float(_hub_score.get(_b, 0.0) or 0.0) + float(_score or 0.0)
+                        _hub_best_pt[_a] = max(float(_hub_best_pt.get(_a, 0.0) or 0.0), float(_edge_best_pt.get(_k, 0.0) or 0.0))
+                        _hub_best_pt[_b] = max(float(_hub_best_pt.get(_b, 0.0) or 0.0), float(_edge_best_pt.get(_k, 0.0) or 0.0))
 
                     # ハブは、表示対象内で相手を2車以上持つ車を優先する。
-                    _hubs = [
-                        _car for _car, _opps in _hub_opp_all.items()
-                        if len(set(_opps or [])) >= 2
-                    ]
+                    _hubs = [_car for _car, _opps in _hub_opp_all.items() if len(set(_opps or [])) >= 2]
                     if len(_hubs) < 2:
                         return []
 
                     _hubs = sorted(
                         _hubs,
-                        key=lambda _c: (len(_hub_opp_all.get(_c, set())), float(_hub_pt.get(_c, 0.0) or 0.0), -int(_c)),
+                        key=lambda _c: (
+                            float(_hub_score.get(_c, 0.0) or 0.0),
+                            len(_hub_opp_all.get(_c, set())),
+                            float(_hub_best_pt.get(_c, 0.0) or 0.0),
+                            -int(_c),
+                        ),
                         reverse=True,
                     )
                     _axis = sorted([int(_hubs[0]), int(_hubs[1])])
                     _a, _b = _axis[0], _axis[1]
 
-                    _third_all = set()
-                    _third_all.update(_hub_opp_all.get(_a, set()))
-                    _third_all.update(_hub_opp_all.get(_b, set()))
-                    _third_all.discard(_a)
-                    _third_all.discard(_b)
-
-                    _third_main = set()
-                    _third_main.update(_hub_opp_main.get(_a, set()))
-                    _third_main.update(_hub_opp_main.get(_b, set()))
-                    _third_main.discard(_a)
-                    _third_main.discard(_b)
-
-                    if not _third_main:
-                        _third_main = set(_third_all)
-
-                    _third_all = sorted(int(x) for x in _third_all if str(x).isdigit())
-                    _third_main = sorted(int(x) for x in _third_main if str(x).isdigit())
-                    if not _third_all:
+                    _third_candidates = set()
+                    _third_candidates.update(_hub_opp_all.get(_a, set()))
+                    _third_candidates.update(_hub_opp_all.get(_b, set()))
+                    _third_candidates.discard(_a)
+                    _third_candidates.discard(_b)
+                    if not _third_candidates:
                         return []
+
+                    def _edge_key(_x, _y):
+                        return tuple(sorted((int(_x), int(_y))))
+
+                    def _third_score_tuple(_x):
+                        _ka = _edge_key(_a, _x)
+                        _kb = _edge_key(_b, _x)
+                        _main_s = float(_edge_main_score.get(_ka, 0.0) or 0.0) + float(_edge_main_score.get(_kb, 0.0) or 0.0)
+                        _all_s = float(_edge_weighted.get(_ka, 0.0) or 0.0) + float(_edge_weighted.get(_kb, 0.0) or 0.0)
+                        _best = max(float(_edge_best_pt.get(_ka, 0.0) or 0.0), float(_edge_best_pt.get(_kb, 0.0) or 0.0))
+                        return (_main_s, _all_s, _best, -int(_x))
+
+                    _third_sorted = sorted([int(x) for x in _third_candidates if str(x).isdigit()], key=_third_score_tuple, reverse=True)
+
+                    # 本線は「本線30%側に接続がある相手」を優先し、最大3車まで。
+                    _third_main = [x for x in _third_sorted if _third_score_tuple(x)[0] > 1e-12]
+                    if not _third_main:
+                        _third_main = list(_third_sorted)
+                    _third_main = _third_main[:3]
+                    _third_all = list(_third_sorted[:4])
 
                     def _cars_txt(_xs):
                         return "".join(str(int(x)) for x in sorted(set(_xs)))
@@ -12776,8 +12867,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     _main_txt = f"{_axis_txt}-{_cars_txt(_third_main)}"
                     _all_txt = f"{_axis_txt}-{_cars_txt(_third_all)}"
 
+                    _axis_score = float(_edge_weighted.get(tuple(sorted((_a, _b))), 0.0) or 0.0)
                     _out = []
-                    _out.append(f"交差軸3連複】軸 {_axis_txt}")
+                    _out.append(f"交差軸3連複】軸 {_axis_txt}（加重{_axis_score:.1f}）")
                     _out.append(f"本線】{_main_txt}（{len(set(_third_main))}点）")
                     if set(_third_all) != set(_third_main):
                         _out.append(f"広め】{_all_txt}（{len(set(_third_all))}点）")
@@ -12785,7 +12877,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return []
 
-            _nifuku_cross_axis_trio_lines = _make_nifuku_cross_axis_trio_lines(_overall_main_rows, _overall_sub_rows)
+            _nifuku_cross_axis_trio_lines = _make_nifuku_cross_axis_trio_lines(
+                _overall_main_rows,
+                _overall_sub_rows,
+                flow_b_candidate_pt_summary,
+                _flow_weight_map,
+            )
 
             _display_pair_key_set = set()
             for _r in list(_overall_main_rows) + list(_overall_sub_rows):
@@ -12903,6 +13000,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append("ベスト10内重複】該当なし")
             lines.append(f"本線 上位30%】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=True)}")
             lines.append(f"抑え 上位50%以内】{_fmt_overall_rows_with_pt(_overall_sub_rows, include_myoumi=True)}")
+            lines.append(_nifuku_flow_weight_line)
             if _nifuku_cross_axis_trio_lines:
                 for _ln in _nifuku_cross_axis_trio_lines:
                     lines.append(_ln)
