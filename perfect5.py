@@ -1,6 +1,6 @@
 # v229: v228ベース。総合加重単騎評価の直下に、加重2車複全21通り評価表を表示。
 # v228: v227ベース。note上部と本文整理から意味不明な「コピー用：xxxx」を完全非表示化。
-# v230: v229ベース。加重2車複評価表を旧表と同じ固定幅センタリング表示へ修正。
+# v231: v230ベース。加重2車複評価をABCDではなく、的中点・妙味点・総合点（単純平均）の小数表示へ変更。
 # v225: v224ベース。2車複本線は◎軸流しではなく、流れ加重的中単騎＋流れ加重妙味単騎から全21通りを再評価し、総合pt上位3点を採用。3連複は従来どおり軸A-BCD-BCDで生成。
 # v220: v219ベース。各流れの車番別平均評価（的中順単騎評価）に流れ想定比率を掛けて合算し、2車複サマリーと3連複生成の共通土台にする。
 # v221: v220の2車複サマリー改善。流れ加重単騎評価を平均ではなく合算で2車複的中期待へ反映し、本線/抑えが空になる問題を修正。
@@ -12791,18 +12791,24 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 return _table.get((str(_hit_rank), _mr), "D")
 
             def _overall_total_score(_hit_score, _myoumi_score):
+                """
+                v231:
+                新しい流れ加重2車複表では、ABCDランクへ寄せず数値で見る。
+                総合点は「的中点」と「妙味点」の単純平均。
+                """
                 try:
-                    return round(math.sqrt(max(0.0, float(_hit_score)) * max(0.0, float(_myoumi_score))), 1)
+                    return round((max(0.0, float(_hit_score)) + max(0.0, float(_myoumi_score))) / 2.0, 1)
                 except Exception:
                     return 0.0
 
             def _make_weighted_overall_pair_rows(_weighted_car_hit_map, _weighted_car_myoumi_map):
                 """
-                v223:
+                v231:
                 全21通り2車複を、流れ加重の的中単騎評価＋妙味単騎評価から再評価する。
-                ・的中点：2車の加重的中単騎評価を合算（上限12.0）
-                ・妙味点：2車の加重妙味単騎評価の平均（既存妙味スケールに合わせる／上限10.8）
-                ・最終表示：◎軸流しに固定せず、全21通りの総合pt上位3点を本線にする。
+                ・的中点：2車の加重的中単騎評価の平均
+                ・妙味点：2車の加重妙味単騎評価の平均
+                ・総合点：的中点と妙味点の単純平均
+                ・ABCDランクは出さず、小数点第一位の数値で表示する。
                 """
                 # 全通りのキーは既存評価表から取得する。欠ける場合に備え、全車からも補完する。
                 _keys = set()
@@ -12833,12 +12839,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             continue
                         if _ma is None or _mb is None:
                             continue
-                        _hit_score = round(max(0.0, min(12.0, float(_ha) + float(_hb))), 2)
-                        # 単騎妙味評価は各車が絡む2車複妙味の平均なので、ペア化時は平均でスケールを維持する。
+                        # v231: 単騎評価から2車複へ変換するため、2車の平均で同じスケールを維持する。
+                        _hit_score = round(max(0.0, min(12.0, (float(_ha) + float(_hb)) / 2.0)), 2)
                         _myoumi_score = round(max(0.0, min(10.8, (float(_ma) + float(_mb)) / 2.0)), 2)
-                        _hit_rank = _overall_hit_rank_from_score(_hit_score)
-                        _myoumi_rank = _overall_myoumi_rank_from_score(_myoumi_score)
-                        _total_rank = _overall_total_rank_from_ranks(_hit_rank, _myoumi_rank)
+                        _hit_rank = ""
+                        _myoumi_rank = ""
+                        _total_rank = ""
                         _total_pt = _overall_total_score(_hit_score, _myoumi_score)
                         _out.append({
                             "disp": f"{_a}-{_b}",
@@ -13224,9 +13230,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append(_fmt_flow_ratio_line(_flow_ratio_map_for_trio()))
             lines.append("")
 
-            # v226:
-            # 上部サマリーは「買い目」を主役にする。
-            # 21通りの評価表は上部に全件出さず、確認用として上位だけ短く表示する。
+            # v231:
+            # 加重2車複評価表はABCDを出さず、的中点・妙味点・総合点を小数点第一位で表示する。
             def _fmt_weighted_pair_table(_rows, _limit=21):
                 try:
                     _rows = list(_rows or [])[:int(_limit)]
@@ -13252,26 +13257,19 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                 _txt +
                                 ("　" * (_right // 2)) + (" " * (_right % 2)))
 
-                    def _pad_right(_text, _width):
-                        _txt = str(_text)
-                        _pad = max(0, int(_width) - _display_width(_txt))
-                        return _txt + ("　" * (_pad // 2)) + (" " * (_pad % 2))
-
                     _col_w = {
                         "disp": 10,
                         "hit": 10,
                         "myoumi": 10,
                         "total": 10,
-                        "pt": 8,
                     }
                     _sep = ""
                     _out = []
                     _out.append(_sep.join([
                         _pad_center("買い目", _col_w["disp"]),
-                        _pad_center("的中期待", _col_w["hit"]),
-                        _pad_center("妙味期待", _col_w["myoumi"]),
-                        _pad_center("総合評価", _col_w["total"]),
-                        _pad_center("総合pt", _col_w["pt"]),
+                        _pad_center("的中点", _col_w["hit"]),
+                        _pad_center("妙味点", _col_w["myoumi"]),
+                        _pad_center("総合点", _col_w["total"]),
                     ]))
                     for _r in _rows:
                         try:
@@ -13280,10 +13278,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                 continue
                             _out.append(_sep.join([
                                 _pad_center(_disp, _col_w["disp"]),
-                                _pad_center(str(_r.get("hit_rank", "") or ""), _col_w["hit"]),
-                                _pad_center(str(_r.get("myoumi_rank", "") or ""), _col_w["myoumi"]),
-                                _pad_center(str(_r.get("total_rank", "") or ""), _col_w["total"]),
-                                _pad_center(f"{float(_r.get('total_pt', 0.0) or 0.0):.1f}", _col_w["pt"]),
+                                _pad_center(f"{float(_r.get('hit_score', 0.0) or 0.0):.1f}", _col_w["hit"]),
+                                _pad_center(f"{float(_r.get('myoumi_score', 0.0) or 0.0):.1f}", _col_w["myoumi"]),
+                                _pad_center(f"{float(_r.get('total_pt', 0.0) or 0.0):.1f}", _col_w["total"]),
                             ]))
                         except Exception:
                             pass
@@ -13296,7 +13293,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # v227: note上部は買い目主役で最小限にする。
             # 詳細な加重2車複評価表・買い目根拠・流れ別買目考察は出さない。
             lines.append("【買い目サマリー】")
-            lines.append(f"2車複 本線3点】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=True)}")
+            lines.append(f"2車複 本線3点】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=False)}")
             if _fw_trio_lines:
                 for _ln in _fw_trio_lines:
                     _s = str(_ln)
