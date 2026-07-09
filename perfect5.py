@@ -1,9 +1,7 @@
-# v215: 流れ想定比率を2車複ptへ二重反映せず、3連複用の流れ加重単騎評価に限定。各流れの的中順単騎評価×流れ比率で軸2車/BOX3・BOX4を生成。表示順を順流→渦→逆流へ修正。
-# v214: 流れ想定比率を【2車複サマリー】内ではなく、展開評価・全体妙味の直下に表示するよう配置修正。
-# v213: 2車複サマリーに流れ想定比率を追加し、交差軸3連複の軸選定へ流れ加重を反映。重複ペアは該当流れ比率×ptで優先し、非重複時は従来ハブ型へフォールバック。
-# v212: 2車複サマリーの本線/抑えから、別流れハブ同士を交差軸にした3連複変換（例：3-56＋4-21→3-4-1256、本線は本線側3列目）を追加。
-# v211: v210をベースに、「イチオシ」を廃止し「ベスト10内重複」へ変更。各流れの総合B以上候補・総合pt上位10内で複数流れに重複した買目を表示。
-# v210: v209をベースに、2車複サマリーを固定pt足切りから「総合B以上候補内の順位割合」へ変更。本線=上位30%、抑え=上位50%以内（本線以外）。
+# v217: v211仕様（総合pt=√(的中点×妙味点)、本線30%/抑え50%、ベスト10内重複）を維持した全面見直し版。
+#      流れ想定比率は2車複ptへ加算しない。3連複専用に、各流れの的中順単騎評価×流れ比率で軸2車を決める。
+#      3列目は2車複サマリー本線/抑えに含まれる軸隣接ペアから選別し、BOX表示は出さない。
+#      表示順は順流→渦→逆流で統一。
 # -*- coding: utf-8 -*-
 # v207: v206-fixedをベースに、2車複総合ptは√(的中点×妙味点)のまま維持。本線足切りを8.5pt以上へ変更。
 # v205: 2車複サマリーのイチオシ/本線に、採用ptが最も高い流れの妙味期待ランクを併記。抑えは従来通りptのみ。
@@ -12566,6 +12564,16 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # 「渦」は1文字なので、順流/逆流と縦位置が近くなるよう全角空白を足す。
             return "渦　" if str(_style_name) == "渦" else str(_style_name)
 
+        def _flow_style_order_key(_name):
+            _order = {"順流": 0, "渦": 1, "逆流": 2}
+            return _order.get(str(_name), 99)
+
+        def _sort_flow_style_names(_styles):
+            try:
+                return sorted([str(x) for x in (_styles or [])], key=_flow_style_order_key)
+            except Exception:
+                return [str(x) for x in (_styles or [])]
+
         if flow_items:
             # v194: まず詳細を一度組み立て、その過程で flow_buy_summary に各流れの購入候補を保持する。
             _main_lines_ref = lines
@@ -12894,10 +12902,18 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     return []
 
             def _make_flow_weighted_single_axis_trio_lines(_hit_avg_summary, _ratio_map=None, _main_rows=None, _sub_rows=None):
+                """
+                v216:
+                ・流れ想定比率は2車複ptへ再加算しない。
+                ・各流れの「的中順単騎評価」×流れ比率で、3連複の軸2車だけを決める。
+                ・3列目は単騎順位BOXではなく、2車複サマリー本線/抑えに実際に出ている軸隣接ペアから選ぶ。
+                  例：軸5-6なら、2-5 / 6-7 / 3-6 / 5-7 / 4-5 などから3列目候補を作る。
+                """
                 try:
                     _ratio_map = dict(_ratio_map or {})
+                    _main_rows = list(_main_rows or [])
+                    _sub_rows = list(_sub_rows or [])
                     _score = {}
-                    _detail = {}
                     for _style_name, _rows in (_hit_avg_summary or []):
                         _style = str(_style_name)
                         _w = float(_ratio_map.get(_style, 0.0) or 0.0)
@@ -12910,7 +12926,6 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             except Exception:
                                 continue
                             _score[_car] = float(_score.get(_car, 0.0) or 0.0) + _hit * _w
-                            _detail.setdefault(_car, {})[_style] = _hit
                     if len(_score) < 3:
                         return []
 
@@ -12921,14 +12936,71 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             return (0.0, -99)
 
                     _cars = sorted(_score.keys(), key=_rank_key, reverse=True)
-                    _axis = sorted([int(_cars[0]), int(_cars[1])])
-                    _box3 = sorted(int(x) for x in _cars[:3])
-                    _box4 = sorted(int(x) for x in _cars[:4]) if len(_cars) >= 4 else list(_box3)
+                    _a, _b = sorted([int(_cars[0]), int(_cars[1])])
+                    _axis_set = {_a, _b}
 
-                    _a, _b = int(_axis[0]), int(_axis[1])
-                    _third_main = sorted(set(_box4) - {_a, _b})
-                    if not _third_main:
-                        _third_main = sorted(set(_box3) - {_a, _b})
+                    def _row_pt(_r):
+                        try:
+                            return float((_r or {}).get("total_pt", 0.0) or 0.0)
+                        except Exception:
+                            return 0.0
+
+                    def _collect_thirds(_rows):
+                        _cand = {}
+                        for _r in (_rows or []):
+                            _k = _pair_key_from_disp((_r or {}).get("disp"))
+                            if not _k:
+                                continue
+                            _x, _y = int(_k[0]), int(_k[1])
+                            _third = None
+                            if _x in _axis_set and _y not in _axis_set:
+                                _third = _y
+                            elif _y in _axis_set and _x not in _axis_set:
+                                _third = _x
+                            else:
+                                continue
+                            _pair_pt = _row_pt(_r)
+                            _single_pt = float(_score.get(_third, 0.0) or 0.0)
+                            # 3列目は2車複評価を主、同点補助に流れ加重単騎評価を少しだけ使う。
+                            _v = _pair_pt + 0.10 * _single_pt
+                            _old = _cand.get(_third)
+                            if _old is None or _v > float(_old.get("score", 0.0) or 0.0):
+                                _cand[_third] = {"car": _third, "score": _v, "pair_pt": _pair_pt, "single_pt": _single_pt}
+                        return sorted(_cand.values(), key=lambda r: (float(r.get("score", 0.0) or 0.0), float(r.get("pair_pt", 0.0) or 0.0), -int(r.get("car", 99))), reverse=True)
+
+                    _main_cands = _collect_thirds(_main_rows)
+                    _wide_cands = _collect_thirds(list(_main_rows) + list(_sub_rows))
+
+                    # 本線は本線ペア由来を優先。足りない時だけ抑え由来で補完。
+                    if len(_main_cands) < 2:
+                        _seen = {int(r.get("car")) for r in _main_cands}
+                        for _r in _wide_cands:
+                            _c = int(_r.get("car"))
+                            if _c not in _seen:
+                                _main_cands.append(_r)
+                                _seen.add(_c)
+                            if len(_main_cands) >= 2:
+                                break
+
+                    _third_main = [int(r.get("car")) for r in _main_cands[:2]]
+                    _third_wide = [int(r.get("car")) for r in _wide_cands[:3]]
+
+                    # それでも足りない場合だけ、流れ加重単騎順位の残りで補完する。
+                    def _fill_from_weighted(_lst, _need):
+                        _out = list(_lst or [])
+                        _seen = set(_out) | _axis_set
+                        for _c in _cars:
+                            _c = int(_c)
+                            if _c in _seen:
+                                continue
+                            _out.append(_c)
+                            _seen.add(_c)
+                            if len(_out) >= _need:
+                                break
+                        return _out
+
+                    _third_main = _fill_from_weighted(_third_main, 2)[:2]
+                    _third_wide = _fill_from_weighted(_third_wide, 3)[:3]
                     if not _third_main:
                         return []
 
@@ -12941,19 +13013,14 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     _out.append(f"流れ加重単騎評価】{_rank_line}")
                     _out.append(f"流れ加重3連複】軸 {_axis_txt}")
                     _out.append(f"本線】{_axis_txt}-{_cars_txt(_third_main)}（{len(set(_third_main))}点）")
-                    _out.append(f"BOX3】{_cars_txt(_box3)}（1点）")
-                    if len(set(_box4)) >= 4:
-                        # 4車BOXは4C3=4点。
-                        _out.append(f"BOX4】{_cars_txt(_box4)}（4点）")
+                    if set(_third_wide) != set(_third_main):
+                        _out.append(f"広め】{_axis_txt}-{_cars_txt(_third_wide)}（{len(set(_third_wide))}点）")
                     return _out
                 except Exception:
                     return []
 
-            # v215: 3連複はペア重複軸より、各流れの的中順単騎評価×流れ比率で軸を決める。
-            #       生成できない場合だけv214の交差軸へフォールバックする。
-            _nifuku_cross_axis_trio_lines = _make_flow_weighted_single_axis_trio_lines(flow_hit_car_avg_summary, _flow_style_ratio_map, _overall_main_rows, _overall_sub_rows)
-            if not _nifuku_cross_axis_trio_lines:
-                _nifuku_cross_axis_trio_lines = _make_nifuku_cross_axis_trio_lines(_overall_main_rows, _overall_sub_rows, _flow_style_ratio_map)
+            # v216: 3連複行は、本線/抑えの割合切り後に生成する。
+            _nifuku_cross_axis_trio_lines = []
 
             _display_pair_key_set = set()
             for _r in list(_overall_main_rows) + list(_overall_sub_rows):
@@ -13008,7 +13075,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     _pt_txt = f"／{_best_pt:.1f}"
                     _myoumi_rank = str(_best.get("myoumi_rank", "") or "").strip()
                     _myoumi_txt = f" 妙味期待{_myoumi_rank}" if _myoumi_rank else ""
-                    _best10_overlap_parts.append(f"{_key[0]}-{_key[1]}（{'・'.join(_styles)}{_pt_txt}{_myoumi_txt}）")
+                    _best10_overlap_parts.append(f"{_key[0]}-{_key[1]}（{'・'.join(_sort_flow_style_names(_styles))}{_pt_txt}{_myoumi_txt}）")
 
             def _fmt_overall_rows_with_pt(_rows, include_myoumi=False):
                 _parts = []
@@ -13055,6 +13122,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         _display_pair_key_set.add(_k)
                 except Exception:
                     pass
+
+            # v216: 3連複は、流れ加重単騎評価で軸2車を決め、3列目は2車複サマリー本線/抑えの軸隣接ペアから選ぶ。
+            # v217: 3連複は流れ加重単騎評価だけで生成する。
+            #       旧交差軸ロジックへのフォールバックは、意図しない軸ブレを避けるため使わない。
+            _nifuku_cross_axis_trio_lines = _make_flow_weighted_single_axis_trio_lines(flow_hit_car_avg_summary, _flow_style_ratio_map, _overall_main_rows, _overall_sub_rows)
 
             # v214: 流れ想定比率はサマリー内部ではなく、全体妙味の直下へ出す。
             if _flow_style_ratio_line:
