@@ -1,3 +1,5 @@
+# v229: v228ベース。総合加重単騎評価の直下に、加重2車複全21通り評価表を表示。
+# v228: v227ベース。note上部と本文整理から意味不明な「コピー用：xxxx」を完全非表示化。
 # v227: v226ベース。note上部は買い目主役の短縮表示へ変更。2車複本線3点・3連複本線/広め・総合加重単騎評価だけを表示し、加重2車複評価表/買い目根拠/流れ別詳細考察は上部から削除。
 # v225: v224ベース。2車複本線は◎軸流しではなく、流れ加重的中単騎＋流れ加重妙味単騎から全21通りを再評価し、総合pt上位3点を採用。3連複は従来どおり軸A-BCD-BCDで生成。
 # v220: v219ベース。各流れの車番別平均評価（的中順単騎評価）に流れ想定比率を掛けて合算し、2車複サマリーと3連複生成の共通土台にする。
@@ -13225,13 +13227,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # v226:
             # 上部サマリーは「買い目」を主役にする。
             # 21通りの評価表は上部に全件出さず、確認用として上位だけ短く表示する。
-            def _fmt_weighted_pair_table(_rows, _limit=7):
+            def _fmt_weighted_pair_table(_rows, _limit=21):
                 try:
                     _rows = list(_rows or [])[:int(_limit)]
                     if not _rows:
                         return ["該当なし"]
                     _out = []
-                    _out.append("買い目　的中　妙味　総合　pt")
+                    _out.append("買い目　的中期待　妙味期待　総合評価　総合pt")
                     for _r in _rows:
                         try:
                             _disp = str(_r.get("disp", "")).strip()
@@ -13273,16 +13275,16 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     lines.append("【総合加重単騎評価】")
                     lines.extend(_score_lines)
                     lines.append("")
+                    lines.append("【加重2車複評価表】")
+                    lines.extend(_fmt_weighted_pair_table(_overall_sorted_rows, _limit=21))
+                    lines.append("")
                     lines.append("")
         else:
             lines.append("【買目考察】")
             lines.append("")
             lines.append("生成不可")
             lines.append("")
-        if rec_copy:
-            lines.append("")
-            lines.append(f"コピー用：{rec_copy}")
-
+        # v228: 意味が伝わらない「コピー用：xxxx」は表示しない。
         return "\n".join(lines).strip()
     except Exception as e:
         return f"note最終推奨サマリー生成不可：{e}"
@@ -13356,6 +13358,13 @@ def _clean_note_copy_display_only(text: str) -> str:
         while i < n:
             line = lines[i]
             s = line.strip()
+
+            # v228: 意味不明なコピー用行は全削除
+            if s.startswith("コピー用："):
+                i += 1
+                while i < n and lines[i].strip() == "":
+                    i += 1
+                continue
 
             # 1) ラスト半周補正ブロックを削除
             if s == "【ラスト半周補正】":
