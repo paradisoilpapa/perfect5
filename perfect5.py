@@ -1,3 +1,4 @@
+# v223: v222をベースに、妙味順単騎評価も流れ比率で加重し、加重的中＋加重妙味から全2車複を再評価。最終2車複は◎軸-相手3車の3点固定。
 # v220: v219ベース。各流れの車番別平均評価（的中順単騎評価）に流れ想定比率を掛けて合算し、2車複サマリーと3連複生成の共通土台にする。
 # v221: v220の2車複サマリー改善。流れ加重単騎評価を平均ではなく合算で2車複的中期待へ反映し、本線/抑えが空になる問題を修正。
 # v220: v219をベースに、流れ加重単騎評価を3連複だけでなく2車複サマリーにも反映。
@@ -12152,6 +12153,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
         flow_b_candidate_pt_summary = []
         # v220: 各流れの「的中順単騎評価」を後で流れ想定比率で加重し、2車複・3連複の共通土台にする。
         flow_hit_avg_summary = []
+        # v223: 妙味順単騎評価も同じく流れ比率で加重し、2車複の妙味期待側へ反映する。
+        flow_myoumi_avg_summary = []
         # v220: 全21通り2車複評価も流れ別に保持し、加重単騎評価で2車複サマリーを再構成する。
         flow_all_pair_pt_summary = []
 
@@ -12175,6 +12178,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     flow_b_candidate_summary.append((_style_name, []))
                     flow_b_candidate_pt_summary.append((_style_name, []))
                     flow_hit_avg_summary.append((_style_name, []))
+                    flow_myoumi_avg_summary.append((_style_name, []))
                     flow_all_pair_pt_summary.append((_style_name, []))
                     lines.append("該当なし")
                     lines.append("")
@@ -12467,6 +12471,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     flow_buy_pt_summary.append((_style_name, []))
                     flow_b_candidate_summary.append((_style_name, []))
                     flow_b_candidate_pt_summary.append((_style_name, []))
+                    flow_hit_avg_summary.append((_style_name, []))
+                    flow_myoumi_avg_summary.append((_style_name, []))
                     flow_all_pair_pt_summary.append((_style_name, []))
                     lines.append("該当なし")
                     lines.append("")
@@ -12576,6 +12582,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     {"car": int(_r.get("car")), "hit_avg": float(_r.get("hit_avg", 0.0) or 0.0)}
                     for _r in (_car_avg_rows or []) if str(_r.get("car", "")).isdigit()
                 ]))
+                flow_myoumi_avg_summary.append((_style_name, [
+                    {"car": int(_r.get("car")), "myoumi_avg": float(_r.get("myoumi_avg", 0.0) or 0.0)}
+                    for _r in (_car_avg_rows or []) if str(_r.get("car", "")).isdigit()
+                ]))
                 _hit_avg_line = _longspan_car_average_line(_car_avg_rows, "hit_avg")
                 _myoumi_avg_line = _longspan_car_average_line(_car_avg_rows, "myoumi_avg")
 
@@ -12633,6 +12643,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 flow_b_candidate_summary.append((_style_name, []))
                 flow_b_candidate_pt_summary.append((_style_name, []))
                 flow_hit_avg_summary.append((_style_name, []))
+                flow_myoumi_avg_summary.append((_style_name, []))
                 flow_all_pair_pt_summary.append((_style_name, []))
                 lines.append(f"【買目考察｜{_style_name}】")
                 lines.append(f"生成不可（{_e}）")
@@ -12669,6 +12680,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # ※各流れ採用2点をサマリーの母集団には使わない。
             _NIFUKU_MAIN_PERCENT = 0.30
             _NIFUKU_DISPLAY_PERCENT = 0.50
+            # v222: 流れ加重後は総合B以上が増えやすいので、表示点数に上限を置く。
+            # 2車複は購入主役ではなく、3連複の骨格確認用サマリーとして使う。
+            _NIFUKU_MAIN_MAX = 3
+            _NIFUKU_DISPLAY_MAX = 5
             _summary_map = {}
             _summary_pt_map = {}
             _b_candidate_map = {}
@@ -12700,23 +12715,29 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return False
 
-            def _weighted_car_hit_map_from_flows():
-                """v220: 各流れの車番別平均評価×流れ比率を車番ごとに合算する。"""
+            def _weighted_car_score_map_from_flows(_summary, _value_key):
+                """v223: 各流れの車番別平均評価×流れ比率を車番ごとに合算する共通関数。"""
                 _ratio = _flow_ratio_map_for_trio()
                 _per_car = {}
                 try:
-                    for _style_name, _rows in (flow_hit_avg_summary or []):
+                    for _style_name, _rows in (_summary or []):
                         _w = float(_ratio.get(str(_style_name), 0.0) or 0.0)
                         for _r in (_rows or []):
                             try:
                                 _car = int(_r.get("car"))
-                                _hit = float(_r.get("hit_avg", 0.0) or 0.0)
-                                _per_car[_car] = _per_car.get(_car, 0.0) + _hit * _w
+                                _v = float(_r.get(str(_value_key), 0.0) or 0.0)
+                                _per_car[_car] = _per_car.get(_car, 0.0) + _v * _w
                             except Exception:
                                 pass
                 except Exception:
                     _per_car = {}
                 return _per_car
+
+            def _weighted_car_hit_map_from_flows():
+                return _weighted_car_score_map_from_flows(flow_hit_avg_summary, "hit_avg")
+
+            def _weighted_car_myoumi_map_from_flows():
+                return _weighted_car_score_map_from_flows(flow_myoumi_avg_summary, "myoumi_avg")
 
             def _overall_myoumi_core_rank(_myoumi_rank):
                 _r = str(_myoumi_rank)
@@ -12772,45 +12793,46 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return 0.0
 
-            def _make_weighted_overall_pair_rows(_weighted_car_hit_map):
+            def _make_weighted_overall_pair_rows(_weighted_car_hit_map, _weighted_car_myoumi_map):
                 """
-                v221: 全21通り2車複評価の妙味側は既存値を使い、
-                的中側だけを「流れ配分込みの車番別平均評価」から再構成する。
-                2車複的中期待は2車の加重単騎評価を合算して作る。
+                v223:
+                全21通り2車複を、流れ加重の的中単騎評価＋妙味単騎評価から再評価する。
+                ・的中点：2車の加重的中単騎評価を合算（上限12.0）
+                ・妙味点：2車の加重妙味単騎評価の平均（既存妙味スケールに合わせる／上限10.8）
+                ・最終表示：総合pt順をそのまま大量表示せず、◎軸から相手3車へ絞る。
                 """
-                _best_by_key = {}
+                # 全通りのキーは既存評価表から取得する。欠ける場合に備え、全車からも補完する。
+                _keys = set()
                 try:
                     for _style_name, _rows in (flow_all_pair_pt_summary or []):
                         for _row in (_rows or []):
                             _key = _pair_key_from_disp((_row or {}).get("disp"))
-                            if not _key:
-                                continue
-                            try:
-                                _myoumi_score = float((_row or {}).get("myoumi_score", 0.0) or 0.0)
-                            except Exception:
-                                _myoumi_score = 0.0
-                            _old = _best_by_key.get(_key)
-                            if _old is None or _myoumi_score > float((_old or {}).get("myoumi_score", 0.0) or 0.0):
-                                _best_by_key[_key] = dict(_row or {})
+                            if _key:
+                                _keys.add(_key)
                 except Exception:
-                    _best_by_key = {}
+                    pass
+                try:
+                    _cars = sorted(set(int(c) for c in list(_weighted_car_hit_map.keys()) + list(_weighted_car_myoumi_map.keys())))
+                    for _a, _b in combinations(_cars, 2):
+                        _keys.add(tuple(sorted((int(_a), int(_b)))))
+                except Exception:
+                    pass
 
                 _out = []
-                for _key, _row in (_best_by_key or {}).items():
+                for _key in sorted(_keys):
                     try:
                         _a, _b = int(_key[0]), int(_key[1])
                         _ha = _weighted_car_hit_map.get(_a, None)
                         _hb = _weighted_car_hit_map.get(_b, None)
+                        _ma = _weighted_car_myoumi_map.get(_a, None)
+                        _mb = _weighted_car_myoumi_map.get(_b, None)
                         if _ha is None or _hb is None:
-                            _hit_score = float((_row or {}).get("hit_score", 0.0) or 0.0)
-                        else:
-                            # v221:
-                            # _weighted_car_hit_map は「車番別平均評価」の点数。
-                            # 2車複の的中期待は元コード同様に2車の点数合算で作る。
-                            # v220では平均にしていたため、全ペアがC/Dへ落ち、
-                            # 本線/抑えが該当なしになりやすかった。
-                            _hit_score = round(max(0.0, min(12.0, float(_ha) + float(_hb))), 2)
-                        _myoumi_score = float((_row or {}).get("myoumi_score", 0.0) or 0.0)
+                            continue
+                        if _ma is None or _mb is None:
+                            continue
+                        _hit_score = round(max(0.0, min(12.0, float(_ha) + float(_hb))), 2)
+                        # 単騎妙味評価は各車が絡む2車複妙味の平均なので、ペア化時は平均でスケールを維持する。
+                        _myoumi_score = round(max(0.0, min(10.8, (float(_ma) + float(_mb)) / 2.0)), 2)
                         _hit_rank = _overall_hit_rank_from_score(_hit_score)
                         _myoumi_rank = _overall_myoumi_rank_from_score(_myoumi_score)
                         _total_rank = _overall_total_rank_from_ranks(_hit_rank, _myoumi_rank)
@@ -12829,11 +12851,73 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     except Exception:
                         pass
                 try:
-                    return sorted(list(_out or []), key=lambda _r: float((_r or {}).get("total_pt", 0.0) or 0.0), reverse=True)
+                    return sorted(list(_out or []), key=lambda _r: (
+                        float((_r or {}).get("total_pt", 0.0) or 0.0),
+                        float((_r or {}).get("hit_score", 0.0) or 0.0),
+                        float((_r or {}).get("myoumi_score", 0.0) or 0.0),
+                    ), reverse=True)
                 except Exception:
                     return list(_out or [])
 
+            def _select_axis3_nifuku_rows(_rows, _weighted_car_hit_map, _weighted_car_myoumi_map):
+                """v223: 全通り評価から、◎軸-相手3車の2車複3点へ絞る。"""
+                try:
+                    _rows = list(_rows or [])
+                    if not _rows:
+                        return None, [], []
+                    _top_rows = _rows[:10]
+                    _conn_count = {}
+                    _conn_pt = {}
+                    for _r in _top_rows:
+                        try:
+                            a, b = int(_r.get("a")), int(_r.get("b"))
+                            pt = float(_r.get("total_pt", 0.0) or 0.0)
+                            for c, other in ((a, b), (b, a)):
+                                _conn_count[c] = _conn_count.get(c, 0) + 1
+                                _conn_pt[c] = _conn_pt.get(c, 0.0) + pt
+                        except Exception:
+                            pass
+
+                    _hit_rows = sorted(
+                        _weighted_car_hit_map.items(),
+                        key=lambda kv: (float(kv[1]), float(_weighted_car_myoumi_map.get(int(kv[0]), 0.0)), int(_conn_count.get(int(kv[0]), 0)), -int(kv[0])),
+                        reverse=True,
+                    )
+                    _axis_candidates = [int(c) for c, _ in _hit_rows[:3]] or [int(_rows[0].get("a"))]
+                    _axis = max(
+                        _axis_candidates,
+                        key=lambda c: (
+                            int(_conn_count.get(int(c), 0)),
+                            float(_conn_pt.get(int(c), 0.0)),
+                            float(_weighted_car_hit_map.get(int(c), 0.0)),
+                            float(_weighted_car_myoumi_map.get(int(c), 0.0)),
+                            -int(c),
+                        )
+                    )
+
+                    _axis_rows = []
+                    for _r in _rows:
+                        try:
+                            a, b = int(_r.get("a")), int(_r.get("b"))
+                            if int(_axis) in (a, b):
+                                _axis_rows.append(_r)
+                        except Exception:
+                            pass
+                    _axis_rows = sorted(_axis_rows, key=lambda _r: (
+                        float((_r or {}).get("total_pt", 0.0) or 0.0),
+                        float((_r or {}).get("hit_score", 0.0) or 0.0),
+                        float((_r or {}).get("myoumi_score", 0.0) or 0.0),
+                    ), reverse=True)
+                    _main = _axis_rows[:3]
+                    return int(_axis), _main, _axis_rows
+                except Exception:
+                    return None, [], []
+
+
             _weighted_car_hit_map = _weighted_car_hit_map_from_flows()
+            _weighted_car_myoumi_map = _weighted_car_myoumi_map_from_flows()
+            _nifuku_axis = None
+            _nifuku_axis_rows_all = []
 
             for _style_name, _rows in (flow_buy_pt_summary or []):
                 _summary_pt_map[str(_style_name)] = list(_rows or [])
@@ -12868,12 +12952,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             # v220: 2車複サマリーは、流れ別候補の最大ptではなく、
             #       流れ配分込みの車番別平均評価で的中期待を再計算した全通り評価から作る。
-            _weighted_all_pair_rows = _make_weighted_overall_pair_rows(_weighted_car_hit_map)
+            _weighted_all_pair_rows = _make_weighted_overall_pair_rows(_weighted_car_hit_map, _weighted_car_myoumi_map)
             if _weighted_all_pair_rows:
-                _overall_pair_rows = [
-                    _r for _r in (_weighted_all_pair_rows or [])
-                    if str((_r or {}).get("total_rank", "")).strip() in ("A", "B")
-                ]
+                _nifuku_axis, _axis_main_rows, _nifuku_axis_rows_all = _select_axis3_nifuku_rows(
+                    _weighted_all_pair_rows, _weighted_car_hit_map, _weighted_car_myoumi_map
+                )
+                _overall_pair_rows = list(_axis_main_rows or [])
                 _overall_pairs = [str(_r.get("disp")) for _r in (_overall_pair_rows or []) if _r.get("disp")]
                 _overall_seen = {_pair_key_from_disp(_p) for _p in (_overall_pairs or []) if _pair_key_from_disp(_p)}
 
@@ -12918,11 +13002,14 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 import math as _math
                 _n_all = len(_overall_sorted_rows or [])
                 _main_n = max(1, int(_math.ceil(_n_all * _NIFUKU_MAIN_PERCENT))) if _n_all > 0 else 0
+                _main_n = min(_main_n, int(_NIFUKU_MAIN_MAX)) if _main_n > 0 else 0
                 _display_n = max(_main_n, int(_math.ceil(_n_all * _NIFUKU_DISPLAY_PERCENT))) if _n_all > 0 else 0
+                _display_n = min(_display_n, int(_NIFUKU_DISPLAY_MAX)) if _display_n > 0 else 0
+                _display_n = max(_display_n, _main_n)
             except Exception:
                 _n_all = len(_overall_sorted_rows or [])
-                _main_n = min(2, _n_all)
-                _display_n = min(4, _n_all)
+                _main_n = min(int(_NIFUKU_MAIN_MAX), _n_all)
+                _display_n = min(int(_NIFUKU_DISPLAY_MAX), _n_all)
             _overall_main_rows = list(_overall_sorted_rows[:_main_n])
             _overall_sub_rows = list(_overall_sorted_rows[_main_n:_display_n])
             _display_pair_key_set = set()
@@ -13004,19 +13091,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return list(_rows or [])
 
-            # v210: 固定ptではなく、総合B以上候補内の順位割合で本線/抑えを切る。
+            # v223: 最終2車複は割合抽出ではなく、◎軸-相手3車の3点固定。
             _overall_sorted_rows = _sort_rows_by_pt_desc(_overall_pair_rows)
-            try:
-                import math as _math
-                _n_all = len(_overall_sorted_rows or [])
-                _main_n = max(1, int(_math.ceil(_n_all * _NIFUKU_MAIN_PERCENT))) if _n_all > 0 else 0
-                _display_n = max(_main_n, int(_math.ceil(_n_all * _NIFUKU_DISPLAY_PERCENT))) if _n_all > 0 else 0
-            except Exception:
-                _n_all = len(_overall_sorted_rows or [])
-                _main_n = min(2, _n_all)
-                _display_n = min(4, _n_all)
-            _overall_main_rows = list(_overall_sorted_rows[:_main_n])
-            _overall_sub_rows = list(_overall_sorted_rows[_main_n:_display_n])
+            _overall_main_rows = list(_overall_sorted_rows[:3])
+            _overall_sub_rows = []
             _display_pair_key_set = set()
             for _r in list(_overall_main_rows) + list(_overall_sub_rows):
                 try:
@@ -13034,10 +13112,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 """
                 try:
                     _per_car = dict(_weighted_car_hit_map or {})
+                    _per_myoumi = dict(_weighted_car_myoumi_map or {})
                     if not _per_car:
                         return []
                     _weighted_rows = sorted(_per_car.items(), key=lambda kv: (float(kv[1]), -int(kv[0])), reverse=True)
                     _weighted_line = " → ".join(f"{int(c)}（{float(v):.1f}）" for c, v in _weighted_rows)
+                    _myoumi_rows = sorted(_per_myoumi.items(), key=lambda kv: (float(kv[1]), -int(kv[0])), reverse=True)
+                    _myoumi_line = " → ".join(f"{int(c)}（{float(v):.1f}）" for c, v in _myoumi_rows)
 
                     # 表示対象2車複（本線＋抑え）との接続。
                     _display_rows = list(_overall_main_rows or []) + list(_overall_sub_rows or [])
@@ -13070,8 +13151,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                     _top_for_axis = [int(c) for c, _ in _weighted_rows[:3]]
                     if not _top_for_axis:
-                        return [f"流れ加重単騎評価】{_weighted_line}"]
-                    _axis = max(
+                        _base = [f"流れ加重的中単騎評価】{_weighted_line}"]
+                        if _myoumi_line:
+                            _base.append(f"流れ加重妙味単騎評価】{_myoumi_line}")
+                        return _base
+                    _axis = int(_nifuku_axis) if _nifuku_axis is not None else max(
                         _top_for_axis,
                         key=lambda c: (len(_conn.get(int(c), set())), float(_per_car.get(int(c), 0.0)), -int(c))
                     )
@@ -13089,16 +13173,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     # 2. 軸に接続する本線2車複の相手
                     # 3. 軸に接続するベスト10内重複/表示対象の相手
                     _main_cols = []
-                    for c, _v in _weighted_rows:
-                        if int(c) != int(_axis):
-                            _add_unique(_main_cols, c)
-                            break
-                    for c in sorted(_main_conn.get(int(_axis), set()), key=lambda x: (float(_per_car.get(int(x), 0.0)), -int(x)), reverse=True):
-                        _add_unique(_main_cols, c)
-                    for c in sorted(_overlap_conn.get(int(_axis), set()), key=lambda x: (float(_per_car.get(int(x), 0.0)), -int(x)), reverse=True):
-                        _add_unique(_main_cols, c)
-                    for c in sorted(_conn.get(int(_axis), set()), key=lambda x: (float(_per_car.get(int(x), 0.0)), -int(x)), reverse=True):
-                        _add_unique(_main_cols, c)
+                    # 2車複本線（◎軸-相手3車）を3連複の相手列にも優先反映する。
+                    for _r in (_overall_main_rows or []):
+                        try:
+                            a, b = int(_r.get("a")), int(_r.get("b"))
+                            _add_unique(_main_cols, b if a == int(_axis) else a)
+                        except Exception:
+                            pass
                     for c, _v in _weighted_rows:
                         _add_unique(_main_cols, c)
                     _main_cols = _main_cols[:3]
@@ -13121,7 +13202,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             pass
                     _wide_cols = _wide_cols[:4]
 
-                    _out = [f"流れ加重単騎評価】{_weighted_line}"]
+                    _out = [f"流れ加重的中単騎評価】{_weighted_line}"]
+                    if _myoumi_line:
+                        _out.append(f"流れ加重妙味単騎評価】{_myoumi_line}")
                     if len(_main_cols) >= 2:
                         _out.append("流れ加重3連複】")
                         _out.append(f"本線】{_fmt_trio_form(_axis, _main_cols)}（{_trio_form_ticket_count(_main_cols)}点）")
@@ -13134,7 +13217,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append(_fmt_flow_ratio_line(_flow_ratio_map_for_trio()))
             lines.append("")
             lines.append("【2車複サマリー】")
-            lines.append("※本線・抑えは流れ配分込みの加重的中評価で再計算")
+            lines.append("※2車複本線は、流れ配分込みの加重的中評価＋加重妙味評価から◎軸3点で再計算")
             lines.append("")
             try:
                 _vhc = float(globals().get("venue_hit_expect_coef", st.session_state.get("venue_hit_expect_coef", 1.00)) or 1.00)
@@ -13147,8 +13230,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append(f"ベスト10内重複】{_fmt_flow_buy_pairs(_best10_overlap_parts)}")
             else:
                 lines.append("ベスト10内重複】該当なし")
-            lines.append(f"本線 上位30%】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=True)}")
-            lines.append(f"抑え 上位50%以内】{_fmt_overall_rows_with_pt(_overall_sub_rows, include_myoumi=True)}")
+            try:
+                _axis_label = f"◎{int(_nifuku_axis)}軸3点" if _nifuku_axis is not None else "◎軸3点"
+            except Exception:
+                _axis_label = "◎軸3点"
+            lines.append(f"本線 {_axis_label}】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=True)}")
+            lines.append(f"抑え】{_fmt_overall_rows_with_pt(_overall_sub_rows, include_myoumi=True)}")
             lines.append("")
             _fw_trio_lines = _make_flow_weighted_trio_lines()
             if _fw_trio_lines:
