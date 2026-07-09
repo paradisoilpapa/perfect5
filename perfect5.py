@@ -1,6 +1,6 @@
 # v229: v228ベース。総合加重単騎評価の直下に、加重2車複全21通り評価表を表示。
 # v228: v227ベース。note上部と本文整理から意味不明な「コピー用：xxxx」を完全非表示化。
-# v234: v233ベース。加重2車複評価表の罫線区切りを廃止し、半角スペースの固定幅表示へ変更。
+# v237: v236ベース。加重2車複評価表を旧表に近い全角スペース整形へ戻す。
 # v225: v224ベース。2車複本線は◎軸流しではなく、流れ加重的中単騎＋流れ加重妙味単騎から全21通りを再評価し、総合pt上位3点を採用。3連複は従来どおり軸A-BCD-BCDで生成。
 # v220: v219ベース。各流れの車番別平均評価（的中順単騎評価）に流れ想定比率を掛けて合算し、2車複サマリーと3連複生成の共通土台にする。
 # v221: v220の2車複サマリー改善。流れ加重単騎評価を平均ではなく合算で2車複的中期待へ反映し、本線/抑えが空になる問題を修正。
@@ -13324,36 +13324,14 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # 加重2車複評価表はABCDを出さず、的中点・妙味点・総合点を小数点第一位で表示する。
             def _fmt_weighted_pair_table(_rows, _limit=21):
                 """
-                v236:
-                罫線なし。表示幅（全角=2、半角=1）で固定幅整列する。
-                ・買い目は左寄せ
-                ・数値は右寄せ
-                ・余計な先頭インデントは入れない
+                v237:
+                旧ヴェロビ表に近い全角スペース主体の整形。
+                罫線なし。半角スペースの大量挿入は使わない。
                 """
                 try:
                     _rows = list(_rows or [])[:int(_limit)]
                     if not _rows:
                         return ["該当なし"]
-
-                    def _disp_width(_text):
-                        try:
-                            _s = str(_text)
-                            _w = 0
-                            for _ch in _s:
-                                _w += 2 if unicodedata.east_asian_width(_ch) in ("F", "W", "A") else 1
-                            return _w
-                        except Exception:
-                            return len(str(_text))
-
-                    def _pad_right(_text, _width):
-                        _s = str(_text)
-                        _pad = max(0, int(_width) - _disp_width(_s))
-                        return _s + (" " * _pad)
-
-                    def _pad_left(_text, _width):
-                        _s = str(_text)
-                        _pad = max(0, int(_width) - _disp_width(_s))
-                        return (" " * _pad) + _s
 
                     def _fmt_num(_v):
                         try:
@@ -13361,28 +13339,31 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         except Exception:
                             return "-"
 
-                    # 表示幅。ヘッダー・小数1桁の数値が崩れない最小幅に固定する。
-                    _w_disp = 8
-                    _w_num = 8
-                    _gap = "  "
+                    def _cell_left(_text, _chars):
+                        _s = str(_text)
+                        return _s + ("　" * max(0, int(_chars) - len(_s)))
 
+                    def _cell_right(_text, _chars):
+                        _s = str(_text)
+                        return ("　" * max(0, int(_chars) - len(_s))) + _s
+
+                    # 旧表の見た目に寄せる。
+                    # 買い目は3桁固定、数値は小数1桁の3桁固定。
                     _out = []
-                    _out.append(
-                        _pad_right("買い目", _w_disp) + _gap +
-                        _pad_left("的中点", _w_num) + _gap +
-                        _pad_left("妙味点", _w_num) + _gap +
-                        _pad_left("総合点", _w_num)
-                    )
+                    _out.append("　買い目　　 的中点　 妙味点　 総合点")
                     for _r in _rows:
                         try:
                             _disp = str(_r.get("disp", "")).strip()
                             if not _disp:
                                 continue
+                            _hit = _fmt_num(_r.get("hit_score", 0.0))
+                            _myo = _fmt_num(_r.get("myoumi_score", 0.0))
+                            _tot = _fmt_num(_r.get("total_pt", 0.0))
                             _out.append(
-                                _pad_right(_disp, _w_disp) + _gap +
-                                _pad_left(_fmt_num(_r.get("hit_score", 0.0)), _w_num) + _gap +
-                                _pad_left(_fmt_num(_r.get("myoumi_score", 0.0)), _w_num) + _gap +
-                                _pad_left(_fmt_num(_r.get("total_pt", 0.0)), _w_num)
+                                "　" + _cell_left(_disp, 3) + "　　　　" +
+                                _cell_right(_hit, 3) + "　　　" +
+                                _cell_right(_myo, 3) + "　　　" +
+                                _cell_right(_tot, 3)
                             )
                         except Exception:
                             pass
