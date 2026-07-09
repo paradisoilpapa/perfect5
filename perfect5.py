@@ -1,3 +1,4 @@
+# v214: 流れ想定比率を【2車複サマリー】内ではなく、展開評価・全体妙味の直下に表示するよう配置修正。
 # v213: 2車複サマリーに流れ想定比率を追加し、交差軸3連複の軸選定へ流れ加重を反映。重複ペアは該当流れ比率×ptで優先し、非重複時は従来ハブ型へフォールバック。
 # v212: 2車複サマリーの本線/抑えから、別流れハブ同士を交差軸にした3連複変換（例：3-56＋4-21→3-4-1256、本線は本線側3列目）を追加。
 # v211: v210をベースに、「イチオシ」を廃止し「ベスト10内重複」へ変更。各流れの総合B以上候補・総合pt上位10内で複数流れに重複した買目を表示。
@@ -12984,6 +12985,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     pass
 
+            # v214: 流れ想定比率はサマリー内部ではなく、全体妙味の直下へ出す。
+            if _flow_style_ratio_line:
+                lines.append(_flow_style_ratio_line)
+                lines.append("")
+
             lines.append("【2車複サマリー】")
             lines.append("")
             try:
@@ -12999,8 +13005,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.append("ベスト10内重複】該当なし")
             lines.append(f"本線 上位30%】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=True)}")
             lines.append(f"抑え 上位50%以内】{_fmt_overall_rows_with_pt(_overall_sub_rows, include_myoumi=True)}")
-            if _flow_style_ratio_line:
-                lines.append(_flow_style_ratio_line)
+            lines.append("")
             if _nifuku_cross_axis_trio_lines:
                 for _ln in _nifuku_cross_axis_trio_lines:
                     lines.append(_ln)
