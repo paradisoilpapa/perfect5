@@ -1,5 +1,6 @@
 # v220: v219ベース。各流れの車番別平均評価（的中順単騎評価）に流れ想定比率を掛けて合算し、2車複サマリーと3連複生成の共通土台にする。
-# v219: v211ベース。流れ想定比率を上部へ表示し、各流れの的中順単騎評価×比率を3連複専用補助として追加。2車複ptは変更しない。3連複は固定2車軸でなく A-BCD-BCD 型で表示。
+# v221: v220の2車複サマリー改善。流れ加重単騎評価を平均ではなく合算で2車複的中期待へ反映し、本線/抑えが空になる問題を修正。
+# v220: v219をベースに、流れ加重単騎評価を3連複だけでなく2車複サマリーにも反映。
 # v211: v210をベースに、「イチオシ」を廃止し「ベスト10内重複」へ変更。各流れの総合B以上候補・総合pt上位10内で複数流れに重複した買目を表示。
 # v210: v209をベースに、2車複サマリーを固定pt足切りから「総合B以上候補内の順位割合」へ変更。本線=上位30%、抑え=上位50%以内（本線以外）。
 # -*- coding: utf-8 -*-
@@ -12773,8 +12774,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             def _make_weighted_overall_pair_rows(_weighted_car_hit_map):
                 """
-                v220: 全21通り2車複評価の妙味側は既存値を使い、
+                v221: 全21通り2車複評価の妙味側は既存値を使い、
                 的中側だけを「流れ配分込みの車番別平均評価」から再構成する。
+                2車複的中期待は2車の加重単騎評価を合算して作る。
                 """
                 _best_by_key = {}
                 try:
@@ -12802,7 +12804,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         if _ha is None or _hb is None:
                             _hit_score = float((_row or {}).get("hit_score", 0.0) or 0.0)
                         else:
-                            _hit_score = round((float(_ha) + float(_hb)) / 2.0, 2)
+                            # v221:
+                            # _weighted_car_hit_map は「車番別平均評価」の点数。
+                            # 2車複の的中期待は元コード同様に2車の点数合算で作る。
+                            # v220では平均にしていたため、全ペアがC/Dへ落ち、
+                            # 本線/抑えが該当なしになりやすかった。
+                            _hit_score = round(max(0.0, min(12.0, float(_ha) + float(_hb))), 2)
                         _myoumi_score = float((_row or {}).get("myoumi_score", 0.0) or 0.0)
                         _hit_rank = _overall_hit_rank_from_score(_hit_score)
                         _myoumi_rank = _overall_myoumi_rank_from_score(_myoumi_score)
