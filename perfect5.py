@@ -1,3 +1,4 @@
+# v215: 流れ想定比率を2車複ptへ二重反映せず、3連複用の流れ加重単騎評価に限定。各流れの的中順単騎評価×流れ比率で軸2車/BOX3・BOX4を生成。表示順を順流→渦→逆流へ修正。
 # v214: 流れ想定比率を【2車複サマリー】内ではなく、展開評価・全体妙味の直下に表示するよう配置修正。
 # v213: 2車複サマリーに流れ想定比率を追加し、交差軸3連複の軸選定へ流れ加重を反映。重複ペアは該当流れ比率×ptで優先し、非重複時は従来ハブ型へフォールバック。
 # v212: 2車複サマリーの本線/抑えから、別流れハブ同士を交差軸にした3連複変換（例：3-56＋4-21→3-4-1256、本線は本線側3列目）を追加。
@@ -12064,7 +12065,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
         # 順流・逆流・渦の表示枠は常に残す。
         # 2ライン戦などで独立した逆流シナリオが成立しない場合は、
         # 逆流を削除せず「該当なし」と表示する。
-        for _style_name in ["順流", "逆流", "渦"]:
+        for _style_name in ["順流", "渦", "逆流"]:
             _seq = style_seq_map.get(_style_name, []) or []
             _flow_xs = []
             _seen_flow = set()
@@ -12093,6 +12094,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
         # v204: サマリーの本線/抑えは「採用2点」ではなく、総合B以上候補全体から作る。
         # そのため、総合B以上候補のptも保持する。
         flow_b_candidate_pt_summary = []
+        # v215: 3連複専用。各流れの「的中順単騎評価」を流れ想定比率で加重するため保持する。
+        # 2車複ptへは反映しない（二重計算防止）。
+        flow_hit_car_avg_summary = []
 
         def _append_one_flow_bet_review(_style_name, _seq):
             try:
@@ -12113,6 +12117,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     flow_buy_pt_summary.append((_style_name, []))
                     flow_b_candidate_summary.append((_style_name, []))
                     flow_b_candidate_pt_summary.append((_style_name, []))
+                    flow_hit_car_avg_summary.append((_style_name, []))
                     lines.append("該当なし")
                     lines.append("")
                     return
@@ -12404,6 +12409,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     flow_buy_pt_summary.append((_style_name, []))
                     flow_b_candidate_summary.append((_style_name, []))
                     flow_b_candidate_pt_summary.append((_style_name, []))
+                    flow_hit_car_avg_summary.append((_style_name, []))
                     lines.append("該当なし")
                     lines.append("")
                     return
@@ -12487,6 +12493,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         return ""
 
                 _car_avg_rows = _longspan_car_average_rows(_sorted_pairs, _long_span_all_cars)
+                flow_hit_car_avg_summary.append((_style_name, [
+                    {"car": int(_r.get("car")), "hit_avg": float(_r.get("hit_avg", 0.0) or 0.0)}
+                    for _r in (_car_avg_rows or []) if str((_r or {}).get("car", "")).isdigit()
+                ]))
                 _hit_avg_line = _longspan_car_average_line(_car_avg_rows, "hit_avg")
                 _myoumi_avg_line = _longspan_car_average_line(_car_avg_rows, "myoumi_avg")
 
@@ -12543,6 +12553,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 flow_buy_pt_summary.append((_style_name, []))
                 flow_b_candidate_summary.append((_style_name, []))
                 flow_b_candidate_pt_summary.append((_style_name, []))
+                flow_hit_car_avg_summary.append((_style_name, []))
                 lines.append(f"【買目考察｜{_style_name}】")
                 lines.append(f"生成不可（{_e}）")
                 lines.append("")
@@ -12882,7 +12893,67 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return []
 
-            _nifuku_cross_axis_trio_lines = _make_nifuku_cross_axis_trio_lines(_overall_main_rows, _overall_sub_rows, _flow_style_ratio_map)
+            def _make_flow_weighted_single_axis_trio_lines(_hit_avg_summary, _ratio_map=None, _main_rows=None, _sub_rows=None):
+                try:
+                    _ratio_map = dict(_ratio_map or {})
+                    _score = {}
+                    _detail = {}
+                    for _style_name, _rows in (_hit_avg_summary or []):
+                        _style = str(_style_name)
+                        _w = float(_ratio_map.get(_style, 0.0) or 0.0)
+                        if _w <= 0:
+                            continue
+                        for _r in (_rows or []):
+                            try:
+                                _car = int((_r or {}).get("car"))
+                                _hit = float((_r or {}).get("hit_avg", 0.0) or 0.0)
+                            except Exception:
+                                continue
+                            _score[_car] = float(_score.get(_car, 0.0) or 0.0) + _hit * _w
+                            _detail.setdefault(_car, {})[_style] = _hit
+                    if len(_score) < 3:
+                        return []
+
+                    def _rank_key(_c):
+                        try:
+                            return (float(_score.get(_c, 0.0) or 0.0), -int(_c))
+                        except Exception:
+                            return (0.0, -99)
+
+                    _cars = sorted(_score.keys(), key=_rank_key, reverse=True)
+                    _axis = sorted([int(_cars[0]), int(_cars[1])])
+                    _box3 = sorted(int(x) for x in _cars[:3])
+                    _box4 = sorted(int(x) for x in _cars[:4]) if len(_cars) >= 4 else list(_box3)
+
+                    _a, _b = int(_axis[0]), int(_axis[1])
+                    _third_main = sorted(set(_box4) - {_a, _b})
+                    if not _third_main:
+                        _third_main = sorted(set(_box3) - {_a, _b})
+                    if not _third_main:
+                        return []
+
+                    def _cars_txt(_xs):
+                        return "".join(str(int(x)) for x in sorted(set(_xs)))
+
+                    _rank_line = " → ".join(f"{int(c)}（{float(_score.get(c, 0.0) or 0.0):.1f}）" for c in _cars)
+                    _axis_txt = f"{_a}-{_b}"
+                    _out = []
+                    _out.append(f"流れ加重単騎評価】{_rank_line}")
+                    _out.append(f"流れ加重3連複】軸 {_axis_txt}")
+                    _out.append(f"本線】{_axis_txt}-{_cars_txt(_third_main)}（{len(set(_third_main))}点）")
+                    _out.append(f"BOX3】{_cars_txt(_box3)}（1点）")
+                    if len(set(_box4)) >= 4:
+                        # 4車BOXは4C3=4点。
+                        _out.append(f"BOX4】{_cars_txt(_box4)}（4点）")
+                    return _out
+                except Exception:
+                    return []
+
+            # v215: 3連複はペア重複軸より、各流れの的中順単騎評価×流れ比率で軸を決める。
+            #       生成できない場合だけv214の交差軸へフォールバックする。
+            _nifuku_cross_axis_trio_lines = _make_flow_weighted_single_axis_trio_lines(flow_hit_car_avg_summary, _flow_style_ratio_map, _overall_main_rows, _overall_sub_rows)
+            if not _nifuku_cross_axis_trio_lines:
+                _nifuku_cross_axis_trio_lines = _make_nifuku_cross_axis_trio_lines(_overall_main_rows, _overall_sub_rows, _flow_style_ratio_map)
 
             _display_pair_key_set = set()
             for _r in list(_overall_main_rows) + list(_overall_sub_rows):
