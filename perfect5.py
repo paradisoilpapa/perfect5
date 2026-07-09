@@ -1,6 +1,6 @@
 # v229: v228ベース。総合加重単騎評価の直下に、加重2車複全21通り評価表を表示。
 # v228: v227ベース。note上部と本文整理から意味不明な「コピー用：xxxx」を完全非表示化。
-# v232: v231ベース。加重2車複評価表を左/右寄せ固定幅に修正し、数値桁位置を揃える。
+# v234: v233ベース。加重2車複評価表の罫線区切りを廃止し、半角スペースの固定幅表示へ変更。
 # v225: v224ベース。2車複本線は◎軸流しではなく、流れ加重的中単騎＋流れ加重妙味単騎から全21通りを再評価し、総合pt上位3点を採用。3連複は従来どおり軸A-BCD-BCDで生成。
 # v220: v219ベース。各流れの車番別平均評価（的中順単騎評価）に流れ想定比率を掛けて合算し、2車複サマリーと3連複生成の共通土台にする。
 # v221: v220の2車複サマリー改善。流れ加重単騎評価を平均ではなく合算で2車複的中期待へ反映し、本線/抑えが空になる問題を修正。
@@ -6335,6 +6335,84 @@ try:
 
         
 
+
+        # =====================================================
+        # v235: 順流・渦・逆流は必ず3枠に割り振る
+        # 目的：ライン評価グループで逆流域が空なのに、流れ比率だけ逆流100%になる矛盾を防ぐ。
+        # ・旧逆流タグを持つラインは逆流域の補完候補として最優先
+        # ・旧渦タグを持つラインは渦域の補完候補として最優先
+        # ・3ライン以上ある場合、表示上も内部比率上も3枠を空にしない
+        # =====================================================
+        try:
+            _zone_names = ["順流域", "渦域", "逆流域"]
+            for _z in _zone_names:
+                zones.setdefault(_z, [])
+
+            def _move_one_zone(_from, _to, _prefer_tag=None):
+                try:
+                    _items = list(zones.get(_from, []) or [])
+                    if len(_items) <= 1:
+                        return False
+                    _idx = None
+                    if _prefer_tag:
+                        for _i, _it in enumerate(_items):
+                            if _prefer_tag in (_it.get("tags", []) or []):
+                                _idx = _i
+                                break
+                    if _idx is None:
+                        # FRが低いものほど逆流/補完側へ回しやすい。
+                        _idx = min(range(len(_items)), key=lambda i: (float(_items[i].get("fr", 0.0) or 0.0), _fmt_line(_items[i].get("line"))))
+                    _item = _items.pop(_idx)
+                    zones[_from] = _items
+                    zones.setdefault(_to, [])
+                    zones[_to].append(_item)
+                    zones[_to] = sorted(
+                        zones.get(_to, []),
+                        key=lambda x: (-x.get("sort_score", 0.0), -float(x.get("fr", 0.0) or 0.0), _fmt_line(x.get("line")))
+                    )
+                    return True
+                except Exception:
+                    return False
+
+            _all_zone_count = sum(len(zones.get(_z, []) or []) for _z in _zone_names)
+            if _all_zone_count >= 3:
+                # 逆流域が空なら、旧逆流タグを持つ渦域ラインを最優先で逆流域へ戻す。
+                if not zones.get("逆流域"):
+                    if not _move_one_zone("渦域", "逆流域", "旧逆流"):
+                        _move_one_zone("順流域", "逆流域", "旧逆流")
+
+                # 渦域が空なら、旧渦タグを持つ逆流域ラインを最優先で渦域へ戻す。
+                if not zones.get("渦域"):
+                    if not _move_one_zone("逆流域", "渦域", "旧渦"):
+                        _move_one_zone("順流域", "渦域", "旧渦")
+
+                # 順流域が空になる異常時だけ、最大FRのラインを順流域へ補完する。
+                if not zones.get("順流域"):
+                    _donors = [z for z in ("渦域", "逆流域") if len(zones.get(z, []) or []) > 1]
+                    if _donors:
+                        _from = max(_donors, key=lambda z: max(float(x.get("fr", 0.0) or 0.0) for x in zones.get(z, []) or []))
+                        _items = list(zones.get(_from, []) or [])
+                        _idx = max(range(len(_items)), key=lambda i: float(_items[i].get("fr", 0.0) or 0.0))
+                        _item = _items.pop(_idx)
+                        zones[_from] = _items
+                        zones["順流域"] = [_item]
+
+            # 3枠確定後のFR比率を保存。以後の流れ想定比率はこの表示分類を優先する。
+            _zone_fr = {
+                "順流": sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("順流域", []) or [])),
+                "渦":   sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("渦域", []) or [])),
+                "逆流": sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("逆流域", []) or [])),
+            }
+            _zone_total = sum(_zone_fr.values())
+            if _zone_total > 0:
+                globals()["FLOW_RATIO_MAP_BY_ZONE"] = {
+                    "順流": _zone_fr["順流"] / _zone_total,
+                    "逆流": _zone_fr["逆流"] / _zone_total,
+                    "渦": _zone_fr["渦"] / _zone_total,
+                }
+        except Exception:
+            pass
+
         # KO隊列用：ラインごとの新ゾーン分類を保存
         _LINE_ZONE_MAP = {}
 
@@ -12057,13 +12135,25 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             """
             流れ想定比率。
 
-            v220:
-            各流れの車番別平均評価（的中順単騎評価）へ掛けて、
-            2車複サマリーと3連複生成の共通土台にする。
+            v235:
+            表示上のライン評価グループ（順流域／渦域／逆流域）で確定した
+            3枠のFR比率を最優先で使う。
+            これにより、逆流域が空なのに逆流100%などの矛盾を防ぐ。
 
-            基本は compute_flow_indicators の FR/VTX/U を、
-            順流・逆流・渦の3比率へ正規化して使う。
+            フォールバックとして compute_flow_indicators の FR/VTX/U を使う。
             """
+            try:
+                _zone_ratio = globals().get("FLOW_RATIO_MAP_BY_ZONE", None)
+                if isinstance(_zone_ratio, dict):
+                    _jr = float(_zone_ratio.get("順流", 0.0) or 0.0)
+                    _ur = float(_zone_ratio.get("逆流", 0.0) or 0.0)
+                    _vr = float(_zone_ratio.get("渦", 0.0) or 0.0)
+                    _zt = _jr + _ur + _vr
+                    if _zt > 0:
+                        return {"順流": _jr / _zt, "逆流": _ur / _zt, "渦": _vr / _zt}
+            except Exception:
+                pass
+
             try:
                 _flow = globals().get("_flow", {}) or {}
                 _fr = float(_flow.get("FR", 0.0) or 0.0)
@@ -13234,68 +13324,36 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # 加重2車複評価表はABCDを出さず、的中点・妙味点・総合点を小数点第一位で表示する。
             def _fmt_weighted_pair_table(_rows, _limit=21):
                 """
-                v232:
-                加重2車複評価表は、中央寄せではなく、
-                ・買い目列：左寄せ
-                ・数値列：右寄せ
-                で固定幅整形する。
-                小数点位置を揃え、本文表示で読みやすくする。
+                v234:
+                加重2車複評価表は罫線を使わない。
+                半角スペースだけの固定幅で、買い目は左寄せ、数値は右寄せにする。
                 """
                 try:
                     _rows = list(_rows or [])[:int(_limit)]
                     if not _rows:
                         return ["該当なし"]
 
-                    def _display_width(_text):
+                    def _fmt_disp(_v):
+                        _s = str(_v).strip()
+                        return f"{_s:<6}"
+
+                    def _fmt_num(_v):
                         try:
-                            _s = str(_text)
-                            _w = 0
-                            for _ch in _s:
-                                _w += 2 if unicodedata.east_asian_width(_ch) in ("F", "W", "A") else 1
-                            return _w
+                            return f"{float(_v):>5.1f}"
                         except Exception:
-                            return len(str(_text))
+                            return "    -"
 
-                    def _pad_right(_text, _width):
-                        _txt = str(_text)
-                        _pad = max(0, int(_width) - _display_width(_txt))
-                        return _txt + (("　" * (_pad // 2)) + (" " * (_pad % 2)))
-
-                    def _pad_left(_text, _width):
-                        _txt = str(_text)
-                        _pad = max(0, int(_width) - _display_width(_txt))
-                        return (("　" * (_pad // 2)) + (" " * (_pad % 2))) + _txt
-
-                    # 表示幅。日本語見出しと数値の桁位置がズレにくいように、
-                    # 数値列は右寄せにする。
-                    _col_w = {
-                        "disp": 10,
-                        "hit": 8,
-                        "myoumi": 8,
-                        "total": 8,
-                    }
-                    _sep = "　"
                     _out = []
-                    _out.append(_sep.join([
-                        _pad_right("買い目", _col_w["disp"]),
-                        _pad_left("的中点", _col_w["hit"]),
-                        _pad_left("妙味点", _col_w["myoumi"]),
-                        _pad_left("総合点", _col_w["total"]),
-                    ]))
+                    _out.append("買い目    的中点  妙味点  総合点")
                     for _r in _rows:
                         try:
                             _disp = str(_r.get("disp", "")).strip()
                             if not _disp:
                                 continue
-                            _hit = f"{float(_r.get('hit_score', 0.0) or 0.0):.1f}"
-                            _myoumi = f"{float(_r.get('myoumi_score', 0.0) or 0.0):.1f}"
-                            _total = f"{float(_r.get('total_pt', 0.0) or 0.0):.1f}"
-                            _out.append(_sep.join([
-                                _pad_right(_disp, _col_w["disp"]),
-                                _pad_left(_hit, _col_w["hit"]),
-                                _pad_left(_myoumi, _col_w["myoumi"]),
-                                _pad_left(_total, _col_w["total"]),
-                            ]))
+                            _hit = _fmt_num(_r.get("hit_score", 0.0))
+                            _myoumi = _fmt_num(_r.get("myoumi_score", 0.0))
+                            _total = _fmt_num(_r.get("total_pt", 0.0))
+                            _out.append(f"{_fmt_disp(_disp)}  {_hit}   {_myoumi}   {_total}")
                         except Exception:
                             pass
                     return _out if _out else ["該当なし"]
