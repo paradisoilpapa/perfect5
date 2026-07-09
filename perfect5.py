@@ -1,6 +1,6 @@
 # v229: v228ベース。総合加重単騎評価の直下に、加重2車複全21通り評価表を表示。
 # v228: v227ベース。note上部と本文整理から意味不明な「コピー用：xxxx」を完全非表示化。
-# v231: v230ベース。加重2車複評価をABCDではなく、的中点・妙味点・総合点（単純平均）の小数表示へ変更。
+# v232: v231ベース。加重2車複評価表を左/右寄せ固定幅に修正し、数値桁位置を揃える。
 # v225: v224ベース。2車複本線は◎軸流しではなく、流れ加重的中単騎＋流れ加重妙味単騎から全21通りを再評価し、総合pt上位3点を採用。3連複は従来どおり軸A-BCD-BCDで生成。
 # v220: v219ベース。各流れの車番別平均評価（的中順単騎評価）に流れ想定比率を掛けて合算し、2車複サマリーと3連複生成の共通土台にする。
 # v221: v220の2車複サマリー改善。流れ加重単騎評価を平均ではなく合算で2車複的中期待へ反映し、本線/抑えが空になる問題を修正。
@@ -13233,6 +13233,14 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # v231:
             # 加重2車複評価表はABCDを出さず、的中点・妙味点・総合点を小数点第一位で表示する。
             def _fmt_weighted_pair_table(_rows, _limit=21):
+                """
+                v232:
+                加重2車複評価表は、中央寄せではなく、
+                ・買い目列：左寄せ
+                ・数値列：右寄せ
+                で固定幅整形する。
+                小数点位置を揃え、本文表示で読みやすくする。
+                """
                 try:
                     _rows = list(_rows or [])[:int(_limit)]
                     if not _rows:
@@ -13248,39 +13256,45 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         except Exception:
                             return len(str(_text))
 
-                    def _pad_center(_text, _width):
+                    def _pad_right(_text, _width):
                         _txt = str(_text)
                         _pad = max(0, int(_width) - _display_width(_txt))
-                        _left = _pad // 2
-                        _right = _pad - _left
-                        return (("　" * (_left // 2)) + (" " * (_left % 2)) +
-                                _txt +
-                                ("　" * (_right // 2)) + (" " * (_right % 2)))
+                        return _txt + (("　" * (_pad // 2)) + (" " * (_pad % 2)))
 
+                    def _pad_left(_text, _width):
+                        _txt = str(_text)
+                        _pad = max(0, int(_width) - _display_width(_txt))
+                        return (("　" * (_pad // 2)) + (" " * (_pad % 2))) + _txt
+
+                    # 表示幅。日本語見出しと数値の桁位置がズレにくいように、
+                    # 数値列は右寄せにする。
                     _col_w = {
                         "disp": 10,
-                        "hit": 10,
-                        "myoumi": 10,
-                        "total": 10,
+                        "hit": 8,
+                        "myoumi": 8,
+                        "total": 8,
                     }
-                    _sep = ""
+                    _sep = "　"
                     _out = []
                     _out.append(_sep.join([
-                        _pad_center("買い目", _col_w["disp"]),
-                        _pad_center("的中点", _col_w["hit"]),
-                        _pad_center("妙味点", _col_w["myoumi"]),
-                        _pad_center("総合点", _col_w["total"]),
+                        _pad_right("買い目", _col_w["disp"]),
+                        _pad_left("的中点", _col_w["hit"]),
+                        _pad_left("妙味点", _col_w["myoumi"]),
+                        _pad_left("総合点", _col_w["total"]),
                     ]))
                     for _r in _rows:
                         try:
                             _disp = str(_r.get("disp", "")).strip()
                             if not _disp:
                                 continue
+                            _hit = f"{float(_r.get('hit_score', 0.0) or 0.0):.1f}"
+                            _myoumi = f"{float(_r.get('myoumi_score', 0.0) or 0.0):.1f}"
+                            _total = f"{float(_r.get('total_pt', 0.0) or 0.0):.1f}"
                             _out.append(_sep.join([
-                                _pad_center(_disp, _col_w["disp"]),
-                                _pad_center(f"{float(_r.get('hit_score', 0.0) or 0.0):.1f}", _col_w["hit"]),
-                                _pad_center(f"{float(_r.get('myoumi_score', 0.0) or 0.0):.1f}", _col_w["myoumi"]),
-                                _pad_center(f"{float(_r.get('total_pt', 0.0) or 0.0):.1f}", _col_w["total"]),
+                                _pad_right(_disp, _col_w["disp"]),
+                                _pad_left(_hit, _col_w["hit"]),
+                                _pad_left(_myoumi, _col_w["myoumi"]),
+                                _pad_left(_total, _col_w["total"]),
                             ]))
                         except Exception:
                             pass
