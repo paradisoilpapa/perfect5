@@ -11138,16 +11138,17 @@ def _display_expect_myoumi_labels_in_text(text: str) -> str:
 def _replace_axis_line_to_expect(text: str, label: str) -> str:
     """
     note本文の最初の軸評価行を全体妙味へ置換する。
-    軸想定2着内率は残す。
+    ここで表示名を「三連複軸想定着内率」へ変更する。
+    ※2車複は複数点表示のため、全体妙味の率は3連複軸の目安として扱う。
     """
-    pat = r"軸評価：[A-E](?:☆☆|☆)?［[^］]*］（軸想定2着内率\s*\d+%）"
+    pat = r"軸評価：[A-E](?:☆☆|☆)?［[^］]*］（軸想定2着内率\s*(\d+)%）"
 
     def repl(m):
-        s = m.group(0)
-        rate = re.search(r"（軸想定2着内率\s*\d+%）", s)
+        pct = m.group(1) if m and m.lastindex else ""
+        rate_txt = f"（三連複軸想定着内率 {pct}%）" if pct else ""
         # ここでは旧判定ラベルのまま差し込む。
         # A/B/Cへの表示変換は _display_expect_myoumi_labels_in_text() で一度だけ行う。
-        return f"全体妙味：{str(label or '').strip()}" + (rate.group(0) if rate else "")
+        return f"全体妙味：{str(label or '').strip()}" + rate_txt
 
     return re.sub(pat, repl, text, count=1)
 
@@ -13376,7 +13377,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # v227: note上部は買い目主役で最小限にする。
             # 詳細な加重2車複評価表・買い目根拠・流れ別買目考察は出さない。
             lines.append("【買い目サマリー】")
-            lines.append(f"2車複 本線3点】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=False)}")
+            # v238: 優先券種を三連複 → 2車複へ変更。
+            # 全体妙味の率も3連複軸を指すため、先に3連複を表示する。
             if _fw_trio_lines:
                 for _ln in _fw_trio_lines:
                     _s = str(_ln)
@@ -13384,6 +13386,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         lines.append("3連複 本線】")
                     elif _s.startswith("本線】") or _s.startswith("広め】"):
                         lines.append(_s)
+            lines.append(f"2車複 本線3点】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=False)}")
             lines.append("")
             lines.append("")
 
@@ -13437,7 +13440,7 @@ try:
 
     # 最初の全体妙味行の直後にだけ挿入
     _m_axis = re.search(
-        r"全体妙味：(?:AA|A|B|C|荒|低)（軸想定2着内率\s*\d+%）",
+        r"全体妙味：(?:AA|A|B|C|荒|低)（(?:三連複軸想定着内率|軸想定2着内率)\s*\d+%）",
         note_text
     )
 
