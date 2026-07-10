@@ -13272,18 +13272,78 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         except Exception:
                             pass
 
-                    # 本線列：
-                    # 1. 加重単騎評価の最上位（軸以外）
-                    # 2. 軸に接続する本線2車複の相手
-                    # 3. 軸に接続するベスト10内重複/表示対象の相手
-                    _main_cols = []
-                    # 2車複本線（◎軸-相手3車）を3連複の相手列にも優先反映する。
-                    for _r in (_overall_main_rows or []):
+                    # v240 本線ヒモ：
+                    # 三連複は「軸-ヒモ-ヒモ」の3点フォーメーションで作る。
+                    # ヒモ3車は、まず軸が含まれる実ラインの相手を優先し、
+                    # 不足分を「軸と組み合わせた加重2車複総合点上位」で補完する。
+                    # 例：軸7・ライン726・軸絡み総合上位5-7なら 7-265-265。
+                    def _axis_line_mates(_axis_no):
+                        _mates = []
                         try:
-                            a, b = int(_r.get("a")), int(_r.get("b"))
-                            _add_unique(_main_cols, b if a == int(_axis) else a)
+                            _axis_no = int(_axis_no)
+                            _line_sources = []
+                            try:
+                                _line_sources.append(globals().get("lines_live", None))
+                            except Exception:
+                                pass
+                            try:
+                                _line_sources.append(lines_live)
+                            except Exception:
+                                pass
+                            try:
+                                _line_def = globals().get("line_def_live", None)
+                                if isinstance(_line_def, dict):
+                                    _line_sources.append(list(_line_def.values()))
+                            except Exception:
+                                pass
+                            for _lines in (_line_sources or []):
+                                if not _lines:
+                                    continue
+                                for _ln in (_lines or []):
+                                    try:
+                                        _cars = [int(x) for x in (_ln or []) if str(x).isdigit()]
+                                    except Exception:
+                                        _cars = []
+                                    if _axis_no not in _cars:
+                                        continue
+                                    for _c in _cars:
+                                        if _c != _axis_no and _c not in _mates:
+                                            _mates.append(_c)
+                                    if _mates:
+                                        return _mates
                         except Exception:
                             pass
+                        return _mates
+
+                    def _axis_pair_score_partners(_axis_no):
+                        _partners = []
+                        try:
+                            _axis_no = int(_axis_no)
+                            _rows = sorted(list(_overall_pair_rows or []), key=lambda _r: (
+                                float((_r or {}).get("total_pt", 0.0) or 0.0),
+                                float((_r or {}).get("hit_score", 0.0) or 0.0),
+                                float((_r or {}).get("myoumi_score", 0.0) or 0.0),
+                            ), reverse=True)
+                            for _r in (_rows or []):
+                                try:
+                                    a, b = int(_r.get("a")), int(_r.get("b"))
+                                    if _axis_no not in (a, b):
+                                        continue
+                                    _p = b if a == _axis_no else a
+                                    if _p != _axis_no and _p not in _partners:
+                                        _partners.append(_p)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                        return _partners
+
+                    _main_cols = []
+                    for _c in _axis_line_mates(_axis):
+                        _add_unique(_main_cols, _c)
+                    for _c in _axis_pair_score_partners(_axis):
+                        _add_unique(_main_cols, _c)
+                    # 保険：ライン・軸絡み2車複で不足する場合だけ、加重的中単騎順で補完する。
                     for c, _v in _weighted_rows:
                         _add_unique(_main_cols, c)
                     _main_cols = _main_cols[:3]
