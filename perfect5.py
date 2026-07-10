@@ -13580,7 +13580,7 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         elif myoumi == "B":
             line1 = "・全体妙味：B。市場評価とのズレは中間。"
         elif myoumi == "C":
-            line1 = "・全体妙味：C。ズレが大きく荒れ含み。"
+            line1 = "・全体妙味：C。妙味は控えめ。"
         else:
             line1 = "・全体妙味：未判定。"
 
