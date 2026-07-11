@@ -1,3 +1,4 @@
+# v241: v240ベース。3連複を全35通りで加重評価し、総合点内部値上位3点を買い目サマリーへ表示。3単参考順も併記。
 # v229: v228ベース。総合加重単騎評価の直下に、加重2車複全21通り評価表を表示。
 # v228: v227ベース。note上部と本文整理から意味不明な「コピー用：xxxx」を完全非表示化。
 # v237: v236ベース。加重2車複評価表を旧表に近い全角スペース整形へ戻す。
@@ -13208,6 +13209,95 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     pass
 
+            def _make_weighted_overall_trio_rows(_pair_rows, _weighted_car_hit_map, _weighted_car_myoumi_map):
+                """
+                v241:
+                加重2車複評価表を土台に、7車立て全35通りの3連複を評価する。
+                ・3連複的中点：内包する2車複3本の的中点平均
+                ・3連複妙味点：内包する2車複3本の妙味点平均
+                ・3連複総合点：的中点と妙味点の平均（内部値で保持、表示は小数1桁）
+                ・3単参考順：該当3車を流れ加重的中単騎評価順に並べる
+                """
+                try:
+                    _pair_map = {}
+                    _cars = set()
+                    for _r in (_pair_rows or []):
+                        try:
+                            _a, _b = int(_r.get("a")), int(_r.get("b"))
+                            _k = tuple(sorted((_a, _b)))
+                            _pair_map[_k] = _r
+                            _cars.add(_a); _cars.add(_b)
+                        except Exception:
+                            pass
+                    try:
+                        _cars.update(int(c) for c in (_weighted_car_hit_map or {}).keys())
+                        _cars.update(int(c) for c in (_weighted_car_myoumi_map or {}).keys())
+                    except Exception:
+                        pass
+                    _cars = sorted(int(c) for c in _cars if str(c).isdigit())
+                    _out = []
+                    for _a, _b, _c in combinations(_cars, 3):
+                        try:
+                            _ks = [tuple(sorted((_a, _b))), tuple(sorted((_a, _c))), tuple(sorted((_b, _c)))]
+                            _prs = [_pair_map.get(_k) for _k in _ks]
+                            if any(_x is None for _x in _prs):
+                                continue
+                            _hit_score = sum(float((_x or {}).get("hit_score", 0.0) or 0.0) for _x in _prs) / 3.0
+                            _myoumi_score = sum(float((_x or {}).get("myoumi_score", 0.0) or 0.0) for _x in _prs) / 3.0
+                            _total_pt = (max(0.0, float(_hit_score)) + max(0.0, float(_myoumi_score))) / 2.0
+                            _cars3 = [int(_a), int(_b), int(_c)]
+                            _santan_order = sorted(
+                                _cars3,
+                                key=lambda _x: (
+                                    -float((_weighted_car_hit_map or {}).get(int(_x), 0.0) or 0.0),
+                                    -float((_weighted_car_myoumi_map or {}).get(int(_x), 0.0) or 0.0),
+                                    int(_x),
+                                )
+                            )
+                            _out.append({
+                                "disp": f"{_a}-{_b}-{_c}",
+                                "cars": tuple(_cars3),
+                                "a": int(_a),
+                                "b": int(_b),
+                                "c": int(_c),
+                                "hit_score": float(_hit_score),
+                                "myoumi_score": float(_myoumi_score),
+                                "total_pt": float(_total_pt),
+                                "santan_ref": "→".join(str(x) for x in _santan_order),
+                            })
+                        except Exception:
+                            pass
+                    return sorted(list(_out or []), key=lambda _r: (
+                        float((_r or {}).get("total_pt", 0.0) or 0.0),
+                        float((_r or {}).get("hit_score", 0.0) or 0.0),
+                        float((_r or {}).get("myoumi_score", 0.0) or 0.0),
+                        str((_r or {}).get("disp", "")),
+                    ), reverse=True)
+                except Exception:
+                    return []
+
+            _weighted_trio_rows = _make_weighted_overall_trio_rows(
+                _overall_sorted_rows,
+                _weighted_car_hit_map,
+                _weighted_car_myoumi_map,
+            )
+            _trio_main_rows = list(_weighted_trio_rows[:3])
+
+            def _fmt_trio_summary_rows(_rows):
+                _out = []
+                for _r in (_rows or []):
+                    try:
+                        _disp = str((_r or {}).get("disp", "")).strip()
+                        if not _disp:
+                            continue
+                        _pt = float((_r or {}).get("total_pt", 0.0) or 0.0)
+                        _ref = str((_r or {}).get("santan_ref", "") or "").strip()
+                        _ref_txt = f"／3単参考 {_ref}" if _ref else ""
+                        _out.append(f"{_disp}（{_pt:.1f}{_ref_txt}）")
+                    except Exception:
+                        pass
+                return _out if _out else ["該当なし"]
+
             def _make_flow_weighted_trio_lines():
                 """
                 v220:
@@ -13432,20 +13522,59 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return ["該当なし"]
 
+            def _fmt_weighted_trio_table(_rows, _limit=35):
+                """v241: 加重3連複評価表。罫線なし・全角スペース主体。"""
+                try:
+                    _rows = list(_rows or [])[:int(_limit)]
+                    if not _rows:
+                        return ["該当なし"]
+
+                    def _fmt_num(_v):
+                        try:
+                            return f"{float(_v):.1f}"
+                        except Exception:
+                            return "-"
+
+                    def _cell_left(_text, _chars):
+                        _s = str(_text)
+                        return _s + ("　" * max(0, int(_chars) - len(_s)))
+
+                    def _cell_right(_text, _chars):
+                        _s = str(_text)
+                        return ("　" * max(0, int(_chars) - len(_s))) + _s
+
+                    _out = []
+                    _out.append("　買い目　　 3単参考　 的中点　 妙味点　 総合点")
+                    for _r in _rows:
+                        try:
+                            _disp = str((_r or {}).get("disp", "")).strip()
+                            if not _disp:
+                                continue
+                            _ref = str((_r or {}).get("santan_ref", "") or "").strip()
+                            _hit = _fmt_num((_r or {}).get("hit_score", 0.0))
+                            _myo = _fmt_num((_r or {}).get("myoumi_score", 0.0))
+                            _tot = _fmt_num((_r or {}).get("total_pt", 0.0))
+                            _out.append(
+                                "　" + _cell_left(_disp, 5) + "　　　" +
+                                _cell_left(_ref, 5) + "　　" +
+                                _cell_right(_hit, 3) + "　　　" +
+                                _cell_right(_myo, 3) + "　　　" +
+                                _cell_right(_tot, 3)
+                            )
+                        except Exception:
+                            pass
+                    return _out if _out else ["該当なし"]
+                except Exception:
+                    return ["該当なし"]
+
             _fw_trio_lines = _make_flow_weighted_trio_lines()
 
             # v227: note上部は買い目主役で最小限にする。
             # 詳細な加重2車複評価表・買い目根拠・流れ別買目考察は出さない。
             lines.append("【買い目サマリー】")
-            # v238: 優先券種を三連複 → 2車複へ変更。
-            # 全体妙味の率も3連複軸を指すため、先に3連複を表示する。
-            if _fw_trio_lines:
-                for _ln in _fw_trio_lines:
-                    _s = str(_ln)
-                    if _s.startswith("流れ加重3連複】"):
-                        lines.append("3連複 本線】")
-                    elif _s.startswith("本線】") or _s.startswith("広め】"):
-                        lines.append(_s)
+            # v241: 3連複は軸固定フォメではなく、全35通り評価の総合点内部値上位3点を表示する。
+            lines.append("3連複 本線3点】")
+            lines.extend(_fmt_trio_summary_rows(_trio_main_rows))
             lines.append(f"2車複 本線3点】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=False)}")
             lines.append("")
             lines.append("")
@@ -13463,6 +13592,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     lines.append("")
                     lines.append("【加重2車複評価表】")
                     lines.extend(_fmt_weighted_pair_table(_overall_sorted_rows, _limit=21))
+                    lines.append("")
+                    lines.append("【加重3連複評価表】")
+                    lines.extend(_fmt_weighted_trio_table(_weighted_trio_rows, _limit=35))
                     lines.append("")
                     lines.append("")
         else:
