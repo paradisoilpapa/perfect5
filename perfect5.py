@@ -1,3 +1,4 @@
+# v242: v241ベース。加重2車複1位ペアをA-B、同ペアを含む加重3連複上位の第三車3台をCDEとし、CDE内の流れ加重的中単騎評価1位を最終軸Dに選定。Dの同ライン相手を保護し、内部流れ比率の低い流域から的中単騎評価最下位を1台外してD-3車-3車へ。2車複も同じD-相手3車に統一。
 # v241: v240ベース。3連複を全35通りで加重評価し、総合点内部値上位3点を買い目サマリーへ表示。3単参考順も併記。
 # v229: v228ベース。総合加重単騎評価の直下に、加重2車複全21通り評価表を表示。
 # v228: v227ベース。note上部と本文整理から意味不明な「コピー用：xxxx」を完全非表示化。
@@ -13281,7 +13282,305 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _weighted_car_hit_map,
                 _weighted_car_myoumi_map,
             )
-            _trio_main_rows = list(_weighted_trio_rows[:3])
+
+            # v242:
+            # 1) 加重2車複総合1位を A-B とする。
+            # 2) A-B を含む加重3連複を総合点順に見て、第三車上位3台を CDE とする。
+            # 3) CDE の中で流れ加重的中単騎評価が最も高い車を最終軸 D とする。
+            # 4) 残る相手4台では D の同ライン相手を保護する。
+            # 5) 内部流れ比率が低い流域から、的中単騎評価が最も低い1台を外す。
+            #    該当車がいなければ次に比率が低い流域へ進む。
+            # 6) 最終買い目を 3連複 D-3車-3車、2車複 D-同じ3車 に統一する。
+            def _select_v242_synced_bets(
+                _pair_rows,
+                _trio_rows,
+                _hit_map,
+                _myoumi_map,
+            ):
+                try:
+                    _pair_rows = list(_pair_rows or [])
+                    _trio_rows = list(_trio_rows or [])
+                    _hit_map = dict(_hit_map or {})
+                    _myoumi_map = dict(_myoumi_map or {})
+                    if not _pair_rows or not _trio_rows or not _hit_map:
+                        return None
+
+                    def _uniq_ints(_xs):
+                        _out = []
+                        for _x in (_xs or []):
+                            try:
+                                _x = int(_x)
+                            except Exception:
+                                continue
+                            if _x not in _out:
+                                _out.append(_x)
+                        return _out
+
+                    def _pair_cars(_row):
+                        try:
+                            return int(_row.get("a")), int(_row.get("b"))
+                        except Exception:
+                            _k = _pair_key_from_disp((_row or {}).get("disp"))
+                            return (int(_k[0]), int(_k[1])) if _k else (None, None)
+
+                    def _trio_cars(_row):
+                        try:
+                            _cars = [int(x) for x in ((_row or {}).get("cars") or []) if str(x).isdigit()]
+                            if len(_cars) == 3:
+                                return tuple(sorted(_cars))
+                        except Exception:
+                            pass
+                        try:
+                            return tuple(sorted((int(_row.get("a")), int(_row.get("b")), int(_row.get("c")))))
+                        except Exception:
+                            return tuple()
+
+                    # A-B：加重2車複総合1位。
+                    _a, _b = _pair_cars(_pair_rows[0])
+                    if _a is None or _b is None or int(_a) == int(_b):
+                        return None
+                    _a, _b = int(_a), int(_b)
+                    _ab_set = {_a, _b}
+
+                    # CDE：A-Bを含む加重3連複の第三車上位3台。
+                    _third_rows = {}
+                    _cde = []
+                    for _r in _trio_rows:
+                        _cars3 = _trio_cars(_r)
+                        if len(_cars3) != 3 or not _ab_set.issubset(set(_cars3)):
+                            continue
+                        _rest = [int(x) for x in _cars3 if int(x) not in _ab_set]
+                        if len(_rest) != 1:
+                            continue
+                        _c = int(_rest[0])
+                        if _c in _cde:
+                            continue
+                        _cde.append(_c)
+                        _third_rows[_c] = _r
+                        if len(_cde) >= 3:
+                            break
+
+                    # 車立てや欠損時の補完。A-B以外を的中単騎評価順で足す。
+                    _hit_order = [
+                        int(c) for c, _v in sorted(
+                            _hit_map.items(),
+                            key=lambda kv: (float(kv[1]), -int(kv[0])),
+                            reverse=True,
+                        )
+                    ]
+                    for _c in _hit_order:
+                        if _c in _ab_set or _c in _cde:
+                            continue
+                        _cde.append(_c)
+                        if len(_cde) >= 3:
+                            break
+                    _cde = _uniq_ints(_cde)[:3]
+                    if len(_cde) < 3:
+                        return None
+
+                    # D：CDE内の流れ加重的中単騎評価1位。
+                    # 内部値が完全同点の場合だけ車番の小さい方を採用する。
+                    _axis = max(
+                        _cde,
+                        key=lambda c: (
+                            float(_hit_map.get(int(c), 0.0) or 0.0),
+                            -int(c),
+                        ),
+                    )
+
+                    # 相手4台：A・Bと、CDEのうちD以外の2台。
+                    _opponents4 = _uniq_ints([_a, _b] + [c for c in _cde if int(c) != int(_axis)])
+                    for _c in _hit_order:
+                        if int(_c) == int(_axis) or int(_c) in _opponents4:
+                            continue
+                        _opponents4.append(int(_c))
+                        if len(_opponents4) >= 4:
+                            break
+                    _opponents4 = _opponents4[:4]
+                    if len(_opponents4) < 4:
+                        return None
+
+                    def _line_sources_v242():
+                        _src = []
+                        try:
+                            _x = globals().get("lines_live", None)
+                            if _x:
+                                _src.append(_x)
+                        except Exception:
+                            pass
+                        try:
+                            _x = globals().get("line_def_live", None)
+                            if isinstance(_x, dict) and _x:
+                                _src.append(list(_x.values()))
+                        except Exception:
+                            pass
+                        return _src
+
+                    def _axis_line_mates_v242(_axis_no):
+                        _axis_no = int(_axis_no)
+                        for _lines in _line_sources_v242():
+                            for _ln in (_lines or []):
+                                try:
+                                    _cars = [int(x) for x in (_ln or []) if str(x).isdigit()]
+                                except Exception:
+                                    _cars = []
+                                if _axis_no not in _cars:
+                                    continue
+                                _idx = _cars.index(_axis_no)
+                                _mates = [c for c in _cars if c != _axis_no]
+                                # 軸に近い順。完全同距離ならライン入力順。
+                                _mates.sort(key=lambda c: (abs(_cars.index(c) - _idx), _cars.index(c)))
+                                return _mates
+                        return []
+
+                    def _car_zone_map_v242():
+                        _out = {}
+                        try:
+                            _zmap = globals().get("LINE_ZONE_MAP", {}) or {}
+                        except Exception:
+                            _zmap = {}
+                        for _lines in _line_sources_v242():
+                            for _ln in (_lines or []):
+                                try:
+                                    _cars = [int(x) for x in (_ln or []) if str(x).isdigit()]
+                                except Exception:
+                                    _cars = []
+                                if not _cars:
+                                    continue
+                                _key = "".join(str(x) for x in _cars)
+                                _zone = str(_zmap.get(_key, "") or "")
+                                if _zone not in ("順流", "逆流", "渦"):
+                                    continue
+                                for _c in _cars:
+                                    _out[int(_c)] = _zone
+                        return _out
+
+                    _line_mates = _axis_line_mates_v242(_axis)
+                    _protected = [c for c in _line_mates if int(c) in _opponents4]
+
+                    # 通常はDの同ライン相手を全て保護する。
+                    # 5車以上の長い同一ライン等で4台全てが保護対象になる例外時だけ、
+                    # 軸に最も近い1台を必ず残し、他は切り候補へ戻す。
+                    if len(_protected) >= len(_opponents4):
+                        _protected = _protected[:1]
+                    _protected_set = set(int(c) for c in _protected)
+                    _eligible = [int(c) for c in _opponents4 if int(c) not in _protected_set]
+                    if not _eligible:
+                        _keep = int(_protected[0]) if _protected else None
+                        _eligible = [int(c) for c in _opponents4 if _keep is None or int(c) != _keep]
+
+                    _pair_partner_pt = {}
+                    for _r in _pair_rows:
+                        try:
+                            _pa, _pb = _pair_cars(_r)
+                            if int(_axis) not in (int(_pa), int(_pb)):
+                                continue
+                            _p = int(_pb) if int(_pa) == int(_axis) else int(_pa)
+                            _pair_partner_pt[_p] = float((_r or {}).get("total_pt", 0.0) or 0.0)
+                        except Exception:
+                            pass
+
+                    def _cut_eval_key(_car):
+                        _car = int(_car)
+                        return (
+                            float(_hit_map.get(_car, 0.0) or 0.0),
+                            float(_pair_partner_pt.get(_car, 0.0) or 0.0),
+                            float(_myoumi_map.get(_car, 0.0) or 0.0),
+                            int(_car),
+                        )
+
+                    _ratio = _flow_ratio_map_for_trio()
+                    _zones = ("順流", "逆流", "渦")
+                    _zone_ratio = {z: float((_ratio or {}).get(z, 0.0) or 0.0) for z in _zones}
+                    _car_zone = _car_zone_map_v242()
+                    _cut_car = None
+
+                    # 内部比率の低い流域から探す。同率流域はまとめて比較する。
+                    _levels = sorted(set(round(_zone_ratio[z], 12) for z in _zones))
+                    for _lv in _levels:
+                        _target_zones = {
+                            z for z in _zones
+                            if abs(round(_zone_ratio[z], 12) - _lv) <= 1e-12
+                        }
+                        _flow_candidates = [
+                            int(c) for c in _eligible
+                            if str(_car_zone.get(int(c), "")) in _target_zones
+                        ]
+                        if _flow_candidates:
+                            _cut_car = min(_flow_candidates, key=_cut_eval_key)
+                            break
+
+                    # 流域不明・該当なしの場合の最終フォールバック。
+                    if _cut_car is None and _eligible:
+                        _cut_car = min(_eligible, key=_cut_eval_key)
+                    if _cut_car is None:
+                        return None
+
+                    _partners3 = sorted(int(c) for c in _opponents4 if int(c) != int(_cut_car))
+                    if len(_partners3) != 3:
+                        return None
+
+                    _pair_map = {}
+                    for _r in _pair_rows:
+                        try:
+                            _pa, _pb = _pair_cars(_r)
+                            _pair_map[tuple(sorted((int(_pa), int(_pb))))] = _r
+                        except Exception:
+                            pass
+                    _trio_map = {}
+                    for _r in _trio_rows:
+                        _cars3 = _trio_cars(_r)
+                        if len(_cars3) == 3:
+                            _trio_map[tuple(sorted(_cars3))] = _r
+
+                    _main_pair_rows = []
+                    for _p in _partners3:
+                        _r = _pair_map.get(tuple(sorted((int(_axis), int(_p)))))
+                        if _r is not None:
+                            _main_pair_rows.append(_r)
+
+                    _main_trio_rows = []
+                    for _x, _y in combinations(_partners3, 2):
+                        _r = _trio_map.get(tuple(sorted((int(_axis), int(_x), int(_y)))))
+                        if _r is not None:
+                            _main_trio_rows.append(_r)
+
+                    if len(_main_pair_rows) != 3 or len(_main_trio_rows) != 3:
+                        return None
+
+                    return {
+                        "top_pair": (_a, _b),
+                        "third_candidates": tuple(_cde),
+                        "axis": int(_axis),
+                        "opponents4": tuple(_opponents4),
+                        "partners3": tuple(_partners3),
+                        "protected": tuple(_protected),
+                        "cut_car": int(_cut_car),
+                        "cut_zone": str(_car_zone.get(int(_cut_car), "") or ""),
+                        "pair_rows": _main_pair_rows,
+                        "trio_rows": _main_trio_rows,
+                        "form": _fmt_trio_form(int(_axis), _partners3),
+                    }
+                except Exception:
+                    return None
+
+            _v242_bets = _select_v242_synced_bets(
+                _overall_sorted_rows,
+                _weighted_trio_rows,
+                _weighted_car_hit_map,
+                _weighted_car_myoumi_map,
+            )
+            if _v242_bets:
+                _overall_main_rows = list(_v242_bets.get("pair_rows", []) or [])
+                _overall_sub_rows = []
+                _trio_main_rows = list(_v242_bets.get("trio_rows", []) or [])
+                _final_trio_form = str(_v242_bets.get("form", "") or "")
+            else:
+                # 生成不能時だけv241の上位3点表示へ戻す。
+                _overall_main_rows = list(_overall_sorted_rows[:3])
+                _overall_sub_rows = []
+                _trio_main_rows = list(_weighted_trio_rows[:3])
+                _final_trio_form = ""
 
             def _fmt_trio_summary_rows(_rows):
                 _out = []
@@ -13572,8 +13871,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # v227: note上部は買い目主役で最小限にする。
             # 詳細な加重2車複評価表・買い目根拠・流れ別買目考察は出さない。
             lines.append("【買い目サマリー】")
-            # v241: 3連複は軸固定フォメではなく、全35通り評価の総合点内部値上位3点を表示する。
-            lines.append("3連複 本線3点】")
+            # v242: 3連複と2車複は、同じ最終軸D・同じ相手3車に統一する。
+            if _final_trio_form:
+                lines.append(f"3連複 本線3点】{_final_trio_form}")
+            else:
+                lines.append("3連複 本線3点】")
             lines.extend(_fmt_trio_summary_rows(_trio_main_rows))
             lines.append(f"2車複 本線3点】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=False)}")
             lines.append("")
