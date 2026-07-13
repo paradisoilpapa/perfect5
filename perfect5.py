@@ -1,3 +1,4 @@
+# v247: v245ベース。2車複は軸の同ライン相手のうち妙味点基準以上を妙味点順で先行採用し、3点未満を未採用の他ラインから総合点順で補完。基準未満の同ライン車は補完で復活させない。妙味点基準はサイドバーで設定。3連複はv245のライン優先型を維持。
 # v245: v244ベース。軸は最適流れの評価1位、2車複は軸絡み総合点上位3点。3連複はライン優先で軸A-直近ライン相手B-3車目候補CDEの3点とし、穴・想定外候補は3車目以降へ配置。点差閾値による入替は廃止。単騎軸のみA-BCD-BCD。
 # v244: v243ベース。3連複ライン補正を「同ライン車が1台入れば終了」から、未採用の同ライン相手を全員個別審査へ修正。各同ライン相手について、現在採用中の非ライン最下位車との総合点差が0.20pt以内なら入替え、2車複は純粋な上位3点を維持。
 # v241: v240ベース。3連複を全35通りで加重評価し、総合点内部値上位3点を買い目サマリーへ表示。3単参考順も併記。
@@ -2379,6 +2380,25 @@ with st.sidebar.expander("🎯 流れ1-2｜下限計算", expanded=False):
 
 globals()["FLOW_SWITCH_STATS"] = _get_flow_switch_stats_from_state()
 globals()["FLOW_12_ALL_TRIO_SWITCH_ODDS_THRESHOLD"] = _flow_12_all_recommended_floor()
+
+# v247: 2車複で先行採用する「軸の同ライン相手」の最低妙味点。
+# 固定ルールにはせず、検証しながらサイドバーで変更できるようにする。
+with st.sidebar.expander("🎯 2車複｜同ライン妙味基準", expanded=True):
+    NIFUKU_SAME_LINE_MYOUMI_MIN = st.number_input(
+        "同ライン相手の最低妙味点",
+        min_value=0.0,
+        max_value=10.0,
+        value=float(st.session_state.get("nifuku_same_line_myoumi_min", 7.0)),
+        step=0.1,
+        format="%.1f",
+        key="nifuku_same_line_myoumi_min",
+    )
+    st.caption(
+        "基準以上の同ライン相手を妙味点順で先に採用。"
+        "3点未満は他ラインの総合点上位で補完し、基準未満の同ライン相手は復活させません。"
+    )
+
+globals()["NIFUKU_SAME_LINE_MYOUMI_MIN"] = float(NIFUKU_SAME_LINE_MYOUMI_MIN)
 
 race_time = st.sidebar.selectbox("開催区分", ["モーニング","デイ","ナイター","ミッドナイト"], 1)
 race_day = st.sidebar.date_input("日付（風取得用）", value=date.today())
@@ -13284,17 +13304,18 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _weighted_car_myoumi_map,
             )
 
-            # v245 ハイブリッド：
+            # v247 ハイブリッド：
             # 1) 最適な流れ（RECOMMENDED_STYLE）の評価1位を軸Aにする。
-            # 2) A絡みの加重2車複を総合点内部値で並べ、上位3点を2車複本線にする。
-            # 3) 3連複はラインを優先する。
+            # 2) 2車複は、Aの同ライン相手のうち妙味点基準以上を妙味点順で先行採用する。
+            #    3点未満は、基準未満の同ライン相手を除外したうえで、他ラインから総合点順に補完する。
+            # 3) 3連複はv245どおりラインを優先する。
             #    ・Aにライン相手がいる場合：直近ライン相手Bを2列目へ固定し、A-B-CDEの3点。
             #    ・CDEは、同ラインの3車目以降を先に置き、その後をA絡み総合点順で補完する。
             #    ・穴、別線、想定外候補は2列目へ上げず、3車目以降へ置く。
             # 4) 点差閾値による入替は一切行わない。
             # 5) 単騎軸だけはライン固定ができないため、A-BCD-BCDの3点にする。
-            # 6) 2車複は純粋な軸絡み総合点上位3点を維持する。
-            def _select_v245_flow_axis_line_priority_bets(
+            # 6) 2車複は同ライン妙味通過を優先し、残りだけ他ラインの総合点順で補う。
+            def _select_v247_flow_axis_line_value_bets(
                 _pair_rows,
                 _trio_rows,
                 _hit_map,
@@ -13393,12 +13414,6 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     if len(_axis_pair_rows) < 3:
                         return None
 
-                    # 2車複は純粋に軸絡み総合点上位3点。
-                    _main_pair_rows = list(_axis_pair_rows[:3])
-                    _pair_partners = [int(_partner_of_axis(_r)) for _r in _main_pair_rows]
-                    if len(set(_pair_partners)) != 3:
-                        return None
-
                     def _line_sources_v245():
                         _src = []
                         try:
@@ -13440,6 +13455,83 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                     _axis_line, _line_mates = _axis_line_order_v245(_axis)
                     _line_anchor = int(_line_mates[0]) if _line_mates else None
+
+                    # v247 2車複：
+                    # ・同ライン相手は、妙味点基準以上だけを妙味点順で先行採用。
+                    # ・3点未満は、未採用の他ラインから総合点順で補完。
+                    # ・基準未満の同ライン相手は、補完時にも復活させない。
+                    try:
+                        _same_line_myoumi_min = float(
+                            globals().get("NIFUKU_SAME_LINE_MYOUMI_MIN", 7.0)
+                        )
+                    except Exception:
+                        _same_line_myoumi_min = 7.0
+
+                    _line_mate_set = {int(_c) for _c in (_line_mates or [])}
+                    _same_line_qualified = []
+                    _same_line_rejected = set()
+
+                    for _r in _axis_pair_rows:
+                        _p = _partner_of_axis(_r)
+                        if _p is None or int(_p) not in _line_mate_set:
+                            continue
+                        _p = int(_p)
+                        _my = float((_r or {}).get("myoumi_score", 0.0) or 0.0)
+                        if _my >= _same_line_myoumi_min:
+                            _same_line_qualified.append(_r)
+                        else:
+                            _same_line_rejected.add(_p)
+
+                    _same_line_qualified = sorted(
+                        _same_line_qualified,
+                        key=lambda _r: (
+                            float((_r or {}).get("myoumi_score", 0.0) or 0.0),
+                            float((_r or {}).get("total_pt", 0.0) or 0.0),
+                            float((_r or {}).get("hit_score", 0.0) or 0.0),
+                            -int(_partner_of_axis(_r)) if _partner_of_axis(_r) is not None else -99,
+                        ),
+                        reverse=True,
+                    )
+
+                    _main_pair_rows = []
+                    _selected_pair_partners = set()
+
+                    for _r in _same_line_qualified:
+                        _p = _partner_of_axis(_r)
+                        if _p is None or int(_p) in _selected_pair_partners:
+                            continue
+                        _main_pair_rows.append(_r)
+                        _selected_pair_partners.add(int(_p))
+                        if len(_main_pair_rows) >= 3:
+                            break
+
+                    if len(_main_pair_rows) < 3:
+                        for _r in _axis_pair_rows:
+                            _p = _partner_of_axis(_r)
+                            if _p is None:
+                                continue
+                            _p = int(_p)
+                            if _p in _selected_pair_partners:
+                                continue
+                            # 同ラインは先行採用枠だけで判定する。
+                            # 基準未満車だけでなく、同ライン車全体を総合点補完から除外する。
+                            if _p in _line_mate_set:
+                                continue
+                            _main_pair_rows.append(_r)
+                            _selected_pair_partners.add(_p)
+                            if len(_main_pair_rows) >= 3:
+                                break
+
+                    # 5車立ての4車ラインなど、除外後に3点を作れない場合は、
+                    # 基準未満の同ライン車を勝手に復活させず、作れた点数だけを表示する。
+                    if not _main_pair_rows:
+                        return None
+
+                    _main_pair_rows = list(_main_pair_rows[:3])
+                    _pair_partners = [int(_partner_of_axis(_r)) for _r in _main_pair_rows]
+                    if len(set(_pair_partners)) != 3:
+                        return None
+
                     _third_candidates = []
                     _trio_mode = "single_box"
 
@@ -13524,6 +13616,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         "recommended_style": _recommended_style,
                         "axis": int(_axis),
                         "pair_partners": tuple(_pair_partners),
+                        "same_line_myoumi_min": float(_same_line_myoumi_min),
+                        "same_line_qualified": tuple(
+                            int(_partner_of_axis(_r)) for _r in _same_line_qualified
+                            if _partner_of_axis(_r) is not None
+                        ),
+                        "same_line_rejected": tuple(sorted(_same_line_rejected)),
                         "trio_mode": _trio_mode,
                         "line_anchor": _line_anchor,
                         "third_candidates": tuple(_third_candidates),
@@ -13534,17 +13632,17 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return None
 
-            _v245_bets = _select_v245_flow_axis_line_priority_bets(
+            _v247_bets = _select_v247_flow_axis_line_value_bets(
                 _overall_sorted_rows,
                 _weighted_trio_rows,
                 _weighted_car_hit_map,
                 _weighted_car_myoumi_map,
             )
-            if _v245_bets:
-                _overall_main_rows = list(_v245_bets.get("pair_rows", []) or [])
+            if _v247_bets:
+                _overall_main_rows = list(_v247_bets.get("pair_rows", []) or [])
                 _overall_sub_rows = []
-                _trio_main_rows = list(_v245_bets.get("trio_rows", []) or [])
-                _final_trio_form = str(_v245_bets.get("form", "") or "")
+                _trio_main_rows = list(_v247_bets.get("trio_rows", []) or [])
+                _final_trio_form = str(_v247_bets.get("form", "") or "")
             else:
                 # 推奨流れ軸や評価表が取得できない例外時だけ、v241の全体上位3点へ戻す。
                 _overall_main_rows = list(_overall_sorted_rows[:3])
@@ -13841,13 +13939,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # v227: note上部は買い目主役で最小限にする。
             # 詳細な加重2車複評価表・買い目根拠・流れ別買目考察は出さない。
             lines.append("【買い目サマリー】")
-            # v245: 軸は最適流れの評価1位。2車複は軸絡み総合上位3点、3連複はA-直近ライン相手-3車目候補3車。
+            # v247: 軸は最適流れの評価1位。2車複は同ライン妙味基準通過を先行し不足分を他ライン総合順、3連複はv245型。
             if _final_trio_form:
                 lines.append(f"3連複 本線3点】{_final_trio_form}")
             else:
                 lines.append("3連複 本線3点】")
             lines.extend(_fmt_trio_summary_rows(_trio_main_rows))
-            lines.append(f"2車複 本線3点】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=False)}")
+            lines.append(f"2車複 本線{len(_overall_main_rows)}点】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=False)}")
             lines.append("")
             lines.append("")
 
