@@ -1,3 +1,4 @@
+# v251: v250ベース。実オッズを使わない事前券種判定を追加。3連複想定構成がライン主体なら3連複、非ライン主体なら2車複を推奨し、判定理由を表示。買い目サマリーは推奨券種を先に「推奨」、他方を「参考」として残す。未合意の数値閾値・実オッズ推定は追加しない。
 # v250: v249ベース。最終推奨流れと軸を、表示済みの流れ想定比率の単独1位に統一。KO上位3車の流域多数決による後段上書き（3分割時の逆流固定を含む）を廃止。比率が同率の場合だけ直前までの推奨流れを維持し、比率単独1位なら順流・逆流・渦のいずれでもその流れの評価1位を軸にする。3連複構成判定v249、2車複v247仕様は維持。
 # v249: v248ベース。3連複構成判定を修正。比率単独1位の流れの着順予想上位3車に、軸Aと直近ライン相手Bが共存する場合は、展開評価・開催日にかかわらずライン主体A-B-CDEを採用。流れ予想が取得できない場合のみv248の優位／初日互角判定を補助的に使用。単騎軸・軸流域非首位・上位3車に直近ライン相手不在は非ライン主体。2車複v247仕様は維持。
 # v248: v247ベース。3連複は買い目前に「ライン主体／非ライン主体」を自動判定して両候補を整列表示し、採用側だけ3点購入。判定は既存の展開評価と流れ想定比率を使用し、優位かつ軸流域が比率単独1位ならライン主体、互角は初日のみ同条件でライン主体、混戦・軸流域非首位・単騎軸は非ライン主体。2車複v247仕様は維持。
@@ -13298,7 +13299,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _weighted_car_myoumi_map,
             )
 
-            # v250 ハイブリッド：
+            # v251 ハイブリッド：
             # 1) 流れ想定比率の単独1位として確定したRECOMMENDED_STYLEの評価1位を軸Aにする。
             # 2) 2車複はv247を維持する。
             #    ・Aの同ライン相手のうち妙味点基準以上を妙味点順で先行採用。
@@ -13312,7 +13313,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             #    ・流れ着順予想が取得できない場合のみ、v248の優位／初日互角判定を補助使用
             #    ・単騎軸、軸流域が首位でない、上位3車にBがいない → 非ライン主体
             # 5) 新しい点差閾値は追加しない。
-            def _select_v250_flow_axis_structure_bets(
+            def _select_v251_flow_axis_structure_bets(
                 _pair_rows,
                 _trio_rows,
                 _hit_map,
@@ -13719,11 +13720,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         _form = str(_line_form)
                         _third_candidates = tuple(_line_third_candidates)
                         _trio_mode = "line_axis"
+                        _recommended_ticket = "3連複"
+                        _ticket_reason = "ライン主体で、最大流れの予想上位に軸と同ライン相手が共存"
                     else:
                         _main_trio_rows = list(_nonline_trio_rows)
                         _form = str(_nonline_form)
                         _third_candidates = tuple(_nonline_candidates)
                         _trio_mode = "nonline_box"
+                        _recommended_ticket = "2車複"
+                        _ticket_reason = "非ライン主体で、相手2車の組合せより軸－相手1車を狙う構造"
 
                     return {
                         "recommended_style": _recommended_style,
@@ -13737,6 +13742,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         "flow_prediction_supports_line": bool(_flow_prediction_supports_line),
                         "structure": _structure,
                         "structure_reason": _structure_reason,
+                        "recommended_ticket": _recommended_ticket,
+                        "ticket_reason": _ticket_reason,
                         "pair_partners": tuple(_pair_partners),
                         "same_line_myoumi_min": float(_same_line_myoumi_min),
                         "same_line_qualified": tuple(
@@ -13756,20 +13763,22 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return None
 
-            _v250_bets = _select_v250_flow_axis_structure_bets(
+            _v251_bets = _select_v251_flow_axis_structure_bets(
                 _overall_sorted_rows,
                 _weighted_trio_rows,
                 _weighted_car_hit_map,
                 _weighted_car_myoumi_map,
             )
-            if _v250_bets:
-                _overall_main_rows = list(_v250_bets.get("pair_rows", []) or [])
+            if _v251_bets:
+                _overall_main_rows = list(_v251_bets.get("pair_rows", []) or [])
                 _overall_sub_rows = []
-                _trio_main_rows = list(_v250_bets.get("trio_rows", []) or [])
-                _final_trio_form = str(_v250_bets.get("form", "") or "")
-                _trio_structure_label = str(_v250_bets.get("structure", "未判定") or "未判定")
-                _line_trio_form = str(_v250_bets.get("line_form", "") or "")
-                _nonline_trio_form = str(_v250_bets.get("nonline_form", "") or "")
+                _trio_main_rows = list(_v251_bets.get("trio_rows", []) or [])
+                _final_trio_form = str(_v251_bets.get("form", "") or "")
+                _trio_structure_label = str(_v251_bets.get("structure", "未判定") or "未判定")
+                _recommended_ticket = str(_v251_bets.get("recommended_ticket", "未判定") or "未判定")
+                _ticket_reason = str(_v251_bets.get("ticket_reason", "") or "")
+                _line_trio_form = str(_v251_bets.get("line_form", "") or "")
+                _nonline_trio_form = str(_v251_bets.get("nonline_form", "") or "")
             else:
                 # 推奨流れ軸や評価表が取得できない例外時だけ、v241の全体上位3点へ戻す。
                 _overall_main_rows = list(_overall_sorted_rows[:3])
@@ -13777,6 +13786,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _trio_main_rows = list(_weighted_trio_rows[:3])
                 _final_trio_form = ""
                 _trio_structure_label = "未判定"
+                _recommended_ticket = "未判定"
+                _ticket_reason = "構成判定を生成できないため券種判定なし"
                 _line_trio_form = ""
                 _nonline_trio_form = ""
 
@@ -14068,21 +14079,37 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             # v227: note上部は買い目主役で最小限にする。
             # 詳細な加重2車複評価表・買い目根拠・流れ別買目考察は出さない。
-            # v249: 買い目の前に、3連複の想定構成と両候補を同じ桁位置で表示する。
+            # v251: 構成表示の後に事前推奨券種を明記し、推奨券種を先に表示する。
             lines.append(f"【3連複想定構成】{_trio_structure_label}")
             lines.append("")
             lines.append(f"ライン主体　　　{_line_trio_form if _line_trio_form else '該当なし'}")
             lines.append(f"非ライン主体　　{_nonline_trio_form if _nonline_trio_form else '該当なし'}")
             lines.append("")
+            lines.append(f"【推奨券種】{_recommended_ticket}")
+            if _ticket_reason:
+                lines.append(f"【判定理由】{_ticket_reason}")
+            lines.append("")
 
             lines.append("【買い目サマリー】")
-            # v249: 採用された想定構成側だけを3連複本線3点として表示する。
-            if _final_trio_form:
-                lines.append(f"3連複 本線3点】{_final_trio_form}")
+            _pair_summary = _fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=False)
+            _pair_count = len(_overall_main_rows)
+            _trio_summary_lines = _fmt_trio_summary_rows(_trio_main_rows)
+
+            if _recommended_ticket == "2車複":
+                lines.append(f"2車複 推奨{_pair_count}点】{_pair_summary}")
+                if _final_trio_form:
+                    lines.append(f"3連複 参考3点】{_final_trio_form}")
+                else:
+                    lines.append("3連複 参考3点】")
+                lines.extend(_trio_summary_lines)
             else:
-                lines.append("3連複 本線3点】")
-            lines.extend(_fmt_trio_summary_rows(_trio_main_rows))
-            lines.append(f"2車複 本線{len(_overall_main_rows)}点】{_fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=False)}")
+                if _final_trio_form:
+                    lines.append(f"3連複 推奨3点】{_final_trio_form}")
+                else:
+                    lines.append("3連複 推奨3点】")
+                lines.extend(_trio_summary_lines)
+                lines.append(f"2車複 参考{_pair_count}点】{_pair_summary}")
+
             lines.append("")
             lines.append("")
 
