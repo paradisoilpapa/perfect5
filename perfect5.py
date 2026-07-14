@@ -1,3 +1,4 @@
+# v248: v247ベース。3連複は買い目前に「ライン主体／非ライン主体」を自動判定して両候補を整列表示し、採用側だけ3点購入。判定は既存の展開評価と流れ想定比率を使用し、優位かつ軸流域が比率単独1位ならライン主体、互角は初日のみ同条件でライン主体、混戦・軸流域非首位・単騎軸は非ライン主体。2車複v247仕様は維持。
 # v247: v245ベース。2車複は軸の同ライン相手のうち妙味点基準以上を妙味点順で先行採用し、3点未満を未採用の他ラインから総合点順で補完。基準未満の同ライン車は補完で復活させない。妙味点基準はサイドバーで設定。3連複はv245のライン優先型を維持。
 # v245: v244ベース。軸は最適流れの評価1位、2車複は軸絡み総合点上位3点。3連複はライン優先で軸A-直近ライン相手B-3車目候補CDEの3点とし、穴・想定外候補は3車目以降へ配置。点差閾値による入替は廃止。単騎軸のみA-BCD-BCD。
 # v244: v243ベース。3連複ライン補正を「同ライン車が1台入れば終了」から、未採用の同ライン相手を全員個別審査へ修正。各同ライン相手について、現在採用中の非ライン最下位車との総合点差が0.20pt以内なら入替え、2車複は純粋な上位3点を維持。
@@ -13304,18 +13305,20 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _weighted_car_myoumi_map,
             )
 
-            # v247 ハイブリッド：
+            # v248 ハイブリッド：
             # 1) 最適な流れ（RECOMMENDED_STYLE）の評価1位を軸Aにする。
-            # 2) 2車複は、Aの同ライン相手のうち妙味点基準以上を妙味点順で先行採用する。
-            #    3点未満は、基準未満の同ライン相手を除外したうえで、他ラインから総合点順に補完する。
-            # 3) 3連複はv245どおりラインを優先する。
-            #    ・Aにライン相手がいる場合：直近ライン相手Bを2列目へ固定し、A-B-CDEの3点。
-            #    ・CDEは、同ラインの3車目以降を先に置き、その後をA絡み総合点順で補完する。
-            #    ・穴、別線、想定外候補は2列目へ上げず、3車目以降へ置く。
-            # 4) 点差閾値による入替は一切行わない。
-            # 5) 単騎軸だけはライン固定ができないため、A-BCD-BCDの3点にする。
-            # 6) 2車複は同ライン妙味通過を優先し、残りだけ他ラインの総合点順で補う。
-            def _select_v247_flow_axis_line_value_bets(
+            # 2) 2車複はv247を維持する。
+            #    ・Aの同ライン相手のうち妙味点基準以上を妙味点順で先行採用。
+            #    ・3点未満は、基準未満の同ライン相手を除外し、他ラインから総合点順で補完。
+            # 3) 3連複は、ライン主体型と非ライン主体型を両方作り、展開構成で片方だけ採用する。
+            #    ・ライン主体：A-直近ライン相手B-CDE（3点）
+            #    ・非ライン主体：A-XYZ-XYZ（軸ライン以外の3車、3点）
+            # 4) 構成判定は既存の展開評価と流れ想定比率だけを使う。
+            #    ・優位 ＋ 軸流域が比率単独1位 → ライン主体
+            #    ・互角 ＋ 初日 ＋ 軸流域が比率単独1位 → ライン主体
+            #    ・混戦、軸流域が首位でない、単騎軸 → 非ライン主体
+            # 5) 新しい点差閾値は追加しない。
+            def _select_v248_flow_axis_structure_bets(
                 _pair_rows,
                 _trio_rows,
                 _hit_map,
@@ -13347,6 +13350,14 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             return tuple(sorted((int(_row.get("a")), int(_row.get("b")), int(_row.get("c")))))
                         except Exception:
                             return tuple()
+
+                    def _trio_row_sort_key(_row):
+                        return (
+                            float((_row or {}).get("total_pt", 0.0) or 0.0),
+                            float((_row or {}).get("hit_score", 0.0) or 0.0),
+                            float((_row or {}).get("myoumi_score", 0.0) or 0.0),
+                            str((_row or {}).get("disp", "")),
+                        )
 
                     # 全ペアに実在する車番を把握する。
                     _active_cars = set()
@@ -13414,7 +13425,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     if len(_axis_pair_rows) < 3:
                         return None
 
-                    def _line_sources_v245():
+                    def _line_sources_v248():
                         _src = []
                         try:
                             _x = globals().get("lines_live", None)
@@ -13430,9 +13441,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             pass
                         return _src
 
-                    def _axis_line_order_v245(_axis_no):
+                    def _axis_line_order_v248(_axis_no):
                         _axis_no = int(_axis_no)
-                        for _lines in _line_sources_v245():
+                        for _lines in _line_sources_v248():
                             for _ln in (_lines or []):
                                 try:
                                     _cars = [int(x) for x in (_ln or []) if str(x).isdigit()]
@@ -13453,13 +13464,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         if len(_cars3) == 3:
                             _trio_map[tuple(sorted(_cars3))] = _r
 
-                    _axis_line, _line_mates = _axis_line_order_v245(_axis)
+                    _axis_line, _line_mates = _axis_line_order_v248(_axis)
                     _line_anchor = int(_line_mates[0]) if _line_mates else None
+                    _line_mate_set = {int(_c) for _c in (_line_mates or [])}
 
-                    # v247 2車複：
-                    # ・同ライン相手は、妙味点基準以上だけを妙味点順で先行採用。
-                    # ・3点未満は、未採用の他ラインから総合点順で補完。
-                    # ・基準未満の同ライン相手は、補完時にも復活させない。
+                    # -------------------------------------------------
+                    # 2車複：v247仕様をそのまま維持
+                    # -------------------------------------------------
                     try:
                         _same_line_myoumi_min = float(
                             globals().get("NIFUKU_SAME_LINE_MYOUMI_MIN", 7.0)
@@ -13467,7 +13478,6 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     except Exception:
                         _same_line_myoumi_min = 7.0
 
-                    _line_mate_set = {int(_c) for _c in (_line_mates or [])}
                     _same_line_qualified = []
                     _same_line_rejected = set()
 
@@ -13513,8 +13523,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             _p = int(_p)
                             if _p in _selected_pair_partners:
                                 continue
-                            # 同ラインは先行採用枠だけで判定する。
-                            # 基準未満車だけでなく、同ライン車全体を総合点補完から除外する。
+                            # 同ラインは妙味通過枠だけで判定し、総合点補完から除外する。
                             if _p in _line_mate_set:
                                 continue
                             _main_pair_rows.append(_r)
@@ -13522,99 +13531,190 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             if len(_main_pair_rows) >= 3:
                                 break
 
-                    # 5車立ての4車ラインなど、除外後に3点を作れない場合は、
-                    # 基準未満の同ライン車を勝手に復活させず、作れた点数だけを表示する。
                     if not _main_pair_rows:
                         return None
 
                     _main_pair_rows = list(_main_pair_rows[:3])
                     _pair_partners = [int(_partner_of_axis(_r)) for _r in _main_pair_rows]
-                    if len(set(_pair_partners)) != 3:
+                    if len(set(_pair_partners)) != len(_pair_partners):
                         return None
 
-                    _third_candidates = []
-                    _trio_mode = "single_box"
+                    # -------------------------------------------------
+                    # ライン主体候補：A-B-CDE
+                    # -------------------------------------------------
+                    _line_third_candidates = []
+                    _line_trio_rows = []
+                    _line_form = ""
 
                     if _line_anchor is not None:
-                        _trio_mode = "line_axis"
-
                         # 同ラインの3車目以降を先に3列目へ置く。
                         for _c in _line_mates[1:]:
                             _c = int(_c)
-                            if _c not in (_axis, _line_anchor) and _c not in _third_candidates:
-                                _third_candidates.append(_c)
+                            if _c not in (_axis, _line_anchor) and _c not in _line_third_candidates:
+                                _line_third_candidates.append(_c)
 
-                        # 残りは軸絡み総合点順。穴・別線候補は3列目で拾う。
+                        # 残りは軸絡み総合点順。
                         for _r in _axis_pair_rows:
                             _c = _partner_of_axis(_r)
                             if _c is None:
                                 continue
                             _c = int(_c)
-                            if _c in (_axis, _line_anchor) or _c in _third_candidates:
+                            if _c in (_axis, _line_anchor) or _c in _line_third_candidates:
                                 continue
-                            _third_candidates.append(_c)
-                            if len(_third_candidates) >= 3:
+                            _line_third_candidates.append(_c)
+                            if len(_line_third_candidates) >= 3:
                                 break
 
-                        if len(_third_candidates) < 3:
+                        if len(_line_third_candidates) < 3:
                             for _c in sorted(_active_cars):
                                 _c = int(_c)
-                                if _c in (_axis, _line_anchor) or _c in _third_candidates:
+                                if _c in (_axis, _line_anchor) or _c in _line_third_candidates:
                                     continue
-                                _third_candidates.append(_c)
-                                if len(_third_candidates) >= 3:
+                                _line_third_candidates.append(_c)
+                                if len(_line_third_candidates) >= 3:
                                     break
 
-                        _third_candidates = _third_candidates[:3]
-                        if len(set(_third_candidates)) != 3:
-                            return None
+                        _line_third_candidates = _line_third_candidates[:3]
+                        if len(set(_line_third_candidates)) == 3:
+                            for _c in _line_third_candidates:
+                                _r = _trio_map.get(tuple(sorted((_axis, _line_anchor, int(_c)))))
+                                if _r is not None:
+                                    _line_trio_rows.append(_r)
+                            if len(_line_trio_rows) == 3:
+                                _line_trio_rows = sorted(_line_trio_rows, key=_trio_row_sort_key, reverse=True)
+                                _line_form = f"{_axis}-{_line_anchor}-{''.join(str(x) for x in sorted(_line_third_candidates))}"
+                            else:
+                                _line_trio_rows = []
 
-                        _main_trio_rows = []
-                        for _c in _third_candidates:
-                            _r = _trio_map.get(tuple(sorted((_axis, _line_anchor, int(_c)))))
-                            if _r is not None:
-                                _main_trio_rows.append(_r)
+                    # -------------------------------------------------
+                    # 非ライン主体候補：A-XYZ-XYZ
+                    # 軸の同ライン相手は候補から外し、他ライン側3車だけで組む。
+                    # まず2車複本線に採用済みの他ライン車を使い、不足分を軸絡み総合点順で補う。
+                    # -------------------------------------------------
+                    _nonline_candidates = []
 
-                        if len(_main_trio_rows) != 3:
-                            return None
+                    for _p in _pair_partners:
+                        _p = int(_p)
+                        if _p == _axis or _p in _line_mate_set or _p in _nonline_candidates:
+                            continue
+                        _nonline_candidates.append(_p)
 
-                        # 3列目候補は役割順を維持し、各買い目は総合点順で表示する。
-                        _main_trio_rows = sorted(
-                            _main_trio_rows,
-                            key=lambda _r: (
-                                float((_r or {}).get("total_pt", 0.0) or 0.0),
-                                float((_r or {}).get("hit_score", 0.0) or 0.0),
-                                float((_r or {}).get("myoumi_score", 0.0) or 0.0),
-                                str((_r or {}).get("disp", "")),
-                            ),
-                            reverse=True,
-                        )
-                        _form = f"{_axis}-{_line_anchor}-{''.join(str(x) for x in sorted(_third_candidates))}"
-                    else:
-                        # 単騎軸のみ、従来のA-BCD-BCDで3点。
-                        _third_candidates = list(_pair_partners)
-                        _main_trio_rows = []
-                        for _x, _y in combinations(_third_candidates, 2):
+                    for _r in _axis_pair_rows:
+                        _p = _partner_of_axis(_r)
+                        if _p is None:
+                            continue
+                        _p = int(_p)
+                        if _p == _axis or _p in _line_mate_set or _p in _nonline_candidates:
+                            continue
+                        _nonline_candidates.append(_p)
+                        if len(_nonline_candidates) >= 3:
+                            break
+
+                    if len(_nonline_candidates) < 3:
+                        for _c in sorted(_active_cars):
+                            _c = int(_c)
+                            if _c == _axis or _c in _line_mate_set or _c in _nonline_candidates:
+                                continue
+                            _nonline_candidates.append(_c)
+                            if len(_nonline_candidates) >= 3:
+                                break
+
+                    _nonline_candidates = _nonline_candidates[:3]
+                    _nonline_trio_rows = []
+                    _nonline_form = ""
+                    if len(set(_nonline_candidates)) == 3:
+                        for _x, _y in combinations(_nonline_candidates, 2):
                             _r = _trio_map.get(tuple(sorted((_axis, int(_x), int(_y)))))
                             if _r is not None:
-                                _main_trio_rows.append(_r)
-                        _main_trio_rows = sorted(
-                            _main_trio_rows,
-                            key=lambda _r: (
-                                float((_r or {}).get("total_pt", 0.0) or 0.0),
-                                float((_r or {}).get("hit_score", 0.0) or 0.0),
-                                float((_r or {}).get("myoumi_score", 0.0) or 0.0),
-                                str((_r or {}).get("disp", "")),
-                            ),
-                            reverse=True,
-                        )
-                        if len(_main_trio_rows) != 3:
+                                _nonline_trio_rows.append(_r)
+                        if len(_nonline_trio_rows) == 3:
+                            _nonline_trio_rows = sorted(_nonline_trio_rows, key=_trio_row_sort_key, reverse=True)
+                            _nonline_form = _fmt_trio_form(int(_axis), sorted(_nonline_candidates))
+                        else:
+                            _nonline_trio_rows = []
+
+                    # -------------------------------------------------
+                    # 3連複想定構成の自動判定
+                    # 新しい数値閾値は置かず、既存の展開評価と比率順位を使う。
+                    # -------------------------------------------------
+                    _ratio_map = _flow_ratio_map_for_trio()
+                    _ratio_map = {
+                        "順流": float((_ratio_map or {}).get("順流", 0.0) or 0.0),
+                        "逆流": float((_ratio_map or {}).get("逆流", 0.0) or 0.0),
+                        "渦": float((_ratio_map or {}).get("渦", 0.0) or 0.0),
+                    }
+
+                    _axis_line_key = "".join(str(int(x)) for x in (_axis_line or []) if str(x).isdigit())
+                    _axis_zone = ""
+                    try:
+                        _axis_zone = str((globals().get("LINE_ZONE_MAP", {}) or {}).get(_axis_line_key, "") or "")
+                    except Exception:
+                        _axis_zone = ""
+
+                    _max_ratio = max(_ratio_map.values()) if _ratio_map else 0.0
+                    _max_styles = [
+                        _s for _s, _v in _ratio_map.items()
+                        if abs(float(_v) - float(_max_ratio)) <= 1e-12
+                    ]
+                    _axis_zone_is_unique_top = bool(
+                        _axis_zone in _ratio_map
+                        and len(_max_styles) == 1
+                        and _max_styles[0] == _axis_zone
+                    )
+
+                    _tenkai_eval = ""
+                    try:
+                        for _s in reversed(list(globals().get("note_sections", []) or [])):
+                            _txt = str(_s).strip()
+                            if _txt.startswith("展開評価："):
+                                _tenkai_eval = _txt.split("：", 1)[1].strip()
+                                break
+                    except Exception:
+                        _tenkai_eval = ""
+
+                    _day_label = str(globals().get("day_label", "") or "")
+                    _structure = "非ライン主体"
+                    _structure_reason = ""
+
+                    if _line_form and _axis_zone_is_unique_top:
+                        if _tenkai_eval == "優位":
+                            _structure = "ライン主体"
+                            _structure_reason = "展開評価=優位／軸流域=比率単独1位"
+                        elif _tenkai_eval == "互角" and _day_label == "初日":
+                            _structure = "ライン主体"
+                            _structure_reason = "初日補正／展開評価=互角／軸流域=比率単独1位"
+
+                    # 選ばれた構成が生成不能なら、生成できる側へ安全に切り替える。
+                    if _structure == "ライン主体" and not _line_trio_rows:
+                        _structure = "非ライン主体"
+                        _structure_reason = "ライン主体生成不可"
+                    if _structure == "非ライン主体" and not _nonline_trio_rows:
+                        if _line_trio_rows:
+                            _structure = "ライン主体"
+                            _structure_reason = "非ライン主体生成不可"
+                        else:
                             return None
-                        _form = _fmt_trio_form(int(_axis), sorted(_third_candidates))
+
+                    if _structure == "ライン主体":
+                        _main_trio_rows = list(_line_trio_rows)
+                        _form = str(_line_form)
+                        _third_candidates = tuple(_line_third_candidates)
+                        _trio_mode = "line_axis"
+                    else:
+                        _main_trio_rows = list(_nonline_trio_rows)
+                        _form = str(_nonline_form)
+                        _third_candidates = tuple(_nonline_candidates)
+                        _trio_mode = "nonline_box"
 
                     return {
                         "recommended_style": _recommended_style,
                         "axis": int(_axis),
+                        "axis_zone": _axis_zone,
+                        "flow_ratio_map": dict(_ratio_map),
+                        "tenkai_eval": _tenkai_eval,
+                        "day_label": _day_label,
+                        "structure": _structure,
+                        "structure_reason": _structure_reason,
                         "pair_partners": tuple(_pair_partners),
                         "same_line_myoumi_min": float(_same_line_myoumi_min),
                         "same_line_qualified": tuple(
@@ -13624,7 +13724,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         "same_line_rejected": tuple(sorted(_same_line_rejected)),
                         "trio_mode": _trio_mode,
                         "line_anchor": _line_anchor,
-                        "third_candidates": tuple(_third_candidates),
+                        "third_candidates": _third_candidates,
+                        "line_form": _line_form,
+                        "nonline_form": _nonline_form,
                         "pair_rows": _main_pair_rows,
                         "trio_rows": _main_trio_rows,
                         "form": _form,
@@ -13632,23 +13734,29 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return None
 
-            _v247_bets = _select_v247_flow_axis_line_value_bets(
+            _v248_bets = _select_v248_flow_axis_structure_bets(
                 _overall_sorted_rows,
                 _weighted_trio_rows,
                 _weighted_car_hit_map,
                 _weighted_car_myoumi_map,
             )
-            if _v247_bets:
-                _overall_main_rows = list(_v247_bets.get("pair_rows", []) or [])
+            if _v248_bets:
+                _overall_main_rows = list(_v248_bets.get("pair_rows", []) or [])
                 _overall_sub_rows = []
-                _trio_main_rows = list(_v247_bets.get("trio_rows", []) or [])
-                _final_trio_form = str(_v247_bets.get("form", "") or "")
+                _trio_main_rows = list(_v248_bets.get("trio_rows", []) or [])
+                _final_trio_form = str(_v248_bets.get("form", "") or "")
+                _trio_structure_label = str(_v248_bets.get("structure", "未判定") or "未判定")
+                _line_trio_form = str(_v248_bets.get("line_form", "") or "")
+                _nonline_trio_form = str(_v248_bets.get("nonline_form", "") or "")
             else:
                 # 推奨流れ軸や評価表が取得できない例外時だけ、v241の全体上位3点へ戻す。
                 _overall_main_rows = list(_overall_sorted_rows[:3])
                 _overall_sub_rows = []
                 _trio_main_rows = list(_weighted_trio_rows[:3])
                 _final_trio_form = ""
+                _trio_structure_label = "未判定"
+                _line_trio_form = ""
+                _nonline_trio_form = ""
 
             def _fmt_trio_summary_rows(_rows):
                 _out = []
@@ -13938,8 +14046,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             # v227: note上部は買い目主役で最小限にする。
             # 詳細な加重2車複評価表・買い目根拠・流れ別買目考察は出さない。
+            # v248: 買い目の前に、3連複の想定構成と両候補を同じ桁位置で表示する。
+            lines.append(f"【3連複想定構成】{_trio_structure_label}")
+            lines.append("")
+            lines.append(f"ライン主体　　　{_line_trio_form if _line_trio_form else '該当なし'}")
+            lines.append(f"非ライン主体　　{_nonline_trio_form if _nonline_trio_form else '該当なし'}")
+            lines.append("")
+
             lines.append("【買い目サマリー】")
-            # v247: 軸は最適流れの評価1位。2車複は同ライン妙味基準通過を先行し不足分を他ライン総合順、3連複はv245型。
+            # v248: 採用された想定構成側だけを3連複本線3点として表示する。
             if _final_trio_form:
                 lines.append(f"3連複 本線3点】{_final_trio_form}")
             else:
