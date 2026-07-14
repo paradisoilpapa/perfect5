@@ -1,3 +1,4 @@
+# v250: v249ベース。最終推奨流れと軸を、表示済みの流れ想定比率の単独1位に統一。KO上位3車の流域多数決による後段上書き（3分割時の逆流固定を含む）を廃止。比率が同率の場合だけ直前までの推奨流れを維持し、比率単独1位なら順流・逆流・渦のいずれでもその流れの評価1位を軸にする。3連複構成判定v249、2車複v247仕様は維持。
 # v249: v248ベース。3連複構成判定を修正。比率単独1位の流れの着順予想上位3車に、軸Aと直近ライン相手Bが共存する場合は、展開評価・開催日にかかわらずライン主体A-B-CDEを採用。流れ予想が取得できない場合のみv248の優位／初日互角判定を補助的に使用。単騎軸・軸流域非首位・上位3車に直近ライン相手不在は非ライン主体。2車複v247仕様は維持。
 # v248: v247ベース。3連複は買い目前に「ライン主体／非ライン主体」を自動判定して両候補を整列表示し、採用側だけ3点購入。判定は既存の展開評価と流れ想定比率を使用し、優位かつ軸流域が比率単独1位ならライン主体、互角は初日のみ同条件でライン主体、混戦・軸流域非首位・単騎軸は非ライン主体。2車複v247仕様は維持。
 # v247: v245ベース。2車複は軸の同ライン相手のうち妙味点基準以上を妙味点順で先行採用し、3点未満を未採用の他ラインから総合点順で補完。基準未満の同ライン車は補完で復活させない。妙味点基準はサイドバーで設定。3連複はv245のライン優先型を維持。
@@ -395,6 +396,40 @@ def _safe_float_or_none(v):
     except Exception:
         return None
 
+
+def _select_recommended_style_by_flow_ratio(current_style, ratio_map):
+    """
+    v250: 流れ想定比率の単独1位を最終推奨流れにする。
+
+    ・単独1位がある場合は、順流／逆流／渦の別を問わずその流れを採用。
+    ・同率の場合は比率だけでは決められないため、直前までの推奨流れを維持。
+    ・比率を取得できない場合も直前までの推奨流れを維持。
+    """
+    _styles = ("順流", "逆流", "渦")
+    _current = str(current_style or "")
+    _clean = {}
+
+    try:
+        for _style in _styles:
+            _v = float((ratio_map or {}).get(_style, 0.0) or 0.0)
+            if math.isfinite(_v) and _v >= 0.0:
+                _clean[_style] = _v
+    except Exception:
+        return _current, tuple(), "流れ想定比率取得不可"
+
+    if len(_clean) != len(_styles) or sum(_clean.values()) <= 0.0:
+        return _current, tuple(), "流れ想定比率取得不可"
+
+    _max_value = max(_clean.values())
+    _top_styles = tuple(
+        _style for _style in _styles
+        if abs(float(_clean[_style]) - float(_max_value)) <= 1e-12
+    )
+
+    if len(_top_styles) == 1:
+        return _top_styles[0], _top_styles, "流れ想定比率単独1位"
+
+    return _current, _top_styles, "流れ想定比率同率のため既存判定維持"
 
 
 
@@ -7845,74 +7880,31 @@ try:
             pass
 
         # =====================================================
-        # v167: KO上位3車の所属流域で推奨流れを補正
-        #   ・順流域が2車以上 → 順流
-        #   ・渦域が2車以上 → 渦
-        #   ・逆流域が2車以上 → 逆流
-        #   ・3車がそれぞれ別流域、または判定不能 → 逆流
-        #   ※H主導寄せより後で適用し、主導ラインだけで順流へ戻りすぎるのを防ぐ。
+        # v250: 最終推奨流れを「流れ想定比率」の単独1位へ統一
+        #   ・KO、H主導、ライン評価などは比率を作る材料として扱う。
+        #   ・比率算出後にKO多数決で別流れへ上書きしない。
+        #   ・単独1位なら順流／逆流／渦のいずれでもその流れを採用。
+        #   ・同率時だけ、直前までの推奨流れを維持する。
         # =====================================================
         try:
             if not is_girls_like:
-                def _zone_for_car_from_current_groups(_car_no):
-                    try:
-                        _car_no = int(_car_no)
-                        if isinstance(line_def, dict):
-                            for _gid, _members in line_def.items():
-                                _members_i = [int(x) for x in (_members or []) if str(x).isdigit()]
-                                if _car_no in _members_i:
-                                    return _current_zone_for_line(_members_i)
-                    except Exception:
-                        pass
-                    return "その他"
+                _final_ratio_map = globals().get("FLOW_RATIO_MAP_BY_ZONE", {}) or {}
+                _ratio_style, _ratio_top_styles, _ratio_reason = (
+                    _select_recommended_style_by_flow_ratio(
+                        recommend_style,
+                        _final_ratio_map,
+                    )
+                )
 
-                _ko_top3 = []
-                try:
-                    _ko_top3 = [
-                        int(c) for c, _ in sorted(
-                            [(int(c), float(score_map.get(int(c), 0.0))) for c in score_map.keys()],
-                            key=lambda x: (-x[1], x[0])
-                        )[:3]
-                    ]
-                except Exception:
-                    _ko_top3 = []
-
-                if len(_ko_top3) >= 3:
-                    _zone_counts = {"順流": 0, "渦": 0, "逆流": 0}
-                    _zone_detail = []
-
-                    for _c in _ko_top3:
-                        _z = _zone_for_car_from_current_groups(_c)
-                        if _z in _zone_counts:
-                            _zone_counts[_z] += 1
-                        else:
-                            _z = "その他"
-                        _zone_detail.append(f"{_c}:{_z}")
-
-                    _ko_style = None
-                    if _zone_counts.get("順流", 0) >= 2:
-                        _ko_style = "順流"
-                    elif _zone_counts.get("渦", 0) >= 2:
-                        _ko_style = "渦"
-                    elif _zone_counts.get("逆流", 0) >= 2:
-                        _ko_style = "逆流"
-                    else:
-                        _ko_style = "逆流"
-
-                    if _ko_style and _ko_style != recommend_style:
-                        recommend_reason.append(
-                            "KO上位3車流域多数決により"
-                            f"{_ko_style}寄せ（" + "／".join(_zone_detail) + "）"
-                        )
-                        recommend_style = _ko_style
-                        # KO上位3車の偏りは買い目に直結するため、最低B扱いにする
-                        if confidence == "C":
-                            confidence = "B"
-                    elif _ko_style:
-                        recommend_reason.append(
-                            "KO上位3車流域多数決="
-                            f"{_ko_style}（" + "／".join(_zone_detail) + "）"
-                        )
+                if _ratio_style and _ratio_style != recommend_style:
+                    recommend_reason.append(
+                        f"{_ratio_reason}により{_ratio_style}へ統一"
+                    )
+                    recommend_style = _ratio_style
+                elif _ratio_top_styles:
+                    recommend_reason.append(
+                        f"{_ratio_reason}=" + "／".join(_ratio_top_styles)
+                    )
         except Exception:
             pass
 
@@ -13306,8 +13298,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _weighted_car_myoumi_map,
             )
 
-            # v249 ハイブリッド：
-            # 1) 最適な流れ（RECOMMENDED_STYLE）の評価1位を軸Aにする。
+            # v250 ハイブリッド：
+            # 1) 流れ想定比率の単独1位として確定したRECOMMENDED_STYLEの評価1位を軸Aにする。
             # 2) 2車複はv247を維持する。
             #    ・Aの同ライン相手のうち妙味点基準以上を妙味点順で先行採用。
             #    ・3点未満は、基準未満の同ライン相手を除外し、他ラインから総合点順で補完。
@@ -13320,7 +13312,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             #    ・流れ着順予想が取得できない場合のみ、v248の優位／初日互角判定を補助使用
             #    ・単騎軸、軸流域が首位でない、上位3車にBがいない → 非ライン主体
             # 5) 新しい点差閾値は追加しない。
-            def _select_v249_flow_axis_structure_bets(
+            def _select_v250_flow_axis_structure_bets(
                 _pair_rows,
                 _trio_rows,
                 _hit_map,
@@ -13372,7 +13364,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     if len(_active_cars) < 4:
                         return None
 
-                    # 最適な流れの評価1位を軸にする。
+                    # 流れ想定比率の単独1位として確定した流れの評価1位を軸にする。
                     _recommended_style = str(globals().get("RECOMMENDED_STYLE", "") or "")
                     _recommended_seq = globals().get("RECOMMENDED_STYLE_SEQ", []) or []
                     if not _recommended_seq:
@@ -13427,7 +13419,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     if len(_axis_pair_rows) < 3:
                         return None
 
-                    def _line_sources_v249():
+                    def _line_sources_v250():
                         _src = []
                         try:
                             _x = globals().get("lines_live", None)
@@ -13443,9 +13435,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             pass
                         return _src
 
-                    def _axis_line_order_v249(_axis_no):
+                    def _axis_line_order_v250(_axis_no):
                         _axis_no = int(_axis_no)
-                        for _lines in _line_sources_v249():
+                        for _lines in _line_sources_v250():
                             for _ln in (_lines or []):
                                 try:
                                     _cars = [int(x) for x in (_ln or []) if str(x).isdigit()]
@@ -13466,7 +13458,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         if len(_cars3) == 3:
                             _trio_map[tuple(sorted(_cars3))] = _r
 
-                    _axis_line, _line_mates = _axis_line_order_v249(_axis)
+                    _axis_line, _line_mates = _axis_line_order_v250(_axis)
                     _line_anchor = int(_line_mates[0]) if _line_mates else None
                     _line_mate_set = {int(_c) for _c in (_line_mates or [])}
 
@@ -13676,7 +13668,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
                     _day_label = str(globals().get("day_label", "") or "")
 
-                    # v249：比率単独1位の流れと、その流れの着順予想を直接つなぐ。
+                    # v250：比率単独1位の流れと、その流れの着順予想を直接つなぐ。
                     # 三連複のライン主体A-B-CDEはBを固定するため、
                     # 上位3車に「軸A」と「直近ライン相手B」が共存することを採用根拠にする。
                     _style_seq_map = globals().get("STYLE_SEQ_MAP", {}) or {}
@@ -13764,20 +13756,20 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return None
 
-            _v249_bets = _select_v249_flow_axis_structure_bets(
+            _v250_bets = _select_v250_flow_axis_structure_bets(
                 _overall_sorted_rows,
                 _weighted_trio_rows,
                 _weighted_car_hit_map,
                 _weighted_car_myoumi_map,
             )
-            if _v249_bets:
-                _overall_main_rows = list(_v249_bets.get("pair_rows", []) or [])
+            if _v250_bets:
+                _overall_main_rows = list(_v250_bets.get("pair_rows", []) or [])
                 _overall_sub_rows = []
-                _trio_main_rows = list(_v249_bets.get("trio_rows", []) or [])
-                _final_trio_form = str(_v249_bets.get("form", "") or "")
-                _trio_structure_label = str(_v249_bets.get("structure", "未判定") or "未判定")
-                _line_trio_form = str(_v249_bets.get("line_form", "") or "")
-                _nonline_trio_form = str(_v249_bets.get("nonline_form", "") or "")
+                _trio_main_rows = list(_v250_bets.get("trio_rows", []) or [])
+                _final_trio_form = str(_v250_bets.get("form", "") or "")
+                _trio_structure_label = str(_v250_bets.get("structure", "未判定") or "未判定")
+                _line_trio_form = str(_v250_bets.get("line_form", "") or "")
+                _nonline_trio_form = str(_v250_bets.get("nonline_form", "") or "")
             else:
                 # 推奨流れ軸や評価表が取得できない例外時だけ、v241の全体上位3点へ戻す。
                 _overall_main_rows = list(_overall_sorted_rows[:3])
