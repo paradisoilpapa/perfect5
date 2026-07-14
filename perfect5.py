@@ -1,3 +1,4 @@
+# v249: v248ベース。3連複構成判定を修正。比率単独1位の流れの着順予想上位3車に、軸Aと直近ライン相手Bが共存する場合は、展開評価・開催日にかかわらずライン主体A-B-CDEを採用。流れ予想が取得できない場合のみv248の優位／初日互角判定を補助的に使用。単騎軸・軸流域非首位・上位3車に直近ライン相手不在は非ライン主体。2車複v247仕様は維持。
 # v248: v247ベース。3連複は買い目前に「ライン主体／非ライン主体」を自動判定して両候補を整列表示し、採用側だけ3点購入。判定は既存の展開評価と流れ想定比率を使用し、優位かつ軸流域が比率単独1位ならライン主体、互角は初日のみ同条件でライン主体、混戦・軸流域非首位・単騎軸は非ライン主体。2車複v247仕様は維持。
 # v247: v245ベース。2車複は軸の同ライン相手のうち妙味点基準以上を妙味点順で先行採用し、3点未満を未採用の他ラインから総合点順で補完。基準未満の同ライン車は補完で復活させない。妙味点基準はサイドバーで設定。3連複はv245のライン優先型を維持。
 # v245: v244ベース。軸は最適流れの評価1位、2車複は軸絡み総合点上位3点。3連複はライン優先で軸A-直近ライン相手B-3車目候補CDEの3点とし、穴・想定外候補は3車目以降へ配置。点差閾値による入替は廃止。単騎軸のみA-BCD-BCD。
@@ -13305,7 +13306,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _weighted_car_myoumi_map,
             )
 
-            # v248 ハイブリッド：
+            # v249 ハイブリッド：
             # 1) 最適な流れ（RECOMMENDED_STYLE）の評価1位を軸Aにする。
             # 2) 2車複はv247を維持する。
             #    ・Aの同ライン相手のうち妙味点基準以上を妙味点順で先行採用。
@@ -13313,12 +13314,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             # 3) 3連複は、ライン主体型と非ライン主体型を両方作り、展開構成で片方だけ採用する。
             #    ・ライン主体：A-直近ライン相手B-CDE（3点）
             #    ・非ライン主体：A-XYZ-XYZ（軸ライン以外の3車、3点）
-            # 4) 構成判定は既存の展開評価と流れ想定比率だけを使う。
-            #    ・優位 ＋ 軸流域が比率単独1位 → ライン主体
-            #    ・互角 ＋ 初日 ＋ 軸流域が比率単独1位 → ライン主体
-            #    ・混戦、軸流域が首位でない、単騎軸 → 非ライン主体
+            # 4) 構成判定は、流れ想定比率とその流れの着順予想を整合させる。
+            #    ・軸流域が比率単独1位で、その流れの上位3車に軸Aと直近ライン相手Bが共存
+            #      → ライン主体（展開評価・開催日にかかわらず採用）
+            #    ・流れ着順予想が取得できない場合のみ、v248の優位／初日互角判定を補助使用
+            #    ・単騎軸、軸流域が首位でない、上位3車にBがいない → 非ライン主体
             # 5) 新しい点差閾値は追加しない。
-            def _select_v248_flow_axis_structure_bets(
+            def _select_v249_flow_axis_structure_bets(
                 _pair_rows,
                 _trio_rows,
                 _hit_map,
@@ -13425,7 +13427,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     if len(_axis_pair_rows) < 3:
                         return None
 
-                    def _line_sources_v248():
+                    def _line_sources_v249():
                         _src = []
                         try:
                             _x = globals().get("lines_live", None)
@@ -13441,9 +13443,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             pass
                         return _src
 
-                    def _axis_line_order_v248(_axis_no):
+                    def _axis_line_order_v249(_axis_no):
                         _axis_no = int(_axis_no)
-                        for _lines in _line_sources_v248():
+                        for _lines in _line_sources_v249():
                             for _ln in (_lines or []):
                                 try:
                                     _cars = [int(x) for x in (_ln or []) if str(x).isdigit()]
@@ -13464,7 +13466,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         if len(_cars3) == 3:
                             _trio_map[tuple(sorted(_cars3))] = _r
 
-                    _axis_line, _line_mates = _axis_line_order_v248(_axis)
+                    _axis_line, _line_mates = _axis_line_order_v249(_axis)
                     _line_anchor = int(_line_mates[0]) if _line_mates else None
                     _line_mate_set = {int(_c) for _c in (_line_mates or [])}
 
@@ -13673,16 +13675,41 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         _tenkai_eval = ""
 
                     _day_label = str(globals().get("day_label", "") or "")
+
+                    # v249：比率単独1位の流れと、その流れの着順予想を直接つなぐ。
+                    # 三連複のライン主体A-B-CDEはBを固定するため、
+                    # 上位3車に「軸A」と「直近ライン相手B」が共存することを採用根拠にする。
+                    _style_seq_map = globals().get("STYLE_SEQ_MAP", {}) or {}
+                    try:
+                        _axis_zone_seq = [
+                            int(_x) for _x in (_style_seq_map.get(_axis_zone, []) or [])
+                            if str(_x).isdigit() and int(_x) in _active_cars
+                        ]
+                    except Exception:
+                        _axis_zone_seq = []
+                    _axis_zone_top3 = list(_axis_zone_seq[:3])
+                    _axis_zone_seq_available = bool(_axis_zone_seq)
+                    _flow_prediction_supports_line = bool(
+                        _line_anchor is not None
+                        and int(_axis) in _axis_zone_top3
+                        and int(_line_anchor) in _axis_zone_top3
+                    )
+
                     _structure = "非ライン主体"
                     _structure_reason = ""
 
                     if _line_form and _axis_zone_is_unique_top:
-                        if _tenkai_eval == "優位":
+                        if _flow_prediction_supports_line:
                             _structure = "ライン主体"
-                            _structure_reason = "展開評価=優位／軸流域=比率単独1位"
-                        elif _tenkai_eval == "互角" and _day_label == "初日":
-                            _structure = "ライン主体"
-                            _structure_reason = "初日補正／展開評価=互角／軸流域=比率単独1位"
+                            _structure_reason = "比率単独1位の流れ予想上位3車に軸と直近ライン相手"
+                        elif not _axis_zone_seq_available:
+                            # 着順予想が取れない例外時だけ、v248条件を安全網として残す。
+                            if _tenkai_eval == "優位":
+                                _structure = "ライン主体"
+                                _structure_reason = "流れ予想取得不可／展開評価=優位／軸流域=比率単独1位"
+                            elif _tenkai_eval == "互角" and _day_label == "初日":
+                                _structure = "ライン主体"
+                                _structure_reason = "流れ予想取得不可／初日補正／展開評価=互角／軸流域=比率単独1位"
 
                     # 選ばれた構成が生成不能なら、生成できる側へ安全に切り替える。
                     if _structure == "ライン主体" and not _line_trio_rows:
@@ -13713,6 +13740,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         "flow_ratio_map": dict(_ratio_map),
                         "tenkai_eval": _tenkai_eval,
                         "day_label": _day_label,
+                        "axis_zone_seq": tuple(_axis_zone_seq),
+                        "axis_zone_top3": tuple(_axis_zone_top3),
+                        "flow_prediction_supports_line": bool(_flow_prediction_supports_line),
                         "structure": _structure,
                         "structure_reason": _structure_reason,
                         "pair_partners": tuple(_pair_partners),
@@ -13734,20 +13764,20 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return None
 
-            _v248_bets = _select_v248_flow_axis_structure_bets(
+            _v249_bets = _select_v249_flow_axis_structure_bets(
                 _overall_sorted_rows,
                 _weighted_trio_rows,
                 _weighted_car_hit_map,
                 _weighted_car_myoumi_map,
             )
-            if _v248_bets:
-                _overall_main_rows = list(_v248_bets.get("pair_rows", []) or [])
+            if _v249_bets:
+                _overall_main_rows = list(_v249_bets.get("pair_rows", []) or [])
                 _overall_sub_rows = []
-                _trio_main_rows = list(_v248_bets.get("trio_rows", []) or [])
-                _final_trio_form = str(_v248_bets.get("form", "") or "")
-                _trio_structure_label = str(_v248_bets.get("structure", "未判定") or "未判定")
-                _line_trio_form = str(_v248_bets.get("line_form", "") or "")
-                _nonline_trio_form = str(_v248_bets.get("nonline_form", "") or "")
+                _trio_main_rows = list(_v249_bets.get("trio_rows", []) or [])
+                _final_trio_form = str(_v249_bets.get("form", "") or "")
+                _trio_structure_label = str(_v249_bets.get("structure", "未判定") or "未判定")
+                _line_trio_form = str(_v249_bets.get("line_form", "") or "")
+                _nonline_trio_form = str(_v249_bets.get("nonline_form", "") or "")
             else:
                 # 推奨流れ軸や評価表が取得できない例外時だけ、v241の全体上位3点へ戻す。
                 _overall_main_rows = list(_overall_sorted_rows[:3])
@@ -14046,7 +14076,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             # v227: note上部は買い目主役で最小限にする。
             # 詳細な加重2車複評価表・買い目根拠・流れ別買目考察は出さない。
-            # v248: 買い目の前に、3連複の想定構成と両候補を同じ桁位置で表示する。
+            # v249: 買い目の前に、3連複の想定構成と両候補を同じ桁位置で表示する。
             lines.append(f"【3連複想定構成】{_trio_structure_label}")
             lines.append("")
             lines.append(f"ライン主体　　　{_line_trio_form if _line_trio_form else '該当なし'}")
@@ -14054,7 +14084,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("")
 
             lines.append("【買い目サマリー】")
-            # v248: 採用された想定構成側だけを3連複本線3点として表示する。
+            # v249: 採用された想定構成側だけを3連複本線3点として表示する。
             if _final_trio_form:
                 lines.append(f"3連複 本線3点】{_final_trio_form}")
             else:
