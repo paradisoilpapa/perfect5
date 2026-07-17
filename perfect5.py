@@ -1,3 +1,4 @@
+# v253: v252ベース。ライン／非ライン候補の最終選択に、サイドバー入力を反映済みの加重3連複評価（総合点→的中点→妙味点）を使用し、同点時のみ従来の流れ構造判定を維持。非ライン主体では加重2車複3点と非ライン3連複3点の平均評価を比較し、上位側を推奨。3連単選択時は共通1・2着を折り返し、3着上位2車へAB-AB-CDの4点とする。新しい数値閾値・実オッズ判定は追加しない。
 # v252: v251ベース。推奨券種が2車複なら従来どおり2車複3点。ライン主体で3連複候補となった場合は、採用3点の3単参考を確認し、3点すべての1着・2着が同一なら同じ3点を3連単A→B→CDEとして推奨。1着または2着が割れる場合は3連複A-B-CDEを維持。新しい数値閾値・実オッズ判定は追加しない。
 # v251: v250ベース。実オッズを使わない事前券種判定を追加。3連複想定構成がライン主体なら3連複、非ライン主体なら2車複を推奨し、判定理由を表示。買い目サマリーは推奨券種を先に「推奨」、他方を「参考」として残す。未合意の数値閾値・実オッズ推定は追加しない。
 # v250: v249ベース。最終推奨流れと軸を、表示済みの流れ想定比率の単独1位に統一。KO上位3車の流域多数決による後段上書き（3分割時の逆流固定を含む）を廃止。比率が同率の場合だけ直前までの推奨流れを維持し、比率単独1位なら順流・逆流・渦のいずれでもその流れの評価1位を軸にする。3連複構成判定v249、2車複v247仕様は維持。
@@ -12059,28 +12060,131 @@ def _parse_santan_reference_triplet(ref_text):
         return None
 
 
-def _decide_ticket_from_structure_and_santan_refs(structure, trio_rows):
+def _rows_average_strength_key(rows):
     """
-    v252 券種判定（実オッズ・新規数値閾値は使わない）。
+    同じ点数の候補群を、既存の加重評価だけで比較する。
 
-    ・非ライン主体：2車複
+    比較順：平均総合点 → 平均的中点 → 平均妙味点。
+    サイドバーの得点・S/H/B・決まり手・着順成績・コメント等は、
+    既存の加重評価へ反映済みなので、ここでは新しい閾値を設けない。
+    """
+    vals = []
+    for row in list(rows or []):
+        try:
+            vals.append((
+                float((row or {}).get("total_pt", 0.0) or 0.0),
+                float((row or {}).get("hit_score", 0.0) or 0.0),
+                float((row or {}).get("myoumi_score", 0.0) or 0.0),
+            ))
+        except Exception:
+            pass
+    if not vals:
+        return tuple()
+    n = float(len(vals))
+    return (
+        sum(v[0] for v in vals) / n,
+        sum(v[1] for v in vals) / n,
+        sum(v[2] for v in vals) / n,
+    )
+
+
+def _choose_final_trio_structure_by_sidebar_power(base_structure, line_rows, nonline_rows):
+    """
+    v253 最終構成再審査。
+
+    流れ・ライン全体の構造判定は従来どおり先に行い、最後だけ
+    サイドバー情報を反映済みの加重3連複評価でライン／非ラインを比較する。
+    完全同点時は従来の構造判定を維持する。
+    """
+    base_structure = str(base_structure or "非ライン主体")
+    line_key = _rows_average_strength_key(line_rows)
+    nonline_key = _rows_average_strength_key(nonline_rows)
+
+    if line_key and nonline_key:
+        if line_key > nonline_key:
+            return {
+                "structure": "ライン主体",
+                "reason": "最終加重3連複評価でライン主体が上位",
+                "line_power_key": line_key,
+                "nonline_power_key": nonline_key,
+            }
+        if nonline_key > line_key:
+            return {
+                "structure": "非ライン主体",
+                "reason": "最終加重3連複評価で非ライン主体が上位",
+                "line_power_key": line_key,
+                "nonline_power_key": nonline_key,
+            }
+        return {
+            "structure": base_structure,
+            "reason": "最終加重3連複評価が同点のため従来構造を維持",
+            "line_power_key": line_key,
+            "nonline_power_key": nonline_key,
+        }
+
+    if line_key:
+        return {
+            "structure": "ライン主体",
+            "reason": "ライン主体候補のみ生成可能",
+            "line_power_key": line_key,
+            "nonline_power_key": nonline_key,
+        }
+    if nonline_key:
+        return {
+            "structure": "非ライン主体",
+            "reason": "非ライン主体候補のみ生成可能",
+            "line_power_key": line_key,
+            "nonline_power_key": nonline_key,
+        }
+
+    return {
+        "structure": base_structure,
+        "reason": "最終加重3連複評価を取得できないため従来構造を維持",
+        "line_power_key": line_key,
+        "nonline_power_key": nonline_key,
+    }
+
+
+def _decide_ticket_from_structure_and_santan_refs(structure, trio_rows, pair_rows=None):
+    """
+    v253 券種判定（実オッズ・新規数値閾値は使わない）。
+
+    ・非ライン主体：加重2車複3点と非ライン3連複3点の平均評価を比較
+      - 非ライン3連複が上位 → 3連複 A-BCD-BCD
+      - 2車複が上位または同点 → 2車複
     ・ライン主体：採用3連複3点の3単参考を確認
-      - 3点すべての1着・2着が同一、かつ3着が3車に分かれる → 3連単 A→B→CDE
+      - 3点すべての1着・2着が同一 → 3着上位2車へ1・2着折り返し4点
       - それ以外 → 3連複 A-B-CDE
     """
     structure = str(structure or "")
     rows = list(trio_rows or [])
+    pair_rows = list(pair_rows or [])
 
     if structure != "ライン主体":
+        trio_key = _rows_average_strength_key(rows)
+        pair_key = _rows_average_strength_key(pair_rows)
+        if trio_key and (not pair_key or trio_key > pair_key):
+            return {
+                "recommended_ticket": "3連複",
+                "ticket_reason": "非ライン主体で、加重3連複平均評価が加重2車複平均評価を上回る",
+                "santan_form": "",
+                "santan_tickets": tuple(),
+                "santan_common_first_second": tuple(),
+                "pair_power_key": pair_key,
+                "trio_power_key": trio_key,
+            }
         return {
             "recommended_ticket": "2車複",
-            "ticket_reason": "非ライン主体で、相手2車の組合せより軸－相手1車を狙う構造",
+            "ticket_reason": "非ライン主体で、加重2車複平均評価が加重3連複平均評価以上",
             "santan_form": "",
             "santan_tickets": tuple(),
             "santan_common_first_second": tuple(),
+            "pair_power_key": pair_key,
+            "trio_power_key": trio_key,
         }
 
     refs = []
+    ref_rows = []
     for row in rows:
         parsed = _parse_santan_reference_triplet((row or {}).get("santan_ref", ""))
         if parsed is None:
@@ -12090,25 +12194,44 @@ def _decide_ticket_from_structure_and_santan_refs(structure, trio_rows):
                 "santan_form": "",
                 "santan_tickets": tuple(),
                 "santan_common_first_second": tuple(),
+                "pair_power_key": tuple(),
+                "trio_power_key": _rows_average_strength_key(rows),
             }
         refs.append(parsed)
+        ref_rows.append(row)
 
     if len(refs) == 3:
         first_second = refs[0][:2]
         same_first_second = all(ref[:2] == first_second for ref in refs)
-        thirds = [int(ref[2]) for ref in refs]
-        if same_first_second and len(set(thirds)) == 3:
-            first, second = int(first_second[0]), int(first_second[1])
-            thirds_sorted = tuple(sorted(set(thirds)))
-            tickets = tuple(f"{first}→{second}→{third}" for third in thirds_sorted)
-            form = f"{first}→{second}→{''.join(str(x) for x in thirds_sorted)}"
-            return {
-                "recommended_ticket": "3連単",
-                "ticket_reason": "ライン主体で、3単参考3点の1着・2着がすべて共通",
-                "santan_form": form,
-                "santan_tickets": tickets,
-                "santan_common_first_second": (first, second),
-            }
+        if same_first_second:
+            # rowsは既存の加重3連複総合点順。数値順ではなく上位2候補を使う。
+            top_thirds = []
+            for ref in refs:
+                third = int(ref[2])
+                if third not in top_thirds:
+                    top_thirds.append(third)
+                if len(top_thirds) >= 2:
+                    break
+
+            if len(top_thirds) == 2:
+                first, second = int(first_second[0]), int(first_second[1])
+                c, d = int(top_thirds[0]), int(top_thirds[1])
+                tickets = (
+                    f"{first}→{second}→{c}",
+                    f"{first}→{second}→{d}",
+                    f"{second}→{first}→{c}",
+                    f"{second}→{first}→{d}",
+                )
+                form = f"{first}{second}-{first}{second}-{c}{d}"
+                return {
+                    "recommended_ticket": "3連単",
+                    "ticket_reason": "ライン主体で3単参考3点の1・2着が共通。3着上位2車へ1・2着折り返し",
+                    "santan_form": form,
+                    "santan_tickets": tickets,
+                    "santan_common_first_second": (first, second),
+                    "pair_power_key": tuple(),
+                    "trio_power_key": _rows_average_strength_key(rows),
+                }
 
     return {
         "recommended_ticket": "3連複",
@@ -12116,6 +12239,8 @@ def _decide_ticket_from_structure_and_santan_refs(structure, trio_rows):
         "santan_form": "",
         "santan_tickets": tuple(),
         "santan_common_first_second": tuple(),
+        "pair_power_key": tuple(),
+        "trio_power_key": _rows_average_strength_key(rows),
     }
 
 
@@ -13372,7 +13497,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _weighted_car_myoumi_map,
             )
 
-            # v252 ハイブリッド：
+            # v253 ハイブリッド：
             # 1) 流れ想定比率の単独1位として確定したRECOMMENDED_STYLEの評価1位を軸Aにする。
             # 2) 2車複はv247を維持する。
             #    ・Aの同ライン相手のうち妙味点基準以上を妙味点順で先行採用。
@@ -13386,7 +13511,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             #    ・流れ着順予想が取得できない場合のみ、v248の優位／初日互角判定を補助使用
             #    ・単騎軸、軸流域が首位でない、上位3車にBがいない → 非ライン主体
             # 5) 新しい点差閾値は追加しない。
-            def _select_v252_flow_axis_structure_bets(
+            def _select_v253_flow_axis_structure_bets(
                 _pair_rows,
                 _trio_rows,
                 _hit_map,
@@ -13788,6 +13913,24 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         else:
                             return None
 
+                    # v253：流れ・ライン全体の判定は維持したうえで、最後だけ
+                    # サイドバー情報を反映済みの加重3連複評価で再審査する。
+                    _base_structure = str(_structure)
+                    _power_decision = _choose_final_trio_structure_by_sidebar_power(
+                        _base_structure,
+                        _line_trio_rows,
+                        _nonline_trio_rows,
+                    )
+                    _structure = str(_power_decision.get("structure", _base_structure) or _base_structure)
+                    _power_reason = str(_power_decision.get("reason", "") or "")
+                    _line_power_key = tuple(_power_decision.get("line_power_key", tuple()) or tuple())
+                    _nonline_power_key = tuple(_power_decision.get("nonline_power_key", tuple()) or tuple())
+                    if _power_reason:
+                        if _structure_reason:
+                            _structure_reason = f"{_structure_reason}／{_power_reason}"
+                        else:
+                            _structure_reason = _power_reason
+
                     if _structure == "ライン主体":
                         _main_trio_rows = list(_line_trio_rows)
                         _form = str(_line_form)
@@ -13799,19 +13942,27 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         _third_candidates = tuple(_nonline_candidates)
                         _trio_mode = "nonline_box"
 
-                    # v252：構成判定後、3単参考3点の1着・2着の一致だけで券種を決める。
-                    # 数値閾値や実オッズは使わない。
+                    # v253：
+                    # ・ライン主体は共通1・2着を折り返して3着上位2車の4点。
+                    # ・非ライン主体は加重2車複3点と非ライン3連複3点を同一尺度で比較。
+                    # 新しい数値閾値や実オッズは使わない。
                     _ticket_decision = _decide_ticket_from_structure_and_santan_refs(
                         _structure,
                         _main_trio_rows,
+                        _main_pair_rows,
                     )
                     _recommended_ticket = str(_ticket_decision.get("recommended_ticket", "3連複") or "3連複")
-                    _ticket_reason = str(_ticket_decision.get("ticket_reason", "") or "")
+                    _ticket_reason_core = str(_ticket_decision.get("ticket_reason", "") or "")
+                    _ticket_reason = "／".join(
+                        x for x in (_structure_reason, _ticket_reason_core) if str(x).strip()
+                    )
                     _santan_form = str(_ticket_decision.get("santan_form", "") or "")
                     _santan_tickets = tuple(_ticket_decision.get("santan_tickets", tuple()) or tuple())
                     _santan_common_first_second = tuple(
                         _ticket_decision.get("santan_common_first_second", tuple()) or tuple()
                     )
+                    _pair_power_key = tuple(_ticket_decision.get("pair_power_key", tuple()) or tuple())
+                    _trio_power_key = tuple(_ticket_decision.get("trio_power_key", tuple()) or tuple())
 
                     return {
                         "recommended_style": _recommended_style,
@@ -13824,9 +13975,14 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         "axis_zone_top3": tuple(_axis_zone_top3),
                         "flow_prediction_supports_line": bool(_flow_prediction_supports_line),
                         "structure": _structure,
+                        "base_structure": _base_structure,
                         "structure_reason": _structure_reason,
+                        "line_power_key": _line_power_key,
+                        "nonline_power_key": _nonline_power_key,
                         "recommended_ticket": _recommended_ticket,
                         "ticket_reason": _ticket_reason,
+                        "pair_power_key": _pair_power_key,
+                        "trio_power_key": _trio_power_key,
                         "santan_form": _santan_form,
                         "santan_tickets": _santan_tickets,
                         "santan_common_first_second": _santan_common_first_second,
@@ -13849,24 +14005,24 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return None
 
-            _v252_bets = _select_v252_flow_axis_structure_bets(
+            _v253_bets = _select_v253_flow_axis_structure_bets(
                 _overall_sorted_rows,
                 _weighted_trio_rows,
                 _weighted_car_hit_map,
                 _weighted_car_myoumi_map,
             )
-            if _v252_bets:
-                _overall_main_rows = list(_v252_bets.get("pair_rows", []) or [])
+            if _v253_bets:
+                _overall_main_rows = list(_v253_bets.get("pair_rows", []) or [])
                 _overall_sub_rows = []
-                _trio_main_rows = list(_v252_bets.get("trio_rows", []) or [])
-                _final_trio_form = str(_v252_bets.get("form", "") or "")
-                _trio_structure_label = str(_v252_bets.get("structure", "未判定") or "未判定")
-                _recommended_ticket = str(_v252_bets.get("recommended_ticket", "未判定") or "未判定")
-                _ticket_reason = str(_v252_bets.get("ticket_reason", "") or "")
-                _santan_form = str(_v252_bets.get("santan_form", "") or "")
-                _santan_tickets = tuple(_v252_bets.get("santan_tickets", tuple()) or tuple())
-                _line_trio_form = str(_v252_bets.get("line_form", "") or "")
-                _nonline_trio_form = str(_v252_bets.get("nonline_form", "") or "")
+                _trio_main_rows = list(_v253_bets.get("trio_rows", []) or [])
+                _final_trio_form = str(_v253_bets.get("form", "") or "")
+                _trio_structure_label = str(_v253_bets.get("structure", "未判定") or "未判定")
+                _recommended_ticket = str(_v253_bets.get("recommended_ticket", "未判定") or "未判定")
+                _ticket_reason = str(_v253_bets.get("ticket_reason", "") or "")
+                _santan_form = str(_v253_bets.get("santan_form", "") or "")
+                _santan_tickets = tuple(_v253_bets.get("santan_tickets", tuple()) or tuple())
+                _line_trio_form = str(_v253_bets.get("line_form", "") or "")
+                _nonline_trio_form = str(_v253_bets.get("nonline_form", "") or "")
             else:
                 # 推奨流れ軸や評価表が取得できない例外時だけ、v241の全体上位3点へ戻す。
                 _overall_main_rows = list(_overall_sorted_rows[:3])
@@ -13896,16 +14052,29 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         pass
                 return _out if _out else ["該当なし"]
 
-            def _fmt_santan_summary_rows(_rows):
-                """3連単推奨時も、数値は3連複総合点由来だと明記する。"""
-                _out = []
+            def _fmt_santan_summary_rows(_tickets, _rows):
+                """折り返し4点を表示し、3着車ごとの参考元3連複総合点を添える。"""
+                _third_pt = {}
                 for _r in (_rows or []):
                     try:
-                        _ref = str((_r or {}).get("santan_ref", "") or "").strip()
-                        if not _ref:
+                        _ref = _parse_santan_reference_triplet((_r or {}).get("santan_ref", ""))
+                        if _ref is None:
                             continue
-                        _pt = float((_r or {}).get("total_pt", 0.0) or 0.0)
-                        _out.append(f"{_ref}（参考元3連複総合 {_pt:.1f}）")
+                        _third_pt[int(_ref[2])] = float((_r or {}).get("total_pt", 0.0) or 0.0)
+                    except Exception:
+                        pass
+
+                _out = []
+                for _ticket in (_tickets or []):
+                    try:
+                        _parsed = _parse_santan_reference_triplet(_ticket)
+                        if _parsed is None:
+                            continue
+                        _pt = _third_pt.get(int(_parsed[2]))
+                        if _pt is None:
+                            _out.append(str(_ticket))
+                        else:
+                            _out.append(f"{_ticket}（参考元3連複総合 {_pt:.1f}）")
                     except Exception:
                         pass
                 return _out if _out else ["該当なし"]
@@ -14183,7 +14352,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             # v227: note上部は買い目主役で最小限にする。
             # 詳細な加重2車複評価表・買い目根拠・流れ別買目考察は出さない。
-            # v252: 2車複／3連複／3連単の事前推奨を明記し、推奨券種を先に表示する。
+            # v253: サイドバー反映後の最終構成と、2車複／3連複／折り返し3連単の推奨を先に表示する。
             lines.append(f"【3連複想定構成】{_trio_structure_label}")
             lines.append("")
             lines.append(f"ライン主体　　　{_line_trio_form if _line_trio_form else '該当なし'}")
@@ -14208,10 +14377,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 lines.extend(_trio_summary_lines)
             elif _recommended_ticket == "3連単":
                 if _santan_form:
-                    lines.append(f"3連単 推奨3点】{_santan_form}")
+                    lines.append(f"3連単 推奨4点】{_santan_form}")
                 else:
-                    lines.append("3連単 推奨3点】")
-                lines.extend(_fmt_santan_summary_rows(_trio_main_rows))
+                    lines.append("3連単 推奨4点】")
+                lines.extend(_fmt_santan_summary_rows(_santan_tickets, _trio_main_rows))
                 if _final_trio_form:
                     lines.append(f"3連複 参考3点】{_final_trio_form}")
                 else:
