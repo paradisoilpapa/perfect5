@@ -1,3 +1,4 @@
+# v255: v254ベース。3連単AB-AB-CDのライン保護を「残り同ライン車のどれか1車」から、1・2着候補の直後に続く最優先同ライン車1車の固定保護へ変更。例：ライン1234で1・2着候補が12なら3を必ず3着候補に残し、残る1枠だけを4以降の同ライン車と他ライン候補の既存加重評価で比較する。新しい数値閾値は追加せず、その他の構成・券種判定はv254を維持。
 # v254: v253ベース。3連単AB-AB-CDの3着2車を選ぶ際、ライン三連複3点の候補内に軸ラインの残り同ライン車がいる場合は最低1車を必ず保護する。上位2車に同ライン車が含まれなければ、2番目の3着候補を候補内最高位の同ライン車へ差し替える。例：松阪6R 37-37-51→37-37-54。その他の構成・券種判定はv253を維持。
 # v252: v251ベース。推奨券種が2車複なら従来どおり2車複3点。ライン主体で3連複候補となった場合は、採用3点の3単参考を確認し、3点すべての1着・2着が同一なら同じ3点を3連単A→B→CDEとして推奨。1着または2着が割れる場合は3連複A-B-CDEを維持。新しい数値閾値・実オッズ判定は追加しない。
 # v251: v250ベース。実オッズを使わない事前券種判定を追加。3連複想定構成がライン主体なら3連複、非ライン主体なら2車複を推奨し、判定理由を表示。買い目サマリーは推奨券種を先に「推奨」、他方を「参考」として残す。未合意の数値閾値・実オッズ推定は追加しない。
@@ -12152,14 +12153,14 @@ def _decide_ticket_from_structure_and_santan_refs(
     protected_third_candidates=None,
 ):
     """
-    v254 券種判定（実オッズ・新規数値閾値は使わない）。
+    v255 券種判定（実オッズ・新規数値閾値は使わない）。
 
     ・非ライン主体：加重2車複3点と非ライン3連複3点の平均評価を比較
       - 非ライン3連複が上位 → 3連複 A-BCD-BCD
       - 2車複が上位または同点 → 2車複
     ・ライン主体：採用3連複3点の3単参考を確認
       - 3点すべての1着・2着が同一 → 3着2車へ1・2着折り返し4点
-      - 3着候補内に軸ラインの残り同ライン車がいる場合、最低1車を必ず保護
+      - 1・2着候補の直後に続く同ライン車が3着候補内にいる場合、その1車を必ず保護
       - それ以外 → 3連複 A-B-CDE
     """
     structure = str(structure or "")
@@ -12222,23 +12223,30 @@ def _decide_ticket_from_structure_and_santan_refs(
                 if third not in ranked_thirds:
                     ranked_thirds.append(third)
 
-            top_thirds = list(ranked_thirds[:2])
+            original_top_thirds = list(ranked_thirds[:2])
             protected_available = [
                 third for third in ranked_thirds
                 if third in protected_third_set and third not in first_second
             ]
             protection_applied = False
 
-            # v254：3着上位2車に候補内の残り同ライン車が含まれない場合、
-            # 2番目を候補内最高位の同ライン車へ差し替える。
-            # 1番目の総合上位候補は維持し、的中率重視のライン保護を最低1車だけ行う。
-            if (
-                len(top_thirds) == 2
-                and protected_available
-                and not any(third in protected_third_set for third in top_thirds)
-            ):
-                top_thirds[1] = int(protected_available[0])
-                protection_applied = True
+            # v255：ライン保護は「残り同ライン車なら誰でもよい」ではなく、
+            # 1・2着候補の直後に続く最優先同ライン車1車を固定する。
+            # 残る1枠だけを、4番手以降の同ライン車と他ライン候補を含む
+            # 既存の加重3連複総合点順から選ぶ。新しい数値閾値は置かない。
+            if protected_available:
+                protected_third = int(protected_available[0])
+                other_thirds = [
+                    int(third) for third in ranked_thirds
+                    if int(third) != protected_third
+                    and int(third) not in first_second
+                ]
+                top_thirds = [protected_third]
+                if other_thirds:
+                    top_thirds.append(int(other_thirds[0]))
+                protection_applied = top_thirds != original_top_thirds
+            else:
+                top_thirds = list(original_top_thirds)
 
             if len(top_thirds) == 2 and len(set(top_thirds)) == 2:
                 first, second = int(first_second[0]), int(first_second[1])
@@ -12252,9 +12260,9 @@ def _decide_ticket_from_structure_and_santan_refs(
                 form = f"{first}{second}-{first}{second}-{c}{d}"
                 if protected_available:
                     if protection_applied:
-                        reason = "ライン主体で3単参考3点の1・2着が共通。3着上位1車に加え、候補内の残り同ライン車を最低1車保護して1・2着折り返し"
+                        reason = "ライン主体で3単参考3点の1・2着が共通。直後の同ライン車を3着に固定保護し、残る1枠を4番手以降と他ライン候補の加重評価で選んで1・2着折り返し"
                     else:
-                        reason = "ライン主体で3単参考3点の1・2着が共通。3着上位2車に候補内の残り同ライン車を含めて1・2着折り返し"
+                        reason = "ライン主体で3単参考3点の1・2着が共通。直後の同ライン車が3着上位内にあり、残る1枠と合わせて1・2着折り返し"
                 else:
                     reason = "ライン主体で3単参考3点の1・2着が共通。3着上位2車へ1・2着折り返し"
                 return {
@@ -13533,7 +13541,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 _weighted_car_myoumi_map,
             )
 
-            # v254 ハイブリッド：
+            # v255 ハイブリッド：
             # 1) 流れ想定比率の単独1位として確定したRECOMMENDED_STYLEの評価1位を軸Aにする。
             # 2) 2車複はv247を維持する。
             #    ・Aの同ライン相手のうち妙味点基準以上を妙味点順で先行採用。
@@ -13547,7 +13555,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             #    ・流れ着順予想が取得できない場合のみ、v248の優位／初日互角判定を補助使用
             #    ・単騎軸、軸流域が首位でない、上位3車にBがいない → 非ライン主体
             # 5) 新しい点差閾値は追加しない。
-            def _select_v254_flow_axis_structure_bets(
+            def _select_v255_flow_axis_structure_bets(
                 _pair_rows,
                 _trio_rows,
                 _hit_map,
@@ -13696,6 +13704,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     _axis_line, _line_mates = _axis_line_order_v250(_axis)
                     _line_anchor = int(_line_mates[0]) if _line_mates else None
                     _line_mate_set = {int(_c) for _c in (_line_mates or [])}
+                    # v255：A・Bの次に続く最優先同ライン車だけを3連単の保護枠にする。
+                    # 例：ライン1234、A/B=1・2なら3。4以降は他ライン候補との比較対象。
+                    _line_protected_third = int(_line_mates[1]) if len(_line_mates) >= 2 else None
 
                     # -------------------------------------------------
                     # 2車複：v247仕様をそのまま維持
@@ -13978,17 +13989,19 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         _third_candidates = tuple(_nonline_candidates)
                         _trio_mode = "nonline_box"
 
-                    # v254：
+                    # v255：
                     # ・ライン主体は共通1・2着を折り返して3着2車の4点。
-                    # ・ライン三連複候補内に軸ラインの残り同ライン車がいる場合、
-                    #   3着2車のうち最低1車を保護する。
+                    # ・ライン保護はA・B直後の同ライン車1車だけを固定対象にする。
+                    # ・残る1枠は、4番手以降の同ライン車と他ライン候補を既存評価で比較。
                     # ・非ライン主体は加重2車複3点と非ライン3連複3点を同一尺度で比較。
                     # 新しい数値閾値や実オッズは使わない。
-                    _protected_santan_thirds = tuple(
-                        int(_c) for _c in (_line_third_candidates or [])
-                        if int(_c) in _line_mate_set
-                        and int(_c) not in {_axis, _line_anchor}
-                    ) if _structure == "ライン主体" else tuple()
+                    _protected_santan_thirds = (
+                        (int(_line_protected_third),)
+                        if _structure == "ライン主体"
+                        and _line_protected_third is not None
+                        and int(_line_protected_third) in set(_line_third_candidates or [])
+                        else tuple()
+                    )
                     _ticket_decision = _decide_ticket_from_structure_and_santan_refs(
                         _structure,
                         _main_trio_rows,
@@ -14039,6 +14052,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         "same_line_rejected": tuple(sorted(_same_line_rejected)),
                         "trio_mode": _trio_mode,
                         "line_anchor": _line_anchor,
+                        "line_protected_third": _line_protected_third,
                         "third_candidates": _third_candidates,
                         "line_form": _line_form,
                         "nonline_form": _nonline_form,
@@ -14049,24 +14063,24 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                 except Exception:
                     return None
 
-            _v254_bets = _select_v254_flow_axis_structure_bets(
+            _v255_bets = _select_v255_flow_axis_structure_bets(
                 _overall_sorted_rows,
                 _weighted_trio_rows,
                 _weighted_car_hit_map,
                 _weighted_car_myoumi_map,
             )
-            if _v254_bets:
-                _overall_main_rows = list(_v254_bets.get("pair_rows", []) or [])
+            if _v255_bets:
+                _overall_main_rows = list(_v255_bets.get("pair_rows", []) or [])
                 _overall_sub_rows = []
-                _trio_main_rows = list(_v254_bets.get("trio_rows", []) or [])
-                _final_trio_form = str(_v254_bets.get("form", "") or "")
-                _trio_structure_label = str(_v254_bets.get("structure", "未判定") or "未判定")
-                _recommended_ticket = str(_v254_bets.get("recommended_ticket", "未判定") or "未判定")
-                _ticket_reason = str(_v254_bets.get("ticket_reason", "") or "")
-                _santan_form = str(_v254_bets.get("santan_form", "") or "")
-                _santan_tickets = tuple(_v254_bets.get("santan_tickets", tuple()) or tuple())
-                _line_trio_form = str(_v254_bets.get("line_form", "") or "")
-                _nonline_trio_form = str(_v254_bets.get("nonline_form", "") or "")
+                _trio_main_rows = list(_v255_bets.get("trio_rows", []) or [])
+                _final_trio_form = str(_v255_bets.get("form", "") or "")
+                _trio_structure_label = str(_v255_bets.get("structure", "未判定") or "未判定")
+                _recommended_ticket = str(_v255_bets.get("recommended_ticket", "未判定") or "未判定")
+                _ticket_reason = str(_v255_bets.get("ticket_reason", "") or "")
+                _santan_form = str(_v255_bets.get("santan_form", "") or "")
+                _santan_tickets = tuple(_v255_bets.get("santan_tickets", tuple()) or tuple())
+                _line_trio_form = str(_v255_bets.get("line_form", "") or "")
+                _nonline_trio_form = str(_v255_bets.get("nonline_form", "") or "")
             else:
                 # 推奨流れ軸や評価表が取得できない例外時だけ、v241の全体上位3点へ戻す。
                 _overall_main_rows = list(_overall_sorted_rows[:3])
@@ -14396,7 +14410,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             # v227: note上部は買い目主役で最小限にする。
             # 詳細な加重2車複評価表・買い目根拠・流れ別買目考察は出さない。
-            # v254: サイドバー反映後の最終構成と、同ライン3着保護付き折り返し3連単の推奨を先に表示する。
+            # v255: サイドバー反映後の最終構成と、直後同ライン車固定保護付き折り返し3連単の推奨を先に表示する。
             lines.append(f"【3連複想定構成】{_trio_structure_label}")
             lines.append("")
             lines.append(f"ライン主体　　　{_line_trio_form if _line_trio_form else '該当なし'}")
