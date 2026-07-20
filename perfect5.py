@@ -14798,9 +14798,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             if _win_confidence_complete:
                 _win_top2_txt = "・".join(str(x) for x in _win_top2) if _win_top2 else "なし"
                 _win_top4_txt = "・".join(str(x) for x in _win_top4) if _win_top4 else "なし"
-                lines.append(f"【WIN印信頼判定】{_win_confidence_action}（◎〇={_win_top2_txt}／上位4車={_win_top4_txt}）")
+                lines.append(f"【AI信頼判定】{_win_confidence_action}（◎〇={_win_top2_txt}／上位4車={_win_top4_txt}）")
             else:
-                lines.append("【WIN印信頼判定】4印未完了のため従来判定")
+                lines.append("【AI信頼判定】4印未完了のため従来判定")
             if _ticket_reason:
                 lines.append(f"【判定理由】{_ticket_reason}")
             lines.append("")
