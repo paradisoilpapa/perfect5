@@ -1,4 +1,4 @@
-# v257: v256ベース。AI印を最終券種の信頼度ゲートとして拡張。3連単AB-AB-CDは、(1)ABがAI◎〇と完全一致、または (2)ABがともにAI上位4車内・ABの最低1車が◎〇・形成4車ABCDのうち3車以上がAI上位4車と一致、のどちらかで昇格/維持。非ライン主体は候補4車とAI上位4車が3車以上一致した場合に3連複4車BOX（4点）、未達時は2車複。ガールズのみ2車複維持、アドバンスは通常判定へ通す。表示名は【AI信頼判定】。v255の直後同ライン車3着保護は維持。
+# v258: v257ベース。AI印は券種の信頼度ゲートとして使うが、3連単・3連複の骨格は必ず既存のライン主体候補A-B-CDEから作る。流れ上位2車や非ライン候補から新しい3連系を生成しない。AI◎〇完全一致、またはA・BがAI上位4車内・最低1車が◎〇・ライン形成4車中3車以上一致なら、ライン人数にかかわらず3連単AB-AB-CDへ昇格/維持。A・BがAI上位4車内だが3連単条件未達ならライン3連複A-B-CDE、A・Bの支持が弱い場合は2車複。非ライン4車BOXは廃止。ガールズ2車複とv255の直後同ライン車3着保護は維持。
 # v255: v254ベース。3連単AB-AB-CDのライン保護を「残り同ライン車のどれか1車」から、1・2着候補の直後に続く最優先同ライン車1車の固定保護へ変更。例：ライン1234で1・2着候補が12なら3を必ず3着候補に残し、残る1枠だけを4以降の同ライン車と他ライン候補の既存加重評価で比較する。新しい数値閾値は追加せず、その他の構成・券種判定はv254を維持。
 # v254: v253ベース。3連単AB-AB-CDの3着2車を選ぶ際、ライン三連複3点の候補内に軸ラインの残り同ライン車がいる場合は最低1車を必ず保護する。上位2車に同ライン車が含まれなければ、2番目の3着候補を候補内最高位の同ライン車へ差し替える。例：松阪6R 37-37-51→37-37-54。その他の構成・券種判定はv253を維持。
 # v252: v251ベース。推奨券種が2車複なら従来どおり2車複3点。ライン主体で3連複候補となった場合は、採用3点の3単参考を確認し、3点すべての1着・2着が同一なら同じ3点を3連単A→B→CDEとして推奨。1着または2着が割れる場合は3連複A-B-CDEを維持。新しい数値閾値・実オッズ判定は追加しない。
@@ -12485,21 +12485,25 @@ def _decide_ticket_with_win_ai_confidence(
     *,
     market_mark_map=None,
     active_cars=None,
-    flow_top2=None,
     all_trio_rows=None,
-    confidence_protected_third=None,
+    line_pair=None,
+    line_trio_rows=None,
+    line_form="",
+    line_protected_third=None,
     is_girls_only=False,
 ):
     """
-    v257: v255券種判定へAI4印の一致度を重ねる。
+    v258: AI4印は券種の信頼度ゲートに限定し、3連系の骨格は必ずライン候補から作る。
 
-    ・4印が完全入力されていなければv255をそのまま維持。
-    ・ガールズのみ2車複を維持。アドバンスは通常判定へ通す。
+    ・4印未完了時はv255判定を維持。
+    ・ガールズは従来の2車複運用を維持。
+    ・3連単/3連複のA・Bは、既存のライン主体候補の軸と直近ライン相手から動かさない。
     ・3連単AB-AB-CDは次のいずれかで昇格/維持する。
-      1) ABがAI◎〇と完全一致。
-      2) ABがともにAI上位4車内、ABの最低1車が◎〇、かつABCDの3車以上がAI上位4車と一致。
-    ・非ライン主体は候補4車とAI上位4車が3車以上一致すれば3連複4車BOX、未達なら2車複。
-    ・従来3連単で信頼条件未達の場合は、v256同様に3連複/2車複へ降格する。
+      1) ラインA・BがAI◎〇と完全一致。
+      2) A・BがともにAI上位4車内、最低1車が◎〇、かつライン形成4車ABCDの3車以上がAI上位4車と一致。
+    ・A・BがAI上位4車内だが3連単条件未達なら、ライン3連複A-B-CDEで着順を緩める。
+    ・A・BのどちらかがAI上位4車外、またはライン候補を作れない場合は2車複。
+    ・非ライン候補から3連単や3連複4車BOXを生成しない。
     """
     base = _decide_ticket_from_structure_and_santan_refs(
         structure,
@@ -12513,6 +12517,8 @@ def _decide_ticket_with_win_ai_confidence(
     result["win_top2"] = tuple(profile.get("top2", tuple()) or tuple())
     result["win_top4"] = tuple(profile.get("top4", tuple()) or tuple())
     result["win_confidence_action"] = "v255維持"
+    result["structure_override"] = ""
+    result["structure_reason_override"] = ""
 
     # ガールズは従来の2車複ホームラン型を維持する。
     if bool(is_girls_only):
@@ -12526,43 +12532,55 @@ def _decide_ticket_with_win_ai_confidence(
         })
         return result
 
+    # AI4印が揃わない場合は、既存ロジックを勝手に上書きしない。
     if not profile.get("complete"):
         return result
 
-    flow_pair = []
-    for x in (flow_top2 or []):
+    # 3連系で使えるA・Bは、既存ライン候補の軸と直近ライン相手だけ。
+    line_ab = []
+    for x in (line_pair or []):
         try:
-            c = int(x)
+            car = int(x)
         except Exception:
             continue
-        if c not in flow_pair:
-            flow_pair.append(c)
-        if len(flow_pair) >= 2:
+        if car not in line_ab:
+            line_ab.append(car)
+        if len(line_ab) >= 2:
             break
-    if len(flow_pair) != 2:
-        result["win_confidence_action"] = "流れ上位2車を取得できずv255維持"
+
+    source_line_rows = list(line_trio_rows or [])
+    if len(line_ab) != 2 or not source_line_rows:
+        result.update({
+            "recommended_ticket": "2車複",
+            "ticket_reason": "3連系の前提となるライン上位2車候補を作れないため2車複",
+            "santan_form": "",
+            "santan_tickets": tuple(),
+            "santan_common_first_second": tuple(),
+            "win_confidence_action": "2車複（ライン3連系候補なし）",
+        })
         return result
 
-    first, second = int(flow_pair[0]), int(flow_pair[1])
+    first, second = int(line_ab[0]), int(line_ab[1])
     win_top2 = tuple(int(x) for x in profile.get("top2", tuple()))
     win_top2_set = set(win_top2)
     win_top4_tuple = tuple(int(x) for x in profile.get("top4", tuple()))
     win_top4 = set(win_top4_tuple)
+
     exact_top2_agree = set((first, second)) == win_top2_set
     pair_both_top4 = first in win_top4 and second in win_top4
     pair_has_top2 = bool({first, second} & win_top2_set)
 
     try:
-        _confidence_limit = max(3, len({int(x) for x in (active_cars or []) if str(x).isdigit()}))
+        confidence_limit = max(3, len({int(x) for x in (active_cars or []) if str(x).isdigit()}))
     except Exception:
-        _confidence_limit = 9
+        confidence_limit = 9
 
-    source_trio_rows = all_trio_rows if all_trio_rows is not None else trio_rows
+    # ラインA・Bを含む三連複行だけから3着候補を作る。
     pair_trios = _confidence_pair_trio_rows(
-        source_trio_rows,
+        source_line_rows,
         first,
         second,
-        limit=_confidence_limit,
+        limit=confidence_limit,
     )
 
     ranked_thirds = []
@@ -12573,7 +12591,7 @@ def _decide_ticket_with_win_ai_confidence(
 
     protected = None
     try:
-        p = int(confidence_protected_third)
+        p = int(line_protected_third)
         if p in ranked_thirds and p not in {first, second}:
             protected = p
     except Exception:
@@ -12587,6 +12605,14 @@ def _decide_ticket_with_win_ai_confidence(
             selected_reference_thirds.append(int(third))
         if len(selected_reference_thirds) >= 3:
             break
+
+    selected_rows = []
+    for third in selected_reference_thirds[:3]:
+        for row in pair_trios:
+            parsed = _parse_santan_reference_triplet((row or {}).get("santan_ref", ""))
+            if parsed is not None and int(parsed[2]) == int(third):
+                selected_rows.append(row)
+                break
 
     top_thirds = list(selected_reference_thirds[:2])
     formation4 = tuple()
@@ -12603,29 +12629,21 @@ def _decide_ticket_with_win_ai_confidence(
     )
     trifecta_confident = bool(exact_top2_agree or combined_trifecta_confidence)
 
-    # 強い一致：ライン人数にかかわらず、同じ上位2車を折り返す。
-    if trifecta_confident and len(pair_trios) >= 2 and len(top_thirds) == 2:
+    # 強い一致：ラインA・Bを1・2着で折り返す。非ライン上位2車への置換は禁止。
+    if trifecta_confident and len(top_thirds) == 2 and len(selected_rows) >= 2:
         c, d = int(top_thirds[0]), int(top_thirds[1])
-        selected_rows = []
-        for third in selected_reference_thirds[:3]:
-            for row in pair_trios:
-                parsed = _parse_santan_reference_triplet((row or {}).get("santan_ref", ""))
-                if parsed is not None and int(parsed[2]) == int(third):
-                    selected_rows.append(row)
-                    break
-
         if exact_top2_agree:
-            confidence_text = "AI◎〇と上位2車が完全一致"
-            action = "3連単へ昇格/維持（◎〇完全一致）"
+            confidence_text = "ライン上位2車がAI◎〇と完全一致"
+            action = "3連単へ昇格/維持（ラインA・Bと◎〇完全一致）"
         else:
             confidence_text = (
-                f"上位2車がAI上位4車内・最低1車が◎〇・形成4車中{formation_overlap}車一致"
+                f"ライン上位2車がAI上位4車内・最低1車が◎〇・ライン形成4車中{formation_overlap}車一致"
             )
-            action = f"3連単へ昇格/維持（形成4車中{formation_overlap}車一致）"
+            action = f"3連単へ昇格/維持（ライン形成4車中{formation_overlap}車一致）"
 
         result.update({
             "recommended_ticket": "3連単",
-            "ticket_reason": f"{confidence_text}。ライン人数にかかわらず1・2着折り返しを採用",
+            "ticket_reason": f"{confidence_text}。ラインA・Bを維持して1・2着折り返しを採用",
             "santan_form": f"{first}{second}-{first}{second}-{c}{d}",
             "santan_tickets": (
                 f"{first}→{second}→{c}",
@@ -12635,112 +12653,45 @@ def _decide_ticket_with_win_ai_confidence(
             ),
             "santan_common_first_second": (first, second),
             "selected_trio_rows": selected_rows,
-            "selected_trio_form": f"{first}-{second}-{''.join(str(x) for x in selected_reference_thirds[:3])}",
+            "selected_trio_form": str(line_form or f"{first}-{second}-{''.join(str(x) for x in selected_reference_thirds[:3])}"),
             "win_confidence_action": action,
             "santan_protected_third": protected,
+            "structure_override": "ライン主体",
+            "structure_reason_override": "AI印が既存ライン上位2車を強く支持したためライン主体",
         })
         return result
 
-    # 非ライン主体は、候補4車をAI上位4車が3車以上裏づけたときだけ4車BOXへ。
-    if str(structure or "") != "ライン主体":
-        candidate4 = _confidence_candidate_four_cars(trio_rows)
-        candidate_overlap = len(set(candidate4) & win_top4) if len(candidate4) == 4 else 0
-        box_rows = _confidence_four_car_box_rows(source_trio_rows, candidate4) if len(candidate4) == 4 else []
-        if len(candidate4) == 4 and candidate_overlap >= 3 and len(box_rows) == 4:
-            box_form = "-".join(str(x) for x in candidate4) + " BOX"
-            result.update({
-                "recommended_ticket": "3連複",
-                "ticket_reason": (
-                    f"非ライン候補4車のうち{candidate_overlap}車がAI上位4車と一致。"
-                    "着順と特定2車固定を外し、3連複4車BOXで保険"
-                ),
-                "santan_form": "",
-                "santan_tickets": tuple(),
-                "santan_common_first_second": tuple(),
-                "selected_trio_rows": box_rows,
-                "selected_trio_form": box_form,
-                "win_confidence_action": f"3連複4車BOX（候補4車中{candidate_overlap}車一致）",
-            })
-            return result
-
+    # 中間一致：ラインA・Bは支持されているが、1・2着固定までは課さず3連複へ。
+    if pair_both_top4 and len(selected_rows) == 3:
         result.update({
-            "recommended_ticket": "2車複",
+            "recommended_ticket": "3連複",
             "ticket_reason": (
-                f"非ライン候補4車とAI上位4車の一致が{candidate_overlap}車で、"
-                "3連複4車BOX条件の3車一致に届かないため2車複"
+                "ライン上位2車はAI上位4車内だが3連単信頼条件には未達。"
+                "ラインA・Bを維持し、着順と3着固定を緩めて3連複で保険"
             ),
             "santan_form": "",
             "santan_tickets": tuple(),
             "santan_common_first_second": tuple(),
-            "win_confidence_action": f"2車複（非ライン候補4車中{candidate_overlap}車一致）",
+            "selected_trio_rows": selected_rows,
+            "selected_trio_form": str(line_form or f"{first}-{second}-{''.join(str(x) for x in selected_reference_thirds[:3])}"),
+            "win_confidence_action": "3連複へ調整（ラインA・BはAI上位4車内）",
+            "structure_override": "ライン主体",
+            "structure_reason_override": "AI印が既存ライン上位2車を支持したためライン主体",
         })
         return result
 
-    # 従来3連単だけを、信頼条件未達の強さに応じて保険券種へ落とす。
-    if str(base.get("recommended_ticket", "")) == "3連単":
-        base_pair = tuple(base.get("santan_common_first_second", tuple()) or tuple())
-        if len(base_pair) == 2:
-            a, b = int(base_pair[0]), int(base_pair[1])
-        else:
-            a, b = first, second
-        downgrade_all = _confidence_pair_trio_rows(
-            source_trio_rows,
-            a,
-            b,
-            limit=_confidence_limit,
-        )
-        downgrade_ranked_thirds = []
-        for row in downgrade_all:
-            parsed = _parse_santan_reference_triplet((row or {}).get("santan_ref", ""))
-            if parsed is not None and int(parsed[2]) not in downgrade_ranked_thirds:
-                downgrade_ranked_thirds.append(int(parsed[2]))
-        downgrade_selected_thirds = []
-        try:
-            p = int(confidence_protected_third)
-            if p in downgrade_ranked_thirds and p not in {a, b}:
-                downgrade_selected_thirds.append(p)
-        except Exception:
-            pass
-        for third in downgrade_ranked_thirds:
-            if int(third) not in downgrade_selected_thirds:
-                downgrade_selected_thirds.append(int(third))
-            if len(downgrade_selected_thirds) >= 3:
-                break
-        downgrade_trios = []
-        for third in downgrade_selected_thirds[:3]:
-            for row in downgrade_all:
-                parsed = _parse_santan_reference_triplet((row or {}).get("santan_ref", ""))
-                if parsed is not None and int(parsed[2]) == int(third):
-                    downgrade_trios.append(row)
-                    break
-        if a in win_top4 and b in win_top4 and len(downgrade_trios) == 3:
-            thirds = list(downgrade_selected_thirds[:3])
-            result.update({
-                "recommended_ticket": "3連複",
-                "ticket_reason": (
-                    "従来3連単の上位2車はAI上位4車内だが、3連単信頼条件には未達。"
-                    "別ラインの割り込みを3連複で保険"
-                ),
-                "santan_form": "",
-                "santan_tickets": tuple(),
-                "santan_common_first_second": tuple(),
-                "selected_trio_rows": downgrade_trios,
-                "selected_trio_form": f"{a}-{b}-{''.join(str(x) for x in thirds)}",
-                "win_confidence_action": "3連複へ降格（3連単信頼条件未達）",
-            })
-            return result
-
-        result.update({
-            "recommended_ticket": "2車複",
-            "ticket_reason": "従来3連単の上位2車とAI上位4車の重なりが弱いため、着順・3着条件を外して2車複へ降格",
-            "santan_form": "",
-            "santan_tickets": tuple(),
-            "santan_common_first_second": tuple(),
-            "win_confidence_action": "2車複へ降格（3連単信頼条件未達）",
-        })
-        return result
-
-    result["win_confidence_action"] = "3連複維持（3連単信頼条件未達）"
+    # ラインA・Bの支持が弱い場合は、3連系を作らず2車複へ落とす。
+    result.update({
+        "recommended_ticket": "2車複",
+        "ticket_reason": (
+            "既存ライン上位2車のどちらかがAI上位4車外。"
+            "ライン骨格を崩した3連系は作らず、着順・3着条件を外して2車複"
+        ),
+        "santan_form": "",
+        "santan_tickets": tuple(),
+        "santan_common_first_second": tuple(),
+        "win_confidence_action": "2車複へ調整（ラインA・BのAI支持不足）",
+    })
     return result
 
 def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_label, rule_buy_block, mark_map=None):
@@ -14457,44 +14408,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         and int(_line_protected_third) in set(_line_third_candidates or [])
                         else tuple()
                     )
-                    # v257：AI印は妙味加点と混ぜず、最終券種の信頼度ゲートとして使用。
-                    # 4印が完全入力されたときだけ、上位2車・形成4車・非ライン候補4車との一致を見る。
-                    _flow_top2_for_confidence = []
-                    for _x in (_recommended_seq or []):
-                        try:
-                            _c = int(_x)
-                        except Exception:
-                            continue
-                        if _c in _active_cars and _c not in _flow_top2_for_confidence:
-                            _flow_top2_for_confidence.append(_c)
-                        if len(_flow_top2_for_confidence) >= 2:
-                            break
-
-                    def _nearest_following_line_car_for_pair(_pair):
-                        try:
-                            _a, _b = int(_pair[0]), int(_pair[1])
-                        except Exception:
-                            return None
-                        for _lines in _line_sources_v250():
-                            for _ln in (_lines or []):
-                                try:
-                                    _cars = [int(x) for x in (_ln or []) if str(x).isdigit()]
-                                except Exception:
-                                    _cars = []
-                                if _a not in _cars or _b not in _cars:
-                                    continue
-                                _ia, _ib = _cars.index(_a), _cars.index(_b)
-                                # 連続する上位2車の直後だけをライン保護対象にする。
-                                if abs(_ia - _ib) != 1:
-                                    return None
-                                _next_idx = max(_ia, _ib) + 1
-                                if _next_idx < len(_cars):
-                                    return int(_cars[_next_idx])
-                                return None
-                        return None
-
-                    _confidence_protected_third = _nearest_following_line_car_for_pair(
-                        _flow_top2_for_confidence
+                    # v258：AI印は妙味加点と混ぜず、最終券種の信頼度ゲートとして使用。
+                    # 3連系のA・Bと3着候補は、必ず既存のライン主体候補から取得する。
+                    # 流れ上位2車や非ライン候補から新しい3連単・3連複を生成しない。
+                    _line_pair_for_confidence = (
+                        (int(_axis), int(_line_anchor))
+                        if _line_anchor is not None
+                        else tuple()
                     )
                     _ticket_decision = _decide_ticket_with_win_ai_confidence(
                         _structure,
@@ -14503,11 +14423,22 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         protected_third_candidates=_protected_santan_thirds,
                         market_mark_map=market_mark_map,
                         active_cars=_active_cars,
-                        flow_top2=_flow_top2_for_confidence,
                         all_trio_rows=_trio_rows,
-                        confidence_protected_third=_confidence_protected_third,
+                        line_pair=_line_pair_for_confidence,
+                        line_trio_rows=_line_trio_rows,
+                        line_form=_line_form,
+                        line_protected_third=_line_protected_third,
                         is_girls_only=(race_class == "ガールズ"),
                     )
+                    _structure_override = str(_ticket_decision.get("structure_override", "") or "")
+                    _structure_reason_override = str(
+                        _ticket_decision.get("structure_reason_override", "") or ""
+                    )
+                    if _structure_override in {"ライン主体", "非ライン主体"}:
+                        _structure = _structure_override
+                    if _structure_reason_override:
+                        _structure_reason = _structure_reason_override
+
                     _selected_trio_rows = list(_ticket_decision.get("selected_trio_rows", []) or [])
                     _selected_trio_form = str(_ticket_decision.get("selected_trio_form", "") or "")
                     if _selected_trio_rows:
@@ -14928,7 +14859,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 
             # v227: note上部は買い目主役で最小限にする。
             # 詳細な加重2車複評価表・買い目根拠・流れ別買目考察は出さない。
-            # v257: v255構造にAI信頼度ゲートを加えた最終券種を先に表示する。
+            # v258: ライン骨格を守るAI信頼度ゲートを加えた最終券種を先に表示する。
             lines.append(f"【3連複想定構成】{_trio_structure_label}")
             lines.append("")
             lines.append(f"ライン主体　　　{_line_trio_form if _line_trio_form else '該当なし'}")
