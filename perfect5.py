@@ -1,3 +1,4 @@
+# v259: v258ベース。流れ判定のライン強度を車番スコアの単純合計から、ライン位置係数で正規化した加重平均へ変更。先頭1.00・番手0.72・3番手以降0.55（既存の位置係数）を合計1になるよう正規化し、ライン人数が多いだけで強くならないようにした。単騎は既存の0.70係数を維持。この同一強度を流れ波形、順流/逆流ライン選定、ライン別FR配分へ一貫適用。AI信頼判定・ライン骨格保護・券種判定はv258を維持。
 # v258: v257ベース。AI印は券種の信頼度ゲートとして使うが、3連単・3連複の骨格は必ず既存のライン主体候補A-B-CDEから作る。流れ上位2車や非ライン候補から新しい3連系を生成しない。AI◎〇完全一致、またはA・BがAI上位4車内・最低1車が◎〇・ライン形成4車中3車以上一致なら、ライン人数にかかわらず3連単AB-AB-CDへ昇格/維持。A・BがAI上位4車内だが3連単条件未達ならライン3連複A-B-CDE、A・Bの支持が弱い場合は2車複。非ライン4車BOXは廃止。ガールズ2車複とv255の直後同ライン車3着保護は維持。
 # v255: v254ベース。3連単AB-AB-CDのライン保護を「残り同ライン車のどれか1車」から、1・2着候補の直後に続く最優先同ライン車1車の固定保護へ変更。例：ライン1234で1・2着候補が12なら3を必ず3着候補に残し、残る1枠だけを4以降の同ライン車と他ライン候補の既存加重評価で比較する。新しい数値閾値は追加せず、その他の構成・券種判定はv254を維持。
 # v254: v253ベース。3連単AB-AB-CDの3着2車を選ぶ際、ライン三連複3点の候補内に軸ラインの残り同ライン車がいる場合は最低1車を必ず保護する。上位2車に同ライン車が含まれなければ、2番目の3着候補を候補内最高位の同ライン車へ差し替える。例：松阪6R 37-37-51→37-37-54。その他の構成・券種判定はv253を維持。
@@ -4720,6 +4721,44 @@ for n in ids_source:
 for n in [x for ln in _lines_list for x in ln]:
     scores.setdefault(int(n), 0.0)
 
+
+def _t369_line_core_strength(
+    mem,
+    scores_map,
+    singleton_scale: float = 0.70,
+    default_score: float = 50.0,
+) -> float:
+    """
+    ライン人数に左右されない流れ用ライン強度。
+
+    ・先頭=1.00、番手=0.72、3番手以降=0.55（既存の位置係数）
+    ・重み合計で割るため、2車/3車/4車で人数そのものの加点は発生しない
+    ・単騎は従来の抑制係数0.70を維持
+    """
+    members = []
+    for x in (mem or []):
+        try:
+            members.append(int(x))
+        except Exception:
+            continue
+    if not members:
+        return 0.0
+
+    def _score(car: int) -> float:
+        try:
+            return float((scores_map or {}).get(int(car), float(default_score)))
+        except Exception:
+            return float(default_score)
+
+    if len(members) == 1:
+        return _score(members[0]) * float(singleton_scale)
+
+    weights = [1.00, 0.72] + [0.55] * max(0, len(members) - 2)
+    weighted_sum = sum(_score(car) * w for car, w in zip(members, weights))
+    weight_total = sum(weights)
+    return weighted_sum / weight_total if weight_total > 0.0 else 0.0
+
+
 # ---------- 流れ指標（簡潔・安定版） ----------
 # ---------- 流れ指標（簡潔・安定版） ----------
 def compute_flow_indicators(lines_str, marks, scores):
@@ -4743,7 +4782,8 @@ def compute_flow_indicators(lines_str, marks, scores):
             return d
 
     def avg_score(mem):
-        return mean([scores.get(n, 50.0) for n in mem], 50.0)
+        # v259: ライン人数の単純加点を排除し、位置係数で正規化した同一強度を使用
+        return _t369_line_core_strength(mem, scores)
 
     muA = mean([avg_score(ln) for ln in lines], 50.0) / 100.0
     star_id = marks.get("◎", -999)
@@ -4776,10 +4816,10 @@ def compute_flow_indicators(lines_str, marks, scores):
             return 0.0
         return math.cos(waves[bi]["phi"] - waves[bj]["phi"])
 
-    # ★順流/逆流：ライン強さ（スコア合計）で決める
+    # ★v259 順流/逆流：人数ではなく正規化ライン強度で決める
     def line_strength(bid: str) -> float:
         mem = bucket_to_members.get(bid, [])
-        return float(sum(scores.get(n, 50.0) for n in mem))
+        return float(_t369_line_core_strength(mem, scores))
 
     all_buckets = list(bucket_to_members.keys())
     b_star = max(all_buckets, key=lambda bid: (line_strength(bid), bid))
@@ -4849,7 +4889,18 @@ def compute_flow_indicators(lines_str, marks, scores):
         f"【逆流】無ライン {label(b_none)}：U={U:.2f}（※判定基準内）",
     ])
 
-    dbg = {"blend_star": blend_star, "blend_none": blend_none, "sd": sd, "nu": nu, "vtx_hi": vtx_hi}
+    dbg = {
+        "blend_star": blend_star,
+        "blend_none": blend_none,
+        "sd": sd,
+        "nu": nu,
+        "vtx_hi": vtx_hi,
+        "line_strength_method": "normalized_role_weighted_average",
+        "line_strengths": {
+            label(bid): round(float(line_strength(bid)), 6)
+            for bid in all_buckets
+        },
+    }
 
     # ★パッチ2：内部で使ったラインを返す
     def members_of(bid: str) -> list[int]:
@@ -5636,9 +5687,13 @@ if "_build_line_fr_map" not in globals():
 
         line_sums = []
         for ln in lines:
-            s = sum(scores_map.get(int(x), 0.0) for x in ln)
-            if len(ln) == 1:
-                s *= float(SINGLETON_FR_SCALE)
+            # v259: 2車/3車/4車の人数差を直接加点せず、流れ判定と同じ正規化強度を使う
+            s = _t369_line_core_strength(
+                ln,
+                scores_map,
+                singleton_scale=float(SINGLETON_FR_SCALE),
+                default_score=0.0,
+            )
             line_sums.append((ln, s))
 
         total = sum(s for _, s in line_sums)
