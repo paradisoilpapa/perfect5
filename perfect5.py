@@ -1,3 +1,4 @@
+# v263: note上部の「三連複軸想定着内率」を廃止し、実際の最終判定に合わせて「推奨車券：3連単／3連複」を表示。買い目構成・AI信頼判定・数値ロジックはv262から変更しない。
 # v262: v261の比率2位・3位流れ選別を継承し、買い目を3連系へ統合。3連単該当時はAB-ABC-ABCの4点＋A-B-DEの3連複2点。3連単非該当・ガールズは比率1位を軸へ再利用せず、比率2位・3位流れから選んだ5車を12-123-12345の3連複7点へ展開。AI信頼判定・3連単該当条件・ライン強度・数値閾値は変更しない。Cは直後同ライン車を優先し、該当しない場合だけ既存3着候補1位を使う。
 # v259: v258ベース。流れ判定のライン強度を車番スコアの単純合計から、ライン位置係数で正規化した加重平均へ変更。先頭1.00・番手0.72・3番手以降0.55（既存の位置係数）を合計1になるよう正規化し、ライン人数が多いだけで強くならないようにした。単騎は既存の0.70係数を維持。この同一強度を流れ波形、順流/逆流ライン選定、ライン別FR配分へ一貫適用。AI信頼判定・ライン骨格保護・券種判定はv258を維持。
 # v258: v257ベース。AI印は券種の信頼度ゲートとして使うが、3連単・3連複の骨格は必ず既存のライン主体候補A-B-CDEから作る。流れ上位2車や非ライン候補から新しい3連系を生成しない。AI◎〇完全一致、またはA・BがAI上位4車内・最低1車が◎〇・ライン形成4車中3車以上一致なら、ライン人数にかかわらず3連単AB-AB-CDへ昇格/維持。A・BがAI上位4車内だが3連単条件未達ならライン3連複A-B-CDE、A・Bの支持が弱い場合は2車複。非ライン4車BOXは廃止。ガールズ2車複とv255の直後同ライン車3着保護は維持。
@@ -11213,20 +11214,21 @@ def _display_expect_myoumi_labels_in_text(text: str) -> str:
         return "全体妙味：" + _display_expect_myoumi_label(m.group(1))
     return re.sub(r"全体妙味：(AA|A|B|C|荒|低)", repl, str(text))
 
-def _replace_axis_line_to_expect(text: str, label: str) -> str:
+def _replace_axis_line_to_expect(text: str, label: str, recommended_ticket: str = "未判定") -> str:
     """
     note本文の最初の軸評価行を全体妙味へ置換する。
-    ここで表示名を「三連複軸想定着内率」へ変更する。
-    ※2車複は複数点表示のため、全体妙味の率は3連複軸の目安として扱う。
+    v263: 旧「三連複軸想定着内率」は現在の券種構成に合わないため廃止し、
+    最終判定済みの推奨車券（3連単／3連複）を表示する。
     """
-    pat = r"軸評価：[A-E](?:☆☆|☆)?［[^］]*］（軸想定2着内率\s*(\d+)%）"
+    pat = r"軸評価：[A-E](?:☆☆|☆)?［[^］]*］（軸想定2着内率\s*\d+%）"
+    _ticket = str(recommended_ticket or "未判定").strip()
+    if _ticket not in ("3連単", "3連複"):
+        _ticket = "未判定"
 
-    def repl(m):
-        pct = m.group(1) if m and m.lastindex else ""
-        rate_txt = f"（三連複軸想定着内率 {pct}%）" if pct else ""
+    def repl(_m):
         # ここでは旧判定ラベルのまま差し込む。
         # A/B/Cへの表示変換は _display_expect_myoumi_labels_in_text() で一度だけ行う。
-        return f"全体妙味：{str(label or '').strip()}" + rate_txt
+        return f"全体妙味：{str(label or '').strip()}（推奨車券：{_ticket}）"
 
     return re.sub(pat, repl, text, count=1)
 
@@ -15448,24 +15450,33 @@ try:
     _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
     _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
 
-    # まず軸評価行を全体妙味へ置換（この時点では旧ラベルのまま）
-    note_text = _replace_axis_line_to_expect(note_text, expect_axis_label)
-
     # 既存の上部サマリーだけを削除
     note_text = _strip_existing_top_summary(note_text)
 
-    summary_block = "\n\n" + _make_note_final_summary_block(
+    _summary_core = _make_note_final_summary_block(
         _rec_style,
         _rec_seq,
         _rec_copy,
         expect_axis_label,
         rule_buy_block,
         market_mark_map,
-    ) + "\n"
+    )
+    summary_block = "\n\n" + _summary_core + "\n"
+
+    # v263: 最終サマリーの券種判定を、全体妙味行の補足表示にも使用する。
+    _m_ticket = re.search(r"【推奨券種】(3連単|3連複)", _summary_core)
+    _header_ticket = _m_ticket.group(1) if _m_ticket else "未判定"
+
+    # 軸評価行を全体妙味＋実際の推奨車券へ置換（この時点では旧ラベルのまま）
+    note_text = _replace_axis_line_to_expect(
+        note_text,
+        expect_axis_label,
+        _header_ticket,
+    )
 
     # 最初の全体妙味行の直後にだけ挿入
     _m_axis = re.search(
-        r"全体妙味：(?:AA|A|B|C|荒|低)（(?:三連複軸想定着内率|軸想定2着内率)\s*\d+%）",
+        r"全体妙味：(?:AA|A|B|C|荒|低)（推奨車券：(3連単|3連複|未判定)）",
         note_text
     )
 
