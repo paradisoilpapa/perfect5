@@ -1,3 +1,4 @@
+# v265: v264のライン分散3連複・3車以上ライン限定3連単を維持し、ライン評価グループを各流れ1代表へ復元。順流域・渦域・逆流域は代表ライン1本だけを流れ比率と比率順位へ使用し、同じ流れに残った余剰ラインは「その他（3列目候補）」へ分離する。その他ラインはFLOW_RATIO_MAP_BY_ZONEへ加算せず、LINE_ZONE_MAPでは「その他」としてKO隊列末尾・3列目補強候補にのみ残す。既存の数値閾値・点数・AI印条件は変更しない。
 # v264: 3連複12-123-12345の5車選出をライン分散。1列目2車は原則として別流れかつ別ライン、2列目3車は原則として異なる3ラインの代表とし、同ライン補強は3列目側へ回す。また3連単は採用するA・Bの実ラインが3車以上の場合だけ許可し、2車ラインはAI信頼条件を満たしても3連複へ落とす。点数（3連単4点＋3連複2点／3連複7点）、流れ比率、AI印条件、既存数値閾値は変更しない。
 # v263: note上部の「三連複軸想定着内率」を廃止し、実際の最終判定に合わせて「推奨車券：3連単／3連複」を表示。買い目構成・AI信頼判定・数値ロジックはv262から変更しない。
 # v262: v261の比率2位・3位流れ選別を継承し、買い目を3連系へ統合。3連単該当時はAB-ABC-ABCの4点＋A-B-DEの3連複2点。3連単非該当・ガールズは比率1位を軸へ再利用せず、比率2位・3位流れから選んだ5車を12-123-12345の3連複7点へ展開。AI信頼判定・3連単該当条件・ライン強度・数値閾値は変更しない。Cは直後同ライン車を優先し、該当しない場合だけ既存3着候補1位を使う。
@@ -5716,6 +5717,68 @@ def _safe_flow(lines_str, marks, scores):
     except Exception:
         return {}
 
+
+def _v265_compact_line_zone_representatives(zones, fmt_line=None):
+    """
+    順流域・渦域・逆流域を各1代表へ圧縮し、余剰ラインを
+    「その他（3列目候補）」として返す。
+
+    前段のゾーン判定・v235の3枠補完で確定した並び順を尊重し、
+    各ゾーンの先頭だけを代表に残す。余剰ラインは流れ比率へ加算しない。
+    """
+    zone_names = ("順流域", "渦域", "逆流域")
+    compacted = {name: list((zones or {}).get(name, []) or []) for name in zone_names}
+    other_items = []
+
+    for zone_name in zone_names:
+        items = list(compacted.get(zone_name, []) or [])
+        if not items:
+            compacted[zone_name] = []
+            continue
+
+        compacted[zone_name] = [items[0]]
+        origin = zone_name.replace("域", "")
+        for item in items[1:]:
+            copied = dict(item or {})
+            copied["origin_zone"] = origin
+            other_items.append(copied)
+
+    def _line_key(item):
+        return "".join(ch for ch in str((item or {}).get("line", "")) if ch.isdigit())
+
+    representative_keys = {
+        _line_key(item)
+        for zone_name in zone_names
+        for item in (compacted.get(zone_name, []) or [])
+        if _line_key(item)
+    }
+
+    unique_other = []
+    seen = set()
+    for item in other_items:
+        key = _line_key(item)
+        if not key or key in representative_keys or key in seen:
+            continue
+        seen.add(key)
+        unique_other.append(item)
+
+    def _fmt(item):
+        line = (item or {}).get("line", [])
+        if callable(fmt_line):
+            try:
+                return str(fmt_line(line))
+            except Exception:
+                pass
+        return "".join(ch for ch in str(line) if ch.isdigit())
+
+    unique_other.sort(
+        key=lambda item: (
+            -float((item or {}).get("fr", 0.0) or 0.0),
+            _fmt(item),
+        )
+    )
+    return compacted, unique_other
+
 # ===================== 4) 出力本体（券種なし・一括置換） =====================
 try:
     import math
@@ -6536,6 +6599,45 @@ try:
         except Exception:
             pass
 
+
+        # =====================================================
+        # v265: 各流れは代表1ラインだけ。余剰は「その他（3列目候補）」へ。
+        # ・その他は流れ比率・比率順位へ加算しない
+        # ・KO隊列では「その他」として末尾へ残し、3列目補強候補には使える
+        # =====================================================
+        _other_line_items = []
+        try:
+            zones, _other_line_items = _v265_compact_line_zone_representatives(
+                zones,
+                fmt_line=_fmt_line,
+            )
+
+            _zone_fr = {
+                "順流": sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("順流域", []) or [])),
+                "渦":   sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("渦域", []) or [])),
+                "逆流": sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("逆流域", []) or [])),
+            }
+            _zone_total = sum(_zone_fr.values())
+            if _zone_total > 0:
+                globals()["FLOW_RATIO_MAP_BY_ZONE"] = {
+                    "順流": _zone_fr["順流"] / _zone_total,
+                    "逆流": _zone_fr["逆流"] / _zone_total,
+                    "渦": _zone_fr["渦"] / _zone_total,
+                }
+
+            globals()["OTHER_LINE_ITEMS_FOR_THIRD"] = [
+                {
+                    "line": list(item.get("line", []) or []),
+                    "fr": float(item.get("fr", 0.0) or 0.0),
+                    "origin_zone": str(item.get("origin_zone", "") or ""),
+                    "tags": list(item.get("tags", []) or []),
+                }
+                for item in (_other_line_items or [])
+            ]
+        except Exception:
+            _other_line_items = []
+            globals()["OTHER_LINE_ITEMS_FOR_THIRD"] = []
+
         # KO隊列用：ラインごとの新ゾーン分類を保存
         _LINE_ZONE_MAP = {}
 
@@ -6554,6 +6656,15 @@ try:
                        _LINE_ZONE_MAP[key] = short_zone
                 except Exception:
                    pass
+
+        # 代表外ラインは旧FR/VTX/Uの保険判定へ戻さず、明示的に「その他」とする。
+        for item in (_other_line_items or []):
+            try:
+                key = "".join(ch for ch in str(item.get("line", "")) if ch.isdigit())
+                if key:
+                    _LINE_ZONE_MAP[key] = "その他"
+            except Exception:
+                pass
 
         globals()["LINE_ZONE_MAP"] = _LINE_ZONE_MAP
 
@@ -6578,11 +6689,28 @@ try:
 
             note_sections.append(f"{zone_name}：" + "／".join(parts))
 
+        if _other_line_items:
+            other_parts = []
+            for item in _other_line_items:
+                tags = []
+                origin = str(item.get("origin_zone", "") or "")
+                if origin:
+                    tags.append(f"元:{origin}")
+                tags.extend(str(x) for x in (item.get("tags", []) or []) if str(x))
+                tag_txt = ("・" + "・".join(tags)) if tags else ""
+                other_parts.append(
+                    f"{_fmt_line(item.get('line', []))}［FR={float(item.get('fr', 0.0) or 0.0):.3f}{tag_txt}］"
+                )
+            note_sections.append("その他（3列目候補）：" + "／".join(other_parts))
+        else:
+            note_sections.append("その他（3列目候補）：—")
+
     else:
         note_sections.append("【ライン評価グループ】")
         note_sections.append("順流域：—")
         note_sections.append("渦域：—")
         note_sections.append("逆流域：—")
+        note_sections.append("その他（3列目候補）：—")
 
     note_sections.append("")
 
@@ -12396,6 +12524,29 @@ def _v264_line_diverse_five_plan(plan, line_sources, active_cars=None, ko_score_
     def _line_size(car):
         return int(_v264_line_info_for_car(car, line_groups)[1])
 
+    _zone_map_v265 = globals().get("LINE_ZONE_MAP", {}) or {}
+    _zone_map_v265_enabled = isinstance(_zone_map_v265, dict) and bool(_zone_map_v265)
+
+    def _line_key_for_car(car):
+        try:
+            car = int(car)
+        except Exception:
+            return ""
+        for group in (line_groups or []):
+            try:
+                cars = [int(x) for x in (group or []) if str(x).isdigit()]
+            except Exception:
+                cars = []
+            if car in cars:
+                return "".join(str(x) for x in cars)
+        return str(car)
+
+    def _is_other_line_car(car):
+        # LINE_ZONE_MAPがまだ作られていない旧経路では、v264の挙動を維持する。
+        if not _zone_map_v265_enabled:
+            return False
+        return str(_zone_map_v265.get(_line_key_for_car(car), "その他")) == "その他"
+
     score_map = {}
     for k, v in (ko_score_map or {}).items():
         try:
@@ -12403,7 +12554,25 @@ def _v264_line_diverse_five_plan(plan, line_sources, active_cars=None, ko_score_
         except Exception:
             pass
 
+    # v265: A/B/Cは流れ代表ラインだけから選ぶ。
+    # 「その他（3列目候補）」はD/Eでのみ許可する。
+    core_order = []
+    for car in list(original) + seq1 + seq2 + active:
+        try:
+            car = int(car)
+        except Exception:
+            continue
+        if car not in active or car in core_order or _is_other_line_car(car):
+            continue
+        core_order.append(car)
+    if len({_group(car) for car in core_order}) < 3:
+        # 3代表ラインを作れないレースでは、従来のフォールバックを維持する。
+        return out
+
     a = int(original[0])
+    if _is_other_line_car(a):
+        a = int(core_order[0])
+
     # Aをより上位に置く流れをA側とみなし、Bは反対側の流れから選ぶ。
     if _pos(seq1, a) <= _pos(seq2, a):
         a_style = str(styles[0])
@@ -12422,6 +12591,8 @@ def _v264_line_diverse_five_plan(plan, line_sources, active_cars=None, ko_score_
             except Exception:
                 continue
             if car in selected or car not in active:
+                continue
+            if _is_other_line_car(car):
                 continue
             if _group(car) in used_groups:
                 continue
@@ -12468,6 +12639,8 @@ def _v264_line_diverse_five_plan(plan, line_sources, active_cars=None, ko_score_
             continue
         if car in selected or car not in active or _group(car) in used_groups:
             continue
+        if _is_other_line_car(car):
+            continue
         if car not in [x[1] for x in valid_c]:
             valid_c.append((_idx, car))
     formed_c = [x for x in valid_c if _line_size(x[1]) >= 2]
@@ -12511,6 +12684,7 @@ def _v264_line_diverse_five_plan(plan, line_sources, active_cars=None, ko_score_
     out["second_source_style"] = b_style
     out["first_column_lines_separated"] = _group(selected[0]) != _group(selected[1])
     out["second_column_distinct_line_count"] = len({_group(x) for x in selected[:3]})
+    out["other_lines_third_only"] = all(not _is_other_line_car(x) for x in selected[:3])
     return out
 
 
