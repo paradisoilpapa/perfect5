@@ -1,4 +1,4 @@
-# v266: v265ベース。3連単非該当時、比率1位が40%以上ならメイン流れを除外せず、メイン着順予想1～4位＋KO使用スコア最上位の補強1車を12-123-12345へ展開。また、同一流域に複数ラインがあり単騎が混在する場合、その単騎を買い目配置上の「その他（3列目候補）」へ分離し、A・B・Cには置かずD・Eだけで再選考する。流れ比率自体は従来表示との連続性を保つため元流域へ計上。3連単条件、7点構成、AI信頼判定、既存数値閾値は変更しない。
+# v267: v266ベース。3連単非該当時の分岐を「比率1位と2位の差」だけで判定。差が10ポイント以上ならメイン流れを維持し、メイン着順予想1～4位＋KO使用スコア最上位の補強1車を12-123-12345へ展開。差が10ポイント未満なら比率1位・2位流れを合成して5車を選ぶ。40%固定条件と比率1位の自動除外を廃止。「その他（3列目候補）」のA・B・C除外、D・E再選考、3連単条件、7点構成、AI信頼判定は変更しない。
 # v265: v264ベース。3連単非該当・ガールズの3連複12-123-12345で、比率2位・3位流れから各2車（重複時は次位補充）の中核4車を作り、KO使用スコア上位2車をA・Bへ再配置。残る3車は流れ加重的中単騎評価順でC・D・Eへ配置し、弱い単騎は重要列から下げる。5車選出、強単騎差し替え、比率1位除外、7点構成、AI信頼判定、数値閾値は変更しない。
 # v263: note上部の「三連複軸想定着内率」を廃止し、実際の最終判定に合わせて「推奨車券：3連単／3連複」を表示。買い目構成・AI信頼判定・数値ロジックはv262から変更しない。
 # v262: v261の比率2位・3位流れ選別を継承し、買い目を3連系へ統合。3連単該当時はAB-ABC-ABCの4点＋A-B-DEの3連複2点。3連単非該当・ガールズは比率1位を軸へ再利用せず、比率2位・3位流れから選んだ5車を12-123-12345の3連複7点へ展開。AI信頼判定・3連単該当条件・ライン強度・数値閾値は変更しない。Cは直後同ライン車を優先し、該当しない場合だけ既存3着候補1位を使う。
@@ -12263,25 +12263,28 @@ def _v265_select_second_third_flow_five_plan(
     hit_map=None,
     myoumi_map=None,
     ko_score_map=None,
+    flow_rank_indices=(1, 2),
 ):
     """
-    v264の5車選出を維持し、最終のA～E配置だけをv265仕様へ整理する。
+    2つの指定流れを合成して5車を選び、A～Eをv265仕様で配置する。
+
+    flow_rank_indices
+    ・既定値(1, 2)：比率2位・3位流れを合成（v265互換）。
+    ・(0, 1)：比率1位・2位流れを合成（v267の接戦分岐）。
 
     5車選出の基本骨格
-    ・比率1位の流れは軸候補の生成から除外。
-    ・比率2位・3位の順位合計が最小の車を旧A候補とする。
-    ・残る4車は、比率2位流れ→3位流れの同順位を交互に見て選ぶ。
+    ・指定した2流れの順位合計が最小の車を旧A候補とする。
+    ・残る4車は、2流れの同順位を交互に見て選ぶ。
     ・選出済み単騎より未採用単騎の流れ加重的中評価が高い場合だけ差し替える。
 
-    v265の列配置
-    ・比率2位流れから上位2車、比率3位流れから重複を除く上位2車を取り、
-      中核4車を作る（不足時は両流れの次位から補充）。
+    列配置
+    ・指定2流れから各上位2車（重複時は次位補充）の中核4車を作る。
     ・中核4車のKO使用スコア上位2車をA・Bへ置く。
     ・残る選出3車は、流れ加重的中単騎評価→KO使用スコア→妙味評価の順で
       C・D・Eへ置く。
 
-    これにより、流れ予想の先頭という理由だけでKO下位の車がA・Bへ固定される
-    ことを防ぐ。比率1位除外、選出5車、7点構成、AI判定は変更しない。
+    「その他（3列目候補）」はA・B・Cへ置かず、D・Eだけで再選考する。
+    選出5車、7点構成、AI判定は変更しない。
     """
     ranked = [
         row for row in _v262_ranked_flows(
@@ -12295,8 +12298,20 @@ def _v265_select_second_third_flow_five_plan(
     if len(ranked) < 3:
         return None
 
-    excluded = ranked[0]
-    primary, secondary = ranked[1], ranked[2]
+    try:
+        rank_indices = tuple(int(x) for x in (flow_rank_indices or (1, 2)))
+    except Exception:
+        rank_indices = (1, 2)
+    if len(rank_indices) != 2 or len(set(rank_indices)) != 2:
+        return None
+    if any(idx < 0 or idx >= len(ranked) for idx in rank_indices):
+        return None
+
+    primary, secondary = ranked[rank_indices[0]], ranked[rank_indices[1]]
+    excluded_rows = [row for idx, row in enumerate(ranked) if idx not in set(rank_indices)]
+    if not excluded_rows:
+        return None
+    excluded = excluded_rows[0]
     seq1 = list(primary.get("seq") or [])
     seq2 = list(secondary.get("seq") or [])
 
@@ -12428,7 +12443,7 @@ def _v265_select_second_third_flow_five_plan(
 
     selected_set = set(int(x) for x in selected)
 
-    # 比率2位・3位流れから各2車。重複は次位へ送って中核候補を作る。
+    # 指定した2流れから各2車。重複は次位へ送って中核候補を作る。
     # v266: 「その他（3列目候補）」はA・Bの中核から外す。
     core_four = []
     for seq in (seq1, seq2):
@@ -12537,7 +12552,7 @@ def _v265_select_second_third_flow_five_plan(
     }
 
 
-def _v266_select_main_flow_five_plan(
+def _v267_select_main_flow_five_plan(
     flow_ratio_map,
     style_seq_map,
     active_cars=None,
@@ -12546,16 +12561,17 @@ def _v266_select_main_flow_five_plan(
     hit_map=None,
     myoumi_map=None,
     ko_score_map=None,
-    min_main_ratio=0.40,
+    min_main_gap=0.10,
 ):
     """
-    3連単非該当でも、比率1位が40%以上ならメイン流れを残す。
+    3連単非該当でも、比率1位と2位の差が10ポイント以上ならメイン流れを残す。
 
     A・B = メイン着順予想1・2位
     C     = メイン着順予想3位
     D     = メイン着順予想4位
     E     = A～D以外からKO使用スコア最上位の補強1車
 
+    判定は絶対比率ではなく、1位－2位のポイント差だけを使う。
     「その他（3列目候補）」はA～Dには置かず、Eでは通常候補と同列に比較する。
     """
     ranked = [
@@ -12567,11 +12583,14 @@ def _v266_select_main_flow_five_plan(
         )
         if row.get("seq")
     ]
-    if not ranked:
+    if len(ranked) < 2:
         return None
     main = ranked[0]
+    second = ranked[1]
     main_ratio = float(main.get("ratio", 0.0) or 0.0)
-    if main_ratio + 1e-12 < float(min_main_ratio):
+    second_ratio = float(second.get("ratio", 0.0) or 0.0)
+    main_gap = main_ratio - second_ratio
+    if main_gap + 1e-12 < float(min_main_gap):
         return None
 
     try:
@@ -12623,6 +12642,9 @@ def _v266_select_main_flow_five_plan(
         "cars": final_cars,
         "style": str(main.get("style", "")),
         "ratio": main_ratio,
+        "second_style": str(second.get("style", "")),
+        "second_ratio": second_ratio,
+        "main_gap": main_gap,
         "main_four": tuple(int(x) for x in core),
         "extra_car": int(e_car),
         "other_cars": tuple(sorted(int(x) for x in other_set)),
@@ -15205,10 +15227,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     )
 
                     # =================================================
-                    # v262 券種別の統合買い目構成
+                    # v267 券種別の統合買い目構成
                     # 1) 3連単該当：AB-ABC-ABC 4点＋A-B-DE 3連複2点
-                    # 2) 3連単非該当・ガールズ：比率1位を軸へ再利用せず、
-                    #    比率2位・3位流れの5車を12-123-12345 3連複7点へ展開
+                    # 2) 3連単非該当・ガールズ：
+                    #    比率1位－2位差が10pt以上ならメイン1～4位＋KO補強1車、
+                    #    10pt未満なら比率1位・2位流れの5車を12-123-12345へ展開。
                     # AI信頼判定と3連単該当条件は変更しない。
                     # =================================================
                     _composition_label = ""
@@ -15257,9 +15280,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             _main_pair_rows = []
 
                     if _recommended_ticket != "3連単":
-                        # v266：
-                        # 1) 比率1位が40%以上ならメイン流れ1～4位＋KO補強1車。
-                        # 2) 40%未満ならv265の比率2位・3位流れ方式。
+                        # v267：
+                        # 1) 比率1位－2位差が10pt以上ならメイン流れ1～4位＋KO補強1車。
+                        # 2) 10pt未満なら比率1位・2位流れを合成。
                         # 3) 同一流域に混在する単騎の「その他」はA・B・Cへ置かずD・Eで再選考。
                         _single_cars_for_v265 = set()
                         try:
@@ -15278,7 +15301,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             int(x) for x in (globals().get("TICKET_OTHER_CARS", set()) or set())
                             if str(x).isdigit()
                         )
-                        _main_flow_plan = _v266_select_main_flow_five_plan(
+                        _main_flow_plan = _v267_select_main_flow_five_plan(
                             _ratio_map,
                             _style_seq_map,
                             active_cars=_active_cars,
@@ -15287,7 +15310,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             hit_map=_hit_map,
                             myoumi_map=_myoumi_map,
                             ko_score_map=(globals().get("score_map", {}) or {}),
-                            min_main_ratio=0.40,
+                            min_main_gap=0.10,
                         )
                         _flow_five_plan = None
                         _use_main_flow_plan = bool(_main_flow_plan)
@@ -15304,6 +15327,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                 hit_map=_hit_map,
                                 myoumi_map=_myoumi_map,
                                 ko_score_map=(globals().get("score_map", {}) or {}),
+                                flow_rank_indices=(0, 1),
                             )
                         if _flow_five_plan:
                             _five_car_form = tuple(
@@ -15319,33 +15343,38 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                 _form = _v262_form_12_123_12345(_five_car_form)
                                 _third_candidates = tuple(_five_car_form[2:])
                                 if _use_main_flow_plan:
-                                    _trio_mode = "main_flow_40plus_12_123_12345"
-                                    _structure = "比率1位メイン流れ維持"
+                                    _trio_mode = "main_flow_gap10plus_12_123_12345"
+                                    _structure = "比率1位・2位差10pt以上メイン流れ維持"
                                     _main_style = str(_flow_five_plan.get("style", "") or "")
                                     _main_ratio = float(_flow_five_plan.get("ratio", 0.0) or 0.0)
+                                    _second_style = str(_flow_five_plan.get("second_style", "") or "")
+                                    _second_ratio = float(_flow_five_plan.get("second_ratio", 0.0) or 0.0)
+                                    _main_gap = float(_flow_five_plan.get("main_gap", 0.0) or 0.0)
                                     _main_four = tuple(_flow_five_plan.get("main_four", tuple()) or tuple())
                                     _extra_car = _flow_five_plan.get("extra_car", None)
                                     _composition_label = (
                                         "ガールズ・メイン流れ維持3連複7点"
                                         if race_class == "ガールズ"
-                                        else "比率1位40%以上・メイン流れ維持3連複7点"
+                                        else "比率1位・2位差10pt以上・メイン流れ維持3連複7点"
                                     )
                                     _composition_detail = (
                                         f"維持:{_main_style}{_main_ratio*100:.0f}%／"
+                                        f"2位:{_second_style}{_second_ratio*100:.0f}%／"
+                                        f"差:{_main_gap*100:.0f}pt／"
                                         f"メイン1～4位:{''.join(str(x) for x in _main_four)}／"
                                         f"KO補強:{_extra_car}／"
                                         f"選出{''.join(str(x) for x in _five_car_form)}／"
                                         f"3連複{_form}"
                                     )
                                     _ticket_reason = (
-                                        "3連単信頼条件未達。ただし比率1位が40%以上のためメイン流れを除外せず、"
-                                        "メイン着順予想1～4位とKO使用スコア最上位の補強1車を"
-                                        "3連複12-123-12345へ展開"
+                                        "3連単信頼条件未達。ただし比率1位と2位の差が10ポイント以上のため"
+                                        "メイン流れを除外せず、メイン着順予想1～4位と"
+                                        "KO使用スコア最上位の補強1車を3連複12-123-12345へ展開"
                                     )
                                     _win_confidence_action = "メイン流れ維持3連複7点へ変更"
                                 else:
-                                    _trio_mode = "second_third_flow_12_123_12345"
-                                    _structure = "比率2位・3位流れ合成"
+                                    _trio_mode = "first_second_flow_12_123_12345"
+                                    _structure = "比率1位・2位流れ合成"
                                     _styles2 = tuple(_flow_five_plan.get("styles", tuple()) or tuple())
                                     _ratios2 = tuple(_flow_five_plan.get("ratios", tuple()) or tuple())
                                     _excluded_style = str(_flow_five_plan.get("excluded_style", "") or "")
@@ -15353,25 +15382,26 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                     _composition_label = (
                                         "ガールズ3連複7点"
                                         if race_class == "ガールズ"
-                                        else "比率2位・3位流れ3連複7点"
+                                        else "比率1位・2位流れ3連複7点"
                                     )
                                     _composition_detail = (
-                                        f"除外:{_excluded_style}{_excluded_ratio*100:.0f}%／"
                                         f"使用:{_styles2[0]}{float(_ratios2[0])*100:.0f}%＋"
                                         f"{_styles2[1]}{float(_ratios2[1])*100:.0f}%／"
+                                        f"差:{abs(float(_ratios2[0])-float(_ratios2[1]))*100:.0f}pt／"
+                                        f"除外:{_excluded_style}{_excluded_ratio*100:.0f}%／"
                                         f"選出{''.join(str(x) for x in _five_car_form)}／"
                                         f"3連複{_form}"
                                     ) if len(_styles2) == 2 and len(_ratios2) == 2 else f"3連複{_form}"
                                     if race_class == "ガールズ":
                                         _ticket_reason = (
-                                            "ガールズは◎固定の2車複を使わず、比率1位を軸へ再利用しない"
-                                            "比率2位・3位流れの5車を3連複12-123-12345へ展開"
+                                            "ガールズは◎固定の2車複を使わず、比率1位と2位の差が10ポイント未満のため"
+                                            "比率1位・2位流れの5車を3連複12-123-12345へ展開"
                                         )
                                         _win_confidence_action = "ガールズ3連複7点へ変更"
                                     else:
                                         _ticket_reason = (
-                                            "3連単信頼条件未達。比率1位が40%未満のため比率1位を軸へ再利用せず、"
-                                            "比率2位・3位流れの5車を3連複12-123-12345へ展開"
+                                            "3連単信頼条件未達。比率1位と2位の差が10ポイント未満のため、"
+                                            "比率1位・2位流れの5車を3連複12-123-12345へ展開"
                                         )
                                 _main_pair_rows = []
 
