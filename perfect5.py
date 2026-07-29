@@ -1,4 +1,4 @@
-# v267: v266ベース。3連単非該当時の分岐を「比率1位と2位の差」だけで判定。差が10ポイント以上ならメイン流れを維持し、メイン着順予想1～4位＋KO使用スコア最上位の補強1車を12-123-12345へ展開。差が10ポイント未満なら比率1位・2位流れを合成して5車を選ぶ。40%固定条件と比率1位の自動除外を廃止。「その他（3列目候補）」のA・B・C除外、D・E再選考、3連単条件、7点構成、AI信頼判定は変更しない。
+# v268: v267ベース。流域表示と戦法別着順予想の主役ラインをLINE_ZONE_MAPで同期し、旧FR/VTX/Uラベルの参照ずれを修正。3連単非該当時は、1位－2位差10pt以上ならメイン維持、10pt未満かつ2位－3位差10pt以上なら1位＋2位流れ合成、両差10pt未満なら3流れ各上位2車からKO使用スコア上位5車を選ぶ三流れ僅差型へ分岐。「その他（3列目候補）」はA・B・Cへ置かずD・Eのみで再選考。3連単条件と7点構成は変更しない。
 # v265: v264ベース。3連単非該当・ガールズの3連複12-123-12345で、比率2位・3位流れから各2車（重複時は次位補充）の中核4車を作り、KO使用スコア上位2車をA・Bへ再配置。残る3車は流れ加重的中単騎評価順でC・D・Eへ配置し、弱い単騎は重要列から下げる。5車選出、強単騎差し替え、比率1位除外、7点構成、AI信頼判定、数値閾値は変更しない。
 # v263: note上部の「三連複軸想定着内率」を廃止し、実際の最終判定に合わせて「推奨車券：3連単／3連複」を表示。買い目構成・AI信頼判定・数値ロジックはv262から変更しない。
 # v262: v261の比率2位・3位流れ選別を継承し、買い目を3連系へ統合。3連単該当時はAB-ABC-ABCの4点＋A-B-DEの3連複2点。3連単非該当・ガールズは比率1位を軸へ再利用せず、比率2位・3位流れから選んだ5車を12-123-12345の3連複7点へ展開。AI信頼判定・3連単該当条件・ライン強度・数値閾値は変更しない。Cは直後同ライン車を優先し、該当しない場合だけ既存3着候補1位を使う。
@@ -7256,36 +7256,44 @@ try:
                 fr_key = _scenario_line_key(FR_line) if FR_line else ""
                 vtx_key = _scenario_line_key(VTX_line) if VTX_line else ""
 
+                # v268: 表示済みLINE_ZONE_MAPの分類を最優先する。
+                # 旧FR_line/VTX_line/U_lineを先に使うと、表示上の渦・逆流と
+                # STYLE_SEQ_MAPの着順予想が入れ替わるため、旧ラインは空域時だけ補完する。
                 if _style_name == "順流":
+                    _ls = _scenario_lines_for_zone("順流")
+                    if _ls:
+                        return _scenario_line_digits(_ls[0])
                     if FR_line:
                         return _scenario_line_digits(FR_line)
-                    _ls = _scenario_lines_for_zone("順流")
-                    return _ls[0] if _ls else []
+                    return []
 
                 if _style_name == "渦":
+                    _ls = _scenario_lines_for_zone("渦")
+                    if _ls:
+                        return _scenario_line_digits(_ls[0])
                     if VTX_line:
                         return _scenario_line_digits(VTX_line)
-                    _ls = _scenario_lines_for_zone("渦")
-                    return _ls[0] if _ls else []
+                    return []
 
                 if _style_name == "逆流":
-                    used_keys = {k for k in (fr_key, vtx_key) if k}
-
-                    # まずLINE_ZONE_MAP上で明示された逆流域を優先。
-                    # ただし順流/渦の主役ラインと同一なら採用しない。
+                    # LINE_ZONE_MAP上の逆流域を最優先。
                     _ls = _scenario_lines_for_zone("逆流")
-                    for _ln in (_ls or []):
-                        _key = _scenario_line_key(_ln)
-                        if _key and _key not in used_keys:
-                            return _scenario_line_digits(_ln)
+                    if _ls:
+                        return _scenario_line_digits(_ls[0])
 
-                    # 逆流域が空の場合のみ、旧U_lineを補完候補にする。
-                    # ただし旧U_lineが渦ライン等と同一なら、逆流を無理に作らない。
+                    # 空域時だけ旧U_lineを補完候補にする。
+                    # 順流・渦の実主役ラインとの重複は避ける。
+                    _used = set()
+                    for _z in ("順流", "渦"):
+                        _zls = _scenario_lines_for_zone(_z)
+                        if _zls:
+                            _k = _scenario_line_key(_zls[0])
+                            if _k:
+                                _used.add(_k)
                     if U_line:
                         u_key = _scenario_line_key(U_line)
-                        if u_key and u_key not in used_keys:
+                        if u_key and u_key not in _used:
                             return _scenario_line_digits(U_line)
-
                     return []
             except Exception:
                 return []
@@ -12552,6 +12560,142 @@ def _v265_select_second_third_flow_five_plan(
     }
 
 
+
+def _v268_select_three_close_flows_five_plan(
+    flow_ratio_map,
+    style_seq_map,
+    active_cars=None,
+    preferred_style="",
+    other_cars=None,
+    hit_map=None,
+    myoumi_map=None,
+    ko_score_map=None,
+    max_gap=0.10,
+):
+    """
+    比率1位－2位、2位－3位の両方が10ポイント未満の三流れ僅差型。
+
+    ・3流れそれぞれの着順予想上位2車を候補にする。
+    ・候補6車をKO使用スコア中心で並べ、上位5車を採用する。
+    ・「その他（3列目候補）」はA・B・Cへ置かず、D・Eだけで比較する。
+    ・最終形は12-123-12345の7点を維持する。
+    """
+    ranked = [
+        row for row in _v262_ranked_flows(
+            flow_ratio_map,
+            style_seq_map,
+            active_cars=active_cars,
+            preferred_style=preferred_style,
+        )
+        if row.get("seq")
+    ]
+    if len(ranked) < 3:
+        return None
+    ranked = ranked[:3]
+    ratios = [float(row.get("ratio", 0.0) or 0.0) for row in ranked]
+    gap12 = ratios[0] - ratios[1]
+    gap23 = ratios[1] - ratios[2]
+    if gap12 + 1e-12 >= float(max_gap) or gap23 + 1e-12 >= float(max_gap):
+        return None
+
+    try:
+        other_set = {int(x) for x in (other_cars or []) if str(x).isdigit()}
+    except Exception:
+        other_set = set()
+    hit_values = dict(hit_map or {})
+    myoumi_values = dict(myoumi_map or {})
+    ko_values = dict(ko_score_map or {})
+
+    def _value(values, car, default=0.0):
+        try:
+            return float(values.get(int(car), values.get(str(int(car)), default)) or default)
+        except Exception:
+            return float(default)
+
+    # 各流れ上位2車をまず候補化。重複時は3番手以降をラウンドロビンで補う。
+    candidates = []
+    for row in ranked:
+        for car in list(row.get("seq") or [])[:2]:
+            car = int(car)
+            if car not in candidates:
+                candidates.append(car)
+    depth = 2
+    max_depth = max(len(list(row.get("seq") or [])) for row in ranked)
+    while len(candidates) < 6 and depth < max_depth:
+        for row in ranked:
+            seq = list(row.get("seq") or [])
+            if depth >= len(seq):
+                continue
+            car = int(seq[depth])
+            if car not in candidates:
+                candidates.append(car)
+                if len(candidates) >= 6:
+                    break
+        depth += 1
+
+    if len(candidates) < 5:
+        for car in _v262_unique_flow_sequence(active_cars or []):
+            car = int(car)
+            if car not in candidates:
+                candidates.append(car)
+            if len(candidates) >= 5:
+                break
+    if len(candidates) < 5:
+        return None
+
+    # 3流れ内の最良順位を同点処理へ利用する。
+    pos_maps = []
+    for row in ranked:
+        seq = [int(x) for x in (row.get("seq") or [])]
+        pos_maps.append({car: idx + 1 for idx, car in enumerate(seq)})
+
+    def _rank_key(car):
+        car = int(car)
+        best_pos = min((pm.get(car, 999) for pm in pos_maps), default=999)
+        sum_pos = sum(pm.get(car, 999) for pm in pos_maps)
+        return (
+            -_value(ko_values, car, 0.0),
+            -_value(hit_values, car, 0.0),
+            -_value(myoumi_values, car, 0.0),
+            int(best_pos),
+            int(sum_pos),
+            car,
+        )
+
+    # A・B・Cは「その他」以外からKO順で選ぶ。
+    abc_pool = sorted([int(c) for c in candidates if int(c) not in other_set], key=_rank_key)
+    if len(abc_pool) < 3:
+        return None
+    abc = abc_pool[:3]
+
+    # D・Eは残り候補とその他を同列に比較する。
+    de_pool = sorted([int(c) for c in candidates if int(c) not in set(abc)], key=_rank_key)
+    if len(de_pool) < 2:
+        for car in _v262_unique_flow_sequence(active_cars or []):
+            car = int(car)
+            if car in set(abc) or car in de_pool:
+                continue
+            de_pool.append(car)
+            de_pool = sorted(de_pool, key=_rank_key)
+            if len(de_pool) >= 2:
+                break
+    if len(de_pool) < 2:
+        return None
+
+    final_cars = tuple(int(x) for x in (abc + de_pool[:2]))
+    if len(final_cars) != 5 or len(set(final_cars)) != 5:
+        return None
+    return {
+        "cars": final_cars,
+        "styles": tuple(str(row.get("style", "")) for row in ranked),
+        "ratios": tuple(ratios),
+        "gap12": float(gap12),
+        "gap23": float(gap23),
+        "candidate_six": tuple(int(x) for x in candidates[:6]),
+        "other_cars": tuple(sorted(int(x) for x in other_set)),
+        "ranked_flows": tuple(ranked),
+    }
+
 def _v267_select_main_flow_five_plan(
     flow_ratio_map,
     style_seq_map,
@@ -15227,11 +15371,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     )
 
                     # =================================================
-                    # v267 券種別の統合買い目構成
+                    # v268 券種別の統合買い目構成
                     # 1) 3連単該当：AB-ABC-ABC 4点＋A-B-DE 3連複2点
                     # 2) 3連単非該当・ガールズ：
-                    #    比率1位－2位差が10pt以上ならメイン1～4位＋KO補強1車、
-                    #    10pt未満なら比率1位・2位流れの5車を12-123-12345へ展開。
+                    #    1位－2位差10pt以上ならメイン1～4位＋KO補強1車。
+                    #    10pt未満で2位－3位差10pt以上なら比率1位・2位流れを合成。
+                    #    両差10pt未満なら3流れ各上位2車からKO上位5車を選ぶ。
                     # AI信頼判定と3連単該当条件は変更しない。
                     # =================================================
                     _composition_label = ""
@@ -15280,10 +15425,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             _main_pair_rows = []
 
                     if _recommended_ticket != "3連単":
-                        # v267：
+                        # v268：
                         # 1) 比率1位－2位差が10pt以上ならメイン流れ1～4位＋KO補強1車。
-                        # 2) 10pt未満なら比率1位・2位流れを合成。
-                        # 3) 同一流域に混在する単騎の「その他」はA・B・Cへ置かずD・Eで再選考。
+                        # 2) 1位－2位差10pt未満、2位－3位差10pt以上なら1位・2位流れを合成。
+                        # 3) 両差10pt未満なら3流れ各上位2車からKO上位5車を選ぶ。
+                        # 4) 「その他」はA・B・Cへ置かずD・Eで再選考。
                         _single_cars_for_v265 = set()
                         try:
                             for _line_source in _line_sources_v250():
@@ -15314,21 +15460,38 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         )
                         _flow_five_plan = None
                         _use_main_flow_plan = bool(_main_flow_plan)
+                        _use_three_flow_plan = False
                         if _use_main_flow_plan:
                             _flow_five_plan = _main_flow_plan
                         else:
-                            _flow_five_plan = _v265_select_second_third_flow_five_plan(
+                            # 1位－2位も2位－3位も僅差なら、3位流れを切らず三流れ型へ。
+                            _three_flow_plan = _v268_select_three_close_flows_five_plan(
                                 _ratio_map,
                                 _style_seq_map,
                                 active_cars=_active_cars,
                                 preferred_style=_recommended_style,
-                                single_cars=_single_cars_for_v265,
                                 other_cars=_other_cars_for_v266,
                                 hit_map=_hit_map,
                                 myoumi_map=_myoumi_map,
                                 ko_score_map=(globals().get("score_map", {}) or {}),
-                                flow_rank_indices=(0, 1),
+                                max_gap=0.10,
                             )
+                            if _three_flow_plan:
+                                _flow_five_plan = _three_flow_plan
+                                _use_three_flow_plan = True
+                            else:
+                                _flow_five_plan = _v265_select_second_third_flow_five_plan(
+                                    _ratio_map,
+                                    _style_seq_map,
+                                    active_cars=_active_cars,
+                                    preferred_style=_recommended_style,
+                                    single_cars=_single_cars_for_v265,
+                                    other_cars=_other_cars_for_v266,
+                                    hit_map=_hit_map,
+                                    myoumi_map=_myoumi_map,
+                                    ko_score_map=(globals().get("score_map", {}) or {}),
+                                    flow_rank_indices=(0, 1),
+                                )
                         if _flow_five_plan:
                             _five_car_form = tuple(
                                 int(x) for x in (_flow_five_plan.get("cars", tuple()) or tuple())
@@ -15372,6 +15535,34 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                         "KO使用スコア最上位の補強1車を3連複12-123-12345へ展開"
                                     )
                                     _win_confidence_action = "メイン流れ維持3連複7点へ変更"
+                                elif _use_three_flow_plan:
+                                    _trio_mode = "three_close_flows_12_123_12345"
+                                    _structure = "三流れ僅差合成"
+                                    _styles3 = tuple(_flow_five_plan.get("styles", tuple()) or tuple())
+                                    _ratios3 = tuple(_flow_five_plan.get("ratios", tuple()) or tuple())
+                                    _gap12 = float(_flow_five_plan.get("gap12", 0.0) or 0.0)
+                                    _gap23 = float(_flow_five_plan.get("gap23", 0.0) or 0.0)
+                                    _candidate_six = tuple(_flow_five_plan.get("candidate_six", tuple()) or tuple())
+                                    _composition_label = (
+                                        "ガールズ・三流れ僅差3連複7点"
+                                        if race_class == "ガールズ"
+                                        else "三流れ僅差3連複7点"
+                                    )
+                                    _composition_detail = (
+                                        f"使用:{_styles3[0]}{float(_ratios3[0])*100:.0f}%＋"
+                                        f"{_styles3[1]}{float(_ratios3[1])*100:.0f}%＋"
+                                        f"{_styles3[2]}{float(_ratios3[2])*100:.0f}%／"
+                                        f"差1-2:{_gap12*100:.0f}pt／差2-3:{_gap23*100:.0f}pt／"
+                                        f"各流れ上位2候補:{''.join(str(x) for x in _candidate_six)}／"
+                                        f"選出{''.join(str(x) for x in _five_car_form)}／"
+                                        f"3連複{_form}"
+                                    ) if len(_styles3) == 3 and len(_ratios3) == 3 else f"3連複{_form}"
+                                    _ticket_reason = (
+                                        "3連単信頼条件未達。比率1位－2位、2位－3位の両方が10ポイント未満のため、"
+                                        "3位流れを除外せず、三流れそれぞれの着順予想上位2車から"
+                                        "KO使用スコア上位5車を3連複12-123-12345へ展開"
+                                    )
+                                    _win_confidence_action = "三流れ僅差3連複7点へ変更"
                                 else:
                                     _trio_mode = "first_second_flow_12_123_12345"
                                     _structure = "比率1位・2位流れ合成"
@@ -15400,8 +15591,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                         _win_confidence_action = "ガールズ3連複7点へ変更"
                                     else:
                                         _ticket_reason = (
-                                            "3連単信頼条件未達。比率1位と2位の差が10ポイント未満のため、"
-                                            "比率1位・2位流れの5車を3連複12-123-12345へ展開"
+                                            "3連単信頼条件未達。比率1位と2位の差は10ポイント未満だが、"
+                                            "2位と3位には10ポイント以上の差があるため、比率1位・2位流れの5車を"
+                                            "3連複12-123-12345へ展開"
                                         )
                                 _main_pair_rows = []
 
