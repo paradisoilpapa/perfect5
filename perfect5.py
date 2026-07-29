@@ -1,4 +1,4 @@
-# v266: v265のライン代表分離・3車以上ライン限定3連単を維持し、3連複7点の選出元を厳格化。比率1位の除外流れ代表ラインは5車選出へ一切再投入しない。A/Bは使用する比率2位・3位の代表ラインから1車ずつ、Cも使用2流れの代表ライン内から選び、その他ラインはD/E（3列目）だけで補完する。KO使用スコアはその他D/Eの順位付けにのみ使い、使用流れの候補を全車スコア順で上書きしない。候補不足時は矛盾した7点を生成せず従来券種へ戻す。構成詳細には車番ごとの流れ・ライン出所を表示する。
+# v267: v266の比率1位完全除外を撤回。3連単非該当の男子3連複7点は、比率1位・2位・3位の三流れをすべて使用する。A=比率1位代表ライン先頭、B=比率2位代表ライン先頭、C=比率3位代表ライン先頭として、1列目は別流れ・別ライン、2列目は三流れ・三ラインの代表3車。D/Eは代表ライン後位または「その他（3列目候補）」だけから、KO使用スコアを補助順位として選び、可能な限り別ラインへ分散する。構成詳細と買い目の出所を一致させる。ガールズの既存7点、3車以上ライン限定の3連単、点数・AI信頼条件・数値閾値は変更しない。
 # v264: 3連複12-123-12345の5車選出をライン分散。1列目2車は原則として別流れかつ別ライン、2列目3車は原則として異なる3ラインの代表とし、同ライン補強は3列目側へ回す。また3連単は採用するA・Bの実ラインが3車以上の場合だけ許可し、2車ラインはAI信頼条件を満たしても3連複へ落とす。点数（3連単4点＋3連複2点／3連複7点）、流れ比率、AI印条件、既存数値閾値は変更しない。
 # v263: note上部の「三連複軸想定着内率」を廃止し、実際の最終判定に合わせて「推奨車券：3連単／3連複」を表示。買い目構成・AI信頼判定・数値ロジックはv262から変更しない。
 # v262: v261の比率2位・3位流れ選別を継承し、買い目を3連系へ統合。3連単該当時はAB-ABC-ABCの4点＋A-B-DEの3連複2点。3連単非該当・ガールズは比率1位を軸へ再利用せず、比率2位・3位流れから選んだ5車を12-123-12345の3連複7点へ展開。AI信頼判定・3連単該当条件・ライン強度・数値閾値は変更しない。Cは直後同ライン車を優先し、該当しない場合だけ既存3着候補1位を使う。
@@ -12670,6 +12670,250 @@ def _v264_line_diverse_five_plan(plan, line_sources, active_cars=None, ko_score_
     out["second_column_core_only"] = True
     return out
 
+
+def _v267_select_three_flow_line_five_plan(
+    flow_ratio_map,
+    style_seq_map,
+    line_sources,
+    active_cars=None,
+    preferred_style="",
+    ko_score_map=None,
+):
+    """
+    v267：男子の3連単非該当時に使う 12-123-12345 の5車を、
+    三流れ・三ラインの役割から作る。
+
+    A：比率1位流れの代表ライン先頭
+    B：比率2位流れの代表ライン先頭
+    C：比率3位流れの代表ライン先頭
+    D/E：三代表ラインの後位、または「その他（3列目候補）」だけ
+
+    重要：
+    ・比率1位を除外しない。
+    ・A/B/CはKOスコア順へ置き換えない。
+    ・D/Eだけ、役割制約を守った候補内でKOスコアを補助順位に使う。
+    ・D/Eは可能な限り別ラインに分散する。
+    ・条件を満たせなければNoneを返し、説明と異なる7点を作らない。
+    """
+    try:
+        active = []
+        for x in (active_cars or []):
+            car = int(x)
+            if car not in active:
+                active.append(car)
+    except Exception:
+        active = []
+    if len(active) < 5:
+        return None
+
+    ranked = [
+        row for row in _v262_ranked_flows(
+            flow_ratio_map,
+            style_seq_map,
+            active_cars=active,
+            preferred_style=preferred_style,
+        )
+        if row.get("seq")
+    ]
+    if len(ranked) < 3:
+        return None
+    ranked = ranked[:3]
+
+    line_groups = _v264_best_live_line_groups(line_sources, active_cars=active)
+    if not line_groups:
+        return None
+
+    zone_map = globals().get("LINE_ZONE_MAP", {}) or {}
+    if not isinstance(zone_map, dict) or not zone_map:
+        return None
+
+    def _line_key(group):
+        return "".join(str(int(x)) for x in (group or []) if str(x).isdigit())
+
+    records = []
+    covered = set()
+    for group in line_groups:
+        cars = []
+        for x in (group or []):
+            try:
+                car = int(x)
+            except Exception:
+                continue
+            if car in active and car not in cars:
+                cars.append(car)
+        if not cars:
+            continue
+        key = _line_key(cars)
+        zone = str(zone_map.get(key, "その他") or "その他")
+        records.append({"key": key, "cars": cars, "zone": zone})
+        covered.update(cars)
+
+    for car in active:
+        if car not in covered:
+            records.append({"key": str(car), "cars": [car], "zone": "その他"})
+
+    style_to_seq = {
+        str(row.get("style", "")): _v262_unique_flow_sequence(row.get("seq", []) or [], active)
+        for row in ranked
+    }
+
+    def _representative_record(style):
+        matches = [rec for rec in records if str(rec.get("zone", "")) == str(style)]
+        return matches[0] if matches else None
+
+    def _ordered_line_cars(style, rec):
+        line_set = {int(x) for x in (rec.get("cars") or [])}
+        ordered = [int(x) for x in style_to_seq.get(style, []) if int(x) in line_set]
+        for car in (rec.get("cars") or []):
+            car = int(car)
+            if car in active and car not in ordered:
+                ordered.append(car)
+        return ordered
+
+    flow_roles = []
+    representative_line_keys = set()
+    representative_cars = []
+    source_by_car = {}
+
+    for flow_rank, row in enumerate(ranked, start=1):
+        style = str(row.get("style", "") or "")
+        rec = _representative_record(style)
+        if rec is None:
+            return None
+        line_key = str(rec.get("key", "") or "")
+        if not line_key or line_key in representative_line_keys:
+            return None
+        ordered = _ordered_line_cars(style, rec)
+        if not ordered:
+            return None
+        rep_car = int(ordered[0])
+        if rep_car in representative_cars:
+            return None
+        representative_line_keys.add(line_key)
+        representative_cars.append(rep_car)
+        source_by_car[rep_car] = f"{style}:{line_key}（代表）"
+        flow_roles.append({
+            "rank": flow_rank,
+            "style": style,
+            "ratio": float(row.get("ratio", 0.0) or 0.0),
+            "record": rec,
+            "line_key": line_key,
+            "ordered": ordered,
+            "representative": rep_car,
+        })
+
+    # A/B/Cは三流れの代表3車で固定。ここへKO順位を介入させない。
+    selected = list(representative_cars)
+
+    score_map = {}
+    for k, v in (ko_score_map or {}).items():
+        try:
+            score_map[int(k)] = float(v)
+        except Exception:
+            pass
+
+    support_candidates = []
+    seen_support = set()
+
+    # 三代表ラインの後位候補。
+    for role in flow_roles:
+        for depth, car in enumerate(role["ordered"][1:], start=1):
+            car = int(car)
+            if car in selected or car in seen_support:
+                continue
+            seen_support.add(car)
+            support_candidates.append({
+                "car": car,
+                "line_key": role["line_key"],
+                "style": role["style"],
+                "kind": "代表ライン後位",
+                "flow_rank": int(role["rank"]),
+                "depth": int(depth),
+                "score": float(score_map.get(car, 0.0)),
+            })
+
+    # 「その他」はD/Eだけの候補。A/B/Cには絶対に入れない。
+    for rec in records:
+        if str(rec.get("zone", "")) != "その他":
+            continue
+        other_cars = []
+        for x in (rec.get("cars") or []):
+            try:
+                car = int(x)
+            except Exception:
+                continue
+            if car in active and car not in selected and car not in seen_support:
+                other_cars.append(car)
+        other_cars.sort(key=lambda car: (-float(score_map.get(int(car), 0.0)), int(car)))
+        for depth, car in enumerate(other_cars, start=1):
+            seen_support.add(car)
+            support_candidates.append({
+                "car": int(car),
+                "line_key": str(rec.get("key", "") or str(car)),
+                "style": "その他",
+                "kind": "その他",
+                "flow_rank": 99,
+                "depth": int(depth),
+                "score": float(score_map.get(int(car), 0.0)),
+            })
+
+    if len(support_candidates) < 2:
+        return None
+
+    # D/Eは制約済み候補内でKOスコアを補助順位にする。
+    # 同点・スコア欠落時は、代表ライン後位→流れ順位→ライン内順位を優先。
+    support_candidates.sort(key=lambda item: (
+        -float(item.get("score", 0.0)),
+        0 if str(item.get("kind")) == "代表ライン後位" else 1,
+        int(item.get("flow_rank", 99)),
+        int(item.get("depth", 99)),
+        int(item.get("car", 99)),
+    ))
+
+    d = support_candidates[0]
+    e_pool = [
+        item for item in support_candidates[1:]
+        if str(item.get("line_key", "")) != str(d.get("line_key", ""))
+    ]
+    e = e_pool[0] if e_pool else support_candidates[1]
+
+    selected.extend([int(d["car"]), int(e["car"])])
+    if len(selected) != 5 or len(set(selected)) != 5:
+        return None
+
+    for item in (d, e):
+        car = int(item["car"])
+        source_by_car[car] = (
+            f"{item['style']}:{item['line_key']}（{item['kind']}）"
+        )
+
+    styles = tuple(str(role["style"]) for role in flow_roles)
+    ratios = tuple(float(role["ratio"]) for role in flow_roles)
+    line_keys = tuple(str(role["line_key"]) for role in flow_roles)
+
+    return {
+        "cars": tuple(int(x) for x in selected),
+        "axis": int(selected[0]),
+        "opponents": tuple(int(x) for x in selected[1:]),
+        "styles": styles,
+        "ratios": ratios,
+        "ranked_flows": tuple(ranked),
+        "source_by_car": dict(source_by_car),
+        "representative_cars": tuple(int(x) for x in selected[:3]),
+        "representative_line_keys": line_keys,
+        "support_cars": tuple(int(x) for x in selected[3:]),
+        "support_line_keys": (str(d["line_key"]), str(e["line_key"])),
+        "other_third_cars": tuple(
+            int(item["car"]) for item in (d, e)
+            if str(item.get("kind")) == "その他"
+        ),
+        "first_column_lines_separated": line_keys[0] != line_keys[1],
+        "second_column_three_flows": len(set(styles)) == 3,
+        "second_column_three_lines": len(set(line_keys)) == 3,
+        "support_lines_separated": str(d["line_key"]) != str(e["line_key"]),
+        "selection_rule": "A/B/C=三流れ代表、D/E=代表ライン後位またはその他",
+    }
+
 def _v262_trio_key_from_row(row):
     """既存の加重3連複評価行から車番3車のキーを取り出す。"""
     try:
@@ -15267,11 +15511,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     )
 
                     # =================================================
-                    # v262 券種別の統合買い目構成
+                    # v267 券種別の統合買い目構成
                     # 1) 3連単該当：AB-ABC-ABC 4点＋A-B-DE 3連複2点
-                    # 2) 3連単非該当・ガールズ：比率1位を軸へ再利用せず、
-                    #    比率2位・3位流れの5車を12-123-12345 3連複7点へ展開
-                    # AI印の一致条件は維持し、3連単だけ3車以上ライン限定を追加。
+                    # 2) 男子の3連単非該当：三流れをすべて使う。
+                    #    A=比率1位、B=比率2位、C=比率3位の代表ライン先頭。
+                    #    D/Eは代表ライン後位または「その他」だけ。
+                    # 3) ガールズ：従来の比率2位・3位流れ3連複7点を維持。
+                    # AI印条件・点数・3車以上ライン限定3連単は変更しない。
                     # =================================================
                     _composition_label = ""
                     _composition_detail = ""
@@ -15315,23 +15561,26 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                 f"{_ticket_reason}／自ライン・中心3車は3連単で2着上がりまで取り、"
                                 "別線侵入2車は3連複で着順を緩める"
                             )
-                            # 補助2車複は廃止。評価表自体は下段に残す。
                             _main_pair_rows = []
 
                     if _recommended_ticket != "3連単":
-                        _flow_five_plan = _v262_select_second_third_flow_five_plan(
-                            _ratio_map,
-                            _style_seq_map,
-                            active_cars=_active_cars,
-                            preferred_style=_recommended_style,
-                        )
-                        if race_class != "ガールズ":
-                            _flow_five_plan = _v264_line_diverse_five_plan(
-                                _flow_five_plan,
+                        if race_class == "ガールズ":
+                            _flow_five_plan = _v262_select_second_third_flow_five_plan(
+                                _ratio_map,
+                                _style_seq_map,
+                                active_cars=_active_cars,
+                                preferred_style=_recommended_style,
+                            )
+                        else:
+                            _flow_five_plan = _v267_select_three_flow_line_five_plan(
+                                _ratio_map,
+                                _style_seq_map,
                                 _line_sources_v250(),
                                 active_cars=_active_cars,
+                                preferred_style=_recommended_style,
                                 ko_score_map=globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {},
                             )
+
                         if _flow_five_plan:
                             _five_car_form = tuple(
                                 int(x) for x in (_flow_five_plan.get("cars", tuple()) or tuple())
@@ -15345,18 +15594,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                 _main_trio_rows = list(_flow_seven_rows)
                                 _form = _v262_form_12_123_12345(_five_car_form)
                                 _third_candidates = tuple(_five_car_form[2:])
-                                _trio_mode = "second_third_flow_12_123_12345"
-                                _structure = "比率2位・3位流れ合成"
-                                _styles2 = tuple(_flow_five_plan.get("styles", tuple()) or tuple())
-                                _ratios2 = tuple(_flow_five_plan.get("ratios", tuple()) or tuple())
-                                _excluded_style = str(_flow_five_plan.get("excluded_style", "") or "")
-                                _excluded_ratio = float(_flow_five_plan.get("excluded_ratio", 0.0) or 0.0)
-                                _composition_label = (
-                                    "ガールズ3連複7点"
-                                    if race_class == "ガールズ"
-                                    else "比率2位・3位流れ3連複7点"
-                                )
+
                                 if race_class == "ガールズ":
+                                    _trio_mode = "second_third_flow_12_123_12345"
+                                    _structure = "比率2位・3位流れ合成"
+                                    _styles2 = tuple(_flow_five_plan.get("styles", tuple()) or tuple())
+                                    _ratios2 = tuple(_flow_five_plan.get("ratios", tuple()) or tuple())
+                                    _excluded_style = str(_flow_five_plan.get("excluded_style", "") or "")
+                                    _excluded_ratio = float(_flow_five_plan.get("excluded_ratio", 0.0) or 0.0)
+                                    _composition_label = "ガールズ3連複7点"
                                     _composition_detail = (
                                         f"除外流れ:{_excluded_style}{_excluded_ratio*100:.0f}%／"
                                         f"使用:{_styles2[0]}{float(_ratios2[0])*100:.0f}%＋"
@@ -15364,41 +15610,43 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                         f"選出{''.join(str(x) for x in _five_car_form)}／"
                                         f"3連複{_form}"
                                     ) if len(_styles2) == 2 and len(_ratios2) == 2 else f"3連複{_form}"
-                                else:
-                                    _source_by_car = dict(_flow_five_plan.get("source_by_car", {}) or {})
-                                    _source_text = "・".join(
-                                        f"{int(_car)}={_source_by_car.get(int(_car), '不明')}"
-                                        for _car in _five_car_form
-                                    )
-                                    _other_third = tuple(
-                                        int(x) for x in (_flow_five_plan.get("other_third_cars", tuple()) or tuple())
-                                    )
-                                    _other_text = (
-                                        "なし" if not _other_third
-                                        else "".join(str(x) for x in _other_third)
-                                    )
-                                    _composition_detail = (
-                                        f"完全除外:{_excluded_style}{_excluded_ratio*100:.0f}%（代表ライン車は不使用）／"
-                                        f"使用:{_styles2[0]}{float(_ratios2[0])*100:.0f}%＋"
-                                        f"{_styles2[1]}{float(_ratios2[1])*100:.0f}%／"
-                                        f"選出{''.join(str(x) for x in _five_car_form)}／"
-                                        f"出所:{_source_text}／"
-                                        f"A・B=使用2流れ各1車／C=使用流れ内／"
-                                        f"その他D・E補完:{_other_text}／"
-                                        f"3連複{_form}"
-                                    ) if len(_styles2) == 2 and len(_ratios2) == 2 else f"3連複{_form}"
-                                if race_class == "ガールズ":
                                     _ticket_reason = (
                                         "ガールズは◎固定の2車複を使わず、比率1位を軸へ再利用しない"
                                         "比率2位・3位流れの5車を3連複12-123-12345へ展開"
                                     )
                                     _win_confidence_action = "ガールズ3連複7点へ変更"
                                 else:
-                                    _ticket_reason = (
-                                        "3連単信頼条件未達。比率1位の代表ライン車を完全除外し、"
-                                        "比率2位・3位の代表ラインからA・B・Cを選び、"
-                                        "その他ラインはD・Eの3列目だけへ補完して3連複12-123-12345へ展開"
+                                    _trio_mode = "three_flow_line_diverse_12_123_12345"
+                                    _structure = "三流れ・三ライン分散"
+                                    _styles3 = tuple(_flow_five_plan.get("styles", tuple()) or tuple())
+                                    _ratios3 = tuple(_flow_five_plan.get("ratios", tuple()) or tuple())
+                                    _source_by_car = dict(_flow_five_plan.get("source_by_car", {}) or {})
+                                    _source_text = "・".join(
+                                        f"{int(_car)}={_source_by_car.get(int(_car), '不明')}"
+                                        for _car in _five_car_form
                                     )
+                                    _composition_label = "三流れ分散3連複7点"
+                                    if len(_styles3) == 3 and len(_ratios3) == 3:
+                                        _composition_detail = (
+                                            f"使用:{_styles3[0]}{float(_ratios3[0])*100:.0f}%＋"
+                                            f"{_styles3[1]}{float(_ratios3[1])*100:.0f}%＋"
+                                            f"{_styles3[2]}{float(_ratios3[2])*100:.0f}%／"
+                                            f"選出{''.join(str(x) for x in _five_car_form)}／"
+                                            f"出所:{_source_text}／"
+                                            "A・B=比率1・2位の別流れ・別ライン／"
+                                            "C=比率3位の別ライン代表／"
+                                            "D・E=代表ライン後位またはその他（3列目のみ・別ライン優先）／"
+                                            f"3連複{_form}"
+                                        )
+                                    else:
+                                        _composition_detail = f"3連複{_form}"
+                                    _ticket_reason = (
+                                        "3連単信頼条件未達。比率1位を除外せず、"
+                                        "比率1位・2位・3位の各代表ラインからA・B・Cを1車ずつ選出。"
+                                        "D・Eは代表ライン後位またはその他ラインだけから3列目補強し、"
+                                        "3連複12-123-12345へ展開"
+                                    )
+                                    _win_confidence_action = "三流れ分散3連複7点へ変更"
                                 _main_pair_rows = []
 
                     return {
