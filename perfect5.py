@@ -1,3 +1,4 @@
+# v264: v263ベース。3連単非該当・ガールズの3連複12-123-12345で、C～Eの選出済み単騎より未採用単騎の流れ加重的中評価が高い場合は強い単騎へ差し替え、選出5車内の最上位単騎を2列目Cへ昇格。A・B、比率2位・3位流れ、7点構成、AI信頼判定、数値閾値は変更しない。
 # v263: note上部の「三連複軸想定着内率」を廃止し、実際の最終判定に合わせて「推奨車券：3連単／3連複」を表示。買い目構成・AI信頼判定・数値ロジックはv262から変更しない。
 # v262: v261の比率2位・3位流れ選別を継承し、買い目を3連系へ統合。3連単該当時はAB-ABC-ABCの4点＋A-B-DEの3連複2点。3連単非該当・ガールズは比率1位を軸へ再利用せず、比率2位・3位流れから選んだ5車を12-123-12345の3連複7点へ展開。AI信頼判定・3連単該当条件・ライン強度・数値閾値は変更しない。Cは直後同ライン車を優先し、該当しない場合だけ既存3着候補1位を使う。
 # v259: v258ベース。流れ判定のライン強度を車番スコアの単純合計から、ライン位置係数で正規化した加重平均へ変更。先頭1.00・番手0.72・3番手以降0.55（既存の位置係数）を合計1になるよう正規化し、ライン人数が多いだけで強くならないようにした。単騎は既存の0.70係数を維持。この同一強度を流れ波形、順流/逆流ライン選定、ライン別FR配分へ一貫適用。AI信頼判定・ライン骨格保護・券種判定はv258を維持。
@@ -12176,19 +12177,31 @@ def _v262_ranked_flows(flow_ratio_map, style_seq_map, active_cars=None, preferre
     return rows
 
 
-def _v262_select_second_third_flow_five_plan(
+def _v264_select_second_third_flow_five_plan(
     flow_ratio_map,
     style_seq_map,
     active_cars=None,
     preferred_style="",
+    single_cars=None,
+    hit_map=None,
+    myoumi_map=None,
 ):
     """
-    v261の3連複候補選別を5車の役割順で返す。
+    v261の3連複候補選別を5車の役割順で返す（v264強単騎C昇格）。
 
+    基本骨格はv262を維持する。
     ・比率1位の流れは軸候補の生成から除外。
-    ・比率2位・3位の順位合計が最小の車を1（同点は2位流れ順位→3位流れ順位）。
-    ・残る2～5は、比率2位流れ→3位流れの同順位を交互に見て4車選ぶ。
-    ・流れ1位の車が2位・3位流れ側にも評価されていれば、4・5等のヒモには入り得る。
+    ・比率2位・3位の順位合計が最小の車をA。
+    ・残るB～Eは、比率2位流れ→3位流れの同順位を交互に見て4車選ぶ。
+
+    単騎補正だけを最終5車の役割整理として追加する。
+    ・現在のC～Eに単騎が含まれる場合だけ、未採用単騎を含む全単騎を既存の
+      流れ加重的中単騎評価（同点は妙味評価）で比較する。
+    ・未採用の強い単騎が、選出済みの最弱単騎より上なら差し替える。
+    ・選出5車内の最上位単騎は、Bが単騎ならBを維持し、それ以外はCへ昇格する。
+    ・単騎が一台も選ばれていない場合は、新たに単騎を強制採用しない。
+
+    新しい数値閾値は設けず、A・Bと7点構成は維持する。
     """
     ranked = [
         row for row in _v262_ranked_flows(
@@ -12259,6 +12272,77 @@ def _v262_select_second_third_flow_five_plan(
     if len(opponents) != 4:
         return None
 
+    # -------------------------------------------------
+    # v264：強い単騎をC（2列目）へ置く。
+    # A・Bは流れ骨格として固定し、単騎の差し替え・並べ替えはC～Eで行う。
+    # ただしB自体が最上位単騎なら、既に2列目なのでBを維持する。
+    # -------------------------------------------------
+    try:
+        single_set = {
+            int(x) for x in (single_cars or [])
+            if str(x).isdigit() and int(x) in set(int(c) for c in candidates)
+        }
+    except Exception:
+        single_set = set()
+    hit_values = dict(hit_map or {})
+    myoumi_values = dict(myoumi_map or {})
+
+    def _solo_strength_key(car):
+        car = int(car)
+        try:
+            hit = float(hit_values.get(car, hit_values.get(str(car), 0.0)) or 0.0)
+        except Exception:
+            hit = 0.0
+        try:
+            myoumi = float(myoumi_values.get(car, myoumi_values.get(str(car), 0.0)) or 0.0)
+        except Exception:
+            myoumi = 0.0
+        # 数値評価が同じ場合だけ、既存の比率2位・3位流れ順位をタイブレークに使う。
+        return (
+            hit,
+            myoumi,
+            -(int(pos1.get(car, miss1)) + int(pos2.get(car, miss2))),
+            -int(pos1.get(car, miss1)),
+            -int(pos2.get(car, miss2)),
+            -car,
+        )
+
+    solo_replaced = tuple()
+    solo_promoted = None
+    solo_promoted_from = None
+
+    # A・Bは固定するため、単騎の差し替え対象はC～Eだけ。
+    selected_solos_for_replace = [int(c) for c in opponents[1:] if int(c) in single_set]
+    all_solos = [int(c) for c in candidates if int(c) != int(axis) and int(c) in single_set]
+
+    # 弱い単騎がC～Eに既に選ばれている場合だけ、未採用の強い単騎との入替を許す。
+    if selected_solos_for_replace and all_solos:
+        strongest_all = max(all_solos, key=_solo_strength_key)
+        weakest_selected = min(selected_solos_for_replace, key=_solo_strength_key)
+        if (
+            strongest_all not in opponents
+            and _solo_strength_key(strongest_all) > _solo_strength_key(weakest_selected)
+        ):
+            replace_idx = opponents.index(weakest_selected)
+            opponents[replace_idx] = int(strongest_all)
+            solo_replaced = (int(weakest_selected), int(strongest_all))
+
+    # 選出5車内の最上位単騎を2列目へ。Bならそのまま、D/EならCと入れ替える。
+    selected_solos = [int(c) for c in opponents if int(c) in single_set]
+    if selected_solos:
+        strongest_selected = max(selected_solos, key=_solo_strength_key)
+        current_idx = opponents.index(strongest_selected)
+        if current_idx == 0:
+            solo_promoted = int(strongest_selected)  # Bですでに2列目
+            solo_promoted_from = "B"
+        elif current_idx == 1:
+            solo_promoted = int(strongest_selected)
+            solo_promoted_from = "C"
+        else:
+            solo_promoted = int(strongest_selected)
+            solo_promoted_from = "DE"
+            opponents[1], opponents[current_idx] = opponents[current_idx], opponents[1]
+
     return {
         "cars": (int(axis),) + tuple(int(x) for x in opponents),
         "axis": int(axis),
@@ -12268,8 +12352,10 @@ def _v262_select_second_third_flow_five_plan(
         "excluded_style": str(excluded.get("style", "")),
         "excluded_ratio": float(excluded.get("ratio", 0.0)),
         "ranked_flows": tuple(ranked),
+        "strong_solo": int(solo_promoted) if solo_promoted is not None else None,
+        "solo_promoted_from": solo_promoted_from,
+        "solo_replaced": tuple(solo_replaced),
     }
-
 
 def _v262_trio_key_from_row(row):
     """既存の加重3連複評価行から車番3車のキーを取り出す。"""
@@ -14898,11 +14984,28 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             _main_pair_rows = []
 
                     if _recommended_ticket != "3連単":
-                        _flow_five_plan = _v262_select_second_third_flow_five_plan(
+                        # v264：ライン入力上の単騎だけを抽出し、既存の加重単騎評価で強弱を比較する。
+                        _single_cars_for_v264 = set()
+                        try:
+                            for _line_source in _line_sources_v250():
+                                for _ln in (_line_source or []):
+                                    try:
+                                        _line_cars = [int(x) for x in (_ln or []) if str(x).isdigit()]
+                                    except Exception:
+                                        _line_cars = []
+                                    if len(_line_cars) == 1:
+                                        _single_cars_for_v264.add(int(_line_cars[0]))
+                        except Exception:
+                            _single_cars_for_v264 = set()
+
+                        _flow_five_plan = _v264_select_second_third_flow_five_plan(
                             _ratio_map,
                             _style_seq_map,
                             active_cars=_active_cars,
                             preferred_style=_recommended_style,
+                            single_cars=_single_cars_for_v264,
+                            hit_map=_hit_map,
+                            myoumi_map=_myoumi_map,
                         )
                         if _flow_five_plan:
                             _five_car_form = tuple(
