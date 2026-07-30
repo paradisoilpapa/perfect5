@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+# v278（A候補BOX評価・A表示整合修正版）:
+# ・A候補3車は、加重2車複評価表の3組総合点合計を最優先し、同点時は3組の最低総合点、流れ別連対組の包含率の順で決める。
+# ・A候補順位はBの相手3車、C・Dの相手候補にも共通使用する。
+# ・パターンAでは買い目上の軸がないため「軸層」と表示せず、「ヴェロビ候補1位」と「A候補3車」を表示する。
+# ・Aの判定理由を、加重2車複評価が最も安定する3車への集約と明記する。
+# ・既存の総合加重単騎評価、加重2車複・3連複評価表、ライン評価、KO、三流れ着順予想は削除・折り畳み・置換しない。
 # v277（3点体系・共通相手3車修正版）:
 # ・A=2車複3車BOX、B=3連複1車軸-3車-3車、C=2車複1車軸-3車、D=2車単1着軸→3車、E=3連単12-123-123（4点）。
 # ・A用の候補順位を共通化し、C・Dの相手も軸を除いたA候補上位3車を使用する。
@@ -8938,13 +8944,34 @@ def _v276_axis_top2_flow_count(axis_row):
     return int(count)
 
 
-def _v277_select_a_candidate_order(ranking_rows, flow_records):
-    """A用候補順位を作る。上位3車は流れ別1・2着組の包含を最優先する。"""
+def _v277_select_a_candidate_order(ranking_rows, flow_records, pair_rows=None):
+    """
+    A用候補順位を作る。
+
+    上位3車は、加重2車複評価表にある3組の総合点合計を最優先する。
+    同点時は3組の最低総合点、流れ別1・2着組の包含率の順で比較する。
+    加重2車複評価を取得できない例外時だけ、従来の流れ包含評価へ戻す。
+    """
     rows = [dict(row) for row in (ranking_rows or []) if str(row.get("car", "")).isdigit()]
     active = [int(row.get("car")) for row in rows]
     rank_map = {int(row.get("car")): row for row in rows}
     if len(active) <= 3:
         return tuple(active)
+
+    pair_map = {}
+    for row in (pair_rows or []):
+        try:
+            a = int((row or {}).get("a"))
+            b = int((row or {}).get("b"))
+            if a == b:
+                continue
+            pair_map[tuple(sorted((a, b)))] = {
+                "total_pt": float((row or {}).get("total_pt", 0.0) or 0.0),
+                "hit_score": float((row or {}).get("hit_score", 0.0) or 0.0),
+                "myoumi_score": float((row or {}).get("myoumi_score", 0.0) or 0.0),
+            }
+        except Exception:
+            pass
 
     best_combo = None
     best_key = None
@@ -8965,25 +8992,62 @@ def _v277_select_a_candidate_order(ranking_rows, flow_records):
             if len(top2) == 2 and set(top2).issubset(chosen):
                 pair_cover += ratio
 
+        combo_pair_rows = []
+        for a, b in combinations(combo, 2):
+            rec = pair_map.get(tuple(sorted((int(a), int(b)))))
+            if rec is not None:
+                combo_pair_rows.append(rec)
+        pair_complete = len(combo_pair_rows) == 3
+        pair_total_sum = sum(float(rec.get("total_pt", 0.0) or 0.0) for rec in combo_pair_rows)
+        pair_total_min = min(
+            [float(rec.get("total_pt", 0.0) or 0.0) for rec in combo_pair_rows],
+            default=-999.0,
+        )
+        pair_hit_sum = sum(float(rec.get("hit_score", 0.0) or 0.0) for rec in combo_pair_rows)
+        pair_myoumi_sum = sum(float(rec.get("myoumi_score", 0.0) or 0.0) for rec in combo_pair_rows)
+
         top2_sum = sum(float(rank_map[c].get("top2_support", 0.0) or 0.0) for c in combo)
         top3_sum = sum(float(rank_map[c].get("top3_support", 0.0) or 0.0) for c in combo)
         marked = sum(1 for c in combo if _v273_normalize_mark(rank_map[c].get("mark")))
         hit_sum = sum(float(rank_map[c].get("hit", 0.0) or 0.0) for c in combo)
         ko_sum = sum(float(rank_map[c].get("ko", 0.0) or 0.0) for c in combo)
         rank_sum = sum(int(rank_map[c].get("axis_rank", 99) or 99) for c in combo)
-        key = (
-            float(pair_cover),
-            int(flow_count),
-            float(any_cover),
-            float(seat_cover),
-            float(top2_sum),
-            float(top3_sum),
-            int(marked),
-            float(hit_sum),
-            float(ko_sum),
-            -int(rank_sum),
-            tuple(-int(c) for c in sorted(combo)),
-        )
+
+        if pair_complete:
+            key = (
+                1,
+                float(pair_total_sum),
+                float(pair_total_min),
+                float(pair_cover),
+                float(pair_hit_sum),
+                float(pair_myoumi_sum),
+                int(flow_count),
+                float(any_cover),
+                float(seat_cover),
+                float(top2_sum),
+                float(top3_sum),
+                int(marked),
+                float(hit_sum),
+                float(ko_sum),
+                -int(rank_sum),
+                tuple(-int(c) for c in sorted(combo)),
+            )
+        else:
+            # 加重2車複評価表が取れない例外時のみ従来の流れ包含順で選ぶ。
+            key = (
+                0,
+                float(pair_cover),
+                float(any_cover),
+                float(seat_cover),
+                int(flow_count),
+                float(top2_sum),
+                float(top3_sum),
+                int(marked),
+                float(hit_sum),
+                float(ko_sum),
+                -int(rank_sum),
+                tuple(-int(c) for c in sorted(combo)),
+            )
         if best_key is None or key > best_key:
             best_key = key
             best_combo = tuple(combo)
@@ -8992,7 +9056,6 @@ def _v277_select_a_candidate_order(ranking_rows, flow_records):
     selected_order = [int(row.get("car")) for row in rows if int(row.get("car")) in selected]
     remaining_order = [int(row.get("car")) for row in rows if int(row.get("car")) not in selected]
     return tuple(selected_order + remaining_order)
-
 
 def _v277_best_hit_axis_outside(a_candidates, ranking_rows):
     """A候補外から流れ加重的中単騎評価の最上位車を返す。"""
@@ -9037,7 +9100,7 @@ def _v276_order_core(axis, ranking_rows, partner_rows):
     return (int(axis), second, int(rest[0]), int(rest[1]))
 
 
-def _v277_choose_pattern(ranking_rows, style_seq_map, flow_ratio_map, flow_records):
+def _v277_choose_pattern(ranking_rows, style_seq_map, flow_ratio_map, flow_records, pair_rows=None):
     """A～Eと実際に使う軸・相手3車を決める。"""
     rows = [dict(row) for row in (ranking_rows or [])]
     if not rows:
@@ -9046,7 +9109,7 @@ def _v277_choose_pattern(ranking_rows, style_seq_map, flow_ratio_map, flow_recor
     main_axis_row = dict(rows[0])
     main_axis = int(main_axis_row.get("car"))
     main_partners = _v273_partner_profiles(main_axis, rows, style_seq_map, flow_ratio_map)
-    a_order = list(_v277_select_a_candidate_order(rows, flow_records))
+    a_order = list(_v277_select_a_candidate_order(rows, flow_records, pair_rows=pair_rows))
     a_candidates = tuple(int(x) for x in a_order[:3])
 
     core = _v276_order_core(main_axis, rows, main_partners)
@@ -9119,7 +9182,7 @@ def _v277_choose_pattern(ranking_rows, style_seq_map, flow_ratio_map, flow_recor
         "pattern_label": "A",
         "pattern_code": "BOX3",
         "family": "2車複3車BOX",
-        "reason": "着内軸が成立せず、流れ候補を3車へ集約",
+        "reason": "着内軸が成立せず、加重2車複評価が最も安定する3車へ集約",
         "axis": main_axis,
         "axis_row": main_axis_row,
         "ticket_partners": a_candidates,
@@ -9192,6 +9255,7 @@ def _v273_build_three_layer_trial_plan(
     current_ticket="",
     current_santan_tickets=None,
     current_support_trio_rows=None,
+    overall_pair_rows=None,
     max_tickets=4,
 ):
     ranking = _v273_axis_ranking(
@@ -9237,7 +9301,13 @@ def _v273_build_three_layer_trial_plan(
         key=lambda k: _V273_CLASS_ORDER.get(k, 0),
     ) if flow_records else "A"
 
-    pattern_info = _v277_choose_pattern(ranking, style_seq_map, flow_ratio_map, flow_records)
+    pattern_info = _v277_choose_pattern(
+        ranking,
+        style_seq_map,
+        flow_ratio_map,
+        flow_records,
+        pair_rows=overall_pair_rows,
+    )
     if not pattern_info:
         return None
 
@@ -9318,16 +9388,28 @@ def _v273_format_three_layer_trial_block(plan):
                 pass
         return "・".join(vals) if vals else "なし"
 
+    pattern_label = str(plan.get("pattern_label", "") or "")
     out = [
-        f"パターン：{plan.get('pattern_label', '—')}",
+        f"パターン：{pattern_label or '—'}",
         "",
-        f"【軸層】{axis}（AI{axis_mark}・{axis_type}／着内{pct(axis_row.get('top3_support'))}・平均着順{float(axis_row.get('weighted_rank', 0.0)):.2f}・1着{pct(axis_row.get('win_support'))}）",
+    ]
+    if pattern_label == "A":
+        a_candidates = [int(x) for x in (plan.get("a_candidates", tuple()) or tuple())]
+        out.extend([
+            f"【ヴェロビ候補1位】{axis}（AI{axis_mark}／着内{pct(axis_row.get('top3_support'))}・平均着順{float(axis_row.get('weighted_rank', 0.0)):.2f}・1着{pct(axis_row.get('win_support'))}）",
+            "【A候補】" + ("・".join(str(x) for x in a_candidates[:3]) if a_candidates else "なし"),
+        ])
+    else:
+        out.append(
+            f"【軸層】{axis}（AI{axis_mark}・{axis_type}／着内{pct(axis_row.get('top3_support'))}・平均着順{float(axis_row.get('weighted_rank', 0.0)):.2f}・1着{pct(axis_row.get('win_support'))}）"
+        )
+    out.extend([
         "【ヒモ層】" + layer_text(plan.get("himo", tuple()), True),
         "【評価下位無印層】" + layer_text(plan.get("lower_unmarked", tuple()), False),
         "",
         f"【推奨車券】{plan.get('ticket_family')}・{int(plan.get('ticket_count', 0))}点／上限{int(plan.get('max_tickets', 6))}点",
         f"【判定理由】{plan.get('ticket_reason', '')}",
-    ]
+    ])
     for label, items in plan.get("ticket_groups", tuple()) or tuple():
         out.append(f"{label}】" + "　".join(str(x) for x in items))
     return out
@@ -11392,6 +11474,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 current_ticket=_recommended_ticket,
                 current_santan_tickets=_santan_tickets,
                 current_support_trio_rows=_supplement_trio_rows,
+                overall_pair_rows=_overall_sorted_rows,
                 max_tickets=4,
             )
 
