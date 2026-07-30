@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v275（旧買い目表示削除修正版）:
+# ・note上部の推奨表示は、三層分類・A～E分類・最大6点の新方式へ一本化。
+# ・旧「買い目構成／構成詳細／推奨券種／AI信頼判定／旧判定理由／買い目サマリー」は表示しない。
+# ・既存の総合加重単騎評価、加重2車複・3連複評価表、ライン評価、KO、三流れ着順予想、短評は一切削除・折り畳み・置換しない。
+# ・全体分類は各流れのA～E構成比の加重中心で決め、最も波乱側の分類も併記する。
 # v274（表示整理修正版）:
 # ・v273の三層分類と最大6点の券種候補は維持し、note上部の新方式表示だけを簡潔化。
 # ・表示は「軸層／ヒモ層／評価下位無印層／全体分類／券種候補／判定理由／買い目」に限定。
@@ -11263,8 +11268,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 _win_top4 = tuple()
                 _win_confidence_action = "判定なし"
 
-            # v273：三層分類・A～E・最大6点の試作判定。
-            # 現行v270の推奨券種／買い目は一切上書きしない。
+            # v275：三層分類・A～E・最大6点の新方式判定。
+            # note上部の推奨表示はこの判定へ一本化する。
             _v273_trial_plan = _v273_build_three_layer_trial_plan(
                 globals().get("STYLE_SEQ_MAP", {}) or {},
                 _flow_ratio_map_for_trio(),
@@ -11599,54 +11604,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
             _fw_trio_lines = _make_flow_weighted_trio_lines()
 
-            # v262: 上部は実際に購入する構成を先に表示する。
-            # 旧ライン主体／非ライン主体候補は判定内部に残すが、購入構成と混同するため上部表示しない。
-            if _composition_label:
-                lines.append(f"【買い目構成】{_composition_label}")
-            if _composition_detail:
-                lines.append(f"【構成詳細】{_composition_detail}")
-            if _composition_label or _composition_detail:
-                lines.append("")
-            lines.append(f"【推奨券種】{_recommended_ticket}")
-            if _win_confidence_complete:
-                _win_top2_txt = "・".join(str(x) for x in _win_top2) if _win_top2 else "なし"
-                _win_top4_txt = "・".join(str(x) for x in _win_top4) if _win_top4 else "なし"
-                lines.append(f"【AI信頼判定】{_win_confidence_action}（◎〇={_win_top2_txt}／上位4車={_win_top4_txt}）")
-            else:
-                lines.append("【AI信頼判定】4印未完了（券種変更なし）")
-            if _ticket_reason:
-                lines.append(f"【判定理由】{_ticket_reason}")
-            lines.append("")
-
-            lines.append("【買い目サマリー】")
-            _pair_summary = _fmt_overall_rows_with_pt(_overall_main_rows, include_myoumi=False)
-            _pair_count = len(_overall_main_rows)
-            _trio_summary_lines = _fmt_trio_summary_rows(_trio_main_rows)
-            _trio_count = len(_trio_main_rows)
-
-            if _recommended_ticket == "3連単":
-                if _santan_form:
-                    lines.append(f"3連単 推奨4点】{_santan_form}")
-                else:
-                    lines.append("3連単 推奨4点】")
-                lines.extend(_fmt_santan_summary_rows(_santan_tickets, _trio_main_rows))
-                _support_count = len(_supplement_trio_rows)
-                if _support_count > 0:
-                    if _supplement_trio_form:
-                        lines.append(f"3連複 併用{_support_count}点】{_supplement_trio_form}")
-                    else:
-                        lines.append(f"3連複 併用{_support_count}点】")
-                    lines.extend(_fmt_trio_summary_rows(_supplement_trio_rows, include_santan_ref=False))
-            elif _recommended_ticket == "3連複":
-                if _final_trio_form:
-                    lines.append(f"3連複 推奨{_trio_count}点】{_final_trio_form}")
-                else:
-                    lines.append(f"3連複 推奨{_trio_count}点】")
-                lines.extend(_trio_summary_lines)
-            else:
-                lines.append("推奨買い目を生成できませんでした")
-            lines.append("")
-            lines.append("")
+            # v275: 旧買い目判定の表示は廃止。
+            # 三層分類・A～E分類・最大6点の新方式ブロックだけを上部に表示する。
+            # 旧計算値は互換性のため内部に残すが、note本文へは出力しない。
 
             # v227: 検証に必要な総合加重単騎評価だけ残す。
             if _fw_trio_lines:
@@ -11689,13 +11649,11 @@ try:
         market_mark_map,
     )
 
-    # 最終判定済みの券種と全体妙味を、展開評価の直後へ直接挿入する。
-    # 旧「軸評価」「期待値軸」「推奨戦法」ブロックは生成・置換とも行わない。
-    _m_ticket = re.search(r"【推奨券種】(3連単|3連複)", _summary_core)
-    _header_ticket = _m_ticket.group(1) if _m_ticket else "未判定"
+    # 全体妙味と新方式サマリーを、展開評価の直後へ直接挿入する。
+    # 推奨車券は新方式ブロックの券種候補へ一本化し、旧推奨券種は表示しない。
     _header_myoumi = _display_overall_myoumi_label(overall_myoumi_label)
     _current_summary = (
-        f"全体妙味：{_header_myoumi}（推奨車券：{_header_ticket}）\n\n"
+        f"全体妙味：{_header_myoumi}\n\n"
         f"{_summary_core}\n"
     )
 
