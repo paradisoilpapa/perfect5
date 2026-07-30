@@ -1,3 +1,4 @@
+# v272: 男子・ガールズとも、従来ロジックで元の5車を確定した後だけ「2車複＝攻め／3連複＝守り」へ再構成。元5車内の流れ加重的中単騎評価1位を守り軸として2車複から外し、残る4車から流れ加重妙味単騎評価上位2車を1列目、さらに守り軸を除く未採用車の流れ加重的中単騎評価最上位1車を2列目へ追加して2車複3点。3列目は2列目に守り軸を加え、3連複4点へ展開する。男子v267の5車選出、ガールズの元5車選出、3連単4点＋3連複2点、AI信頼条件、数値閾値は変更しない。
 # v271: 2車複表示を「妙味加重上位2車－妙味加重上位3車」のフォーメーション表記へ修正し、買い目一覧が1文字ずつ改行される不具合を修正。男子はv267の5車、ガールズは従来の比率2位・3位流れ5車をそれぞれ先に確定し、その選出済み5車内だけで妙味加重上位3車＋残る2車の的中加重上位1車へ絞る。両方とも2車複3点＋3連複4点。3連単4点＋3連複2点、男子v267の5車選出、ガールズの元5車選出、AI信頼条件、数値閾値は変更しない。
 # v270: v267の男子3連単非該当時の5車選出は一切変更せず、選出済み5車から買い目だけを7点へ再構成。5車内の流れ加重妙味単騎評価上位3車を2車複BOX3点にし、残る2車から流れ加重的中単騎評価上位1車を追加。三連複は妙味上位2車－妙味上位3車－妙味上位3車＋的中加重1車の4点。ガールズ3連複7点、3連単4点＋3連複2点、v267の三流れ・三ライン5車選出、AI信頼条件、数値閾値は変更しない。
 # v267: v266の比率1位完全除外を撤回。3連単非該当の男子3連複7点は、比率1位・2位・3位の三流れをすべて使用する。A=比率1位代表ライン先頭、B=比率2位代表ライン先頭、C=比率3位代表ライン先頭として、1列目は別流れ・別ライン、2列目は三流れ・三ラインの代表3車。D/Eは代表ライン後位または「その他（3列目候補）」だけから、KO使用スコアを補助順位として選び、可能な限り別ラインへ分散する。構成詳細と買い目の出所を一致させる。ガールズの既存7点、3車以上ライン限定の3連単、点数・AI信頼条件・数値閾値は変更しない。
@@ -12917,17 +12918,25 @@ def _v267_select_three_flow_line_five_plan(
     }
 
 
-def _v271_select_four_from_source_five(
+def _v272_select_attack_defense_from_source_five(
     weighted_car_hit_map,
     weighted_car_myoumi_map,
     source_five_cars,
 ):
     """
-    券種別ロジックで確定済みの5車だけを母集団にする。
+    券種別の従来ロジックで確定済みの5車だけを母集団にする。
 
-    ・妙味加重上位2車－妙味加重上位3車を2車複3点へ採用
-    ・残る2車のうち的中加重上位1車を三連複へ追加
-    ・元5車以外は選出しない
+    2車複＝攻め
+    ・元5車内の流れ加重的中単騎評価1位を「守り軸」として先に確保し、2車複から外す。
+    ・残る4車から流れ加重妙味単騎評価上位2車を1列目にする。
+    ・守り軸と1列目2車を除く未採用車から、流れ加重的中単騎評価最上位1車を2列目へ追加する。
+    ・2車複は 1列目2車－2列目3車 の3点。
+
+    3連複＝守り
+    ・3列目は2列目3車に守り軸を加えた4車。
+    ・三連複は 1列目2車－2列目3車－3列目4車 の4点。
+
+    元5車以外は選出しない。
     """
     try:
         source_five = []
@@ -12964,51 +12973,77 @@ def _v271_select_four_from_source_five(
     if any(car not in hit_map or car not in myoumi_map for car in source_five):
         return None
 
-    # 既存の単騎評価表示と同じく、点数降順・同点時は車番昇順。
-    myoumi_ranked = sorted(
+    # 守り軸：元5車内の流れ加重的中単騎評価1位。
+    # 同点時は妙味点が高い車、それも同点なら車番が小さい車を優先する。
+    hit_ranked_all = sorted(
         source_five,
         key=lambda car: (
+            -float(hit_map[int(car)]),
             -float(myoumi_map[int(car)]),
             int(car),
         ),
     )
-    myoumi_three = tuple(int(x) for x in myoumi_ranked[:3])
-    if len(myoumi_three) != 3 or len(set(myoumi_three)) != 3:
-        return None
+    defense_axis = int(hit_ranked_all[0])
 
-    remaining_two = [
+    # 1列目：守り軸を除いた4車から妙味加重上位2車。
+    myoumi_pool = [
         int(car) for car in source_five
-        if int(car) not in set(myoumi_three)
+        if int(car) != defense_axis
     ]
-    if len(remaining_two) != 2:
-        return None
-
-    hit_ranked = sorted(
-        remaining_two,
+    myoumi_ranked = sorted(
+        myoumi_pool,
         key=lambda car: (
+            -float(myoumi_map[int(car)]),
             -float(hit_map[int(car)]),
             int(car),
         ),
     )
-    hit_car = int(hit_ranked[0])
-    excluded_car = int(hit_ranked[1])
-    four_cars = tuple(myoumi_three) + (hit_car,)
-
-    if len(four_cars) != 4 or len(set(four_cars)) != 4:
+    first_column = tuple(int(x) for x in myoumi_ranked[:2])
+    if len(first_column) != 2 or len(set(first_column)) != 2:
         return None
-    if not set(four_cars).issubset(set(source_five)):
+
+    # 2列目追加：守り軸と1列目を除く未採用車の的中加重最上位。
+    attack_pool = [
+        int(car) for car in source_five
+        if int(car) != defense_axis and int(car) not in set(first_column)
+    ]
+    if len(attack_pool) != 2:
+        return None
+
+    attack_ranked = sorted(
+        attack_pool,
+        key=lambda car: (
+            -float(hit_map[int(car)]),
+            -float(myoumi_map[int(car)]),
+            int(car),
+        ),
+    )
+    attack_car = int(attack_ranked[0])
+    excluded_car = int(attack_ranked[1])
+
+    second_column = tuple(first_column) + (attack_car,)
+    third_column = tuple(second_column) + (defense_axis,)
+
+    if len(second_column) != 3 or len(set(second_column)) != 3:
+        return None
+    if len(third_column) != 4 or len(set(third_column)) != 4:
+        return None
+    if defense_axis in set(second_column):
+        return None
+    if not set(third_column).issubset(set(source_five)):
         return None
 
     return {
         "source_five_cars": tuple(source_five),
-        "myoumi_cars": tuple(myoumi_three),
-        "hit_car": hit_car,
+        "first_column": tuple(first_column),
+        "attack_car": attack_car,
+        "defense_axis": defense_axis,
         "excluded_car": excluded_car,
-        "four_cars": tuple(four_cars),
+        "second_column": tuple(second_column),
+        "third_column": tuple(third_column),
         "myoumi_scores": {car: float(myoumi_map[car]) for car in source_five},
         "hit_scores": {car: float(hit_map[car]) for car in source_five},
     }
-
 
 def _v271_pair_key_from_row(row):
     try:
@@ -13029,9 +13064,9 @@ def _v271_pair_key_from_row(row):
     return tuple()
 
 
-def _v271_rows_for_myoumi_nifuku_form(pair_rows, myoumi_cars):
+def _v272_rows_for_attack_nifuku_form(pair_rows, second_column):
     try:
-        a, b, c = [int(x) for x in (myoumi_cars or [])]
+        a, b, c = [int(x) for x in (second_column or [])]
     except Exception:
         return []
     if len({a, b, c}) != 3:
@@ -13052,9 +13087,9 @@ def _v271_rows_for_myoumi_nifuku_form(pair_rows, myoumi_cars):
     return out
 
 
-def _v271_rows_for_four_car_trio(trio_rows, four_cars):
+def _v272_rows_for_defense_trio(trio_rows, third_column):
     try:
-        a, b, c, d = [int(x) for x in (four_cars or [])]
+        a, b, c, d = [int(x) for x in (third_column or [])]
     except Exception:
         return []
     if len({a, b, c, d}) != 4:
@@ -13076,10 +13111,10 @@ def _v271_rows_for_four_car_trio(trio_rows, four_cars):
     return out
 
 
-def _v271_nifuku_form(myoumi_cars):
-    """妙味加重上位2車－妙味加重上位3車の2車複3点フォーメーション。"""
+def _v272_nifuku_form(second_column):
+    """1列目2車－2列目3車の2車複3点フォーメーション。"""
     try:
-        a, b, c = [int(x) for x in (myoumi_cars or [])]
+        a, b, c = [int(x) for x in (second_column or [])]
     except Exception:
         return ""
     if len({a, b, c}) != 3:
@@ -13087,9 +13122,9 @@ def _v271_nifuku_form(myoumi_cars):
     return f"{a}{b}-{a}{b}{c}"
 
 
-def _v271_trio_form(four_cars):
+def _v272_trio_form(third_column):
     try:
-        a, b, c, d = [int(x) for x in (four_cars or [])]
+        a, b, c, d = [int(x) for x in (third_column or [])]
     except Exception:
         return ""
     if len({a, b, c, d}) != 4:
@@ -15693,12 +15728,12 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                     )
 
                     # =================================================
-                    # v271 券種別の統合買い目構成
+                    # v272 券種別の統合買い目構成
                     # 1) 3連単該当：AB-ABC-ABC 4点＋A-B-DE 3連複2点
                     # 2) 男子の3連単非該当：v267で従来どおり5車を確定後、
-                    #    選出済み5車内で2車複3点＋3連複4点へ再構成。
+                    #    2車複＝攻め／3連複＝守りの7点へ再構成。
                     # 3) ガールズ：従来の比率2位・3位流れ5車を確定後、
-                    #    男子と同じく2車複3点＋3連複4点へ再構成。
+                    #    男子と同じ攻守分担の7点へ再構成。
                     # 元5車選出・AI印条件・3車以上ライン限定3連単・数値閾値は変更しない。
                     # =================================================
                     _composition_label = ""
@@ -15773,58 +15808,67 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             )
 
                             # 選出済み5車の外からは一切採らない。
-                            _four_plan = _v271_select_four_from_source_five(
+                            # 2車複＝攻め：守り軸を除いた3車で3点。
+                            # 3連複＝守り：その3車へ守り軸を戻して4点。
+                            _attack_defense_plan = _v272_select_attack_defense_from_source_five(
                                 _weighted_car_hit_map,
                                 _weighted_car_myoumi_map,
                                 _five_car_form,
                             )
-                            if _four_plan:
-                                _myoumi_three = tuple(
-                                    int(x) for x in (_four_plan.get("myoumi_cars", tuple()) or tuple())
+                            if _attack_defense_plan:
+                                _first_column = tuple(
+                                    int(x) for x in (_attack_defense_plan.get("first_column", tuple()) or tuple())
                                 )
-                                _four_car_form = tuple(
-                                    int(x) for x in (_four_plan.get("four_cars", tuple()) or tuple())
+                                _second_column = tuple(
+                                    int(x) for x in (_attack_defense_plan.get("second_column", tuple()) or tuple())
                                 )
-                                _new_pair_rows = _v271_rows_for_myoumi_nifuku_form(
+                                _third_column = tuple(
+                                    int(x) for x in (_attack_defense_plan.get("third_column", tuple()) or tuple())
+                                )
+                                _new_pair_rows = _v272_rows_for_attack_nifuku_form(
                                     _overall_sorted_rows,
-                                    _myoumi_three,
+                                    _second_column,
                                 )
-                                _new_trio_rows = _v271_rows_for_four_car_trio(
+                                _new_trio_rows = _v272_rows_for_defense_trio(
                                     _trio_rows,
-                                    _four_car_form,
+                                    _third_column,
                                 )
                             else:
-                                _myoumi_three = tuple()
-                                _four_car_form = tuple()
+                                _first_column = tuple()
+                                _second_column = tuple()
+                                _third_column = tuple()
                                 _new_pair_rows = []
                                 _new_trio_rows = []
 
                             if (
                                 len(_five_car_form) == 5
                                 and len(set(_five_car_form)) == 5
-                                and len(_myoumi_three) == 3
-                                and len(_four_car_form) == 4
-                                and set(_four_car_form).issubset(set(_five_car_form))
+                                and len(_first_column) == 2
+                                and len(_second_column) == 3
+                                and len(_third_column) == 4
+                                and set(_second_column).issubset(set(_five_car_form))
+                                and set(_third_column).issubset(set(_five_car_form))
                                 and len(_new_pair_rows) == 3
                                 and len(_new_trio_rows) == 4
                             ):
                                 _recommended_ticket = "2車複＋3連複"
                                 _main_pair_rows = list(_new_pair_rows)
                                 _main_trio_rows = list(_new_trio_rows)
-                                _nifuku_form = _v271_nifuku_form(_myoumi_three)
-                                _form = _v271_trio_form(_four_car_form)
-                                _third_candidates = tuple(_four_car_form[2:])
+                                _nifuku_form = _v272_nifuku_form(_second_column)
+                                _form = _v272_trio_form(_third_column)
+                                _third_candidates = tuple(_third_column[2:])
 
-                                _myoumi_scores = dict(_four_plan.get("myoumi_scores", {}) or {})
-                                _hit_scores = dict(_four_plan.get("hit_scores", {}) or {})
-                                _hit_car = int(_four_plan.get("hit_car"))
-                                _excluded_car = int(_four_plan.get("excluded_car"))
+                                _myoumi_scores = dict(_attack_defense_plan.get("myoumi_scores", {}) or {})
+                                _hit_scores = dict(_attack_defense_plan.get("hit_scores", {}) or {})
+                                _attack_car = int(_attack_defense_plan.get("attack_car"))
+                                _defense_axis = int(_attack_defense_plan.get("defense_axis"))
+                                _excluded_car = int(_attack_defense_plan.get("excluded_car"))
 
-                                _composition_label = "元5車から2車複3点＋3連複4点"
+                                _composition_label = "元5車から2車複・攻3点＋3連複・守4点"
 
                                 if race_class == "ガールズ":
-                                    _trio_mode = "girls_five_to_nifuku3_trio4"
-                                    _structure = "比率2位・3位流れ5車から4車へ絞り"
+                                    _trio_mode = "girls_five_attack_nifuku3_defense_trio4"
+                                    _structure = "比率2位・3位流れ5車から攻守4車へ絞り"
                                     _styles2 = tuple(_flow_five_plan.get("styles", tuple()) or tuple())
                                     _ratios2 = tuple(_flow_five_plan.get("ratios", tuple()) or tuple())
                                     _excluded_style = str(_flow_five_plan.get("excluded_style", "") or "")
@@ -15834,25 +15878,28 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                         f"使用:{_styles2[0]}{float(_ratios2[0])*100:.0f}%＋"
                                         f"{_styles2[1]}{float(_ratios2[1])*100:.0f}%／"
                                         f"元5車:{''.join(str(x) for x in _five_car_form)}／"
-                                        f"妙味加重3車:{''.join(str(x) for x in _myoumi_three)}／"
-                                        f"的中加重追加:{_hit_car}／"
+                                        f"1列目・妙味加重2車:{''.join(str(x) for x in _first_column)}／"
+                                        f"2列目・攻め追加:{_attack_car}／"
+                                        f"3列目・守り軸:{_defense_axis}／"
                                         f"除外:{_excluded_car}／"
                                         f"2車複{_nifuku_form}／3連複{_form}"
                                     ) if len(_styles2) == 2 and len(_ratios2) == 2 else (
                                         f"元5車:{''.join(str(x) for x in _five_car_form)}／"
-                                        f"妙味加重3車:{''.join(str(x) for x in _myoumi_three)}／"
-                                        f"的中加重追加:{_hit_car}／除外:{_excluded_car}／"
+                                        f"1列目・妙味加重2車:{''.join(str(x) for x in _first_column)}／"
+                                        f"2列目・攻め追加:{_attack_car}／"
+                                        f"3列目・守り軸:{_defense_axis}／除外:{_excluded_car}／"
                                         f"2車複{_nifuku_form}／3連複{_form}"
                                     )
                                     _ticket_reason = (
-                                        "ガールズ用の従来ロジックで元の5車を確定し、"
-                                        "その5車内の妙味加重上位2車－妙味加重上位3車を2車複3点へ採用。"
-                                        "残る2車の的中加重上位1車を加えて三連複4点へ展開"
+                                        "ガールズ用の従来ロジックで元の5車を確定。"
+                                        "元5車内の流れ加重的中単騎評価1位を守り軸として2車複から外し、"
+                                        "残る4車の妙味加重上位2車と未採用車の的中加重最上位1車で2車複3点を構成。"
+                                        "三連複は守り軸を戻した4車で4点へ展開"
                                     )
-                                    _win_confidence_action = "ガールズ元5車から2車複3点＋3連複4点へ変更"
+                                    _win_confidence_action = "ガールズ元5車から2車複・攻3点＋3連複・守4点へ変更"
                                 else:
-                                    _trio_mode = "v267_five_to_nifuku3_trio4"
-                                    _structure = "三流れ・三ライン分散5車から4車へ絞り"
+                                    _trio_mode = "v267_five_attack_nifuku3_defense_trio4"
+                                    _structure = "三流れ・三ライン分散5車から攻守4車へ絞り"
                                     _styles3 = tuple(_flow_five_plan.get("styles", tuple()) or tuple())
                                     _ratios3 = tuple(_flow_five_plan.get("ratios", tuple()) or tuple())
                                     _source_by_car = dict(_flow_five_plan.get("source_by_car", {}) or {})
@@ -15866,22 +15913,25 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                                         f"{_styles3[2]}{float(_ratios3[2])*100:.0f}%／"
                                         f"元5車:{''.join(str(x) for x in _five_car_form)}／"
                                         f"出所:{_source_text}／"
-                                        f"妙味加重3車:{''.join(str(x) for x in _myoumi_three)}／"
-                                        f"的中加重追加:{_hit_car}／"
+                                        f"1列目・妙味加重2車:{''.join(str(x) for x in _first_column)}／"
+                                        f"2列目・攻め追加:{_attack_car}／"
+                                        f"3列目・守り軸:{_defense_axis}／"
                                         f"除外:{_excluded_car}／"
                                         f"2車複{_nifuku_form}／3連複{_form}"
                                     ) if len(_styles3) == 3 and len(_ratios3) == 3 else (
                                         f"元5車:{''.join(str(x) for x in _five_car_form)}／"
-                                        f"妙味加重3車:{''.join(str(x) for x in _myoumi_three)}／"
-                                        f"的中加重追加:{_hit_car}／除外:{_excluded_car}／"
+                                        f"1列目・妙味加重2車:{''.join(str(x) for x in _first_column)}／"
+                                        f"2列目・攻め追加:{_attack_car}／"
+                                        f"3列目・守り軸:{_defense_axis}／除外:{_excluded_car}／"
                                         f"2車複{_nifuku_form}／3連複{_form}"
                                     )
                                     _ticket_reason = (
-                                        "3連単信頼条件未達。v267の三流れ・三ライン分散で元の5車を確定し、"
-                                        "その5車内の妙味加重上位2車－妙味加重上位3車を2車複3点へ採用。"
-                                        "残る2車の的中加重上位1車を加えて三連複4点へ展開"
+                                        "3連単信頼条件未達。v267の三流れ・三ライン分散で元の5車を確定。"
+                                        "元5車内の流れ加重的中単騎評価1位を守り軸として2車複から外し、"
+                                        "残る4車の妙味加重上位2車と未採用車の的中加重最上位1車で2車複3点を構成。"
+                                        "三連複は守り軸を戻した4車で4点へ展開"
                                     )
-                                    _win_confidence_action = "元5車から2車複3点＋3連複4点へ変更"
+                                    _win_confidence_action = "元5車から2車複・攻3点＋3連複・守4点へ変更"
 
                     return {
                         "recommended_style": _recommended_style,
