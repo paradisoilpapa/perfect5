@@ -1,4 +1,12 @@
 # -*- coding: utf-8 -*-
+# v283（勢力上位3流れ・加重単騎ヒモ修正版）:
+# ・全ライン／単騎を2車換算勢力で降順に並べ、上位3組だけを順流／渦／逆流の代表対象にする。
+# ・勢力4位以下は、H主導・旧渦・旧逆流であっても代表へ繰り上げず「その他（3列目候補）」にする。
+# ・H主導ラインの表示自体は維持し、流れ代表への採否とは分離する。
+# ・流れ名は上位3組の旧FR／旧渦／旧逆流対応を優先して割り当て、未確定枠は勢力順位順で補完する。
+# ・最終軸の同ライン車は従来どおり全車必須保護する。
+# ・ヒモの残枠は採用流れ着順ではなく、流れ比率を反映した「流れ加重的中単騎評価」の上位から補充する。
+# ・券種は三連複1車軸－4車－4車の6点固定を維持する。
 # v282（ライン2車換算・単騎2倍修正版）:
 # ・ライン勢力は、ライン内KO使用スコア上位2車の合計で算出する。
 # ・単騎勢力は、本人のKO使用スコアを2倍し、ラインと同じ2車換算で比較する。
@@ -88,7 +96,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from itertools import combinations
+from itertools import combinations, permutations
 from typing import Any, Dict, List
 
 import numpy as np
@@ -4183,6 +4191,93 @@ def _build_line_fr_map_v282(lines, scores_map, FRv):
         for key, value in strength_map.items()
     }
 
+
+# --- v283：2車換算勢力上位3組だけを三流れ代表へ割り当てる ---
+def _v283_build_top3_strength_zones(line_items):
+    """
+    全ライン／単騎を2車換算勢力（line_items[*]['fr']）で並べ、
+    上位3組だけを順流・渦・逆流の代表にする。
+
+    ・旧FR／旧渦／旧逆流の対応は「流れ名の割当」にだけ使う。
+    ・H主導はタグ表示に残すが、勢力4位以下を代表へ繰り上げない。
+    ・旧対応で決め切れない場合は、勢力1位→順流、2位→渦、3位→逆流
+      に近い割当を採用する。
+    """
+    rows = sorted(
+        [dict(item or {}) for item in (line_items or []) if (item or {}).get("line")],
+        key=lambda item: (
+            -float(item.get("fr", 0.0) or 0.0),
+            "".join(str(int(x)) for x in (item.get("line", []) or [])),
+        ),
+    )
+
+    zone_names = ("順流域", "渦域", "逆流域")
+    style_flags = {
+        "順流域": "is_fr",
+        "渦域": "is_vtx",
+        "逆流域": "is_u",
+    }
+
+    def _tags(item):
+        tags = []
+        if bool(item.get("is_fr")):
+            tags.append("◎")
+        if bool(item.get("is_h")):
+            tags.append("H主導")
+        if bool(item.get("is_vtx")):
+            tags.append("旧渦")
+        if bool(item.get("is_u")):
+            tags.append("旧逆流")
+        return tags
+
+    def _origin(item):
+        if bool(item.get("is_fr")):
+            return "順流"
+        if bool(item.get("is_vtx")):
+            return "渦"
+        if bool(item.get("is_u")):
+            return "逆流"
+        return ""
+
+    def _zone_item(item):
+        return {
+            "line": list(item.get("line", []) or []),
+            "fr": float(item.get("fr", 0.0) or 0.0),
+            "tags": _tags(item),
+            "sort_score": float(item.get("fr", 0.0) or 0.0),
+        }
+
+    top = rows[:3]
+    lower = rows[3:]
+    zones = {name: [] for name in zone_names}
+
+    # 上位3組と流れ名の全割当を比較し、旧対応一致を最優先する。
+    # 同点時は勢力順位と 順流→渦→逆流 の自然な対応を優先する。
+    if top:
+        best = None
+        n = len(top)
+        for assigned_zones in permutations(zone_names, n):
+            match_count = 0
+            natural_distance = 0
+            for row_index, (item, zone_name) in enumerate(zip(top, assigned_zones)):
+                if bool(item.get(style_flags[zone_name])):
+                    match_count += 1
+                natural_distance += abs(row_index - zone_names.index(zone_name))
+            score = (match_count, -natural_distance)
+            if best is None or score > best[0]:
+                best = (score, assigned_zones)
+
+        for item, zone_name in zip(top, best[1] if best else zone_names[:len(top)]):
+            zones[zone_name] = [_zone_item(item)]
+
+    other_items = []
+    for item in lower:
+        copied = _zone_item(item)
+        copied["origin_zone"] = _origin(item)
+        other_items.append(copied)
+
+    return zones, other_items
+
 # ---------- 3) 安全ラッパ（券種なし：flowだけ） ----------
 def _safe_flow(lines_str, marks, scores):
     try:
@@ -4830,322 +4925,72 @@ try:
     line_items = sorted(line_items, key=lambda x: (-x["fr"], _fmt_line(x["line"])))
 
     if line_items:
-        top_fr = float(line_items[0]["fr"])
+        # v283：勢力上位3組だけを三流れ代表へ採用する。
+        # H主導・旧渦・旧逆流は流れ名の割当参考と表示タグに限定し、
+        # 勢力4位以下を代表へ繰り上げない。
+        zones, _other_line_items = _v283_build_top3_strength_zones(line_items)
 
-        # FR差による範囲判定
-        # 7車以下はやや狭め、8・9車は広め
-        if int(n_cars) >= 8:
-            upper_gap = 0.080
-            middle_ratio = 0.45
-            h_gap = 0.150
-        else:
-            upper_gap = 0.050
-            middle_ratio = 0.45
-            h_gap = 0.090
-
-        zones = {
-            "順流域": [],
-            "渦域": [],
-            "逆流域": [],
+        _zone_fr = {
+            "順流": sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("順流域", []) or [])),
+            "渦":   sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("渦域", []) or [])),
+            "逆流": sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("逆流域", []) or [])),
         }
-
-        for item in line_items:
-            ln = item["line"]
-            fr = float(item["fr"])
-            gap = top_fr - fr
-            ratio = (fr / top_fr) if top_fr > 1e-12 else 0.0
-
-            tags = []
-            if item["is_fr"]:
-                tags.append("◎")
-            if item["is_h"]:
-                tags.append("H主導")
-            if item["is_vtx"]:
-                tags.append("旧渦")
-            if item["is_u"]:
-                tags.append("旧逆流")
-
-            # 順流域：
-            # FRトップ、またはFRトップとの差が小さいライン
-            if item["is_fr"] or gap <= upper_gap:
-                zone = "順流域"
-
-            # H主導ラインは、FR2位級なら実質上位へ寄せる
-            elif item["is_h"] and (gap <= h_gap or ratio >= 0.55):
-                zone = "順流域"
-                tags.append("実質上位")
-
-            # 中位以上の別線は渦域
-            elif ratio >= middle_ratio:
-                zone = "渦域"
-
-            # 低FR・単騎・押上げ側は逆流域
-            else:
-                zone = "逆流域"
-
-            sort_score = fr + (0.030 if item["is_h"] else 0.0)
-
-            zones[zone].append({
-                "line": ln,
-                "fr": fr,
-                "tags": tags,
-                "sort_score": sort_score,
-            })
-
-        for z in zones:
-            zones[z] = sorted(
-                zones[z],
-                key=lambda x: (-x["sort_score"], -x["fr"], _fmt_line(x["line"]))
-            )
-
-        # =====================================================
-        # v164: 順流域は必ず代表1ラインだけにする
-        # 目的：157 と 24 のように複数ラインが同じ順流域へ入り、
-        #       KO隊列で 15724 を1塊のように混ぜてしまう現象を防ぐ。
-        #       単騎も1ラインとして扱う。
-        # =====================================================
-        try:
-            jun_items = list(zones.get("順流域", []))
-            if len(jun_items) > 1:
-                # ◎ラインを最優先。なければ現在のソート順トップを順流代表にする。
-                fr_items = [x for x in jun_items if "◎" in x.get("tags", [])]
-                keep_jun = fr_items[0] if fr_items else jun_items[0]
-                overflow = [x for x in jun_items if x is not keep_jun]
-
-                zones["順流域"] = [keep_jun]
-
-                # 余った順流候補は、まず渦域へ1本、残りは逆流域へ回す。
-                # 既に渦域がある場合は、渦域へ追加してFR順で再ソートする。
-                if overflow:
-                    zones.setdefault("渦域", [])
-                    zones.setdefault("逆流域", [])
-
-                    if not zones.get("渦域"):
-                        zones["渦域"].append(overflow[0])
-                        zones["逆流域"].extend(overflow[1:])
-                    else:
-                        zones["渦域"].extend(overflow)
-
-                    for _z in ("渦域", "逆流域"):
-                        zones[_z] = sorted(
-                            zones.get(_z, []),
-                            key=lambda x: (-x["sort_score"], -x["fr"], _fmt_line(x["line"]))
-                        )
-        except Exception:
-            pass
-
-                # =====================================================
-        # 全ラインが順流域に吸収された場合の強制分割
-        # 目的：順流・渦・逆流メインが全部同じになるのを防ぐ
-        # =====================================================
-        try:
-            if (
-                len(zones.get("順流域", [])) >= 3
-                and len(zones.get("渦域", [])) == 0
-                and len(zones.get("逆流域", [])) == 0
-            ):
-                all_top_items = list(zones["順流域"])
-
-                # まずFR順で並べる
-                all_top_items = sorted(
-                    all_top_items,
-                    key=lambda x: (-float(x["fr"]), _fmt_line(x["line"]))
-                )
-
-                # ◎ラインは順流域に残す
-                fr_items = [x for x in all_top_items if "◎" in x.get("tags", [])]
-
-                if fr_items:
-                    keep_jun = fr_items[0]
-                else:
-                    keep_jun = all_top_items[0]
-
-                rest = [x for x in all_top_items if x is not keep_jun]
-
-                # 残りの中でFR最上位を渦域へ
-                rest = sorted(
-                    rest,
-                    key=lambda x: (-float(x["fr"]), _fmt_line(x["line"]))
-                )
-
-                keep_vtx = rest[0] if rest else None
-                rest2 = [x for x in rest if x is not keep_vtx]
-
-                zones["順流域"] = [keep_jun]
-                zones["渦域"] = [keep_vtx] if keep_vtx is not None else []
-                zones["逆流域"] = rest2
-
-        except Exception:
-            pass
-
-        
-
-
-        # =====================================================
-        # v235: 順流・渦・逆流は必ず3枠に割り振る
-        # 目的：ライン評価グループで逆流域が空なのに、流れ比率だけ逆流100%になる矛盾を防ぐ。
-        # ・旧逆流タグを持つラインは逆流域の補完候補として最優先
-        # ・旧渦タグを持つラインは渦域の補完候補として最優先
-        # ・3ライン以上ある場合、表示上も内部比率上も3枠を空にしない
-        # =====================================================
-        try:
-            _zone_names = ["順流域", "渦域", "逆流域"]
-            for _z in _zone_names:
-                zones.setdefault(_z, [])
-
-            def _move_one_zone(_from, _to, _prefer_tag=None):
-                try:
-                    _items = list(zones.get(_from, []) or [])
-                    if len(_items) <= 1:
-                        return False
-                    _idx = None
-                    if _prefer_tag:
-                        for _i, _it in enumerate(_items):
-                            if _prefer_tag in (_it.get("tags", []) or []):
-                                _idx = _i
-                                break
-                    if _idx is None:
-                        # FRが低いものほど逆流/補完側へ回しやすい。
-                        _idx = min(range(len(_items)), key=lambda i: (float(_items[i].get("fr", 0.0) or 0.0), _fmt_line(_items[i].get("line"))))
-                    _item = _items.pop(_idx)
-                    zones[_from] = _items
-                    zones.setdefault(_to, [])
-                    zones[_to].append(_item)
-                    zones[_to] = sorted(
-                        zones.get(_to, []),
-                        key=lambda x: (-x.get("sort_score", 0.0), -float(x.get("fr", 0.0) or 0.0), _fmt_line(x.get("line")))
-                    )
-                    return True
-                except Exception:
-                    return False
-
-            _all_zone_count = sum(len(zones.get(_z, []) or []) for _z in _zone_names)
-            if _all_zone_count >= 3:
-                # 逆流域が空なら、旧逆流タグを持つ渦域ラインを最優先で逆流域へ戻す。
-                if not zones.get("逆流域"):
-                    if not _move_one_zone("渦域", "逆流域", "旧逆流"):
-                        _move_one_zone("順流域", "逆流域", "旧逆流")
-
-                # 渦域が空なら、旧渦タグを持つ逆流域ラインを最優先で渦域へ戻す。
-                if not zones.get("渦域"):
-                    if not _move_one_zone("逆流域", "渦域", "旧渦"):
-                        _move_one_zone("順流域", "渦域", "旧渦")
-
-                # 順流域が空になる異常時だけ、最大FRのラインを順流域へ補完する。
-                if not zones.get("順流域"):
-                    _donors = [z for z in ("渦域", "逆流域") if len(zones.get(z, []) or []) > 1]
-                    if _donors:
-                        _from = max(_donors, key=lambda z: max(float(x.get("fr", 0.0) or 0.0) for x in zones.get(z, []) or []))
-                        _items = list(zones.get(_from, []) or [])
-                        _idx = max(range(len(_items)), key=lambda i: float(_items[i].get("fr", 0.0) or 0.0))
-                        _item = _items.pop(_idx)
-                        zones[_from] = _items
-                        zones["順流域"] = [_item]
-
-            # 3枠確定後のFR比率を保存。以後の流れ想定比率はこの表示分類を優先する。
-            _zone_fr = {
-                "順流": sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("順流域", []) or [])),
-                "渦":   sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("渦域", []) or [])),
-                "逆流": sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("逆流域", []) or [])),
+        _zone_total = sum(_zone_fr.values())
+        if _zone_total > 0.0:
+            globals()["FLOW_RATIO_MAP_BY_ZONE"] = {
+                "順流": _zone_fr["順流"] / _zone_total,
+                "逆流": _zone_fr["逆流"] / _zone_total,
+                "渦": _zone_fr["渦"] / _zone_total,
             }
-            _zone_total = sum(_zone_fr.values())
-            if _zone_total > 0:
-                globals()["FLOW_RATIO_MAP_BY_ZONE"] = {
-                    "順流": _zone_fr["順流"] / _zone_total,
-                    "逆流": _zone_fr["逆流"] / _zone_total,
-                    "渦": _zone_fr["渦"] / _zone_total,
-                }
-        except Exception:
-            pass
-
-
-        # =====================================================
-        # v265: 各流れは代表1ラインだけ。余剰は「その他（3列目候補）」へ。
-        # ・その他は流れ比率・比率順位へ加算しない
-        # ・KO隊列では「その他」として末尾へ残し、3列目補強候補には使える
-        # =====================================================
-        _other_line_items = []
-        try:
-            zones, _other_line_items = _v265_compact_line_zone_representatives(
-                zones,
-                fmt_line=_fmt_line,
-            )
-
-            _zone_fr = {
-                "順流": sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("順流域", []) or [])),
-                "渦":   sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("渦域", []) or [])),
-                "逆流": sum(float(x.get("fr", 0.0) or 0.0) for x in (zones.get("逆流域", []) or [])),
+        else:
+            globals()["FLOW_RATIO_MAP_BY_ZONE"] = {
+                "順流": 1.0 / 3.0,
+                "逆流": 1.0 / 3.0,
+                "渦": 1.0 / 3.0,
             }
-            _zone_total = sum(_zone_fr.values())
-            if _zone_total > 0:
-                globals()["FLOW_RATIO_MAP_BY_ZONE"] = {
-                    "順流": _zone_fr["順流"] / _zone_total,
-                    "逆流": _zone_fr["逆流"] / _zone_total,
-                    "渦": _zone_fr["渦"] / _zone_total,
-                }
 
-            globals()["OTHER_LINE_ITEMS_FOR_THIRD"] = [
-                {
-                    "line": list(item.get("line", []) or []),
-                    "fr": float(item.get("fr", 0.0) or 0.0),
-                    "origin_zone": str(item.get("origin_zone", "") or ""),
-                    "tags": list(item.get("tags", []) or []),
-                }
-                for item in (_other_line_items or [])
-            ]
-        except Exception:
-            _other_line_items = []
-            globals()["OTHER_LINE_ITEMS_FOR_THIRD"] = []
+        globals()["OTHER_LINE_ITEMS_FOR_THIRD"] = [
+            {
+                "line": list(item.get("line", []) or []),
+                "fr": float(item.get("fr", 0.0) or 0.0),
+                "origin_zone": str(item.get("origin_zone", "") or ""),
+                "tags": list(item.get("tags", []) or []),
+            }
+            for item in (_other_line_items or [])
+        ]
 
-        # KO隊列用：ラインごとの新ゾーン分類を保存
         _LINE_ZONE_MAP = {}
-
         _zone_to_short = {
             "順流域": "順流",
             "渦域": "渦",
             "逆流域": "逆流",
         }
-
         for zone_name, items in zones.items():
             short_zone = _zone_to_short.get(zone_name, "その他")
-            for item in items:
-                try:
-                   key = "".join(ch for ch in str(item["line"]) if ch.isdigit())
-                   if key:
-                       _LINE_ZONE_MAP[key] = short_zone
-                except Exception:
-                   pass
-
-        # 代表外ラインは旧FR/VTX/Uの保険判定へ戻さず、明示的に「その他」とする。
-        for item in (_other_line_items or []):
-            try:
-                key = "".join(ch for ch in str(item.get("line", "")) if ch.isdigit())
+            for item in (items or []):
+                key = "".join(str(int(x)) for x in (item.get("line", []) or []))
                 if key:
-                    _LINE_ZONE_MAP[key] = "その他"
-            except Exception:
-                pass
+                    _LINE_ZONE_MAP[key] = short_zone
+
+        for item in (_other_line_items or []):
+            key = "".join(str(int(x)) for x in (item.get("line", []) or []))
+            if key:
+                _LINE_ZONE_MAP[key] = "その他"
 
         globals()["LINE_ZONE_MAP"] = _LINE_ZONE_MAP
 
-        # st.write("DEBUG LINE_ZONE_MAP", _LINE_ZONE_MAP)
-
         note_sections.append("【ライン評価グループ】")
-
-        for zone_name in ["順流域", "渦域", "逆流域"]:
-            items = zones.get(zone_name, [])
+        for zone_name in ("順流域", "渦域", "逆流域"):
+            items = list(zones.get(zone_name, []) or [])
             if not items:
                 note_sections.append(f"{zone_name}：—")
                 continue
             parts = []
             for item in items:
-                tag_txt = ""
-                if item["tags"]:
-                    tag_txt = "・" + "・".join(item["tags"])
-
+                tag_txt = ("・" + "・".join(item.get("tags", []) or [])) if item.get("tags") else ""
                 parts.append(
-                    f"{_fmt_line(item['line'])}［FR={item['fr']:.3f}{tag_txt}］"
+                    f"{_fmt_line(item.get('line', []))}［FR={float(item.get('fr', 0.0) or 0.0):.3f}{tag_txt}］"
                 )
-
             note_sections.append(f"{zone_name}：" + "／".join(parts))
 
         if _other_line_items:
@@ -5163,8 +5008,14 @@ try:
             note_sections.append("その他（3列目候補）：" + "／".join(other_parts))
         else:
             note_sections.append("その他（3列目候補）：—")
-
     else:
+        globals()["FLOW_RATIO_MAP_BY_ZONE"] = {
+            "順流": 1.0 / 3.0,
+            "逆流": 1.0 / 3.0,
+            "渦": 1.0 / 3.0,
+        }
+        globals()["OTHER_LINE_ITEMS_FOR_THIRD"] = []
+        globals()["LINE_ZONE_MAP"] = {}
         note_sections.append("【ライン評価グループ】")
         note_sections.append("順流域：—")
         note_sections.append("渦域：—")
@@ -8785,6 +8636,7 @@ def _v281_build_fixed_flow_plan(
     ko_map,
     line_def_obj,
     line_strength_map=None,
+    weighted_hit_map=None,
 ):
     """
     1) 順流・渦・逆流の各着順予想1位を流れ選定候補にする。
@@ -8794,7 +8646,7 @@ def _v281_build_fixed_flow_plan(
     3) 2車換算勢力が最上位の流れを採用する。
     4) 採用流れの1位・2位から、AI評価が低い方を最終軸にする。
     5) 最終軸の同ライン車を軸以外すべて先にヒモへ確保する。
-    6) 残枠を採用流れの着順予想上位から補充する。
+    6) 残枠を、流れ比率を反映した流れ加重的中単騎評価の上位から補充する。
     7) 三連複1車軸－4車－4車の6点を生成する。
     """
     ratios = _v281_normalize_ratio_map(flow_ratio_map)
@@ -8953,17 +8805,40 @@ def _v281_build_fixed_flow_plan(
         if car != axis and car not in himo:
             himo.append(int(car))
 
-    flow_added_himo = []
-    for car in adopted_sequence:
+    # v283：残枠は採用流れ単独の着順ではなく、三流れ比率を統合した
+    # 「流れ加重的中単騎評価」の上位から補充する。
+    weighted_scores = {}
+    for raw_car, raw_value in (weighted_hit_map or {}).items():
+        try:
+            car = int(raw_car)
+            value = float(raw_value or 0.0)
+            if car <= 0 or not math.isfinite(value):
+                continue
+            weighted_scores[car] = max(value, float(weighted_scores.get(car, -math.inf)))
+        except Exception:
+            continue
+
+    adopted_rank = {int(car): idx for idx, car in enumerate(adopted_sequence)}
+    weighted_order = sorted(
+        weighted_scores,
+        key=lambda car: (
+            -float(weighted_scores.get(car, 0.0) or 0.0),
+            int(adopted_rank.get(int(car), 999)),
+            -float(_v281_map_float(ko_map, int(car), 0.0)),
+            int(car),
+        ),
+    )
+
+    weighted_added_himo = []
+    for car in weighted_order:
         car = int(car)
         if car == axis or car in himo:
             continue
         himo.append(car)
-        flow_added_himo.append(car)
+        weighted_added_himo.append(car)
         if len(himo) >= 4:
             break
 
-    # 同ライン必須＋採用流れ上位で4車を作る。不足時は別流れから補完しない。
     if len(himo) < 4:
         return {
             **base_result,
@@ -8975,12 +8850,13 @@ def _v281_build_fixed_flow_plan(
             "axis_flow_rank": axis_flow_rank,
             "axis_line": tuple(axis_line),
             "same_line_himo": tuple(same_line_himo),
-            "flow_added_himo": tuple(flow_added_himo),
+            "weighted_added_himo": tuple(weighted_added_himo),
+            "flow_added_himo": tuple(weighted_added_himo),
             "himo": tuple(himo),
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複1車軸－4車－4車",
-            "ticket_reason": f"同ライン必須車と{adopted_style}着順予想上位を合わせてもヒモが4車未満のため生成不可",
+            "ticket_reason": "同ライン必須車と流れ加重的中単騎評価上位を合わせてもヒモが4車未満のため生成不可",
         }
 
     tickets = []
@@ -9003,11 +8879,11 @@ def _v281_build_fixed_flow_plan(
     else:
         line_reason = "軸は単騎のため自ライン必須車なし"
 
-    added_text = "・".join(str(x) for x in flow_added_himo) if flow_added_himo else "なし"
+    added_text = "・".join(str(x) for x in weighted_added_himo) if weighted_added_himo else "なし"
     reason = (
         f"各流れ勢力［{candidate_text}］から2車換算スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
         f"評価軸候補［{axis_pair_text}］のうちAI評価が低い{axis}を最終軸に選択。"
-        f"{line_reason}し、{adopted_style}着順予想上位から［{added_text}］を補充"
+        f"{line_reason}し、流れ比率加重的中単騎評価上位から［{added_text}］を補充"
     )
 
     return {
@@ -9020,7 +8896,8 @@ def _v281_build_fixed_flow_plan(
         "axis_flow_rank": axis_flow_rank,
         "axis_line": tuple(axis_line),
         "same_line_himo": tuple(same_line_himo),
-        "flow_added_himo": tuple(flow_added_himo),
+        "weighted_added_himo": tuple(weighted_added_himo),
+        "flow_added_himo": tuple(weighted_added_himo),
         "himo": tuple(himo[:4]),
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
@@ -11144,8 +11021,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 _win_top4 = tuple()
                 _win_confidence_action = "判定なし"
 
-            # v282：各流れの代表ライン／単騎を2車換算し、勢力最上位の流れを採用する。
-            # 採用流れ1・2位のAI低評価側を軸にし、最終軸の同ライン車を必須保護する。
+            # v283：2車換算勢力上位3組だけで三流れを構成し、勢力最上位の流れを採用する。
+            # 採用流れ1・2位のAI低評価側を軸にし、同ライン必須＋流れ加重的中単騎上位をヒモにする。
             _v281_fixed_plan = _v281_build_fixed_flow_plan(
                 globals().get("STYLE_SEQ_MAP", {}) or {},
                 _flow_ratio_map_for_trio(),
@@ -11153,6 +11030,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {},
                 globals().get("line_def", {}) or {},
                 globals().get("LINE_TWO_CAR_STRENGTH_MAP", {}) or {},
+                _weighted_car_hit_map or {},
             )
 
             def _fmt_trio_summary_rows(_rows, include_santan_ref=True):
@@ -11522,7 +11400,7 @@ try:
         market_mark_map,
     )
 
-    # v282：2車換算勢力・同ライン保護・AI妙味軸の三連複6点を展開評価の直後へ表示する。
+    # v283：勢力上位3流れ・同ライン保護・流れ加重的中単騎ヒモの三連複6点を展開評価の直後へ表示する。
     _current_summary = f"{_summary_core}\n"
 
     _m_tenkai = re.search(r"^展開評価：[^\n]*$", note_text, flags=re.MULTILINE)
@@ -11624,7 +11502,7 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         m_jundo = re.search(r"・順当度：([^［\n]+)", txt)
         jundo = m_jundo.group(1).strip() if m_jundo else "未判定"
 
-        line1 = "・固定型：同ライン保護・AI低評価軸の三連複1車軸4車流し・6点。"
+        line1 = "・固定型：同ライン保護・AI低評価軸・加重単騎ヒモの三連複1車軸4車流し・6点。"
         if axis != "未判定" and axis_style != "未判定":
             line2 = f"・最終軸は{axis}、採用流れは{axis_style}。"
         else:
