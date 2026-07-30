@@ -1,4 +1,12 @@
 # -*- coding: utf-8 -*-
+# v282（ライン2車換算・単騎2倍修正版）:
+# ・ライン勢力は、ライン内KO使用スコア上位2車の合計で算出する。
+# ・単騎勢力は、本人のKO使用スコアを2倍し、ラインと同じ2車換算で比較する。
+# ・ライン評価グループと流れ想定比率は、この2車換算勢力から再構築する。
+# ・採用流れは、各流れ1着候補の個人KO比較ではなく、その候補が属するライン／単騎の2車換算勢力で決める。
+# ・採用流れ1・2位のAI低評価側を最終軸にする処理と、最終軸の同ライン全車必須保護は維持する。
+# ・券種は三連複1車軸－4車－4車の6点固定を維持する。
+# ・既存の総合加重単騎評価、加重2車複・3連複評価表、ライン評価、KO、三流れ着順予想、短評は削除・折り畳み・置換しない。
 # v281（同ライン保護・AI妙味軸修正版）:
 # ・券種は三連複1車軸－4車－4車の6点固定を維持する。
 # ・順流／渦／逆流それぞれの着順予想1位を流れ選定候補として抽出する。
@@ -3862,6 +3870,61 @@ def _t369_line_core_strength(
     return weighted_sum / weight_total if weight_total > 0.0 else 0.0
 
 
+
+def _t369_two_car_equivalent_strength(
+    mem,
+    scores_map,
+    default_score: float = 0.0,
+) -> float:
+    """ライン／単騎を同じ2車換算で比較する勢力値。
+
+    ・2車以上のライン：ライン内スコア上位2車の合計
+    ・単騎：本人スコア×2
+    ・3番手以降はライン人数加点に使わない
+    """
+    members = []
+    for value in (mem or []):
+        try:
+            car = int(value)
+        except Exception:
+            continue
+        if car not in members:
+            members.append(car)
+
+    if not members:
+        return 0.0
+
+    def _score(car: int) -> float:
+        for key in (car, str(car)):
+            try:
+                if key in (scores_map or {}):
+                    value = float((scores_map or {}).get(key, default_score) or default_score)
+                    return value if math.isfinite(value) else float(default_score)
+            except Exception:
+                continue
+        return float(default_score)
+
+    values = sorted((_score(car) for car in members), reverse=True)
+    if len(values) == 1:
+        return float(values[0]) * 2.0
+    return float(values[0]) + float(values[1])
+
+
+def _build_line_two_car_strength_map(lines, scores_map):
+    """ラインキー（例: '127'）→2車換算勢力の辞書を作る。"""
+    out = {}
+    for line in _normalize_lines(lines):
+        key = "".join(str(int(car)) for car in line)
+        if not key:
+            continue
+        out[key] = _t369_two_car_equivalent_strength(
+            line,
+            scores_map,
+            default_score=0.0,
+        )
+    return out
+
+
 # ---------- 流れ指標（簡潔・安定版） ----------
 # ---------- 流れ指標（簡潔・安定版） ----------
 def compute_flow_indicators(lines_str, marks, scores):
@@ -4097,37 +4160,28 @@ def _normalize_lines(_lines):
         out.append([int(ch) for ch in s])
     return out
 
-# --- line_fr_map が無い/空でも出せる保険（本体は既存 _build_line_fr_map を優先） ---
-if "_build_line_fr_map" not in globals():
-    def _build_line_fr_map(lines, scores_map, FRv,
-                           SINGLETON_FR_SCALE=0.70,
-                           MIN_LINE_SHARE=0.00,
-                           MAX_SINGLETON_SHARE=0.45):
-        lines = _normalize_lines(lines)
-        scores_map = {int(k): float(v) for k, v in (scores_map or {}).items() if str(k).strip().isdigit()}
-        FRv = float(FRv or 0.0)
-        if not lines:
-            return {}
+# --- v282：ラインFRは「ライン上位2車合計／単騎2倍」の2車換算勢力で作る ---
+def _build_line_fr_map_v282(lines, scores_map, FRv):
+    normalized_lines = _normalize_lines(lines)
+    FRv = float(FRv or 0.0)
+    if not normalized_lines:
+        return {}
 
-        line_sums = []
-        for ln in lines:
-            # v259: 2車/3車/4車の人数差を直接加点せず、流れ判定と同じ正規化強度を使う
-            s = _t369_line_core_strength(
-                ln,
-                scores_map,
-                singleton_scale=float(SINGLETON_FR_SCALE),
-                default_score=0.0,
-            )
-            line_sums.append((ln, s))
+    strength_map = _build_line_two_car_strength_map(normalized_lines, scores_map)
+    total = sum(float(value or 0.0) for value in strength_map.values())
+    sum_target = FRv if FRv > 0.0 else 1.0
 
-        total = sum(s for _, s in line_sums)
-        sum_target = FRv if FRv > 0.0 else 1.0
+    if total <= 0.0:
+        equal_share = sum_target / len(normalized_lines)
+        return {
+            "".join(map(str, line)): equal_share
+            for line in normalized_lines
+        }
 
-        if total <= 0.0:
-            eq = 1.0 / len(lines)
-            return {"".join(map(str, ln)): eq for ln, _ in line_sums}
-
-        return {"".join(map(str, ln)): sum_target * (s / total) for ln, s in line_sums}
+    return {
+        key: sum_target * (float(value or 0.0) / total)
+        for key, value in strength_map.items()
+    }
 
 # ---------- 3) 安全ラッパ（券種なし：flowだけ） ----------
 def _safe_flow(lines_str, marks, scores):
@@ -4632,41 +4686,26 @@ try:
     globals()["score_map"] = score_map  # 後段参照用に保持
 
     # =========================================================
-    # line_fr_map を確定（_lfr 未定義事故対策）
+    # v282：ライン／単騎を2車換算して line_fr_map を毎回再構築
+    # ・2車以上のライン＝ライン内KO使用スコア上位2車の合計
+    # ・単騎＝本人のKO使用スコア×2
     # =========================================================
-    line_fr_map = globals().get("line_fr_map")
-    need_rebuild = (not isinstance(line_fr_map, dict)) or (len(line_fr_map) == 0)
+    try:
+        line_two_car_strength_map = _build_line_two_car_strength_map(
+            all_lines,
+            score_map,
+        )
+        line_fr_map = _build_line_fr_map_v282(
+            all_lines,
+            score_map,
+            FRv if FRv > 0.0 else 1.0,
+        )
+    except Exception:
+        line_two_car_strength_map = {}
+        line_fr_map = {}
 
-    # 既存があればキー正規化（tuple/listキー → "571"）
-    if (not need_rebuild) and isinstance(line_fr_map, dict):
-        _lfm2 = {}
-        for k, v in line_fr_map.items():
-            try:
-                if isinstance(k, (list, tuple, set)):
-                    kk = "".join(str(x) for x in k if str(x).isdigit())
-                else:
-                    kk = "".join(ch for ch in str(k) if ch.isdigit())
-
-                if kk:
-                    _lfm2[kk] = float(v or 0.0)
-            except Exception:
-                continue
-
-        line_fr_map = _lfm2
-        need_rebuild = (len(line_fr_map) == 0)
-
-    # 空なら作り直し
-    if need_rebuild:
-        try:
-            line_fr_map = _build_line_fr_map(
-                all_lines,
-                score_map,
-                FRv if FRv > 0.0 else 1.0
-            )
-        except Exception:
-            line_fr_map = {}
-
-    globals()["line_fr_map"] = line_fr_map
+    globals()["LINE_TWO_CAR_STRENGTH_MAP"] = dict(line_two_car_strength_map)
+    globals()["line_fr_map"] = dict(line_fr_map)
 
     def _line_key(ln):
         try:
@@ -8739,14 +8778,24 @@ def _v281_find_axis_line(line_def_obj, axis):
     return []
 
 
-def _v281_build_fixed_flow_plan(style_seq_map, flow_ratio_map, mark_map, ko_map, line_def_obj):
+def _v281_build_fixed_flow_plan(
+    style_seq_map,
+    flow_ratio_map,
+    mark_map,
+    ko_map,
+    line_def_obj,
+    line_strength_map=None,
+):
     """
     1) 順流・渦・逆流の各着順予想1位を流れ選定候補にする。
-    2) 1位候補のKO使用スコア最上位車が属する流れを採用する。
-    3) 採用流れの1位・2位から、AI評価が低い方を最終軸にする。
-    4) 最終軸の同ライン車を軸以外すべて先にヒモへ確保する。
-    5) 残枠を採用流れの着順予想上位から補充する。
-    6) 三連複1車軸－4車－4車の6点を生成する。
+    2) 各候補が属するライン／単騎を2車換算する。
+       ・2車以上のライン＝ライン内KO使用スコア上位2車の合計
+       ・単騎＝本人のKO使用スコア×2
+    3) 2車換算勢力が最上位の流れを採用する。
+    4) 採用流れの1位・2位から、AI評価が低い方を最終軸にする。
+    5) 最終軸の同ライン車を軸以外すべて先にヒモへ確保する。
+    6) 残枠を採用流れの着順予想上位から補充する。
+    7) 三連複1車軸－4車－4車の6点を生成する。
     """
     ratios = _v281_normalize_ratio_map(flow_ratio_map)
     seq_map = {
@@ -8754,75 +8803,96 @@ def _v281_build_fixed_flow_plan(style_seq_map, flow_ratio_map, mark_map, ko_map,
         for style in _V281_STYLES
     }
 
-    flow_candidates = []
-    candidate_by_car = {}
-    first_seen = 0
+    def _line_key(line):
+        return "".join(str(int(car)) for car in (line or []))
 
+    def _line_label(line):
+        members = [int(car) for car in (line or [])]
+        if not members:
+            return "—"
+        digits = "".join(str(car) for car in members)
+        return f"単騎{digits}" if len(members) == 1 else digits
+
+    def _candidate_line(car):
+        line = _v281_find_axis_line(line_def_obj, car)
+        return line if line else [int(car)]
+
+    def _candidate_strength(line):
+        key = _line_key(line)
+        try:
+            if key and key in (line_strength_map or {}):
+                value = float((line_strength_map or {}).get(key, 0.0) or 0.0)
+                if math.isfinite(value):
+                    return value
+        except Exception:
+            pass
+        return _t369_two_car_equivalent_strength(
+            line,
+            ko_map,
+            default_score=0.0,
+        )
+
+    flow_candidates = []
     for style in _V281_STYLES:
         seq = list(seq_map.get(style, []) or [])
         if not seq:
             continue
         car = int(seq[0])
-        score = _v281_map_float(ko_map, car, 0.0)
-        mark = _v281_mark_for_car(mark_map, car)
+        candidate_line = _candidate_line(car)
         rec = {
             "style": style,
             "car": car,
-            "score": score,
+            "score": _v281_map_float(ko_map, car, 0.0),
+            "strength": float(_candidate_strength(candidate_line)),
+            "line": tuple(candidate_line),
+            "line_label": _line_label(candidate_line),
             "ratio": float(ratios.get(style, 0.0) or 0.0),
-            "mark": mark,
+            "mark": _v281_mark_for_car(mark_map, car),
             "sequence": tuple(seq),
         }
         flow_candidates.append(rec)
 
-        if car not in candidate_by_car:
-            candidate_by_car[car] = {
-                "car": car,
-                "score": score,
-                "mark": mark,
-                "styles": [],
-                "first_seen": first_seen,
-            }
-            first_seen += 1
-        candidate_by_car[car]["styles"].append(style)
-
-    if not candidate_by_car:
+    if not flow_candidates:
         return None
 
-    # KO使用スコアは「最終軸」ではなく「採用流れ」の選定にだけ使う。
-    candidate_rows = list(candidate_by_car.values())
-    candidate_rows.sort(key=lambda row: (
-        -float(row.get("score", 0.0) or 0.0),
-        int(row.get("first_seen", 999) or 999),
-        int(row.get("car", 99) or 99),
-    ))
+    # 採用流れは個人KOではなく、ライン／単騎の2車換算勢力で決める。
+    # 完全同値時だけ、流れ想定比率→順流・渦・逆流の固定順→車番で決める。
+    candidate_rows = sorted(
+        flow_candidates,
+        key=lambda row: (
+            -float(row.get("strength", 0.0) or 0.0),
+            -float(row.get("ratio", 0.0) or 0.0),
+            int(_V281_STYLE_ORDER.get(str(row.get("style", "")), 99)),
+            int(row.get("car", 99) or 99),
+        ),
+    )
     flow_selector_row = dict(candidate_rows[0])
     flow_selector_car = int(flow_selector_row.get("car"))
     flow_selector_score = float(flow_selector_row.get("score", 0.0) or 0.0)
-
-    adopted_styles = [
-        style for style in (flow_selector_row.get("styles", []) or [])
-        if style in _V281_STYLE_ORDER
-    ]
-    if not adopted_styles:
-        return None
-    adopted_styles.sort(key=lambda style: (
-        -float(ratios.get(style, 0.0) or 0.0),
-        int(_V281_STYLE_ORDER.get(style, 99)),
-    ))
-    adopted_style = str(adopted_styles[0])
+    flow_selector_strength = float(flow_selector_row.get("strength", 0.0) or 0.0)
+    flow_selector_line = tuple(flow_selector_row.get("line", tuple()) or tuple())
+    flow_selector_line_label = str(flow_selector_row.get("line_label", "—") or "—")
+    adopted_style = str(flow_selector_row.get("style", ""))
+    adopted_styles = (adopted_style,)
     adopted_sequence = list(seq_map.get(adopted_style, []) or [])
+
+    base_result = {
+        "flow_candidates": tuple(flow_candidates),
+        "flow_selector_candidates": tuple(candidate_rows),
+        "flow_selector_car": flow_selector_car,
+        "flow_selector_score": flow_selector_score,
+        "flow_selector_strength": flow_selector_strength,
+        "flow_selector_line": flow_selector_line,
+        "flow_selector_line_label": flow_selector_line_label,
+        "adopted_style": adopted_style,
+        "adopted_styles": adopted_styles,
+        "adopted_sequence": tuple(adopted_sequence),
+    }
 
     if len(adopted_sequence) < 2:
         return {
+            **base_result,
             "status": "insufficient_axis_candidates",
-            "flow_candidates": tuple(flow_candidates),
-            "flow_selector_candidates": tuple(candidate_rows),
-            "flow_selector_car": flow_selector_car,
-            "flow_selector_score": flow_selector_score,
-            "adopted_style": adopted_style,
-            "adopted_styles": tuple(adopted_styles),
-            "adopted_sequence": tuple(adopted_sequence),
             "axis_pair": tuple(),
             "axis": 0,
             "axis_score": 0.0,
@@ -8849,12 +8919,8 @@ def _v281_build_fixed_flow_plan(style_seq_map, flow_ratio_map, mark_map, ko_map,
             "score": _v281_map_float(ko_map, car, 0.0),
         })
 
-    # AI評価が低い方を採用。通常は印が重ならないため、この比較だけで一意に決まる。
-    # 無印は×より低い評価として扱う。万一同評価なら採用流れ2位を優先する。
-    axis_row = max(axis_pair, key=lambda row: (
-        int(row.get("ai_rank", 4)),
-        int(row.get("rank", 0) or 0),
-    ))
+    # AI評価が低い方を採用。入力仕様上、◎／〇／△／×は重複しない。
+    axis_row = max(axis_pair, key=lambda row: int(row.get("ai_rank", 4)))
     axis = int(axis_row.get("car"))
     axis_score = float(axis_row.get("score", 0.0) or 0.0)
     axis_mark = str(axis_row.get("mark", "") or "")
@@ -8866,14 +8932,8 @@ def _v281_build_fixed_flow_plan(style_seq_map, flow_ratio_map, mark_map, ko_map,
     # 同ライン車は全車必須。ヒモ4枠を超える場合は黙って切らず生成停止する。
     if len(same_line_himo) > 4:
         return {
+            **base_result,
             "status": "too_many_same_line_himo",
-            "flow_candidates": tuple(flow_candidates),
-            "flow_selector_candidates": tuple(candidate_rows),
-            "flow_selector_car": flow_selector_car,
-            "flow_selector_score": flow_selector_score,
-            "adopted_style": adopted_style,
-            "adopted_styles": tuple(adopted_styles),
-            "adopted_sequence": tuple(adopted_sequence),
             "axis_pair": tuple(axis_pair),
             "axis": axis,
             "axis_score": axis_score,
@@ -8906,14 +8966,8 @@ def _v281_build_fixed_flow_plan(style_seq_map, flow_ratio_map, mark_map, ko_map,
     # 同ライン必須＋採用流れ上位で4車を作る。不足時は別流れから補完しない。
     if len(himo) < 4:
         return {
+            **base_result,
             "status": "insufficient_himo",
-            "flow_candidates": tuple(flow_candidates),
-            "flow_selector_candidates": tuple(candidate_rows),
-            "flow_selector_car": flow_selector_car,
-            "flow_selector_score": flow_selector_score,
-            "adopted_style": adopted_style,
-            "adopted_styles": tuple(adopted_styles),
-            "adopted_sequence": tuple(adopted_sequence),
             "axis_pair": tuple(axis_pair),
             "axis": axis,
             "axis_score": axis_score,
@@ -8935,7 +8989,7 @@ def _v281_build_fixed_flow_plan(style_seq_map, flow_ratio_map, mark_map, ko_map,
         tickets.append("-".join(str(x) for x in trio))
 
     candidate_text = "・".join(
-        f"{rec['style']}={int(rec['car'])}（KO={float(rec['score']):.6f}）"
+        f"{rec['style']}={rec['line_label']}（2車換算={float(rec['strength']):.6f}・1着候補={int(rec['car'])}）"
         for rec in flow_candidates
     )
     axis_pair_text = "・".join(
@@ -8951,20 +9005,14 @@ def _v281_build_fixed_flow_plan(style_seq_map, flow_ratio_map, mark_map, ko_map,
 
     added_text = "・".join(str(x) for x in flow_added_himo) if flow_added_himo else "なし"
     reason = (
-        f"各流れ1着予想［{candidate_text}］からKO使用スコア最上位の{flow_selector_car}で{adopted_style}を採用。"
+        f"各流れ勢力［{candidate_text}］から2車換算スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
         f"評価軸候補［{axis_pair_text}］のうちAI評価が低い{axis}を最終軸に選択。"
         f"{line_reason}し、{adopted_style}着順予想上位から［{added_text}］を補充"
     )
 
     return {
+        **base_result,
         "status": "ok",
-        "flow_candidates": tuple(flow_candidates),
-        "flow_selector_candidates": tuple(candidate_rows),
-        "flow_selector_car": flow_selector_car,
-        "flow_selector_score": flow_selector_score,
-        "adopted_style": adopted_style,
-        "adopted_styles": tuple(adopted_styles),
-        "adopted_sequence": tuple(adopted_sequence),
         "axis_pair": tuple(axis_pair),
         "axis": axis,
         "axis_score": axis_score,
@@ -8991,14 +9039,19 @@ def _v281_format_fixed_flow_block(plan):
             style = str(rec.get("style", ""))
             car = int(rec.get("car"))
             score = float(rec.get("score", 0.0) or 0.0)
+            strength = float(rec.get("strength", 0.0) or 0.0)
+            line_label = str(rec.get("line_label", "—") or "—")
             mark = str(rec.get("mark", "") or "無印")
-            flow_candidate_parts.append(f"{style}={car}（KO={score:.6f}・AI{mark}）")
+            flow_candidate_parts.append(
+                f"{style}={car}（勢力={line_label}:{strength:.6f}・KO={score:.6f}・AI{mark}）"
+            )
         except Exception:
             pass
 
     adopted_style = str(plan.get("adopted_style", "") or "未判定")
     flow_selector_car = int(plan.get("flow_selector_car", 0) or 0)
-    flow_selector_score = float(plan.get("flow_selector_score", 0.0) or 0.0)
+    flow_selector_strength = float(plan.get("flow_selector_strength", 0.0) or 0.0)
+    flow_selector_line_label = str(plan.get("flow_selector_line_label", "—") or "—")
 
     axis_pair_parts = []
     for rec in (plan.get("axis_pair", tuple()) or tuple()):
@@ -9027,7 +9080,10 @@ def _v281_format_fixed_flow_block(plan):
 
     out = [
         "【流れ選定候補】" + (" ／ ".join(flow_candidate_parts) if flow_candidate_parts else "生成不可"),
-        f"【採用流れ】{adopted_style}（1着候補={flow_selector_car}・KO使用スコア={flow_selector_score:.6f}）",
+        (
+            f"【採用流れ】{adopted_style}（勢力={flow_selector_line_label}:"
+            f"{flow_selector_strength:.6f}・1着候補={flow_selector_car}）"
+        ),
         "【評価軸候補】" + (" ／ ".join(axis_pair_parts) if axis_pair_parts else "生成不可"),
         f"【最終軸】{axis}（{adopted_style}・{axis_flow_rank}位・AI{axis_mark}・KO使用スコア={axis_score:.6f}）",
         f"【自ライン優先】{same_line_display}",
@@ -11088,14 +11144,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 _win_top4 = tuple()
                 _win_confidence_action = "判定なし"
 
-            # v281：各流れ1位候補で採用流れを選び、採用流れ1・2位のAI低評価側を軸にする。
-            # 最終軸の同ライン車を必須保護し、残枠を採用流れ上位から補充する。
+            # v282：各流れの代表ライン／単騎を2車換算し、勢力最上位の流れを採用する。
+            # 採用流れ1・2位のAI低評価側を軸にし、最終軸の同ライン車を必須保護する。
             _v281_fixed_plan = _v281_build_fixed_flow_plan(
                 globals().get("STYLE_SEQ_MAP", {}) or {},
                 _flow_ratio_map_for_trio(),
                 mark_map or {},
                 globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {},
                 globals().get("line_def", {}) or {},
+                globals().get("LINE_TWO_CAR_STRENGTH_MAP", {}) or {},
             )
 
             def _fmt_trio_summary_rows(_rows, include_santan_ref=True):
@@ -11465,7 +11522,7 @@ try:
         market_mark_map,
     )
 
-    # v281：全体妙味とA～Eを表示せず、同ライン保護・AI妙味軸の三連複6点を展開評価の直後へ表示する。
+    # v282：2車換算勢力・同ライン保護・AI妙味軸の三連複6点を展開評価の直後へ表示する。
     _current_summary = f"{_summary_core}\n"
 
     _m_tenkai = re.search(r"^展開評価：[^\n]*$", note_text, flags=re.MULTILINE)
