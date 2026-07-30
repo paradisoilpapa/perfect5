@@ -1,219 +1,30 @@
-# v270-R（根本改修完成版）: v271・v272および誤ったv270「2車複3点＋3連複4点」を撤回。本来のv270を基準版として復元する。男子の3連単非該当はv267の三流れ・三ライン分散で確定した元5車を一車も切らず、ガールズは従来の比率2位・3位流れ5車をライン分散補正したうえで、いずれも三連複12-123-12345の7点へ展開する。券種判定は「展開構造→3単参考の1・2着整合→同ライン3着候補の総合点単独1位→3車以上ライン」の順とし、混戦は非ライン主体、AI印とライン／非ラインの最終加重比較は券種・構造を上書きしない補助情報に限定する。買い目構成・採用流れ・車番の出所を一致させる。
-# v272【撤回】: 元5車を4車へ絞る「2車複＝攻め／3連複＝守り」は、本来のv270を別物へ変更したため採用しない。
-# v271【撤回】: 男子・ガールズを2車複3点＋3連複4点へ再構成する処理は採用しない。
-# v270【撤回・誤実装】: 妙味加重3車＋的中加重1車へ絞る処理は、本来のv270ではない。
-# v267: v266の比率1位完全除外を撤回。3連単非該当の男子3連複7点は、比率1位・2位・3位の三流れをすべて使用する。A=比率1位代表ライン先頭、B=比率2位代表ライン先頭、C=比率3位代表ライン先頭として、1列目は別流れ・別ライン、2列目は三流れ・三ラインの代表3車。D/Eは代表ライン後位または「その他（3列目候補）」だけから、KO使用スコアを補助順位として選び、可能な限り別ラインへ分散する。構成詳細と買い目の出所を一致させる。ガールズの既存7点、3車以上ライン限定の3連単、点数・AI信頼条件・数値閾値は変更しない。
-# v264: 3連複12-123-12345の5車選出をライン分散。1列目2車は原則として別流れかつ別ライン、2列目3車は原則として異なる3ラインの代表とし、同ライン補強は3列目側へ回す。また3連単は採用するA・Bの実ラインが3車以上の場合だけ許可し、2車ラインはAI信頼条件を満たしても3連複へ落とす。点数（3連単4点＋3連複2点／3連複7点）、流れ比率、AI印条件、既存数値閾値は変更しない。
-# v263: note上部の「三連複軸想定着内率」を廃止し、実際の最終判定に合わせて「推奨車券：3連単／3連複」を表示。買い目構成・AI信頼判定・数値ロジックはv262から変更しない。
-# v262: v261の比率2位・3位流れ選別を継承し、買い目を3連系へ統合。3連単該当時はAB-ABC-ABCの4点＋A-B-DEの3連複2点。3連単非該当・ガールズは比率1位を軸へ再利用せず、比率2位・3位流れから選んだ5車を12-123-12345の3連複7点へ展開。AI信頼判定・3連単該当条件・ライン強度・数値閾値は変更しない。Cは直後同ライン車を優先し、該当しない場合だけ既存3着候補1位を使う。
-# v259: v258ベース。流れ判定のライン強度を車番スコアの単純合計から、ライン位置係数で正規化した加重平均へ変更。先頭1.00・番手0.72・3番手以降0.55（既存の位置係数）を合計1になるよう正規化し、ライン人数が多いだけで強くならないようにした。単騎は既存の0.70係数を維持。この同一強度を流れ波形、順流/逆流ライン選定、ライン別FR配分へ一貫適用。AI信頼判定・ライン骨格保護・券種判定はv258を維持。
-# v258: v257ベース。AI印は券種の信頼度ゲートとして使うが、3連単・3連複の骨格は必ず既存のライン主体候補A-B-CDEから作る。流れ上位2車や非ライン候補から新しい3連系を生成しない。AI◎〇完全一致、またはA・BがAI上位4車内・最低1車が◎〇・ライン形成4車中3車以上一致なら、ライン人数にかかわらず3連単AB-AB-CDへ昇格/維持。A・BがAI上位4車内だが3連単条件未達ならライン3連複A-B-CDE、A・Bの支持が弱い場合は2車複。非ライン4車BOXは廃止。ガールズ2車複とv255の直後同ライン車3着保護は維持。
-# v255: v254ベース。3連単AB-AB-CDのライン保護を「残り同ライン車のどれか1車」から、1・2着候補の直後に続く最優先同ライン車1車の固定保護へ変更。例：ライン1234で1・2着候補が12なら3を必ず3着候補に残し、残る1枠だけを4以降の同ライン車と他ライン候補の既存加重評価で比較する。新しい数値閾値は追加せず、その他の構成・券種判定はv254を維持。
-# v254: v253ベース。3連単AB-AB-CDの3着2車を選ぶ際、ライン三連複3点の候補内に軸ラインの残り同ライン車がいる場合は最低1車を必ず保護する。上位2車に同ライン車が含まれなければ、2番目の3着候補を候補内最高位の同ライン車へ差し替える。例：松阪6R 37-37-51→37-37-54。その他の構成・券種判定はv253を維持。
-# v252: v251ベース。推奨券種が2車複なら従来どおり2車複3点。ライン主体で3連複候補となった場合は、採用3点の3単参考を確認し、3点すべての1着・2着が同一なら同じ3点を3連単A→B→CDEとして推奨。1着または2着が割れる場合は3連複A-B-CDEを維持。新しい数値閾値・実オッズ判定は追加しない。
-# v251: v250ベース。実オッズを使わない事前券種判定を追加。3連複想定構成がライン主体なら3連複、非ライン主体なら2車複を推奨し、判定理由を表示。買い目サマリーは推奨券種を先に「推奨」、他方を「参考」として残す。未合意の数値閾値・実オッズ推定は追加しない。
-# v250: v249ベース。最終推奨流れと軸を、表示済みの流れ想定比率の単独1位に統一。KO上位3車の流域多数決による後段上書き（3分割時の逆流固定を含む）を廃止。比率が同率の場合だけ直前までの推奨流れを維持し、比率単独1位なら順流・逆流・渦のいずれでもその流れの評価1位を軸にする。3連複構成判定v249、2車複v247仕様は維持。
-# v249: v248ベース。3連複構成判定を修正。比率単独1位の流れの着順予想上位3車に、軸Aと直近ライン相手Bが共存する場合は、展開評価・開催日にかかわらずライン主体A-B-CDEを採用。流れ予想が取得できない場合のみv248の優位／初日互角判定を補助的に使用。単騎軸・軸流域非首位・上位3車に直近ライン相手不在は非ライン主体。2車複v247仕様は維持。
-# v248: v247ベース。3連複は買い目前に「ライン主体／非ライン主体」を自動判定して両候補を整列表示し、採用側だけ3点購入。判定は既存の展開評価と流れ想定比率を使用し、優位かつ軸流域が比率単独1位ならライン主体、互角は初日のみ同条件でライン主体、混戦・軸流域非首位・単騎軸は非ライン主体。2車複v247仕様は維持。
-# v247: v245ベース。2車複は軸の同ライン相手のうち妙味点基準以上を妙味点順で先行採用し、3点未満を未採用の他ラインから総合点順で補完。基準未満の同ライン車は補完で復活させない。妙味点基準はサイドバーで設定。3連複はv245のライン優先型を維持。
-# v245: v244ベース。軸は最適流れの評価1位、2車複は軸絡み総合点上位3点。3連複はライン優先で軸A-直近ライン相手B-3車目候補CDEの3点とし、穴・想定外候補は3車目以降へ配置。点差閾値による入替は廃止。単騎軸のみA-BCD-BCD。
-# v244: v243ベース。3連複ライン補正を「同ライン車が1台入れば終了」から、未採用の同ライン相手を全員個別審査へ修正。各同ライン相手について、現在採用中の非ライン最下位車との総合点差が0.20pt以内なら入替え、2車複は純粋な上位3点を維持。
-# v241: v240ベース。3連複を全35通りで加重評価し、総合点内部値上位3点を買い目サマリーへ表示。3単参考順も併記。
-# v229: v228ベース。総合加重単騎評価の直下に、加重2車複全21通り評価表を表示。
-# v228: v227ベース。note上部と本文整理から意味不明な「コピー用：xxxx」を完全非表示化。
-# v237: v236ベース。加重2車複評価表を旧表に近い全角スペース整形へ戻す。
-# v225: v224ベース。2車複本線は◎軸流しではなく、流れ加重的中単騎＋流れ加重妙味単騎から全21通りを再評価し、総合pt上位3点を採用。3連複は従来どおり軸A-BCD-BCDで生成。
-# v220: v219ベース。各流れの車番別平均評価（的中順単騎評価）に流れ想定比率を掛けて合算し、2車複サマリーと3連複生成の共通土台にする。
-# v221: v220の2車複サマリー改善。流れ加重単騎評価を平均ではなく合算で2車複的中期待へ反映し、本線/抑えが空になる問題を修正。
-# v220: v219をベースに、流れ加重単騎評価を3連複だけでなく2車複サマリーにも反映。
-# v211: v210をベースに、「イチオシ」を廃止し「ベスト10内重複」へ変更。各流れの総合B以上候補・総合pt上位10内で複数流れに重複した買目を表示。
-# v210: v209をベースに、2車複サマリーを固定pt足切りから「総合B以上候補内の順位割合」へ変更。本線=上位30%、抑え=上位50%以内（本線以外）。
 # -*- coding: utf-8 -*-
-# v207: v206-fixedをベースに、2車複総合ptは√(的中点×妙味点)のまま維持。本線足切りを8.5pt以上へ変更。
-# v205: 2車複サマリーのイチオシ/本線に、採用ptが最も高い流れの妙味期待ランクを併記。抑えは従来通りptのみ。
-# v203: 会場成績を的中期待/妙味期待の小幅係数へ変換。的中率→的中期待、回収率→妙味期待に反映し、苦手会場で総合B候補が自然に絞られるよう修正。
-# v202: 2車複サマリーの全体推奨9pt以上/未満を総合pt降順に並べ替え。流れ別は採用表示を消し、総合B以上候補だけ表示。
-# v201: 2車複サマリーの全体推奨を総合pt 9.0以上/9.0未満に分割し、強弱を見やすく整理。
-# v200: 冒頭サマリーを1ブロック化。「イチオシ（重複）→全体推奨→流れ別 採用/総合B以上候補」の順に整理して視認性を改善。
-# v199: 各流れの総合B以上候補を先に一覧化し、複数流れで重複する買目をイチオシ表示。その後に従来の全体推奨2車複（各流れ上位2点）を表示.
-# v197: 2ライン等で渦/逆流が同一主役ラインになる重複を禁止。実ラインが存在しない流れは買目考察から除外。
-# v196: 流れ別シナリオの主役ラインを2車複妙味ptへ反映。主役ライン相手を上位保護し、順流/渦/逆流の買目差を強化。
-# v195: 順流・渦・逆流の着順予想を、各流域ラインが主役になったシナリオ補正版へ変更。逆流域空欄でも旧逆流ラインを逆流シナリオに補完。
-# v194: 買目考察の前に全体推奨2車複サマリー（全体/順流/逆流/渦）を追加。
-# v193: 買目考察を順流・逆流・渦の3流れ並列表示へ変更。会場判定good/middle/badによる買目提案を廃止し、各流れの総合B以上・総合pt上位2点を表示。
-# v191: 会場判定good系は2車複を出さず、3連複を軸A-候補4車-候補4車の6点型へ変更。middle/bad系はv190維持。
-# v198: 2ライン戦などで独立シナリオが成立しない流れは削除せず「該当なし」と表示。
-# v192: good系で2車複を出さない場合、「2車複購入候補 該当なし」ブロックを非表示化。
-# v191: good系は2車複を出さず、3連複 A-2345-2345 に一本化。
-# v190: 反映済み市場印だけで妙味計算。未反映/未入力時の妙味10.0張り付きと、session_state再取得による反映ズレを防止。
-# v189: 会場判定middle系は3連複を出さず、2車複を総合評価B以上・総合pt上位4点に切替。good/bad系はv188維持.
-# v188: 会場判定middle系は3連複のみ表示（2車複は該当なし）。2車複＋3連複の同時表示はgood系だけに限定。
-# v187: 会場判定に応じて購入表示を切替。good系は現行5点、middle系はA-下位4-下位4の三連複6点、bad系は下位4車の2車複BOX6点。
-# v186: 競り関与車同士が3連複の軸A・軸Bになる場合、的中1位ではない軸Bを3列目へ降格し、次候補を軸Bへ繰り上げる。
-# v180: 開催場決まり手補正の先頭車・番手車補正をv179比50%へ弱化。毎レース表示の買目説明注記5行を削除。
-# v179: ライン入力で単騎（1桁ライン）が入力済み車番として認識されない不具合を修正。単騎も1ラインとしてカウントし、入力確認表示を追加。
-# v178: オッズパーク等の開催場決まり手成績をサイドバーで数値入力し、1着/2着決まり手率と回数から会場決まり手補正を自動算出。雨天バイアスとは別枠で常時小幅反映.
-# v181: 3連複3列目で、軸1・軸2の同ライン残りをスコア選別より先に固定保護。開催場決まり手補正が同ライン保護へ干渉しないよう修正。
-# v180: 開催場決まり手補正の先頭・番手補正を50%へ弱化。毎レース表示の長い説明注記を削除。
-# v185: 2車複購入候補が1点だけでも3連複を生成する。候補車2車を軸にし、3列目はv181同ライン保護＋補完で常に3車。
-# v184: 3連複軸Bを、A以外の2車複候補のうち推奨流れ4位以内で妙味順単騎評価が最も高い車へ変更。
-# v177: 3連複候補の軸母集団を「総合評価2車複推奨の2車複購入候補」に変更。軸1は同候補内の的中順最上位、軸2は残りから妙味順位下位側を採用。3列目は推奨流れ側ライン優先で常に3車。
-# v176: 3連複候補の1列目・2列目で、妙味順位下位側を選ぶ際に「的中順単騎評価1位」は除外。的中順1位は3列目へ保護する。
-# v175: 3連複候補を、B以上候補内の妙味順位下位1位-下位2位を軸にし、的中順1位を3列目へ保護。残り2車はv174の推奨流れ側ライン優先ロジックで常に3車。
-# v174: 3連複3列目を「最大3車」ではなく常に3車へ固定。v173の1列目/2列目定義は維持し、不足時は全車候補から補完する。
-# v173: 3連複候補の2列目を、的中順2位固定から「総合評価B以上候補に出ている車のうち、1列目を除外して妙味順位下位側の車」へ変更。3列目ロジックはv169を維持。
-# v172: 2車複購入候補を「総合評価B以上の総合pt上位2点のみ」に固定。妙味A+/pt差による条件付き3点目追加を廃止。3連複候補の土台は従来どおり総合評価B以上候補。
-# v171: 2車複購入候補を「総合評価B以上の総合pt上位2点＋条件付き3点目（妙味A+以上、または2点目との差0.3以内）」へ修正。総合評価B上位を妙味A+縛りで落とさない。
-# v170: 2車複購入候補を「総合評価B以上 かつ 妙味期待A+以上」に絞る。3連複候補の軸・3列目生成は従来どおり総合評価B以上候補を土台にして本線を拾う。
-# v169: 3連複3列目は採用された推奨流れの流域ラインを最優先。軸は従来通り的中順単騎評価で選び、3列目は推奨流れ側ラインのヒモ→突っ込む別線側の直近1車→B以上残り→妙味補助の順で最大3車に絞る。
-# v168: 3連複購入候補の3列目を、B以上残りの単純スライドから、軸2車のライン直近相手・推奨流れ上位・妙味順単騎評価を加点して最大3車まで再選別する方式へ変更。
-# v167: 推奨流れをKO上位3車の流域多数決で補正。順流/渦/逆流の所属が2車以上ならその流れ、3車が割れた場合は逆流扱い。H主導寄せより後で適用。
-# v166: 【２車複考察】を【買目考察】へ変更。総合評価B以上の2車複候補から車番を抽出し、的中順単騎評価上位2車を軸、残りを3列目にした3連複購入候補を追加。
-# v165: 2車複候補を総合評価B以上のpt順表示へ戻し、車番別平均評価の結論順1:2/1:3を非表示。的中順/妙味順を単騎評価表記へ変更。
-# v108: note上部サマリーに「2車複｜妙味通過（7.0pt以上）」だけを復活。評価重複・三連複妙味・三連複評価重複はnote上部へ出さない。
-# v111: 選択コピー欄の2車複妙味通過表示を簡潔化。旧妙味通過＋34-12内通過ペアを統合し、説明文は表示しない。基準8.5pt。
-# v114: note上部推奨を二強軸フォメ＋安め上位4点表記へ変更。補助2車複は妙味8.5pt通過のみを短く表示。
-# v120: 全体妙味A/B/C変換の二重適用を修正。旧ラベルは表示直前に一度だけ変換し、青網掛けとコピー欄を一致させる。
-# v163: note用コピーエリア上部の青網掛け情報ボックス（推奨戦法・全体妙味/旧フォメ表示）を非表示化。
-# v164: ライン評価グループで順流域は代表1ラインだけに制限。単騎も1ラインとして扱い、余剰順流ラインは渦域/逆流域へ再配分。
-# v161: 車番別平均評価（極端値除外）を上下1本ずつ除外したトリム平均に変更。結論順1:2/1:3はトリム平均で計算。
-# v162: 棚卸版。表示していない旧3連複まとめ候補/3列目候補の計算ブロックを削除し、現行中核を2車複BOX評価＋車番別トリム平均評価へ整理。
-# v160: 車番別平均評価（極端値除外）を着順率係数なしの素平均に戻し、結論順を 的中:妙味=1:2 / 1:3 の2系統で表示。
-# v157: 車番別平均評価（極端値除外）の妙味順係数を2着率から3着内率へ変更。3連複まとめ候補・3列目候補ブロックを非表示化。
-# v155: 車番別平均評価（極端値除外）を再設計。的中順は1着率係数、妙味順は2着率係数を掛け、結論順はその平均で並べる。
-# v154: 車番別平均評価（極端値除外）に「結論順」を追加。的中平均×妙味軸平均で、着順確率を加味した最終順位を表示する。
-# v121: note上部推奨を三連複固定表示からステップ式（1-2幹確認→123BOX→1/2軸拡張）へ変更。
-# v122: A-B同一ライン時、B後ろの3番手以降をライン残り候補としてステップ3に保護。地区まとめは弱めるが即消ししない。
-# v122: コメントチェックに自在・競り相手・3番手以降追走信頼を追加。競り相手同士の弱者追加減点、3番手以降の結束補正、KO差＋競り＋脚質による1軸/二強/混戦判定をnote上部ステップ式へ反映。
-# v123: note上部の補助候補表示を「長期スパン妙味｜12-34」へ変更。20倍以上のみ候補として1-3/1-4/2-3/2-4相当をpt付きで固定表示。
-# v127: 長期スパン妙味2車複の評価5位参照E未定義を修正。評価1・2×評価2〜5フォーメーション生成時にEを安全定義。
-# v128: note上部サマリーからステップ式ブロックを削除。軸判定と長期スパン妙味2車複だけを表示。
-# v130: 長期スパン妙味2車複を、的中期待・妙味期待・総合評価A/B/C/Dの2軸表示へ変更。
-# v131: 長期スパン妙味2車複の購入目安を20倍以上から総合B以上へ変更。点数過多時はA優先。
-# v134: 的中期待の計算を掛け算から、打ち合わせ通り 0.6×VeloBi点 + 0.4×Win点 + 一致ボーナスへ修正。
-# v136: 2車単候補条件を「的中期待Aかつ総合C/D」へ拡張。
-# v143: 妙味A++/A+/Aの基準を厳格化し、買い目表を区切り線形式に変更して表示崩れを軽減。
-# v142: 妙味期待を妙味ptだけでA++/A+/A/B/C/Dに細分化。総合評価はA++/A+/Aを妙味A扱いに正規化。
-# v137: 2車単候補を廃止。2車複は総合pt上位2点（微差なら3点）に絞り、3連複まとめ候補を追加。3列目は評価別3着内率＋ライン/展開/妙味補正で7車全体から再計算。
-# v138: 3連複まとめ候補の3列目を、3列目pt上位2車までに制限。買い目増加で合成オッズを下げすぎないため。
-# v139: 2車複候補をフォーメーション固定から全車BOX（全21通り）総合pt順へ変更。表示も全候補を総合pt順に出す。
-# v135: 総合Cかつ的中期待Aの買い目を、2車複ではなく2車単候補として別表示。
-# v133: ２車複フォーメーションに総合評価別の買い目まとめ（A/B/C/D）を追加。C表記を「やや見送り」へ変更。
-# v132: 長期スパン妙味2車複の見出しを2車複フォーメーションへ整理。Aを推奨買い候補へ変更し、C/Dも20倍以上なら買い推奨の注記を追加。
-# v129: ステップ式削除後に残っていた軸判定の「上限：ステップ◯まで」表示を削除。
-# v126: 長期スパン妙味2車複を締切3分前13倍以上推奨へ変更。評価1・2 × 評価2〜5のフォーメーション表示へ拡張。
-# v124: 後位信頼をselectboxからチェックボックス式へ変更。複数チェック時は単騎寄り＞流動＞地区まとめ＞明確追走の優先順で1つの内部ラベルに変換。
-# v125: コメントチェックを自力/自力自在/自在に分離。単騎コメントを後位信頼から分離して独立チェック化。後位信頼は明確/地区/流動のみ。
-# v113: 三連複推奨の買い基準文言のみ削除。余計な代替文言は出さない。
-# v116: 三連複二強軸フォメの3列目を車番羅列ではなく「全」表示へ修正。
-# v117: note三連複推奨を評価1・2-全-全表示へ変更。2列目3車固定を廃止し、安め上位4点でライン決着も拾える表示へ修正。
-# v107: 本文条件を1-2市場ワイドオッズ表示へ修正。払戻合計入力と推定オッズ表示を削除し、三連複/34-12必要合成オッズを本文へ表示。
-# v106: 1-2市場2車複条件を推奨下限合成オッズから切り離し、1-2二車複的中分布の推定想定オッズを表示。
-# v105: note三連複推奨の買い基準にサイドバー計算の推奨下限合成オッズを本文差し込み。
-# v104: 1-2市場2車複の条件を固定3倍ではなく、推奨下限合成オッズから表示。3倍固定文言を削除。
-# v103: note推奨にサイドバー入力の意味を反映。1-2ワイド率・推奨下限・1-2二車複基準以下率を短く表示。
-# v100: note三連複推奨を実戦用短文へ整理。1-2ワイド率だけで下限計算、1-2市場2車複3倍以下対象R数をサイドバー入力へ追加。
-# v97: 推奨流れ1-2/12-34系の集計値は未入力時に規定値計算しない。サイドバー入力後のみ判定基準を算出。
-# v96: 推奨流れ1-2-全三連複/34-12二車複の切替基準を固定2.5倍から集計入力ベースの自動計算へ変更。
-# v95: note最終推奨の切替条件にも34-12 2車複フォメの実車番を必ず表示。
-# v94: noteコピー欄を最終推奨中心へ圧縮。列評価・旧フォメ・会場H詳細ログをnote出力から除外。
-# v93: v92の未入力ステータス表示を削除。合成実効オッズ未入力時は基本推奨だけを表示し、余計な状態文を出さない。
-# v92: 基本推奨に評価順1-2-全 三連複を追加。合成実効オッズ2.5倍未満の時だけ34-12 2車複フォメを切替推奨表示。
-# v99: note推奨を短文化。不要な合成実効オッズ入力・12-34確率入力を削除し、1-2ワイド確率だけで下限表示。
-# v98: note最終推奨の説明文を短縮。判定基準は的中率と推奨下限合成オッズのみ表示。
-# v90: 三展フォメを廃止し、推奨流れ34-12二車複フォメをメイン表示とnoteコピー両方へ出す。
-# v91: 推奨流れ34-12フォメの説明行（順位対応/買う/切る）を削除し、買い目だけを簡潔表示。
-# v90: 推奨流れ34-12をメイン表示とコピー欄へ出力。
-# v85: 会場判定・最終H補正倍率・必要オッズ倍率の3点を三展+KO順位生成へ反映。悪い会場ほどKO/H補正順位を強く見る。
-# v84: 必要オッズ倍率を三展+KO順位へ反映。倍率が高い会場ほど三展固定を弱め、KO/H補正順位を強く見る。
-# v83: 三展開合成フォメ上部ブロックを必ず三展+KOスコア順位ベースの1券種1行表示に統一。生成不可フォールバックを廃止。
-# v82: 三展開合成フォメを1券種1行表示へ修正。展開・抑え2車単の旧まとめ表示を廃止。
-# v81: 三展開合成フォメを評価123・安め切りBOX型（1→2→3三連単＋2→1/3→1二車単＋1=3/2=3二車複）へ変更。
-# v80: 会場別の的中率/回収率手入力→最終H1番手減点・2番手ライン加点補正を買い目用スコアへ反映。
-# v79: v78でreturnに nitan_forme/nitan_follow を渡しておらず表示されない不具合を修正。
-# v78: 抑え2車単 23→1 を三展開合成フォメ直下へインライン表示（例：抑え2車単：54→7）。
-# v77: 三展開合成フォメ 1-23-24 の抑えとして、2車単 23→1（例：54→7）を「抑え2車単」で表示。
-# v69: 素材4列表示で、4列目分離前の3列目候補を保持。軸ライン直近相手を4列目から復帰し、弱い別線・末端を4列目へ回す。
-# v68: 素材表示4列化の3列目圧縮で、軸ライン直近相手を優先保護。
-#      妙味ptだけで長い軸ライン末端を残しすぎず、弱い・深い候補を4列目へ回す。
-# v70: 素材表示の2列目を信頼2車へ圧縮。妙味高pt車は2列目でなく3列目へ回し、弱線・薄線を4列目へ分離。
-# v71: 素材表示の3列目を修正。弱い単騎妙味より、ライン持ち妙味＋軸ライン直近相手を優先する。
-# v76: 三展+KOは三連単 1-23-24 の3点へ戻し、ズレ保険として2車単 23→1 を同時出力。
-# v75: 三展スコアにKO実スコアを加算。三展開合成フォメは 1-23-245 型、原則5点へ拡張。
-# v74: 三展スコア順位を追加。三展開合成フォメは三展スコア順位から 1-23-24 型で生成し、VeloBi列評価は素材として維持。
-# v73: 三展開合成フォメの3列目コピー補正を修正。妙味残りより軸ライン直近相手を優先し、三展開で薄い単騎妙味を3列目へ入れない。
-# v72: 三展開合成フォメの3列目が2列目コピーになる場合、妙味残り＋軸ライン直近相手で再構成する。
-# v67: 4列目は「素材表示だけ」に限定。三展開合成フォメ・妙味通過・期待値推奨へ副作用を出さない。
-#      PILLAR_EXCLUDE_THIRD_CARS を無効化し、三連複フォメ表示用だけ col3 を圧縮する.
-# v64: 三展開合成フォメを最終購入3点へ圧縮。素材フォメは維持し、A-BC-CD型で攻守バランスを取る。
-# v35: 評価重複のみの場合、2列目は低pt重複2車複の2セットまで。残り重複と軸ライン残りを3列目へ回す
-# v37: 評価重複2車複が1セットのみなら、軸ライン残りが基本2列目にある場合は2列目にも追加する
-# v52: 妙味2車複が複数ある時、軸ライン残りを無条件で3列目へ入れず、採用2着候補のライン残り＋評価重複相手だけを3列目へ回す。
-# v53: 妙味2車複が1点だけの場合、評価重複を足す前に「軸ライン相手」が基本2列目にあれば2列目へ優先採用する。
-# v39: 三連複柱ありで2列目を低pt2セットに絞る場合、2セット目以降のライン残りも3列目へ補正。全候補が基本3列目内なら基本3列目順を優先。
-# v54: ライン補正フォメの3列目は、採用2着候補の同ライン全員ではなく「直近の相手」まで。ライン末尾・4番手格は3列目から落とす。
-# v56: 4列目の定義を修正。単なるライン末尾ではなく、4車ライン、または軸ではない3車以上ラインの「ライン内VeloBi評価3番手以降」を4列目へ分離する。
-# v57: 4列目へ落とす条件を再修正。2列目採用車・軸との2車複妙味通過車は、長いラインの3番手以降でも3列目に残す。
-# v58: 4列目条件を再修正。2列目にいるだけでは保護しない。長いラインの評価3番手以降は原則4列目、ただし「2列目採用かつ軸との妙味通過」は3列目に残す。
-# v59: 推奨ライン補正フォメでも4列目候補を3列目へ戻さない。基本フォメで4列目に落とした車は、ライン補正のextras/third_seedから除外する。
-# v60: 妙味2車複が複数ある時も、軸ラインの直近相手は3列目へ残す。ライン相手を消して補正フォメが崩れるのを防ぐ。
-# v61: 妙味2車複が複数ある時、軸ライン相手が基本2列目にいるなら2列目へ優先採用し、押し出された妙味相手は3列目へ回す。
-# v62: 補正フォメを固定仕様へ整理。2列目最大2車、2車ラインの軸相手のみ強制優先、3列目は採用2着候補の直近非軸ライン相手・押し出し妙味・評価重複残りだけ。4列目は戻さない。
-# v63: v62で推奨フォメブロックが消える不具合を修正。妙味起点時にA/B/C・ライン情報・直近ライン相手関数を先に初期化してから補正フォメ生成する。
-# v42: 基本三連複フォメの3列目で、2列目採用車の同ライン残りを必ず残す（例：5を2列目なら52の2を3列目へ）。
-# v44: 三連複妙味ptをVeloBi順位寄りに再調整。外部印ズレの10点張り付きと同一三連複の重複表示を抑制。
-# v45: 三連複妙味ptで軸の市場印を上限キャップ化。評価1が△/〇/◎なら10点張り付きさせない。
-# v46: 2車複妙味ptにも軸の市場印キャップを適用。軸が△/〇/◎なら2車複も10点張り付きさせない。
-# v49: v46〜v48のキャップが強すぎたため撤廃。市場印は減点として反映し、VeloBi筋の妙味は残す。
-# v50: 2車複妙味ptの市場印取得と相手印評価を修正。軸印より相手印の濃淡を強く反映し、◎軸×無印相手と◎軸×△相手を同点にしない。
-# v47: 市場印snapshotが—入りでfallbackされない問題を修正。2車複の軸印キャップも通過基準未満へ強化。
-# v48: snapshotだけでなく現在のst.session_state上の車番別市場印も後段で再取得し、2車複ptへ確実に反映。
-# v140: 2車複BOX評価のB/C/Dランク別まとめ行を削除。全21通りの買い目表だけを総合pt順で表示する。
-# v141: 全21通りの買い目表と2車複購入候補の並びを、総合評価ランク優先ではなく総合pt降順へ修正。
-# v148: 買い目表を縦線なしのまま、全角スペース主体の固定幅に変更。日本語見出しとA/A+/A++の見た目を揃える。
-# v149: 買い目表の列開始位置を固定幅10に統一。縦線なしで、見出し位置に合わせて各列を整列。
-# v150: 買い目表を「見出しは左寄せ、A/A+/A++等のランクは列内中央寄せ」に変更。縦線なしのまま視認性を改善。
-# v152: 全21通りの2車複内部数値から車番別平均（的中期待順・妙味順・総合順）を追加表示。
-import streamlit as st
-import pandas as pd
-import numpy as np
-import unicodedata, re
-import math, json, requests
-from statistics import mean, pstdev
+# v270-R3（大掃除完成版）:
+# ・本来のv270を基準に、男子3連単非該当・ガールズは元5車を一車も切らず三連複12-123-12345の7点。
+# ・3連単は、ライン主体の説明可能な展開、3単参考1・2着共通、直後同ライン3着候補の総合点単独1位、3車以上ラインをすべて満たす場合だけ。
+# ・AI印、ライン／非ライン加重比較は補助情報に限定し、券種・買い目骨格を上書きしない。
+# ・順流／渦／逆流はLINE_ZONE_MAPを唯一の基準とし、旧分類は取得不能時のみフォールバック。
+# ・廃止済みの流れ1-2下限計算、34-12切替、旧期待値推奨、三展開合成フォメ、旧VeloBi列フォメ生成をコードから完全撤去。重複関数・重複import・自己grepデバッグも整理。
+# ・現行で使用する流れ加重的中／妙味評価、2車複21通り、3連複35通り、KO、ライン強度、全体妙味表示は維持。
+# v270-R2: 流れラベルの対応と券種判定理由の矛盾を修正。
+# v270-R : 誤ったv270・v271・v272を撤回し、本来の元5車三連複7点を復元。
+# v267: 男子の元5車は比率1～3位の三流れ・三ライン代表A/B/Cと、代表ライン後位等D/Eから選ぶ。
+# v264: 5車をライン分散し、3連単は3車以上ラインに限定。
+# v252: 3単参考の1・2着が割れる場合は三連複を維持。
+# v259: ライン強度を位置係数の正規化加重平均へ統一。
+
+import math
+import re
+import unicodedata
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 from itertools import combinations
-from datetime import datetime, date, time, timedelta, timezone
+from typing import Any, Dict, List
 
-def _grep_self(pattern: str, path: str = __file__, context: int = 2):
-    """
-    grep -n の代わり：このファイル(path)を読み、patternを含む行番号を出す
-    context: 前後に何行表示するか
-    """
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-    except Exception:
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            lines = f.readlines()
-
-    hits = []
-    for i, line in enumerate(lines, 1):
-        if pattern in line:
-            hits.append(i)
-
-    if not hits:
-        print(f"[SELF-GREP] not found: {pattern!r} in {path}")
-        return []
-
-    print(f"[SELF-GREP] found {len(hits)} hit(s): {hits}  pattern={pattern!r}")
-    for ln in hits:
-        s = max(1, ln - context)
-        e = min(len(lines), ln + context)
-        print("-----")
-        for j in range(s, e + 1):
-            mark = ">>" if j == ln else "  "
-            print(f"{mark}{j:5d}: {lines[j-1].rstrip()}")
-    return hits
-
+import numpy as np
+import pandas as pd
+import requests
+import streamlit as st
 
 
 # ==============================
@@ -264,76 +75,6 @@ def _extract_car_t_map_from_obj(obj):
     return None
 
 
-def _looks_like_t_map(tmap, active_cars=None):
-    if not isinstance(tmap, dict) or not tmap:
-        return False
-
-    keys = [k for k in tmap.keys() if str(k).isdigit()]
-    if len(keys) < 4:
-        return False
-
-    vals = []
-    for k in keys:
-        try:
-            vals.append(float(tmap[k]))
-        except Exception:
-            pass
-
-    if len(vals) < 4:
-        return False
-
-    in_range = [v for v in vals if 10.0 <= v <= 90.0]
-    if len(in_range) / len(vals) < 0.8:
-        return False
-
-    m = sum(in_range) / len(in_range)
-    if not (25.0 <= m <= 75.0):
-        return False
-
-    if active_cars:
-        ac = [str(x) for x in active_cars if str(x).isdigit()]
-        if ac:
-            hit = sum(1 for x in ac if x in tmap)
-            if hit / len(ac) < 0.6:
-                return False
-
-    return True
-
-
-def _pick_hensachi_source_from_globals(g, active_cars=None):
-    """
-    globals() から偏差値Tソースを自動選別して (tmap, name, score) を返す
-    """
-    best = None
-    best_name = None
-    best_score = -1.0
-
-    for name, obj in g.items():
-        if name.startswith("__"):
-            continue
-        tmap = _extract_car_t_map_from_obj(obj)
-        if not tmap:
-            continue
-        if not _looks_like_t_map(tmap, active_cars=active_cars):
-            continue
-
-        ac = [str(x) for x in (active_cars or []) if str(x).isdigit()]
-        hit = sum(1 for x in ac if x in tmap) if ac else len(tmap)
-        coverage = (hit / len(ac)) if ac else 0.5
-
-        vals = [float(v) for v in tmap.values() if isinstance(v, (int, float))]
-        uniq = len(set(round(v, 2) for v in vals)) / max(1, len(vals))
-
-        score = coverage * 0.7 + uniq * 0.3
-
-        if score > best_score:
-            best_score = score
-            best = tmap
-            best_name = name
-
-    return best, best_name, best_score
-
-
 # =========================================================
 # 必須：グローバル共通部品（参照より先に必ず定義）
 # =========================================================
@@ -346,20 +87,13 @@ def _digits_of_line(ln):
 _PATTERNS = []   # ← まず NameError を止めるための保険（本来は下で登録する）
 
 
-
-
-
 # =========================================================
-# v162 棚卸メモ（現行で使う中核）
-# 1) 推奨流れ・軸判定
-# 2) 2車複：全21通りBOX評価 → 総合pt上位2点（微差なら3点）
-# 3) 車番別平均評価：各車を含む2車複6通りから最高/最低を除外したトリム平均
-# 4) note表示：2車複考察・車番別平均評価・全21通り表
-#
-# 非表示/旧仕様として今回削ったもの：
-# ・旧3連複まとめ候補の生成
-# ・旧3列目候補の専用pt生成
-# ※三展開・旧フォメ系の関数は周辺計算との依存が残る可能性があるため、今回は削除せず表示から隔離。
+# 現行中核
+# 1) ライン・順流／渦／逆流・KO評価
+# 2) 流れ加重的中／妙味の単騎評価
+# 3) 加重2車複21通り・加重3連複35通り
+# 4) 3連単成立判定、または元5車三連複7点
+# 5) note用の買い目・根拠・評価表
 # =========================================================
 
 # ==============================
@@ -368,49 +102,8 @@ _PATTERNS = []   # ← まず NameError を止めるための保険（本来は�
 st.set_page_config(page_title="ヴェロビ：級別×日程ダイナミクス（5〜9車・買い目付き / 統合版）", layout="wide")
 
 # ==============================
-# ★ 新規パラメータ（偏差値＆推奨ロジック）
+# 現行の流れ比率判定
 # ==============================
-HEN_W_SB   = 0.20   # SB重み
-HEN_W_PROF = 0.30   # 脚質重み
-HEN_W_IN   = 0.50   # 入着重み（縮約3着内率）
-HEN_DEC_PLACES = 1  # 偏差値 小数一桁
-
-HEN_THRESHOLD = 55.0     # 偏差値クリア閾値
-HEN_STRONG_ONE = 60.0    # 単独強者の目安
-
-MAX_TICKETS = 6          # 買い目最大点数
-
-# 推奨流れ1-2-全 三連複 → 推奨流れ34-12 2車複フォメ切替基準
-# v97: 集計値はサイドバー入力後だけ使う。未入力時に規定値（92/45/31等）で自動計算しない。
-FLOW_SWITCH_DEFAULT_TOTAL_RACES = None
-FLOW_SWITCH_DEFAULT_12_WIDE_HITS = None
-FLOW_SWITCH_DEFAULT_12_NIFUKU_HITS = None
-FLOW_SWITCH_DEFAULT_12_NIFUKU_UNDER3_RACES = None
-FLOW_SWITCH_DEFAULT_TARGET_EV = None
-FLOW_SWITCH_DEFAULT_SAFETY = None
-FLOW_12_ALL_TRIO_SWITCH_ODDS_THRESHOLD = None
-
-def _safe_int_or_none(v):
-    try:
-        if v is None or v == "":
-            return None
-        return int(v)
-    except Exception:
-        return None
-
-
-def _safe_float_or_none(v):
-    try:
-        if v is None or v == "":
-            return None
-        x = float(v)
-        if not math.isfinite(x):
-            return None
-        return x
-    except Exception:
-        return None
-
-
 def _select_recommended_style_by_flow_ratio(current_style, ratio_map):
     """
     v250: 流れ想定比率の単独1位を最終推奨流れにする。
@@ -552,272 +245,9 @@ def _apply_venue_kimarite_to_score_map(score_map, line_def, stats):
 
     return out, role_bonus, rel, detail, reason_map
 
-def _safe_div_float(a, b, default=None):
-    try:
-        a = float(a)
-        b = float(b)
-        if b <= 0:
-            return default
-        return a / b
-    except Exception:
-        return default
-
-
-def _calc_flow_switch_metric(hit_count, total_count, target_ev, safety_factor):
-    hit_rate = _safe_div_float(hit_count, total_count, None)
-    target_ev = _safe_float_or_none(target_ev)
-    safety_factor = _safe_float_or_none(safety_factor)
-
-    out = {
-        "hit_rate": hit_rate if hit_rate and hit_rate > 0 else None,
-        "break_even_odds": None,
-        "ev_required_odds": None,
-        "recommended_floor_odds": None,
-    }
-    if out["hit_rate"] is None:
-        return out
-
-    out["break_even_odds"] = 1.00 / out["hit_rate"]
-    if target_ev is not None and target_ev > 0:
-        out["ev_required_odds"] = target_ev / out["hit_rate"]
-    if out["ev_required_odds"] is not None and safety_factor is not None and safety_factor > 0:
-        out["recommended_floor_odds"] = out["ev_required_odds"] * safety_factor
-    return out
-
-
-def _calc_flow_switch_stats(total_count, wide12_hits, target_ev=None, safety_factor=None,
-                            nifuku12_under3_races=None, nifuku12_hit_count=None):
-    """
-    推奨流れ1-2-全 三連複の下限計算用。
-
-    分けるもの：
-    ・本文条件：1-2市場ワイドオッズ 2.04倍以下 / 2.05倍以上。
-      ※現行集計の切替目安を本文に出す。ここに推奨下限合成オッズを流用しない。
-    ・三連複買い基準：推奨1-2ワイド的中率から推奨下限合成オッズを出す。
-    ・34-12買い基準：34-12二車複フォメ的中率から必要合成オッズを出す。
-
-    払戻合計入力や、3倍以下ゾーンの推定平均オッズは使わない。
-    """
-    total_i = _safe_int_or_none(total_count)
-    wide_i = _safe_int_or_none(wide12_hits)
-    target_f = _safe_float_or_none(target_ev)
-    safety_f = _safe_float_or_none(safety_factor)
-    hit_i = _safe_int_or_none(nifuku12_hit_count)
-    under3_i = _safe_int_or_none(nifuku12_under3_races)
-
-    # 現行集計で確認した切替目安。本文表示用。
-    # 2.04以下 → 三連複1-2-全候補、2.05以上 → 34-12 2車複切替候補。
-    wide_market_switch_odds = 2.04
-
-    # 現行集計の34-12的中数：1-3=12、1-4=7、2-3=7、2-4=5、合計31。
-    # 34-12フォメ必要合成オッズは総レース数と同じEV/安全係数で算出する。
-    switch_3412_hits = 31 if total_i and total_i > 0 else None
-
-    return {
-        "total_count": total_i,
-        "wide12_hits": wide_i,
-        "nifuku12_hit_count": hit_i,
-        "nifuku12_under3_races": under3_i,
-        "nifuku12_under3_rate": _safe_div_float(under3_i, hit_i, None),
-        "wide_market_switch_odds": wide_market_switch_odds,
-        "target_ev": target_f,
-        "safety_factor": safety_f,
-        "trio12_all": _calc_flow_switch_metric(wide_i, total_i, target_f, safety_f),
-        "switch_3412_hits": switch_3412_hits,
-        "switch_3412": _calc_flow_switch_metric(switch_3412_hits, total_i, target_f, safety_f),
-    }
-
-def _fmt_pct(v):
-    try:
-        if v is None:
-            return "—"
-        return f"{float(v) * 100:.1f}%"
-    except Exception:
-        return "—"
-
-def _fmt_odds(v):
-    try:
-        if v is None:
-            return "—"
-        return f"約{float(v):.2f}倍"
-    except Exception:
-        return "—"
-
-
-def _fmt_plain_odds(v):
-    try:
-        if v is None:
-            return "—"
-        x = float(v)
-        if abs(x - round(x)) < 1e-9:
-            return f"{x:.0f}倍"
-        return f"{x:.1f}倍"
-    except Exception:
-        return "—"
-
-
-
-
-def _fmt_count_rate_line(hit_count, total_count, rate):
-    try:
-        h = _safe_int_or_none(hit_count)
-        t = _safe_int_or_none(total_count)
-        if h is None or t is None or t <= 0 or rate is None:
-            return "—"
-        return f"{h} / {t} = {_fmt_pct(rate)}"
-    except Exception:
-        return "—"
-
-def _flow12_market_wide_basis_odds(stats=None):
-    """本文条件に使う1-2市場ワイドオッズ目安。
-    推奨下限合成オッズや払戻推定は使わない。
-    """
-    try:
-        if stats is None:
-            stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
-        v = (stats or {}).get("wide_market_switch_odds", None)
-        if v is None:
-            return None
-        v = float(v)
-        return v if math.isfinite(v) and v > 0 else None
-    except Exception:
-        return None
-
-
-def _flow12_market_wide_condition_lines(inline_switch=False, stats=None):
-    v = _flow12_market_wide_basis_odds(stats)
-    if v is None:
-        if inline_switch:
-            return "1-2市場ワイドオッズ 目安超"
-        return "1-2市場ワイドオッズ 目安以下"
-    if inline_switch:
-        return f"1-2市場ワイドオッズ {v + 0.01:.2f}倍以上"
-    return f"1-2市場ワイドオッズ {v:.2f}倍以下"
-
-# 旧名互換：既存呼び出しは残し、中身だけワイド条件へ差し替える。
-def _flow12_market_nifuku_basis_odds(stats=None):
-    return _flow12_market_wide_basis_odds(stats)
-
-
-def _flow12_market_nifuku_basis_label(stats=None):
-    v = _flow12_market_wide_basis_odds(stats)
-    if v is None:
-        return "目安"
-    return f"{v:.2f}倍"
-
-
-def _flow12_market_nifuku_condition_lines(inline_switch=False, stats=None):
-    return _flow12_market_wide_condition_lines(inline_switch, stats)
-
-
-def _flow12_trio_buy_criteria_line(stats=None):
-    """ヴェロビ三連複推奨の運用目安表示。
-
-    現行運用は「安目切り後の合成オッズで買う/見送る」ではなく、
-    市場の安め上位を進塁目として使うため、旧合成オッズ基準は本文に出さない。
-    """
-    return "安め上位4点セットを基本"
-
-
-
-def _flow3412_nifuku_buy_criteria_line(stats=None):
-    """34-12二車複フォメの必要合成オッズ表示。"""
-    try:
-        if stats is None:
-            stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
-        sw = (stats or {}).get("switch_3412", {}) or {}
-        floor = sw.get("recommended_floor_odds", None)
-        if floor is None:
-            return "34-12二車複フォメ合成オッズが推奨下限以上"
-        floor = float(floor)
-        if not math.isfinite(floor) or floor <= 0:
-            return "34-12二車複フォメ合成オッズが推奨下限以上"
-        return f"34-12二車複フォメ合成オッズ {floor:.2f}倍以上"
-    except Exception:
-        return "34-12二車複フォメ合成オッズが推奨下限以上"
-
-def _fmt_ev_required_label(target_ev):
-    try:
-        if target_ev is None:
-            return "EV必要合成オッズ："
-        return f"EV{float(target_ev):.2f}必要合成オッズ："
-    except Exception:
-        return "EV必要合成オッズ："
-
-def _get_flow_switch_stats_from_state():
-    total = st.session_state.get("flow_switch_total_races", None)
-    nifuku_hits = st.session_state.get("flow_switch_12_nifuku_hits", None)
-    under3_races = st.session_state.get("flow_switch_12_nifuku_under3_races", None)
-    wide_hits = st.session_state.get("flow_switch_12_wide_hits", None)
-    target_ev = st.session_state.get("flow_switch_target_ev", None)
-    safety = st.session_state.get("flow_switch_safety_factor", None)
-    return _calc_flow_switch_stats(total, wide_hits, target_ev, safety, under3_races, nifuku_hits)
-
-
-def _flow_12_all_recommended_floor():
-    stats = globals().get("FLOW_SWITCH_STATS", None)
-    if not stats:
-        try:
-            stats = _get_flow_switch_stats_from_state()
-        except Exception:
-            stats = None
-    try:
-        floor = stats.get("trio12_all", {}).get("recommended_floor_odds", None) if stats else None
-        if floor is not None and float(floor) > 0:
-            return float(floor)
-    except Exception:
-        pass
-    return None
-
-def _make_flow_switch_pairs(xs):
-    if len(xs) < 4:
-        return []
-    A, B, C, D = int(xs[0]), int(xs[1]), int(xs[2]), int(xs[3])
-    raw_pairs = [(C, A), (C, B), (D, A), (D, B)]
-    pairs = []
-    keys = set()
-    for a, b in raw_pairs:
-        if int(a) == int(b):
-            continue
-        key = tuple(sorted((int(a), int(b))))
-        if key in keys:
-            continue
-        keys.add(key)
-        pairs.append((int(a), int(b)))
-    return pairs
-
-def _append_flow_switch_criteria_lines(lines, stats, include_headers=True):
-    total = int(stats.get("total_count") or 0)
-    wide_hits = int(stats.get("wide12_hits") or 0)
-    trio = stats.get("trio12_all", {}) or {}
-
-    if include_headers:
-        lines.append("【1-2-全 三連複 判定基準】")
-        lines.append("")
-    lines.append("現在の推奨流れ1-2ワイド的中率：")
-    if total > 0:
-        lines.append(f"{wide_hits} / {total} = {_fmt_pct(trio.get('hit_rate'))}")
-    else:
-        lines.append("—")
-    lines.append("")
-    lines.append("推奨下限合成オッズ：")
-    lines.append(_fmt_odds(trio.get("recommended_floor_odds")))
-
-
-
-# 推奨ラベル判定用（クリア台数→方針）
-# k>=5:「2車複・ワイド」中心（広く） / k=3,4:「3連複」 / k=1,2:「状況次第（軸流し寄り）」 / k=0:ケン
-LABEL_MAP = {
-    "wide_qn": lambda k: k >= 5,
-    "trio":    lambda k: 3 <= k <= 4,
-    "axis":    lambda k: k in (1,2),
-    "ken":     lambda k: k == 0,
-}
-
-# 期待値レンジ（内部基準で使用可。画面非表示）
-P_FLOOR = {"sanpuku": 0.06, "nifuku": 0.12, "wide": 0.25, "nitan": 0.07, "santan": 0.03}
-E_MIN, E_MAX = 0.10, 0.60
-
+# ==============================
+# 既存：風・会場・マスタ
+# ==============================
 # ==============================
 # 既存：風・会場・マスタ
 # ==============================
@@ -930,30 +360,6 @@ VELODROME_MASTER = {
     "手入力":{"lat":None,"lon":None,"home_azimuth":None},
 }
 
-# --- 印別実測率（統計） ---
-# NOTE: KO（隊列ノックアウト）には使わない。混ぜると「統計が順位をワープさせる」ため。
-RANK_STATS_TOTAL = {
-    "◎": {"p1": 0.261, "pTop2": 0.459, "pTop3": 0.617},
-    "〇": {"p1": 0.235, "pTop2": 0.403, "pTop3": 0.533},
-    "▲": {"p1": 0.175, "pTop2": 0.331, "pTop3": 0.484},
-    "△": {"p1": 0.133, "pTop2": 0.282, "pTop3": 0.434},
-    "×": {"p1": 0.109, "pTop2": 0.242, "pTop3": 0.390},
-    "α": {"p1": 0.059, "pTop2": 0.167, "pTop3": 0.295},
-    "無": {"p1": 0.003, "pTop2": 0.118, "pTop3": 0.256},
-}
-
-def compute_weighted_rank_from_carfr_text(carfr_text: str):
-    """
-    統計混入スコア（FR×印別実測率）は現在は使用しない。
-    互換のため関数だけ残し、常に空を返す。
-    """
-    return []
-
-
-
-
-
-
 # KO(勝ち上がり)関連
 KO_GIRLS_SCALE = 0.0
 KO_HEADCOUNT_SCALE = {5:0.6, 6:0.8, 7:1.0, 8:1.0, 9:1.0}
@@ -965,20 +371,6 @@ KO_STEP_SIGMA = 0.35   # 0.4 → 0.35
 LINE_BONUS_ON_TENKAI = {"優位"}
 LINE_BONUS = {"second": 0.08, "thirdplus": 0.04}
 LINE_BONUS_CAP = 0.10
-PROB_U = {"second": 0.00, "thirdplus": 0.00}
-
-# --- 安定度（着順分布）をT本体に入れるための重み ---
-STAB_W_IN3  = 0.10   # 3着内率の重み
-STAB_W_OUT  = 0.12   # 着外率の重み（マイナス補正）
-STAB_W_LOWN = 0.05   # サンプル不足補正
-STAB_PRIOR_IN3 = 0.33
-STAB_PRIOR_OUT = 0.45
-def _stab_n0(n: int) -> int:
-    """サンプル不足時の事前分布の強さ（nが小さいほど強く効かせる）"""
-    if n <= 6: return 12
-    if n <= 14: return 8
-    if n <= 29: return 5
-    return 3
 # ==============================
 # ユーティリティ
 # ==============================
@@ -988,10 +380,6 @@ def zscore_list(arr):
     arr = np.array(arr, dtype=float)
     m, s = float(np.mean(arr)), float(np.std(arr))
     return np.zeros_like(arr) if s==0 else (arr-m)/s
-
-def zscore_val(x, xs):
-    xs = np.array(xs, dtype=float); m, s = float(np.mean(xs)), float(np.std(xs))
-    return 0.0 if s==0 else (float(x)-m)/s
 
 # ==============================
 # H：最終ホーム地力補正
@@ -1037,55 +425,6 @@ def h_home_bonus(no: int, role: str, H_Z: dict[int, float]) -> float:
         "thirdplus": 0.15,
     }.get(role, 0.20)
 
-    raw = H_SCORE_SCALE * float(H_Z.get(int(no), 0.0)) * role_mult
-    return round(clamp(raw, -H_SCORE_CAP, H_SCORE_CAP), 3)
-
-
-def h_lead_line_bonus(
-    no: int,
-    role: str,
-    H: dict,
-    B: dict,
-    line_def: dict,
-    home_top_gid,
-) -> float:
-    """
-    H主導ラインの先頭車だけを下支えする補正。
-    目的：H主導ライン先頭がKO最下位まで沈む現象を防ぐ。
-    """
-    try:
-        if home_top_gid is None:
-            return 0.0
-
-        members = line_def.get(home_top_gid, [])
-        if not members:
-            return 0.0
-
-        head = int(members[0])
-
-        # H主導ラインの先頭車だけ対象
-        if int(no) != head:
-            return 0.0
-
-        # 役割が先頭でないなら対象外
-        if role != "head":
-            return 0.0
-
-        h_val = float(H.get(int(no), 0.0) or 0.0)
-        b_val = float(B.get(int(no), 0.0) or 0.0)
-
-        # Hが低いなら補正しない
-        if h_val < 3.0:
-            return 0.0
-
-        # Hを主、Bを補助にする
-        bonus = 0.035 + 0.004 * h_val + 0.002 * b_val
-
-        # 暴走防止
-        return round(clamp(bonus, 0.0, 0.090), 3)
-
-    except Exception:
-        return 0.0
     raw = H_SCORE_SCALE * float(H_Z.get(int(no), 0.0)) * role_mult
     return round(clamp(raw, -H_SCORE_CAP, H_SCORE_CAP), 3)
 
@@ -1173,23 +512,6 @@ LAST_HALF_ENABLE = True
 
 # ラスト半周補正の全体上限
 LAST_HALF_CAP = 0.050
-
-# 番手補正の上限
-LAST_HALF_SECOND_CAP = 0.050
-
-# 先頭・単騎の前で動ける補正の上限
-LAST_HALF_FRONT_CAP = 0.040
-
-
-def _is_top_third(rank_val, top_third_limit: int) -> bool:
-    """
-    レース内上位1/3判定。
-    7車なら3位以内。
-    """
-    try:
-        return int(rank_val) <= int(top_third_limit)
-    except Exception:
-        return False
 
 
 def calc_last_half_role_bonus(
@@ -1593,13 +915,6 @@ def _venue_fit_myoumi_coef(return_rate):
         return 1.00
 
 
-def _fmt_venue_fit_coef(v):
-    try:
-        return f"{float(v):.2f}"
-    except Exception:
-        return "1.00"
-
-
 VENUE_HOME_FLOW_MULT = {
     "strong_good": 0.50,
     "swing_return": 0.85,
@@ -1876,16 +1191,6 @@ def l200_adjust(role: str,
     return round(clamp(base, -float(L200_CAP), float(L200_CAP)), 3)
 
 
-def bank_character_bonus(bank_angle, straight_length, prof_escape, prof_sashi, bank_length=None):
-    straight_factor = (float(straight_length)-40.0)/10.0
-    angle_factor = (float(bank_angle)-25.0)/5.0
-    total = clamp(-0.1*straight_factor + 0.1*angle_factor, -0.05, 0.05)
-    return round(total*prof_escape - 0.5*total*prof_sashi, 3)
-
-def bank_length_adjust(bank_length, prof_oikomi):
-    delta = clamp((float(bank_length)-411.0)/100.0, -0.05, 0.05)
-    return round(delta*prof_oikomi, 3)
-
 # --- ラインSBボーナス（33mは自動で半減） --------------------
 def compute_lineSB_bonus(line_def, S, B, line_factor=1.0, exclude=None, cap=0.06, enable=True):
     """
@@ -2101,11 +1406,6 @@ def _ko_order(v_base_map,
     return order
 
 
-def _zone_from_p(p: float):
-    needed = 1.0 / max(p, 1e-12)
-    return needed, needed * (1.0 + E_MIN), needed * (1.0 + E_MAX)
-
-
 def apply_anchor_line_bonus(score_raw: dict[int, float],
                             line_of: dict[int, str],   # ★ int→str に直す
                             role_map: dict[int, str],
@@ -2123,20 +1423,6 @@ def apply_anchor_line_bonus(score_raw: dict[int, float],
             bonus = min(max(0.0, LINE_BONUS.get(role, 0.0)), LINE_BONUS_CAP)
         score_adj[i] = s + bonus
     return score_adj
-
-
-from typing import Optional, Dict
-
-def format_rank_all(score_map: Dict[int, float], P_floor_val: Optional[float] = None) -> str:
-    order = sorted(score_map.keys(), key=lambda k: (-score_map[k], k))
-    rows = []
-    for i in order:
-        if P_floor_val is None:
-            rows.append(f"{i}")
-        else:
-            rows.append(f"{i}" if score_map[i] >= P_floor_val else f"{i}(P未満)")
-    return " ".join(rows)
-
 
 
 
@@ -2252,8 +1538,6 @@ def build_openmeteo_target_dt(jst_date, race_slot: str):
         dt = pd.to_datetime(str(jst_date))
         y, m, d = dt.year, dt.month, dt.day
     return datetime(y, m, d, h, 0, 0)
-
-
 
 
 # ==============================
@@ -2380,59 +1664,7 @@ with st.sidebar.expander("数値入力（オッズパーク等の表をそのま
 globals()["VENUE_KIMARITE_STATS"] = VENUE_KIMARITE_STATS
 st.session_state["VENUE_KIMARITE_STATS"] = VENUE_KIMARITE_STATS
 
-with st.sidebar.expander("🎯 流れ1-2｜下限計算", expanded=False):
-    flow_switch_total_races = st.text_input(
-        "総レース数",
-        value=str(st.session_state.get("flow_switch_total_races", "") or ""),
-        key="flow_switch_total_races",
-    )
-    flow_switch_12_nifuku_hits = st.text_input(
-        "1-2的中数",
-        value=str(st.session_state.get("flow_switch_12_nifuku_hits", "") or ""),
-        key="flow_switch_12_nifuku_hits",
-    )
-    flow_switch_12_nifuku_under3_races = st.text_input(
-        "推奨1-2 2車複 3倍以下対象R数",
-        value=str(st.session_state.get("flow_switch_12_nifuku_under3_races", "") or ""),
-        key="flow_switch_12_nifuku_under3_races",
-    )
-    flow_switch_12_wide_hits = st.text_input(
-        "推奨1-2ワイド的中数",
-        value=str(st.session_state.get("flow_switch_12_wide_hits", "") or ""),
-        key="flow_switch_12_wide_hits",
-    )
-    flow_switch_target_ev = st.text_input(
-        "目標EV",
-        value=str(st.session_state.get("flow_switch_target_ev", "") or ""),
-        key="flow_switch_target_ev",
-    )
-    flow_switch_safety_factor = st.text_input(
-        "安全係数",
-        value=str(st.session_state.get("flow_switch_safety_factor", "") or ""),
-        key="flow_switch_safety_factor",
-    )
-
-    flow_switch_stats = _calc_flow_switch_stats(
-        flow_switch_total_races,
-        flow_switch_12_wide_hits,
-        flow_switch_target_ev,
-        flow_switch_safety_factor,
-        flow_switch_12_nifuku_under3_races,
-        flow_switch_12_nifuku_hits,
-    )
-    _flow12_floor = flow_switch_stats.get("trio12_all", {}).get("recommended_floor_odds", None)
-    _under3_rate = flow_switch_stats.get("nifuku12_under3_rate", None)
-    _wide_market_basis = flow_switch_stats.get("wide_market_switch_odds", None)
-    _switch3412_floor = flow_switch_stats.get("switch_3412", {}).get("recommended_floor_odds", None)
-    st.caption(f"1-2 3倍以下率：{_fmt_pct(_under3_rate)}")
-    st.caption(f"1-2市場ワイド切替目安：{_fmt_odds(_wide_market_basis)}")
-    st.caption(f"推奨下限合成オッズ：{_fmt_odds(_flow12_floor)}")
-    st.caption(f"34-12必要合成オッズ：{_fmt_odds(_switch3412_floor)}")
-
-globals()["FLOW_SWITCH_STATS"] = _get_flow_switch_stats_from_state()
-globals()["FLOW_12_ALL_TRIO_SWITCH_ODDS_THRESHOLD"] = _flow_12_all_recommended_floor()
-
-# v247: 2車複で先行採用する「軸の同ライン相手」の最低妙味点。
+# v247: 2車複で先行採用する「軸の同ライン相手」の最低妙味点。# v247: 2車複で先行採用する「軸の同ライン相手」の最低妙味点。
 # 固定ルールにはせず、検証しながらサイドバーで変更できるようにする。
 with st.sidebar.expander("🎯 2車複｜同ライン妙味基準", expanded=True):
     NIFUKU_SAME_LINE_MYOUMI_MIN = st.number_input(
@@ -2641,15 +1873,6 @@ globals()["eff_laps"]  = int(eff_laps)
 st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き：統合版）⭐")
 st.caption(f"風補正モード: {WIND_MODE}（'speed_only'=風速のみ / 'directional'=向きも薄く考慮）")
 
-# ←★ここに貼る（1回だけ走らせる）
-if "_DID_SELF_GREP" not in st.session_state:
-    st.session_state["_DID_SELF_GREP"] = True
-    _grep_self("KO使用スコア", __file__, context=6)
-    _grep_self("KO使用スコア（降順）", __file__, context=6)
-    _grep_self("ko_text", __file__, context=6)
-# →★ここまで
-
-
 st.subheader("2026/05/24更新")
 if "race_no_main" not in st.session_state:
     st.session_state["race_no_main"] = 1
@@ -2709,7 +1932,7 @@ if len(active_cars_live) != int(n_cars):
 
 # -----------------------------------------
 # 市場印入力（計算反映前）
-# ※全体妙味・2列目繰り上げ・フォメ生成に使うため、反映ボタンより前に置く
+# ※全体妙味と加重妙味評価に使うため、反映ボタンより前に置く
 # ※出走表を見たまま入力できるように「車番ごとに印を選ぶ」形式にする
 # ※内部では従来通り market_honmei_raw / market_taikou_raw / market_tan_raw / market_batsu_raw に変換する
 # -----------------------------------------
@@ -3710,13 +2933,6 @@ def _bank_str_from_lengths(bank_length: float) -> str:
     return "400"
 
 # ❷ 会場の“有利脚質”セット
-def _favorable_styles(bank_str: str) -> set[str]:
-    if bank_str == "33":   # 33＝先行系・ライン寄り
-        return {"逃げ", "マーク"}
-    if bank_str == "500":  # 500＝差し・マーク寄り
-        return {"差し", "マーク"}
-    return {"まくり", "差し"}  # 既定=400
-
 # ❸ 役割の日本語化（lineの並びから）
 def _role_jp(no: int, line_def: dict) -> str:
     r = role_in_line(no, line_def)
@@ -3744,7 +2960,6 @@ def _dominant_style(no: int) -> str:
     return {"head":"逃げ","second":"差し","thirdplus":"マーク","single":"まくり"}.get(role,"まくり")
 
 # ❺ Rider 構造体（このファイル上部で既に宣言済みなら再定義不要）
-from dataclasses import dataclass
 @dataclass
 class Rider:
     num: int; hensa: float; line_id: int; role: str; style: str
@@ -3802,70 +3017,8 @@ for no in active_cars:
     )
 
 # ❽ フォーメーション（本命−2−全）：1列目=有利脚質内の偏差値最大
-def _pick_axis(riders: list[Rider], bank_str: str) -> Rider:
-    fav = _favorable_styles(bank_str)
-    cand = [r for r in riders if r.style in fav]
-    if not cand:
-        raise ValueError(f"有利脚質{sorted(fav)}に該当0（bank={bank_str} / style誤りの可能性）")
-    return max(cand, key=lambda r: r.hensa)
-
-def _role_priority(bank_str: str) -> dict[str,int]:
-    return ({"マーク":3,"番手":2,"三番手":1,"先頭":0} if bank_str=="33"
-            else {"番手":3,"マーク":2,"三番手":1,"先頭":0})
-
-from typing import Optional, List
-
-def _pick_support(riders: List["Rider"], first: "Rider", bank_str: str) -> Optional["Rider"]:
-    pr = _role_priority(bank_str)
-    same = [r for r in riders if r.line_id==first.line_id and r.num!=first.num]
-    if not same:
-        return None
-    same.sort(key=lambda r: (pr.get(r.role,0), r.hensa), reverse=True)
-    return same[0]
-
 
 # 印（◎→▲→偏差値補完）
-def _read_marks_idmap() -> dict[int,str]:
-    rm = globals().get("result_marks") or globals().get("marks") or {}
-    out={}
-    if isinstance(rm, dict):
-        if any(isinstance(k,int) or (isinstance(k,str) and k.isdigit()) for k in rm.keys()):
-            for k,v in rm.items():
-                try: out[int(k)] = ("○" if str(v) in ("○","〇") else str(v))
-                except: pass
-        else:
-            for sym,vid in rm.items():
-                try: out[int(vid)] = ("○" if str(sym) in ("○","〇") else str(sym))
-                except: pass
-    return out
-
-def _pick_partner(riders: list[Rider], used: set[int]) -> int|None:
-    id2sym = _read_marks_idmap()
-    for want in ("◎","▲"):
-        t = next((i for i,s in id2sym.items() if i not in used and s==want), None)
-        if t is not None: return t
-    # 補完：偏差値上位
-    rest = sorted([r for r in riders if r.num not in used], key=lambda r: r.hensa, reverse=True)
-    return rest[0].num if rest else None
-
-def make_trio_formation_final(riders: list[Rider], bank_str: str) -> str:
-    first = _pick_axis(riders, bank_str)
-    support = _pick_support(riders, first, bank_str)
-    used = {first.num} | ({support.num} if support else set())
-    partner = _pick_partner(riders, used)
-    second = []
-    if support: second.append(support.num)
-    if partner is not None: second.append(partner)
-    if len(second) < 2:
-        # 2車に満たなければ偏差値補完
-        rest = sorted([r.num for r in riders if r.num not in ({first.num}|set(second))],
-                      key=lambda n: next(rr.hensa for rr in riders if rr.num==n),
-                      reverse=True)
-        if rest: second.append(rest[0])
-    second = sorted(set(second))[:2]
-    return f"三連複フォーメーション：{first.num}－{','.join(map(str, second))}－全"
-
-
 mu = float(df["合計_SBなし_raw"].mean()) if not df.empty else 0.0
 df["合計_SBなし"] = mu + 1.0 * (df["合計_SBなし_raw"] - mu)
 
@@ -4101,30 +3254,6 @@ def anchor_score(no: int) -> float:
 
 
 
-
-# === デバッグ表示（必要なときだけ / anchor_score定義の後, 印出力の前） ===
-# for no in active_cars:
-#     role = role_in_line(no, line_def)
-#     sb_dbg  = bonus_init.get(car_to_group.get(no, None), 0.0) * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
-#     pos_dbg = POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)
-#     form_dbg = SD_FORM * FORM_Z.get(no, 0.0)
-#     env_dbg  = SD_ENV  * ENV_Z.get(no, 0.0)
-#     stab_dbg = (SD_STAB * STAB_Z.get(no, 0.0)) if 'STAB_Z' in globals() else 0.0
-#     tiny_dbg = SMALL_Z_RATING * zt_map.get(no, 0.0)
-
-#     total = form_dbg + env_dbg + stab_dbg + sb_dbg + pos_dbg + tiny_dbg
-#     st.write(no, {
-#         "form": round(form_dbg, 4),
-#         "env":  round(env_dbg, 4),
-#         "stab": round(stab_dbg, 4),
-#         "sb":   round(sb_dbg, 4),
-#         "pos":  round(pos_dbg, 4),
-#         "tiny": round(tiny_dbg, 4),
-#         "TOTAL(anchor_score期待値)": round(total, 4),
-#     })
-
-
-
 # ===== ◎候補抽出（既存ロジック維持）
 cand_sorted = sorted(active_cars, key=lambda n: anchor_score(n), reverse=True)
 C = cand_sorted[:min(3, len(cand_sorted))]
@@ -4148,12 +3277,6 @@ ANCHOR_REQUIRE_TOP_SB = globals().get("ANCHOR_REQUIRE_TOP_SB", 3)
 
 # --- DEBUG（必要ならOFFにできる） ---
 DBG_ANCHOR = bool(globals().get("DBG_ANCHOR", True))
-
-def _safe_int(x, default=1):
-    try:
-        return int(x)
-    except Exception:
-        return int(default)
 
 # df_sorted_pure が空なら、active_cars を母集団として使う（落下防止）
 df_pure_empty = (df_sorted_pure is None) or (len(df_sorted_pure) == 0)
@@ -4242,57 +3365,8 @@ velobi_wo = list(zip(
 # ==============================
 # ★ レース内T偏差値 → 印 → 買い目 → note出力（2車系対応＋会場個性浸透版）
 # ==============================
-import math
-import numpy as np
-import pandas as pd
-import streamlit as st
-
-import re
-from typing import List
-
-def parse_line_str(line_str: str) -> List[List[int]]:
-    s = (line_str or "").strip()
-    if not s:
-        return []
-    s = s.replace("　", " ")
-    groups = [g for g in s.split(" ") if g]
-    lines = []
-    for g in groups:
-        nums = [int(ch) for ch in re.findall(r"\d", g)]
-        if nums:
-            lines.append(nums)
-    return lines
-
-def initial_queue_from_lines(lines: List[List[int]]) -> List[int]:
-    q = []
-    used = set()
-    for group in lines:
-        for n in group:
-            if n not in used:
-                q.append(n)
-                used.add(n)
-    return q
-
-def estimate_finaljump_queue(initial_queue: List[int], score_rank: List[int], k: float = 2.2) -> List[int]:
-    if not score_rank:
-        return []
-    if not initial_queue:
-        return score_rank[:]
-    pos = {n: i for i, n in enumerate(initial_queue)}
-    nmax = max(len(score_rank), 1)
-    power = {n: (nmax - i) for i, n in enumerate(score_rank)}  # 1位が最大
-    def key(n: int) -> float:
-        p0 = pos.get(n, 10_000)
-        pw = power.get(n, 0)
-        return p0 - k * pw
-    return sorted(score_rank, key=key)
-
-def arrow_format(order: List[int]) -> str:
-    return " → ".join(str(n) for n in order)
-
 
 HEN_DEC_PLACES = 1
-EPS = 1e-12
 
 # ====== ユーティリティ ======
 def coerce_score_map(d, n_cars: int) -> dict[int, float]:
@@ -4354,18 +3428,6 @@ def coerce_score_map(d, n_cars: int) -> dict[int, float]:
     return out
 
 
-
-
-
-
-
-
-
-def _format_rank_from_array(ids, arr):
-    pairs = [(i, float(arr[idx])) for idx, i in enumerate(ids)]
-    pairs.sort(key=lambda kv: ((1,0) if not np.isfinite(kv[1]) else (0,-kv[1]), kv[0]))
-    return " ".join(str(i) for i,_ in pairs)
-
 # ====== ここから処理本体 ======
 
 # 1) 母集団車番
@@ -4390,8 +3452,6 @@ xs_base_raw = np.array([SB_BASE_MAP.get(i, np.nan) for i in USED_IDS], dtype=flo
 
 # 4) 偏差値T（レース内：平均50・SD10、NaN→50）
 xs_race_t, mu_sb, sd_sb, k_finite = t_score_from_finite(xs_base_raw)
-
-
 
 
 missing = ~np.isfinite(xs_base_raw)
@@ -4520,23 +3580,6 @@ if "enforce_alpha_eligibility" not in globals():
     def enforce_alpha_eligibility(m): return m
 
 # ===== βラベル付与（単なる順位ラベル） =====
-def assign_beta_label(result_marks: dict[str, int], used_ids: list[int], df_sorted) -> dict[str, int]:
-    marks = dict(result_marks)
-    # 6車以下は出さない（集計仕様）
-    if len(used_ids) <= 6:
-        return marks
-    # 既にβがあれば何もしない
-    if "β" in marks:
-        return marks
-    try:
-        last_car = int(df_sorted.loc[len(df_sorted) - 1, "車番"])
-        if last_car not in marks.values():
-            marks["β"] = last_car
-    except Exception:
-        pass
-    return marks
-
-
 # ===== 印の採番（β廃止→無印で保持）========================================
 # 依存: USED_IDS, race_t, xs_base_raw, line_def, car_to_group が上で定義済み
 
@@ -4629,13 +3672,9 @@ if "α" not in result_marks:
         reasons[alpha_pick] = reasons.get(alpha_pick, "α（フォールバック：禁止条件全滅→最弱を採用）")
 
 
-
-
 # =========================
 #  Tesla369｜出力統合・最終ブロック（安定版・重複なし / 3車ライン厚め対応）
 # =========================
-import re, json, hashlib, math
-from typing import List, Dict, Any, Optional
 
 # ---------- 基本ヘルパ ----------
 def _t369_norm(s) -> str:
@@ -4646,12 +3685,6 @@ def _t369_safe_mean(xs, default: float = 0.0) -> float:
         return sum(xs) / len(xs) if xs else default
     except Exception:
         return default
-
-def _t369_sigmoid(x: float) -> float:
-    try:
-        return 1.0 / (1.0 + math.exp(-2.0 * x))
-    except OverflowError:
-        return 0.0 if x < 0 else 1.0
 
 # ---------- 文脈→ライン/印/スコア復元 ----------
 def _t369_parse_lines_from_context() -> List[List[int]]:
@@ -4935,654 +3968,16 @@ def compute_flow_indicators(lines_str, marks, scores):
 
 # === v2.3: 相手4枠ロジック（3車厚め“強制保証”＋3番手保証(帯)＋U高域でも最大2枚まで許容）===
 
-import re
-from typing import List, Dict, Optional
-
-def _t369p_parse_groups(lines_str: str) -> List[List[int]]:
-    parts = re.findall(r'[0-9]+', str(lines_str or ""))
-    groups: List[List[int]] = []
-    for p in parts:
-        g = [int(ch) for ch in p]
-        if g:
-            groups.append(g)
-    return groups
-
-def _t369p_find_line_of(num: int, groups: List[List[int]]) -> List[int]:
-    for g in groups:
-        if num in g:
-            return g
-    return []
-
-def _t369p_line_avg(g: List[int], hens: Dict[int, float]) -> float:
-    if not g:
-        return -1e9
-    return sum(hens.get(x, 0.0) for x in g) / len(g)
-
-def _t369p_best_in_group(
-    g: List[int],
-    hens: Dict[int, float],
-    exclude: Optional[int] = None
-) -> Optional[int]:
-    cand = [x for x in (g or []) if x != exclude]
-    if not cand:
-        return None
-    return max(cand, key=lambda x: hens.get(x, 0.0), default=None)
-
-def select_tri_opponents_v2(
-    axis: int,
-    lines_str: str,
-    hens: Dict[int, float],              # 偏差値/スコアのマップ
-    vtx: float,                          # 渦の強さ（0〜1）
-    u: float,                            # 逆流の強さ（0〜1）
-    marks: Dict[str, int],               # 印（{'◎':5, ...}）
-    shissoku_label: str = "中",          # ◎ラインの「失速危険」：'低'/'中'/'高'
-    vtx_line_str: Optional[str] = None,  # 渦候補ライン（例 '375'）
-    u_line_str: Optional[str] = None,    # 逆流ライン（例 '63'）
-    n_opps: int = 4,
-    fr_v: float | None = None,           # レースFR（帯判定用）
-) -> List[int]:
-
-    # しきい値/ブースト
-    U_HIGH       = 0.90
-    THIRD_BOOST  = 0.18
-    THICK_BASE   = 0.25
-    AXIS_LINE_2P = 0.35
-
-    # 3番手保証（FR帯）
-    BAND_LO, BAND_HI = 0.25, 0.65
-    THIRD_MIN = 40.0
-    _FRv = float(fr_v or 0.0)
-
-    groups     = _t369p_parse_groups(lines_str)
-    axis_line  = _t369p_find_line_of(int(axis), groups)
-    others_all = [x for g in groups for x in g if x != axis]
-
-    vtx_group = _t369p_parse_groups(vtx_line_str)[0] if vtx_line_str else []
-    u_group   = _t369p_parse_groups(u_line_str)[0]   if u_line_str   else []
-
-    # FRライン（◎のライン。なければ平均最大ライン）
-    g_star  = marks.get("◎")
-    FR_line = _t369p_find_line_of(int(g_star), groups) if isinstance(g_star, int) else []
-    if not FR_line and groups:
-        FR_line = max(groups, key=lambda g: _t369p_line_avg(g, hens))
-
-    thick_groups = [g for g in groups if len(g) >= 3]  # 3車(以上)ライン
-    thick_others = [g for g in thick_groups if g != (axis_line or [])]
-    best_thick_other = max(thick_others, key=lambda g: _t369p_line_avg(g, hens), default=None)
-
-    # 必須候補
-    picks_must: List[int] = []
-
-    # ① 軸相方（番手）を強採用
-    axis_partner = _t369p_best_in_group(axis_line, hens, exclude=axis) if axis_line else None
-    if axis_partner is not None:
-        picks_must.append(axis_partner)
-
-    # ② 対抗ライン代表（平均偏差最大ラインの代表）
-    other_lines = [g for g in groups if g != axis_line]
-    best_other_line = max(other_lines, key=lambda g: _t369p_line_avg(g, hens), default=None)
-    opp_rep = _t369p_best_in_group(best_other_line, hens, exclude=None) if best_other_line else None
-    if opp_rep is not None:
-        picks_must.append(opp_rep)
-
-    # ③ 逆流代表（U高域のみ）。※3車u_groupは最大2枚まで許容
-    u_rep = None
-    if u >= U_HIGH:
-        if u_group:
-            u_rep = _t369p_best_in_group(u_group, hens, exclude=None)
-        else:
-            pool = [x for x in others_all if x not in (axis_line or [])]
-            u_rep = max(pool, key=lambda x: hens.get(x, 0.0), default=None) if pool else None
-        if u_rep is not None:
-            picks_must.append(u_rep)
-
-    # ④ スコアリング
-    scores_local: Dict[int, float] = {x: 0.0 for x in others_all}
-    for x in scores_local:
-        scores_local[x] += hens.get(x, 0.0) / 100.0  # 土台
-
-    # 軸ライン：相方強化＋同ライン控えめ
-    if axis_partner is not None and axis_partner in scores_local:
-        scores_local[axis_partner] += 1.50
-    for x in (axis_line or []):
-        if x not in (axis, axis_partner) and x in scores_local:
-            scores_local[x] += 0.20
-
-    # 対抗代表を加点
-    if opp_rep is not None and opp_rep in scores_local:
-        scores_local[opp_rep] += 1.20
-
-    # U高域：代表強化＋“2枚目抑制（3車なら許容2まで）”
-    if u >= U_HIGH and u_rep is not None and u_rep in scores_local:
-        scores_local[u_rep] += 1.00
-        if u_group:
-            penalty = 0.15 if len(u_group) >= 3 else 0.40
-            for x in u_group:
-                if x != u_rep and x in scores_local:
-                    scores_local[x] -= penalty
-
-    # VTX境界の調律
-    if vtx <= 0.55:
-        if opp_rep is not None and opp_rep in scores_local:
-            scores_local[opp_rep] += 0.40
-        for x in (vtx_group or []):
-            if x in scores_local:
-                scores_local[x] -= 0.20
-    elif vtx >= 0.60:
-        best_vtx = _t369p_best_in_group(vtx_group, hens, exclude=None) if vtx_group else None
-        if best_vtx is not None and best_vtx in scores_local:
-            scores_local[best_vtx] += 0.50
-
-    # ◎「失速=高」→ ◎本人を減点・番手を加点
-    if isinstance(g_star, int) and shissoku_label == "高":
-        g_line = _t369p_find_line_of(g_star, groups)
-        g_ban  = _t369p_best_in_group(g_line, hens, exclude=g_star) if g_line else None
-        if g_star in scores_local:
-            scores_local[g_star] -= 0.60
-        if g_ban is not None and g_ban in scores_local:
-            scores_local[g_ban] += 0.70
-
-    # ★ 3車(以上)ラインは厚め（基礎加点）
-    for g3 in thick_groups:
-        for x in g3:
-            if x != axis and x in scores_local:
-                scores_local[x] += THICK_BASE
-
-    # 軸が3車(以上)なら同ライン2枚体制を厚め
-    if axis_line and len(axis_line) >= 3:
-        for x in axis_line:
-            if x not in (axis, axis_partner) and x in scores_local:
-                scores_local[x] += AXIS_LINE_2P
-
-    # 渦/FRが3車(以上)なら中核を少し厚め
-    if vtx_group and len(vtx_group) >= 3:
-        best_vtx = _t369p_best_in_group(vtx_group, hens, exclude=None)
-        if best_vtx is not None and best_vtx in scores_local:
-            scores_local[best_vtx] += 0.30
-
-    if FR_line and len(FR_line) >= 3:
-        add_fr = 0.30 if shissoku_label != "高" else 0.15
-        for x in FR_line:
-            if x != axis and x in scores_local:
-                scores_local[x] += add_fr
-
-    # 3列目ブースト（“3番手”を軽く押す：ライン並びの3番手がいる前提）
-    if axis_line and len(axis_line) >= 3:
-        third = axis_line[2]
-        if third in scores_local:
-            scores_local[third] += THIRD_BOOST
-
-    # まずは必須枠を採用（順序維持）
-    def _unique_keep_order(xs: List[int]) -> List[int]:
-        seen, out = set(), []
-        for x in xs:
-            if x not in seen:
-                out.append(x)
-                seen.add(x)
-        return out
-
-    picks = [x for x in _unique_keep_order(picks_must) if x in scores_local and x != axis]
-
-    # 補充：スコア高い順。ただしU高域では u_group の人数上限（1 or 2）を守る
-    def _same_group(a: int, b: int, group: List[int]) -> bool:
-        return bool(group and a in group and b in group)
-
-    for x, _sc in sorted(scores_local.items(), key=lambda kv: kv[1], reverse=True):
-        if x in picks or x == axis:
-            continue
-        if u >= U_HIGH and u_group:
-            limit = 2 if len(u_group) >= 3 else 1
-            cnt_u = sum(1 for y in picks if y in u_group)
-            if cnt_u >= limit and any(_same_group(x, y, u_group) for y in picks):
-                continue
-        picks.append(x)
-        if len(picks) >= n_opps:
-            break
-
-    # ★ 強制保証１：軸が3車(以上)なら、相手4枠に同ライン2枚（相方＋もう1枚）を必ず確保
-    if axis_line and len(axis_line) >= 3:
-        axis_members = [x for x in axis_line if x != axis]
-        present = [x for x in picks if x in axis_members]
-        if len(present) < 2 and len(axis_members) >= 2:
-            cand = max([x for x in axis_members if x not in picks], key=lambda x: hens.get(x, 0.0), default=None)
-            if cand is not None:
-                drop_cands = [x for x in picks if x not in axis_members and x != axis_partner]
-                if drop_cands:
-                    worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
-                    picks = [x for x in picks if x != worst] + [cand]
-
-    # ★ 強制保証２：軸ライン以外で“最厚”の3車(以上)ラインは、相手4枠に最低2枚を確保
-    if best_thick_other:
-        have = [x for x in picks if x in best_thick_other]
-        need = min(2, len(best_thick_other))
-        while len(have) < need and len(picks) > 0:
-            cand = max(
-                [x for x in best_thick_other if x not in picks and x != axis],
-                key=lambda x: hens.get(x, 0.0),
-                default=None
-            )
-            if cand is None:
-                break
-            drop_cands = [x for x in picks if x not in best_thick_other and x != axis_partner]
-            if not drop_cands:
-                break
-            worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
-            if worst == cand:
-                break
-            picks = [x for x in picks if x != worst] + [cand]
-            have = [x for x in picks if x in best_thick_other]
-
-    # 最終保険：不足分があれば偏差順で埋める
-    if len(picks) < n_opps:
-        rest = [x for x in others_all if x not in picks and x != axis]
-        for x in sorted(rest, key=lambda x: hens.get(x, 0.0), reverse=True):
-            picks.append(x)
-            if len(picks) >= n_opps:
-                break
-
-    # ==== 3番手保証（FR帯 0.25〜0.65 限定）====
-    if BAND_LO <= _FRv <= BAND_HI:
-        target = axis_line if (axis_line and len(axis_line) >= 3) else (
-            best_thick_other if (best_thick_other and len(best_thick_other) >= 3) else None
-        )
-        if target:
-            g_sorted = sorted(target, key=lambda x: hens.get(x, 0.0), reverse=True)
-            if len(g_sorted) >= 3:
-                third = g_sorted[2]
-                if (third not in picks) and (hens.get(third, 0.0) >= THIRD_MIN) and (third != axis):
-                    drop_cands = [x for x in picks if (x not in target) and (x != axis_partner)]
-                    if drop_cands:
-                        worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
-                        if worst != third:
-                            picks = [x for x in picks if x != worst] + [third]
-
-    # --- 二車軸ロック（相方は絶対保持） ---
-    if (axis_partner is not None) and (axis_partner not in picks):
-        drop_cands = [x for x in picks if x != axis_partner]
-        if drop_cands:
-            worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
-            picks = [x for x in picks if x != worst] + [axis_partner]
-        else:
-            picks.append(axis_partner)
-
-    # --- ユニーク＆サイズ調整（相方保護） ---
-    seen = set()
-    picks = [x for x in picks if not (x in seen or seen.add(x))]
-
-    if len(picks) > n_opps:
-        to_drop = len(picks) - n_opps
-        cand = [x for x in picks if x != axis_partner]
-        cand_sorted = sorted(cand, key=lambda x: scores_local.get(x, -1e9))
-        for i in range(min(to_drop, len(cand_sorted))):
-            if cand_sorted[i] in picks:
-                picks.remove(cand_sorted[i])
-
-    return picks
 
 # === /v2.3 ===
 
-
-
-
-def format_tri_1x4(axis: int, opps: List[int]) -> str:
-    opps_sorted = ''.join(str(x) for x in sorted(opps))
-    return f"{axis}-{opps_sorted}-{opps_sorted}"
 
 # === PATCH（generate_tesla_bets の直前に挿入）==============================
 # 前提：ファイル上部に import re があるならここでは不要（無ければ追加）
 # 前提：typing を上で import 済みならここでは不要（無ければ追加）
 
 # 軸選定用（generate_tesla_bets から呼ばれる）
-def _topk(line, k, scores):
-    line = list(line or [])
-    return sorted(line, key=lambda x: (scores.get(x, -1.0), -int(x)), reverse=True)[:k]
-
-def _t369p_parse_groups(lines_str: str):
-    parts = re.findall(r"[0-9]+", str(lines_str or ""))
-    groups = []
-    for p in parts:
-        g = [int(ch) for ch in p]
-        if g:
-            groups.append(g)
-    return groups
-
-def _t369p_find_line_of(num: int, groups):
-    for g in groups:
-        if num in g:
-            return g
-    return []
-
-def _t369p_line_avg(g, hens):
-    if not g:
-        return -1e9
-    return sum(hens.get(x, 0.0) for x in g) / len(g)
-
-def _t369p_best_in_group(g, hens, exclude=None):
-    cand = [x for x in (g or []) if x != exclude]
-    if not cand:
-        return None
-    return max(cand, key=lambda x: hens.get(x, 0.0), default=None)
-
-
 # ---- 相手4枠ロジック v2.3（3車厚め“強制保証”＋3番手保証(帯)＋U高域でも最大2枚許容）----
-def select_tri_opponents_v2(
-    axis: int,
-    lines_str: str,
-    hens: dict,              # {車番:int -> 偏差値/スコア:float}
-    vtx: float,              # 渦の強さ（0〜1）
-    u: float,                # 逆流の強さ（0〜1）
-    marks: dict,             # {印:車番} or {車番:印} が来るので両対応
-    shissoku_label: str = "中",
-    vtx_line_str=None,
-    u_line_str=None,
-    n_opps: int = 4,
-    fr_v: float | None = None,   # レースFR（帯判定用）
-):
-    # しきい値/ブースト
-    U_HIGH       = 0.90
-    THIRD_BOOST  = 0.18
-    THICK_BASE   = 0.25
-    AXIS_LINE_2P = 0.35
-
-    # 3番手保証（FR帯）
-    BAND_LO, BAND_HI = 0.25, 0.65
-    THIRD_MIN = 40.0
-    _FRv = float(fr_v or 0.0)
-
-    groups     = _t369p_parse_groups(lines_str)
-    axis_line  = _t369p_find_line_of(int(axis), groups)
-    others_all = [x for g in groups for x in g if x != axis]
-
-    vtx_group = _t369p_parse_groups(vtx_line_str)[0] if vtx_line_str else []
-    u_group   = _t369p_parse_groups(u_line_str)[0]   if u_line_str   else []
-
-    # --- ◎車番を marks から取得（{印:車番} / {車番:印} 両対応）---
-    g_star = None
-    if marks:
-        # {印:車番} の可能性
-        if all(isinstance(v, int) for v in marks.values()):
-            g_star = marks.get("◎", None)
-        else:
-            # {車番:印} の可能性
-            for cid, sym in marks.items():
-                try:
-                    if sym == "◎":
-                        g_star = int(cid)
-                        break
-                except Exception:
-                    pass
-
-    # FRライン（◎のライン。なければ平均最大ライン）
-    FR_line = _t369p_find_line_of(int(g_star), groups) if isinstance(g_star, int) else []
-    if (not FR_line) and groups:
-        FR_line = max(groups, key=lambda g: _t369p_line_avg(g, hens))
-
-    # 3車(以上)ライン群と「軸以外の最厚」
-    thick_groups     = [g for g in groups if len(g) >= 3]
-    thick_others     = [g for g in thick_groups if g != (axis_line or [])]
-    best_thick_other = max(thick_others, key=lambda g: _t369p_line_avg(g, hens), default=None)
-
-    # --- 必須枠 ---
-    picks_must = []
-
-    # ① 軸相方（番手）
-    axis_partner = _t369p_best_in_group(axis_line, hens, exclude=axis) if axis_line else None
-    if axis_partner is not None:
-        picks_must.append(axis_partner)
-
-    # ② 対抗ライン代表（平均偏差最大ラインの代表）
-    other_lines = [g for g in groups if g != axis_line]
-    best_other_line = max(other_lines, key=lambda g: _t369p_line_avg(g, hens), default=None)
-    opp_rep = _t369p_best_in_group(best_other_line, hens, exclude=None) if best_other_line else None
-    if opp_rep is not None:
-        picks_must.append(opp_rep)
-
-    # ③ 逆流代表（U高域のみ）。※u_group が3車以上なら最大2枚許容
-    u_rep = None
-    if u >= U_HIGH:
-        if u_group:
-            u_rep = _t369p_best_in_group(u_group, hens, exclude=None)
-        else:
-            pool = [x for x in others_all if x not in (axis_line or [])]
-            u_rep = max(pool, key=lambda x: hens.get(x, 0.0), default=None) if pool else None
-        if u_rep is not None:
-            picks_must.append(u_rep)
-
-    # --- スコアリング ---
-    scores_local = {x: 0.0 for x in others_all}
-    for x in scores_local:
-        scores_local[x] += hens.get(x, 0.0) / 100.0  # 土台
-
-    # 軸ライン：相方強化、同ライン他は控えめ
-    if axis_partner is not None and axis_partner in scores_local:
-        scores_local[axis_partner] += 1.50
-    for x in (axis_line or []):
-        if x not in (axis, axis_partner) and x in scores_local:
-            scores_local[x] += 0.20
-
-    # 対抗代表の底上げ
-    if opp_rep is not None and opp_rep in scores_local:
-        scores_local[opp_rep] += 1.20
-
-    # U高域：代表強化＋2枚目抑制（3車以上は緩め）
-    if u >= U_HIGH and u_rep is not None and u_rep in scores_local:
-        scores_local[u_rep] += 1.00
-        if u_group:
-            penalty = 0.15 if len(u_group) >= 3 else 0.40
-            for x in u_group:
-                if x != u_rep and x in scores_local:
-                    scores_local[x] -= penalty
-
-    # VTX境界の調律
-    if vtx <= 0.55:
-        if opp_rep is not None and opp_rep in scores_local:
-            scores_local[opp_rep] += 0.40
-        for x in (vtx_group or []):
-            if x in scores_local:
-                scores_local[x] -= 0.20
-    elif vtx >= 0.60:
-        best_vtx = _t369p_best_in_group(vtx_group, hens, exclude=None) if vtx_group else None
-        if best_vtx is not None and best_vtx in scores_local:
-            scores_local[best_vtx] += 0.50
-
-    # ◎「失速=高」→ ◎本人を減点・番手を加点
-    if isinstance(g_star, int) and shissoku_label == "高":
-        g_line = _t369p_find_line_of(g_star, groups)
-        g_ban  = _t369p_best_in_group(g_line, hens, exclude=g_star) if g_line else None
-        if g_star in scores_local:
-            scores_local[g_star] -= 0.60
-        if g_ban is not None and g_ban in scores_local:
-            scores_local[g_ban] += 0.70
-
-    # ★ 3車(以上)ライン厚め：基礎加点＋“3列目”ブースト（各ラインの3番手）
-    for g3 in thick_groups:
-        for x in g3:
-            if x != axis and x in scores_local:
-                scores_local[x] += THICK_BASE
-        g_sorted = sorted(g3, key=lambda x: hens.get(x, 0.0), reverse=True)
-        if len(g_sorted) >= 3:
-            third = g_sorted[2]
-            if third != axis and third in scores_local:
-                scores_local[third] += THIRD_BOOST
-
-    # 軸が3車(以上)：同ライン2枚体制を強化
-    if axis_line and len(axis_line) >= 3:
-        for x in axis_line:
-            if x not in (axis, axis_partner) and x in scores_local:
-                scores_local[x] += AXIS_LINE_2P
-
-    # 渦/FRが3車(以上)：中核を少し厚め
-    if vtx_group and len(vtx_group) >= 3:
-        best_vtx = _t369p_best_in_group(vtx_group, hens, exclude=None)
-        if best_vtx is not None and best_vtx in scores_local:
-            scores_local[best_vtx] += 0.30
-    if FR_line and len(FR_line) >= 3:
-        add_fr = 0.30 if shissoku_label != "高" else 0.15
-        for x in FR_line:
-            if x != axis and x in scores_local:
-                scores_local[x] += add_fr
-
-    # 必須（順序維持）
-    def _unique_keep_order(xs):
-        seen, out = set(), []
-        for x in xs:
-            if x not in seen:
-                out.append(x)
-                seen.add(x)
-        return out
-
-    picks = [x for x in _unique_keep_order(picks_must) if x in scores_local and x != axis]
-
-    # 補充：スコア順。U高域では u_group の人数上限（1 or 2）を守る
-    def _same_group(a, b, group):
-        return bool(group and a in group and b in group)
-
-    for x, _sc in sorted(scores_local.items(), key=lambda kv: kv[1], reverse=True):
-        if x in picks or x == axis:
-            continue
-        if u >= U_HIGH and u_group:
-            limit = 2 if len(u_group) >= 3 else 1
-            cnt_u = sum(1 for y in picks if y in u_group)
-            if cnt_u >= limit and any(_same_group(x, y, u_group) for y in picks):
-                continue
-        picks.append(x)
-        if len(picks) >= n_opps:
-            break
-
-    # ★ 強制保証１：軸が3車(以上)→相手4枠に同ライン2枚（相方＋もう1枚）を確保
-    if axis_line and len(axis_line) >= 3:
-        axis_members = [x for x in axis_line if x != axis]
-        present = [x for x in picks if x in axis_members]
-        if len(present) < 2 and len(axis_members) >= 2:
-            cand = max([x for x in axis_members if x not in picks], key=lambda x: hens.get(x, 0.0), default=None)
-            if cand is not None:
-                drop_cands = [x for x in picks if x not in axis_members and x != axis_partner]
-                if drop_cands:
-                    worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
-                    picks = [x for x in picks if x != worst] + [cand]
-
-    # ★ 強制保証２：軸以外で“最厚”の3車(以上)ライン→相手4枠に最低2枚を確保
-    if best_thick_other:
-        have = [x for x in picks if x in best_thick_other]
-        need = min(2, len(best_thick_other))
-        while len(have) < need and len(picks) > 0:
-            cand = max([x for x in best_thick_other if x not in picks and x != axis],
-                       key=lambda x: hens.get(x, 0.0), default=None)
-            if cand is None:
-                break
-            drop_cands = [x for x in picks if x not in best_thick_other and x != axis_partner]
-            if not drop_cands:
-                break
-            worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
-            if worst == cand:
-                break
-            picks = [x for x in picks if x != worst] + [cand]
-            have = [x for x in picks if x in best_thick_other]
-
-    # 最終保険：不足分を偏差順で埋める
-    if len(picks) < n_opps:
-        rest = [x for x in others_all if x not in picks and x != axis]
-        for x in sorted(rest, key=lambda x: hens.get(x, 0.0), reverse=True):
-            picks.append(x)
-            if len(picks) >= n_opps:
-                break
-
-    # ===== 3番手保証（FR帯 0.25〜0.65）=====
-    if (BAND_LO <= _FRv <= BAND_HI) and axis_line and len(axis_line) >= 3:
-        g_sorted = sorted(axis_line, key=lambda x: hens.get(x, 0.0), reverse=True)
-        if len(g_sorted) >= 3:
-            axis_third = g_sorted[2]
-            if (axis_third not in picks) and (hens.get(axis_third, 0.0) >= THIRD_MIN) and (axis_third != axis):
-                drop_cands = [x for x in picks if (x not in axis_line) and (x != axis_partner)]
-                if drop_cands:
-                    worst = min(drop_cands, key=lambda x: scores_local.get(x, -1e9))
-                    picks = [x for x in picks if x != worst] + [axis_third]
-
-    # --- ユニーク＆サイズ調整（相方を落とさない） ---
-    seen = set()
-    uniq = []
-    for x in picks:
-        if x not in seen:
-            uniq.append(x)
-            seen.add(x)
-    picks = uniq
-
-    if len(picks) > n_opps:
-        # 相方は保護して、残りから低スコアを落とす
-        protect = set([axis_partner]) if axis_partner is not None else set()
-        drop_pool = [x for x in picks if x not in protect]
-        drop_pool_sorted = sorted(drop_pool, key=lambda x: scores_local.get(x, -1e9))
-        while len(picks) > n_opps and drop_pool_sorted:
-            picks.remove(drop_pool_sorted.pop(0))
-
-    return picks
-
-
-def _format_tri_axis_partner_rest(axis: int, opps: list, axis_line: list,
-                                  hens: dict, lines: list) -> str:
-    """
-    出力形式： 軸・相方 － 残り3枠 － 残り3枠
-    並び規則：対抗ラインの2名（番号昇順）→ 軸ラインの3番手（存在時）→ 残りをスコア順で充填
-    """
-    if not isinstance(axis, int) or axis <= 0 or not isinstance(opps, list):
-        return "—"
-
-    hens = {int(k): float(v) for k, v in (hens or {}).items() if str(k).isdigit()}
-    axis_line = list(axis_line or [])
-
-    # 相方（軸ライン内の最上位・軸以外）
-    partner = None
-    if axis in axis_line:
-        cands = [x for x in axis_line if x != axis]
-        if cands:
-            partner = max(cands, key=lambda x: (hens.get(x, 0.0), -int(x)))
-
-    # フォールバック：相方不在なら通常 1-XXXX-XXXX
-    if partner is None:
-        rest = "".join(str(x) for x in sorted(opps))
-        return f"{axis}-{rest}-{rest}"
-
-    # 軸3番手（スコア順の3番手）
-    axis_third = None
-    if len(axis_line) >= 3:
-        g_sorted = sorted(axis_line, key=lambda x: hens.get(x, 0.0), reverse=True)
-        if len(g_sorted) >= 3:
-            axis_third = g_sorted[2]
-
-    # 対抗ライン（＝軸ライン以外で平均偏差最大）
-    def _line_avg(g):
-        return sum(hens.get(x, 0.0) for x in g) / len(g) if g else -1e9
-    other_lines = [g for g in (lines or []) if g != axis_line]
-    opp_line = max(other_lines, key=_line_avg) if other_lines else []
-
-    # 残り3枠（相方を除く）
-    pool = [x for x in opps if x != partner]
-
-    # まず対抗ラインの2名（昇順で最大2名）
-    opp_two = sorted([x for x in pool if x in (opp_line or [])])[:2]
-
-    rest_three = []
-    rest_three.extend(opp_two)
-
-    # 軸3番手を追加（まだ入っておらず、poolに居るなら）
-    if axis_third is not None and axis_third in pool and axis_third not in rest_three:
-        rest_three.append(axis_third)
-
-    # 不足充填：スコア降順→番号昇順で埋める
-    if len(rest_three) < 3:
-        remain = [x for x in pool if x not in rest_three]
-        remain_sorted = sorted(remain, key=lambda x: (hens.get(x, 0.0), -int(x)), reverse=True)
-        rest_three.extend(remain_sorted[: (3 - len(rest_three))])
-
-    rest_three = rest_three[:3]
-
-    # 表示は「対抗(昇順) → それ以外」の順
-    in_opp = [x for x in rest_three if x in (opp_line or [])]
-    not_opp = [x for x in rest_three if x not in (opp_line or [])]
-    rest_str = "".join(str(x) for x in (sorted(in_opp) + not_opp))
-
-    return f"{axis}・{partner} － {rest_str} － {rest_str}"
-
 # === /PATCH ==============================================================
 
 
@@ -5593,47 +3988,6 @@ def _free_fmt_nums(arr):
     if isinstance(arr, list):
         return "".join(str(x) for x in arr) if arr else "—"
     return "—"
-
-def _free_norm_marks(marks_any):
-    marks_any = dict(marks_any or {})
-    if not marks_any:
-        return {}
-    # 値が全部 int → {印:車番} と判断し反転
-    if all(isinstance(v, int) for v in marks_any.values()):
-        out = {}
-        for k, v in marks_any.items():
-            try:
-                out[int(v)] = str(k)
-            except Exception:
-                pass
-        return out
-    # それ以外は {車番:印}
-    out = {}
-    for k, v in marks_any.items():
-        try:
-            out[int(k)] = str(v)
-        except Exception:
-            pass
-    return out
-
-def _free_fmt_marks_line(raw_marks: dict, used_ids: list) -> tuple[str, str]:
-    """
-    raw_marks: {車番:int -> '◎'} または { '◎' -> 車番:int } の両方に対応
-    used_ids:  表示対象の車番リスト（スコア順など）
-    戻り値: ("◎5 〇3 ▲1 △2 ×6 α7", "を除く未指名：...") のタプル
-    """
-    used_ids = [int(x) for x in (used_ids or [])]
-    marks = _free_norm_marks(raw_marks)
-    prio = ["◎", "〇", "▲", "△", "×", "α"]
-    parts = []
-    for s in prio:
-        ids = [cid for cid, sym in marks.items() if sym == s]
-        ids_sorted = sorted(ids, key=lambda c: (used_ids.index(c) if c in used_ids else 10**9, c))
-        parts.extend([f"{s}{cid}" for cid in ids_sorted])
-    marks_str = " ".join(parts)
-    un = [cid for cid in used_ids if cid not in marks]
-    no_str = ("を除く未指名：" + " ".join(map(str, un))) if un else ""
-    return marks_str, no_str
 
 # --- 3区分バンド（短評で使うなら残す） ---
 def _band3_fr(fr: float) -> str:
@@ -7302,46 +5656,69 @@ try:
             """
             各戦法の主役ライン。
 
-            v197:
-            2ライン戦などで、渦と逆流が同じラインを主役にして
-            同じ買目考察を二重表示するのを禁止する。
-            逆流は「LINE_ZONE_MAP上の逆流域」または「旧U_line」が、
-            順流/渦の主役ラインと別ラインとして存在する場合だけ採用する。
+            v270-R2:
+            表示済みのライン評価グループ（LINE_ZONE_MAP）を唯一の基準にする。
+            旧FR_line／VTX_line／U_lineは、該当ゾーンを取得できない場合だけ
+            フォールバックとして使う。これにより、表示上は「渦域=37」なのに
+            「渦メイン=625」となるラベル逆転を防ぐ。
+
+            2ライン戦などでは、順流・渦・逆流が同じラインを重複して主役に
+            しない従来条件を維持する。
             """
             try:
-                fr_key = _scenario_line_key(FR_line) if FR_line else ""
-                vtx_key = _scenario_line_key(VTX_line) if VTX_line else ""
+                style = str(_style_name or "")
 
-                if _style_name == "順流":
-                    if FR_line:
-                        return _scenario_line_digits(FR_line)
-                    _ls = _scenario_lines_for_zone("順流")
-                    return _ls[0] if _ls else []
-
-                if _style_name == "渦":
-                    if VTX_line:
-                        return _scenario_line_digits(VTX_line)
-                    _ls = _scenario_lines_for_zone("渦")
-                    return _ls[0] if _ls else []
-
-                if _style_name == "逆流":
-                    used_keys = {k for k in (fr_key, vtx_key) if k}
-
-                    # まずLINE_ZONE_MAP上で明示された逆流域を優先。
-                    # ただし順流/渦の主役ラインと同一なら採用しない。
-                    _ls = _scenario_lines_for_zone("逆流")
-                    for _ln in (_ls or []):
+                def _first_distinct(_lines, _used_keys):
+                    for _ln in (_lines or []):
                         _key = _scenario_line_key(_ln)
-                        if _key and _key not in used_keys:
+                        if _key and _key not in _used_keys:
                             return _scenario_line_digits(_ln)
+                    return []
 
-                    # 逆流域が空の場合のみ、旧U_lineを補完候補にする。
-                    # ただし旧U_lineが渦ライン等と同一なら、逆流を無理に作らない。
+                if style == "順流":
+                    # 現在のライン評価グループを最優先。
+                    _current = _first_distinct(_scenario_lines_for_zone("順流"), set())
+                    if _current:
+                        return _current
+                    # LINE_ZONE_MAPで取得できない場合だけ旧FR_lineへ戻る。
+                    return _scenario_line_digits(FR_line) if FR_line else []
+
+                if style == "渦":
+                    _jun = _scenario_main_line("順流")
+                    _used_keys = {
+                        _scenario_line_key(_jun)
+                    } if _scenario_line_key(_jun) else set()
+
+                    _current = _first_distinct(_scenario_lines_for_zone("渦"), _used_keys)
+                    if _current:
+                        return _current
+
+                    # 現在の渦域が取得できない場合だけ旧VTX_lineへ戻る。
+                    if VTX_line:
+                        _key = _scenario_line_key(VTX_line)
+                        if _key and _key not in _used_keys:
+                            return _scenario_line_digits(VTX_line)
+                    return []
+
+                if style == "逆流":
+                    _jun = _scenario_main_line("順流")
+                    _vtx = _scenario_main_line("渦")
+                    _used_keys = {
+                        _key for _key in (
+                            _scenario_line_key(_jun),
+                            _scenario_line_key(_vtx),
+                        ) if _key
+                    }
+
+                    _current = _first_distinct(_scenario_lines_for_zone("逆流"), _used_keys)
+                    if _current:
+                        return _current
+
+                    # 現在の逆流域が取得できない場合だけ旧U_lineへ戻る。
                     if U_line:
-                        u_key = _scenario_line_key(U_line)
-                        if u_key and u_key not in used_keys:
+                        _key = _scenario_line_key(U_line)
+                        if _key and _key not in _used_keys:
                             return _scenario_line_digits(U_line)
-
                     return []
             except Exception:
                 return []
@@ -7653,7 +6030,7 @@ try:
         # ======================================================
         # 戦法別着順予想を全表示
         # ※ここでは推奨戦法がまだ確定していないため、強調はしない。
-        #   後段で「推奨戦法＋コピー用」を別枠表示する。
+        #   推奨戦法は現行サマリーで表示する。
         # ======================================================
         try:
             def _fmt_seq_full(_seq):
@@ -8169,440 +6546,25 @@ try:
         except Exception:
             pass
 
-               # =====================================================
-        # 推奨戦法を＜短評＞の上に表示
         # =====================================================
-        recommend_lines = []
-        recommend_lines.append(
-            f"推奨戦法：{recommend_style}"
-        )
-
-        # =====================================================
-        # 買い間違い防止：推奨戦法の着順予想だけを強調表示
-        #   目視用：7 → 1 → 5 ...
-        #   コピー用：7152364
+        # 推奨戦法と着順予想を現行サマリーへ渡す
         # =====================================================
         try:
-            _style_seq_map_for_display = globals().get("STYLE_SEQ_MAP", {})
-            _recommended_seq = _style_seq_map_for_display.get(recommend_style, [])
-
+            _style_seq_map_for_display = globals().get("STYLE_SEQ_MAP", {}) or {}
+            _recommended_seq = _style_seq_map_for_display.get(recommend_style, []) or []
             if not _recommended_seq:
-                # 保険：STYLE_SEQ_MAPが空の場合は、直前で作った各戦法順から拾う
                 _fallback_map = {
                     "順流": [int(x) for x in (out_j or []) if str(x).isdigit()],
                     "渦":   [int(x) for x in (out_v or []) if str(x).isdigit()],
                     "逆流": [int(x) for x in (out_u or []) if str(x).isdigit()],
                 }
-                _recommended_seq = _fallback_map.get(recommend_style, [])
+                _recommended_seq = _fallback_map.get(recommend_style, []) or []
 
             if _recommended_seq:
-                _display_seq = " → ".join(str(int(x)) for x in _recommended_seq if str(x).isdigit())
-                _copy_seq = "".join(str(int(x)) for x in _recommended_seq if str(x).isdigit())
-
-                recommend_lines.append("")
-                recommend_lines.append(f"✅ 推奨戦法：{recommend_style}")
-                recommend_lines.append("")
-                recommend_lines.append(f"【{recommend_style}メイン着順予想】")
-                recommend_lines.append(_display_seq)
-                recommend_lines.append("")
-                recommend_lines.append(f"コピー用：{_copy_seq}")
-                recommend_lines.append("")
-
-                # st.markdown表示時に強調しやすいよう、HTML版も保持しておく
                 globals()["RECOMMENDED_STYLE"] = recommend_style
                 globals()["RECOMMENDED_STYLE_SEQ"] = _recommended_seq
-                globals()["RECOMMENDED_STYLE_COPY"] = _copy_seq
-        except Exception as _e:
-            recommend_lines.append(f"推奨戦法表示生成不可（{_e}）")
-            recommend_lines.append("")
-
-        # =====================================================
-        # 2車複 評価1軸候補
-        # 推奨戦法の評価順だけを使う
-        # =====================================================
-        try:
-            import math
-
-            def _axis_rank(p):
-                if p >= 0.40:
-                    return "A", "買い候補強"
-                if p >= 0.30:
-                    return "B", "買い候補"
-                if p >= 0.20:
-                    return "C", "オッズ条件付き"
-                if p >= 0.10:
-                    return "D", "高配当条件"
-                return "E", "ケン寄り"
-
-            def _safe_odds_from_prob(p):
-                if p <= 1e-12:
-                    return None
-                return 1.0 / float(p)
-
-            def _style_axis_pairs(seq, score_map):
-                """
-                評価順seqの1位を軸にした2車複候補を作る。
-                推定率はPlackett-Luce型の上位2着内ペア近似。
-                """
-                xs = []
-                seen = set()
-
-                for x in (seq or []):
-                    if str(x).isdigit():
-                        c = int(x)
-                        if c not in seen:
-                            seen.add(c)
-                            xs.append(c)
-
-                if len(xs) < 2:
-                    return None, [], 0.0
-
-                vals = []
-                for c in xs:
-                    vals.append(float(score_map.get(int(c), 0.0) or 0.0))
-
-                mu = sum(vals) / max(len(vals), 1)
-                var = sum((v - mu) ** 2 for v in vals) / max(len(vals), 1)
-                sdv = var ** 0.5
-                if sdv <= 1e-9:
-                    sdv = 1.0
-
-                # 温度：小さいほどスコア差を強く見る
-                temp = 1.65
-
-                weights = {}
-                for c, v in zip(xs, vals):
-                    z = (v - mu) / (sdv * temp)
-                    z = max(-6.0, min(6.0, z))
-                    weights[int(c)] = math.exp(z)
-
-                total_w = sum(weights.values())
-                if total_w <= 1e-12:
-                    return xs[0], [], 0.0
-
-                axis = xs[0]
-                wa = float(weights.get(axis, 0.0))
-
-                pair_rows = []
-                for opp in xs[1:]:
-                    wb = float(weights.get(int(opp), 0.0))
-
-                    # 無順序2車複：P(axis→opp) + P(opp→axis)
-                    p1 = (wa / total_w) * (wb / max(total_w - wa, 1e-12))
-                    p2 = (wb / total_w) * (wa / max(total_w - wb, 1e-12))
-                    p_pair = max(0.0, p1 + p2)
-
-                    pair_rows.append((axis, int(opp), p_pair))
-
-                # 評価1軸の想定2着内率
-                axis_rate = sum(p for _, _, p in pair_rows)
-
-                return axis, pair_rows, axis_rate
-
-            style_seq_map = globals().get("STYLE_SEQ_MAP", {})
-
-            # 推奨戦法に応じた評価順を採用
-            selected_style = recommend_style
-            selected_seq = style_seq_map.get(selected_style, [])
-
-            # 保険：推奨戦法のseqが空なら順流を使う
-            if not selected_seq:
-                selected_style = "順流"
-                selected_seq = style_seq_map.get("順流", [])
-
-            axis, pair_rows, axis_rate = _style_axis_pairs(selected_seq, score_map)
-            axis_rank, axis_label = _axis_rank(axis_rate)
-
-            # 他戦法で軸率が高いものを参考表示する
-            ref_msgs = []
-            selected_fr = _style_fr_for_recommend(selected_style)
-
-            for other_style in ["順流", "渦", "逆流"]:
-                if other_style == selected_style:
-                    continue
-
-                other_seq = style_seq_map.get(other_style, [])
-                other_axis, _, other_rate = _style_axis_pairs(other_seq, score_map)
-
-                if other_axis is None:
-                    continue
-
-                                # 推奨戦法より3%以上高い場合だけ参考表示
-                if other_rate >= axis_rate + 0.03:
-                    other_fr = _style_fr_for_recommend(other_style)
-
-                    if other_fr < selected_fr - 0.05:
-                        ref_msgs.append(
-                            f"{other_style}評価1位の{int(other_axis)}は軸率高め。ただし{other_style}FR低めのため参考扱い。"
-                        )
-                    else:
-                        ref_msgs.append(
-                            f"{other_style}評価1位の{int(other_axis)}も軸候補。{other_style}警戒。"
-                        )
-
-            if axis is not None and pair_rows:
-                recommend_lines.append(
-                    f"軸評価：{axis_rank}［{axis_label}］"
-                    f"（軸想定2着内率 {axis_rate*100:.0f}%）"
-                )
-                globals()["AXIS_EVAL_TOP_LINE"] = (
-                    f"軸評価：{axis_rank}［{axis_label}］"
-                    f"（軸想定2着内率 {axis_rate*100:.0f}%）"
-                )
-
-                try:
-                    _compact_label_for_buy = str(
-                        globals().get("race_compact_label", "未判定")
-                    )
-                    _compact_gap_for_buy = globals().get("race_compact_gap", None)
-
-                    if _compact_gap_for_buy is not None:
-                        recommend_lines.append(
-                            f"順当度：{_compact_label_for_buy}［上位差={float(_compact_gap_for_buy):.2f}］"
-                        )
-                    else:
-                        recommend_lines.append(
-                            f"順当度：{_compact_label_for_buy}"
-                        )
-
-                except Exception:
-                    pass
-
-                recommend_lines.append("")
-
-                recommend_lines.append("【2車複 評価軸候補】")
-                recommend_lines.append(f"基準：{selected_style}メイン")
-                recommend_lines.append("2車複想定軸：評価1・評価2")
-
-                # =====================================================
-                # 2車複候補一覧＋絞り推奨買目
-                # 評価1・評価2を軸にする
-                # 候補一覧：重複を削らない
-                # 絞り推奨：推定率10%以上、かつ重複削除
-                # =====================================================
-                SHIBORI_MIN_PROB = 0.10
-                shibori_items = []
-                shibori_seen = set()
-
-                def _format_nifuku_line(a, b, p):
-                    odds = _safe_odds_from_prob(p)
-                    if odds is None:
-                        return f"{int(a)}-{int(b)}　推定率 0.0% ／ 足切り —"
-                    return f"{int(a)}-{int(b)}　推定率 {p*100:.1f}% ／ 足切り {odds:.1f}倍以上"
-
-                def _make_axis_pair_rows(seq, score_map, axis_index=0):
-                    """
-                    評価順seqの axis_index 番目を軸にした2車複候補を作る。
-                    axis_index=0 → 評価1軸
-                    axis_index=1 → 評価2軸
-                    """
-                    xs = []
-                    seen = set()
-
-                    for x in (seq or []):
-                        if str(x).isdigit():
-                            c = int(x)
-                            if c not in seen:
-                                seen.add(c)
-                                xs.append(c)
-
-                    if len(xs) < 2 or axis_index >= len(xs):
-                        return None, [], 0.0
-
-                    vals = []
-                    for c in xs:
-                        vals.append(float(score_map.get(int(c), 0.0) or 0.0))
-
-                    mu = sum(vals) / max(len(vals), 1)
-                    var = sum((v - mu) ** 2 for v in vals) / max(len(vals), 1)
-                    sdv = var ** 0.5
-                    if sdv <= 1e-9:
-                        sdv = 1.0
-
-                    temp = 1.65
-
-                    weights = {}
-                    for c, v in zip(xs, vals):
-                        z = (v - mu) / (sdv * temp)
-                        z = max(-6.0, min(6.0, z))
-                        weights[int(c)] = math.exp(z)
-
-                    total_w = sum(weights.values())
-                    if total_w <= 1e-12:
-                        return xs[axis_index], [], 0.0
-
-                    axis2 = int(xs[axis_index])
-                    wa = float(weights.get(axis2, 0.0))
-
-                    rows = []
-                    for opp in xs:
-                        opp = int(opp)
-                        if opp == axis2:
-                            continue
-
-                        wb = float(weights.get(opp, 0.0))
-
-                        # 無順序2車複：P(axis→opp) + P(opp→axis)
-                        p1 = (wa / total_w) * (wb / max(total_w - wa, 1e-12))
-                        p2 = (wb / total_w) * (wa / max(total_w - wb, 1e-12))
-                        p_pair = max(0.0, p1 + p2)
-
-                        rows.append((axis2, opp, p_pair))
-
-                    rate = sum(p for _, _, p in rows)
-                    return axis2, rows, rate
-
-                for _axis_index, _label in [(0, "評価1軸"), (1, "評価2軸")]:
-                    _axis_car, _rows, _rate = _make_axis_pair_rows(
-                        selected_seq,
-                        score_map,
-                        axis_index=_axis_index
-                    )
-
-                    if _axis_car is None or not _rows:
-                        continue
-
-                    recommend_lines.append("")
-                    recommend_lines.append(f"{_label}：{int(_axis_car)}")
-
-                    _rows_sorted = sorted(
-                        _rows,
-                        key=lambda t: int(t[1])
-                    )
-
-                    for a, b, p in _rows_sorted:
-                        line = _format_nifuku_line(a, b, p)
-                        recommend_lines.append(line)
-
-                        if float(p) >= SHIBORI_MIN_PROB:
-                            # 絞り推奨だけは2車複なので重複削除
-                            k = tuple(sorted((int(a), int(b))))
-                            if k not in shibori_seen:
-                                shibori_seen.add(k)
-                                shibori_items.append((a, b, p, line))
-
-                if ref_msgs:
-                    recommend_lines.append("参考：" + "／".join(ref_msgs))
-
-                # 絞り推奨買目を別枠で表示
-                if shibori_items:
-                    recommend_lines.append("")
-                    recommend_lines.append("**【絞り推奨買目】（推定率10％以上が基準／重複削除）**")
-
-                    for a, b, p, line in shibori_items:
-                        recommend_lines.append(f"**{line}**")
-
-                                # =====================================================
-                # 仮想単勝：2車単 軸→全
-                # 競輪には単勝がないため、2車単「軸→全」を仮想単勝として扱う
-                # 評価1軸・評価2軸を表示
-                # =====================================================
-                try:
-                    def _axis_win_prob(seq, score_map, axis_car):
-                        xs = []
-                        seen = set()
-
-                        for x in (seq or []):
-                            if str(x).isdigit():
-                                c = int(x)
-                                if c not in seen:
-                                    seen.add(c)
-                                    xs.append(c)
-
-                        if not xs or int(axis_car) not in xs:
-                            return 0.0
-
-                        vals = []
-                        for c in xs:
-                            vals.append(float(score_map.get(int(c), 0.0) or 0.0))
-
-                        mu = sum(vals) / max(len(vals), 1)
-                        var = sum((v - mu) ** 2 for v in vals) / max(len(vals), 1)
-                        sdv = var ** 0.5
-                        if sdv <= 1e-9:
-                            sdv = 1.0
-
-                        # 2車複推定率と同じ温度を使用
-                        temp = 1.65
-
-                        weights = {}
-                        for c, v in zip(xs, vals):
-                            z = (v - mu) / (sdv * temp)
-                            z = max(-6.0, min(6.0, z))
-                            weights[int(c)] = math.exp(z)
-
-                        total_w = sum(weights.values())
-                        if total_w <= 1e-12:
-                            return 0.0
-
-                        return float(weights.get(int(axis_car), 0.0)) / total_w
-
-                    def _unique_seq(seq):
-                        xs = []
-                        seen = set()
-                        for x in (seq or []):
-                            if str(x).isdigit():
-                                c = int(x)
-                                if c not in seen:
-                                    seen.add(c)
-                                    xs.append(c)
-                        return xs
-
-                    _seq_unique = _unique_seq(selected_seq)
-
-                    recommend_lines.append("")
-                    recommend_lines.append("【仮想単勝：2車単 軸→全】")
-
-                    for _axis_index, _label in [(0, "評価1軸"), (1, "評価2軸")]:
-                        if _axis_index >= len(_seq_unique):
-                            continue
-
-                        _axis_car = int(_seq_unique[_axis_index])
-                        axis_win_rate = _axis_win_prob(
-                            selected_seq,
-                            score_map,
-                            _axis_car
-                        )
-
-                        if axis_win_rate <= 1e-12:
-                            continue
-
-                        theoretical_odds = 1.0 / axis_win_rate
-
-                        # 軸→全の点数。7車なら6点、5車なら4点、9車なら8点。
-                        n_tansho_points = max(len(_seq_unique) - 1, 1)
-
-                        # 2車単「軸→全」は、最安目ではなく合成オッズで見る
-                        required_composite_odds = theoretical_odds
-
-                        # 実戦では推定誤差を考えて少し上乗せ
-                        practical_composite_odds = theoretical_odds * 1.10
-
-                        recommend_lines.append("")
-                        recommend_lines.append(f"{_label}：{int(_axis_car)}")
-                        recommend_lines.append(
-                            f"軸1着推定率：{axis_win_rate*100:.1f}%"
-                        )
-                        
-                        recommend_lines.append(
-                            f"2車単 軸→全 必要合成オッズ：{required_composite_odds:.1f}倍以上"
-                        )
-                        recommend_lines.append(
-                            f"実戦目安：合成{practical_composite_odds:.1f}倍以上なら検討"
-                        )
-                        recommend_lines.append(
-                            f"参考：均等買いのトリガミ回避は各目{float(n_tansho_points):.1f}倍以上"
-                        )
-                except Exception:
-                    pass
-
-                recommend_lines.append("")
-
-        except Exception as _e:
-            recommend_lines.append(
-                f"【2車複 評価1軸候補】生成不可（{_e}）"
-            )
-            recommend_lines.append("")
+        except Exception:
+            pass
 
         # 推奨理由は短評内に残す
         lines_out.append(
@@ -8610,36 +6572,10 @@ try:
         )
 
     except Exception as _e:
-        recommend_lines = []
-        recommend_lines.append(
-            f"推奨戦法：判定不可（{_e}）"
-        )
-        recommend_lines.append("")
+        lines_out.append(f"・推奨戦法判定不可：{_e}")
 
-    # =====================================================
-    # 冒頭表示用：展開評価の直後に軸評価を1行だけ差し込む
-    # =====================================================
-    try:
-        _axis_top_line = globals().get("AXIS_EVAL_TOP_LINE", "")
-
-        if _axis_top_line:
-            for _i, _s in enumerate(note_sections):
-                if str(_s).startswith("展開評価："):
-                    if (
-                        _i + 1 >= len(note_sections)
-                        or str(note_sections[_i + 1]) != _axis_top_line
-                    ):
-                        note_sections.insert(_i + 1, _axis_top_line)
-                    break
-
-    except Exception:
-        pass
-
-    note_sections.extend(recommend_lines)
     note_sections.extend(lines_out)
     note_sections.append("")
-    globals()["note_sections"] = note_sections
-
     globals()["note_sections"] = note_sections
 
 except Exception as _e:
@@ -8658,7 +6594,7 @@ except Exception as _e:
         pass
 
 # =========================
-# note用コピーエリア：期待値軸＋実車番フォーメーション
+# note用コピーエリア：全体妙味＋現行買い目
 # =========================
 
 note_text = "\n".join(note_sections)
@@ -8666,11 +6602,11 @@ note_text = "\n".join(note_sections)
 st.markdown("### 📋 note用（コピーエリア）")
 
 # -----------------------------------------
-# 期待値軸判定用：◎〇△× 車番入力
+# 全体妙味判定用：◎〇△× 車番入力
 # ※公開コピーには、市場名・外部名は出さない
-# ※入力された印は「当たりやすさ」ではなく、市場人気による期待値減衰として扱う
+# ※入力印は市場人気として妙味評価へ反映する
 # -----------------------------------------
-# 期待値軸判定用の市場印は、計算反映前に snapshot へ固定済み。
+# 全体妙味判定用の市場印は、計算反映前に snapshot へ固定済み。
 # ここでは再入力させず、反映済み値だけを使う。
 market_honmei_raw = snapshot.get("market_honmei_raw", "—")
 market_taikou_raw = snapshot.get("market_taikou_raw", "—")
@@ -8696,7 +6632,7 @@ market_batsu = _to_car_int_or_none(market_batsu_raw)
 # 車番→印。
 # v20: 原則として、入力画面の「車番ごとの外部印」をそのまま使う。
 # 以前は ◎/〇/△/× から車番へ圧縮した値だけで復元していたため、
-# 三連複の評価重複欄で「車番1が無印なのに◎/〇になる」などのズレが起き得た。
+# 車番別市場印と旧raw値が食い違わないよう、有効印を車番単位で固定する。
 _market_mark_snapshot = snapshot.get("market_mark_by_car", {})
 _VALID_MARKS_LOCAL = {"◎", "〇", "○", "△", "▲", "×"}
 
@@ -8757,35 +6693,6 @@ def _uniq_keep(seq):
             out.append(xi)
             seen.add(xi)
     return out
-
-
-def _fmt_cars(seq):
-    return "".join(str(int(x)) for x in seq if str(x).isdigit())
-
-
-def _count_nishatan(col1, col2):
-    return sum(1 for a in col1 for b in col2 if int(a) != int(b))
-
-
-def _count_sanrentan(col1, col2, col3):
-    return sum(
-        1
-        for a in col1
-        for b in col2
-        for c in col3
-        if len({int(a), int(b), int(c)}) == 3
-    )
-
-
-def _count_sanpuku(col1, col2, col3):
-    combos = set()
-    for a in col1:
-        for b in col2:
-            for c in col3:
-                s = tuple(sorted([int(a), int(b), int(c)]))
-                if len(set(s)) == 3:
-                    combos.add(s)
-    return len(combos)
 
 
 def _find_line_members_of_car(line_def_obj, car):
@@ -8891,52 +6798,18 @@ def _rank_lines_by_order(line_members_list, order_seq):
 
 
 
-def _pick_eval1_line_promote_car(eval1_line_members, current_col2, mark_map):
+def _calc_overall_myoumi_score_label(col1_cars, col2_cars, role1, mark_map):
     """
-    評価1ライン内の印付き未採用車を、2列目へ1車だけ繰り上げる。
-
-    目的：
-    ・評価1を頭に置くなら、評価1ライン内の番手/後続が2着に残る筋を拾う。
-    ・ただし点数増を避けるため、繰り上げは1車だけ。
-    ・◎〇△×の順で優先し、同格ならライン順（番手優先）にする。
-    """
-    try:
-        line = [int(x) for x in (eval1_line_members or []) if str(x).isdigit()]
-        already = {int(x) for x in (current_col2 or []) if str(x).isdigit()}
-        mark_map = {int(k): str(v) for k, v in (mark_map or {}).items()}
-        mark_rank = {"◎": 4, "〇": 3, "△": 2, "×": 1}
-
-        candidates = []
-        for idx, car in enumerate(line):
-            if int(car) in already:
-                continue
-            mk = mark_map.get(int(car), "無印")
-            if mk not in mark_rank:
-                continue
-            candidates.append((mark_rank[mk], -idx, int(car)))
-
-        if not candidates:
-            return None
-
-        candidates.sort(reverse=True)
-        return int(candidates[0][2])
-
-    except Exception:
-        return None
-
-
-def _calc_expect_axis_score_label(col1_cars, col2_cars, role1, mark_map):
-    """
-    期待値軸を点数化する。
+    全体妙味を点数化する。
 
     基本思想：
     ・信頼度ではなく、市場印とのズレによる配当妙味を見る。
-    ・2車単フォメを基準に、1列目候補と2列目専用候補を分けて評価する。
-    ・1列目に市場印が付くほど人気寄りで期待値は下がりやすい。
+    ・軸候補と相手候補を分けて市場人気の偏りを評価する。
+    ・1列目に市場印が付くほど人気寄りで妙味は下がりやすい。
     ・2列目だけの市場印は、相手人気として軽く減点する。
-    ・評価1が無印なら、市場からズレた期待値妙味として加点する。
+    ・評価1が無印なら、市場からのズレを妙味として加点する。
 
-    期待値点 = 10
+    妙味点 = 10
       - 1列目印減点
       - 2列目専用印減点
       + 評価1印補正
@@ -8976,7 +6849,7 @@ def _calc_expect_axis_score_label(col1_cars, col2_cars, role1, mark_map):
         score = max(0.0, min(10.0, float(score)))
 
         # 表示ランクだけを調整。
-        # 6.6点のような「期待値はあるが荒れ寄り」の形をAAに上げすぎない。
+        # 6.6点付近の荒れ寄りを最上位表示へ上げすぎない。
         # 8.0以上はズレすぎの荒領域として扱う。
         if score >= 8.0:
             label = "荒"
@@ -8996,24 +6869,6 @@ def _calc_expect_axis_score_label(col1_cars, col2_cars, role1, mark_map):
     except Exception:
         return "C", None, []
 
-
-
-def _myoumi_mark_penalty(mark: str, role: str) -> float:
-    """
-    妙味ピックアップ用の印減点。
-    思想：
-    ・外部印とVeloBi買い目構造が被るほど、市場評価と一致して妙味は下がる。
-    ・1列目の印被りは強く減点、2列目は中、3列目は軽く減点。
-    ・無印は減点しない。×は軽い減点に留める。
-    """
-    mark = str(mark or "無印")
-    if role == "head":
-        return {"◎": 4.0, "〇": 3.0, "△": 1.5, "×": 0.75, "無印": 0.0}.get(mark, 0.0)
-    if role == "tail":
-        return {"◎": 2.0, "〇": 1.5, "△": 0.75, "×": 0.40, "無印": 0.0}.get(mark, 0.0)
-    if role == "third":
-        return {"◎": 1.0, "〇": 0.75, "△": 0.40, "×": 0.20, "無印": 0.0}.get(mark, 0.0)
-    return 0.0
 
 
 def _myoumi_eval1_bonus(car: int, role1: int, mark_map: dict) -> float:
@@ -9094,38 +6949,10 @@ def _resolve_market_mark_for_car_myoumi(car: int, mark_map: dict) -> str:
         return "無印"
 
 
-def _myoumi_market_trio_penalty(marks) -> float:
-    """
-    3連系用の本線構成追加減点。
-    ◎〇△が同居するほど、市場本線寄りとして妙味を下げる。
-    """
-    ms = {str(x or "無印") for x in marks}
-    pen = 0.0
-
-    # ◎〇同居は強い市場本線扱い
-    if "◎" in ms and "〇" in ms:
-        pen += 1.0
-
-    # ◎〇△が揃う場合はさらに本線寄り
-    if {"◎", "〇", "△"}.issubset(ms):
-        pen += 1.0
-    elif "◎" in ms and "△" in ms:
-        pen += 0.4
-    elif "〇" in ms and "△" in ms:
-        pen += 0.3
-
-    # 印付き3車で固まりすぎる場合は軽く追加減点
-    marked_count = sum(1 for m in marks if str(m or "無印") in {"◎", "〇", "△", "×"})
-    if marked_count >= 3:
-        pen += 0.3
-
-    return pen
-
-
 def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
     """
-    2車系ピックアップ用。
-    a-b の順番はフォメ列順を保持する。
+    加重2車複の妙味点計算用。
+    a-b の入力順を保持する。
     実オッズではなく、外部印との被りから見た内部妙味pt。
 
     v50方針：
@@ -9168,2158 +6995,11 @@ def _myoumi_score_2kei(a: int, b: int, role1: int, mark_map: dict) -> float:
     return round(max(0.0, min(10.0, score)), 1)
 
 
-def _myoumi_velobi_rank_penalty_3kei(a: int, b: int, c: int, rec_order_for_forme=None) -> float:
-    """
-    三連複妙味pt用のVeloBi順位補正。
-
-    v44方針：
-    ・外部印/WIN側の低評価だけで10.0ptへ張り付かないよう、VeloBi順流順位を強めに反映する。
-    ・2列目で薄い車を使う方を重く減点し、3列目の穴は少しだけ許容する。
-    ・妙味を消すのではなく、10点横並びを崩して買い目順位として使える差を付ける。
-    """
-    try:
-        order = [int(x) for x in (rec_order_for_forme or []) if str(x).strip().isdigit()]
-        if not order:
-            return 0.0
-        rank = {car: i + 1 for i, car in enumerate(order)}
-        n = max(len(order), 1)
-
-        def one_pen(car: int, role: str) -> float:
-            r = int(rank.get(int(car), n))
-            # v43はここが緩すぎて、WIN側ズレが優先されすぎた。
-            if r <= 2:
-                base = 0.0
-            elif r == 3:
-                base = 0.15
-            elif r == 4:
-                base = 0.55
-            elif r == 5:
-                base = 1.05
-            elif r == 6:
-                base = 1.55
-            else:
-                base = 2.05
-
-            if role == "head":
-                base *= 0.45
-            elif role == "third":
-                base *= 0.80
-            else:  # tail / 2列目
-                base *= 1.10
-            return base
-
-        ra = rank.get(int(a), n)
-        rb = rank.get(int(b), n)
-        rc = rank.get(int(c), n)
-        pen = one_pen(int(a), "head") + one_pen(int(b), "tail") + one_pen(int(c), "third")
-
-        avg_rank = (ra + rb + rc) / 3.0
-        if avg_rank >= 5.0:
-            pen += 0.85
-        elif avg_rank >= 4.0:
-            pen += 0.45
-        elif avg_rank >= 3.4:
-            pen += 0.20
-
-        # 6〜7位級を含む組み合わせは、外部印ズレだけで最上位にしない。
-        if max(ra, rb, rc) >= 7:
-            pen += 0.45
-        elif max(ra, rb, rc) >= 6:
-            pen += 0.25
-
-        return float(max(0.0, min(4.2, pen)))
-    except Exception:
-        return 0.0
-
-
-def _myoumi_score_3kei(a: int, b: int, c: int, role1: int, mark_map: dict, rec_order_for_forme=None) -> float:
-    """
-    3連系ピックアップ用。
-    a-b-c の順番はフォメ列順を保持する。
-    実オッズではなく、外部印との被りから見た内部妙味pt。
-
-    v45方針：
-    ・三連複妙味は「外部印が軽い＝即10点」ではなく、VeloBi本体と市場印の重なりを見る。
-    ・特に1列目軸が市場印付きなら、妙味の上限をキャップする。
-      例：軸が△なら、ズレはあるが市場にも拾われているので10点にはしない。
-    """
-    mm = {int(k): str(v) for k, v in (mark_map or {}).items()}
-    ma = mm.get(int(a), "無印")
-    mb = mm.get(int(b), "無印")
-    mc = mm.get(int(c), "無印")
-
-    # v49:
-    # 三連複も強制キャップは撤廃。
-    # ただし基礎点を少し高めに戻し、VeloBi順位減点で差を付ける。
-    # 目的は「10点横並びを崩す」ことであって、「△軸だから妙味を消す」ことではない。
-    score = 10.2
-    score -= _myoumi_mark_penalty(ma, "head")
-    score -= _myoumi_mark_penalty(mb, "tail")
-    score -= _myoumi_mark_penalty(mc, "third")
-    score -= _myoumi_market_trio_penalty([ma, mb, mc])
-    score -= _myoumi_velobi_rank_penalty_3kei(int(a), int(b), int(c), rec_order_for_forme)
-    score += 0.35 * _myoumi_eval1_bonus(int(a), int(role1), mm)
-
-    return round(max(0.0, min(10.0, score)), 1)
-
-
 # ==============================
-# 妙味pt 通過基準
+# 全体妙味表示
 # ==============================
-# 5.0pt基準では候補が広がりすぎるため、実戦買目の通過基準を引き上げる。
-# 2車複は8.5pt以上、三連複は8.0pt以上を標準にする。
-MYOUMI_PASS_THRESHOLD_2KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 8.5))
-MYOUMI_PASS_THRESHOLD_3KEI = float(globals().get("MYOUMI_PASS_THRESHOLD_3KEI", 8.0))
-# ワイドは現時点では未採用。2車複と三連複だけで表示する。
 
-# 評価重複枠：妙味通過ではないが、外部印とVeloBi評価上位が「同じ車で」重なる本線寄りの買目。
-# ここは「当たりやすいが安い」確認枠。
-# 2車複は2車とも「外部印あり＋順流評価1〜4」を満たす場合だけ採用する。
-# 片方が無印、または片方が順流評価外なら評価重複には含めない。
-EVAL_OVERLAP_MIN_2KEI = float(globals().get("EVAL_OVERLAP_MIN_2KEI", 5.0))
-EVAL_OVERLAP_MAX_2KEI = int(globals().get("EVAL_OVERLAP_MAX_2KEI", 3))
-# v19修正：三連複は表示順と印・順流順位の注記順を必ず一致させる。
-# 評価重複三連複：1列目-2列目-3列目の中で外部印が重なる三連複。
-# ここは妙味ではなく「評価がかぶる安い本線寄り」の確認枠なので、妙味ptでは切らない。
-EVAL_OVERLAP_MIN_3KEI = float(globals().get("EVAL_OVERLAP_MIN_3KEI", 5.0))
-EVAL_OVERLAP_MAX_3KEI = int(globals().get("EVAL_OVERLAP_MAX_3KEI", 3))
-MARKED_SET = {"◎", "〇", "○", "△", "▲", "×"}
-
-
-def _is_market_marked(car: int, mark_map: dict) -> bool:
-    try:
-        mk = {int(k): str(v) for k, v in (mark_map or {}).items()}.get(int(car), "無印")
-        return mk in MARKED_SET
-    except Exception:
-        return False
-
-
-def _market_mark_label(car: int, mark_map: dict) -> str:
-    try:
-        return {int(k): str(v) for k, v in (mark_map or {}).items()}.get(int(car), "無印")
-    except Exception:
-        return "無印"
-
-
-def _rank_label_from_order(car: int, rec_order_for_forme=None) -> str:
-    """順流メイン順の順位ラベルを返す。例：順流3位"""
-    try:
-        order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
-        c = int(car)
-        if c in order:
-            return f"順流{order.index(c) + 1}位"
-    except Exception:
-        pass
-    return ""
-
-
-def _overlap_note_for_car(car: int, mark_map: dict, rec_order_for_forme=None, top_n: int = 4) -> str:
-    """
-    評価重複欄の1車分ラベル。
-    外部印とVeloBi評価が両方ある場合は両方出す。
-    無印は表示せず、順流順位などVeloBi側の根拠を出す。
-    例：〇・順流1位 / 順流3位
-    """
-    mk = _market_mark_label(int(car), mark_map)
-    rank = _rank_label_from_order(int(car), rec_order_for_forme)
-    parts = []
-    if str(mk) in MARKED_SET:
-        parts.append(str(mk))
-    try:
-        order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
-        if int(car) in order and order.index(int(car)) < int(top_n):
-            parts.append(rank)
-        elif rank and not parts:
-            # top_n外でも、無印だけで終わらせないため順流順位を表示
-            parts.append(rank)
-    except Exception:
-        if rank:
-            parts.append(rank)
-    if not parts:
-        return "列評価"
-    return "・".join(parts)
-
-
-def _collect_eval_overlap_2kei(col1_cars, col2_cars, role1, mark_map, exclude_keys=None, rec_order_for_forme=None):
-    """
-    評価重複2車複を集める。
-    条件：
-      ・1列目-2列目の2車複候補
-      ・妙味通過枠に既に出ていない
-      ・2車とも、同じ車に「外部印＋順流評価1〜4」が重なる組み合わせ
-      ・評価重複は的中率補助枠なので、妙味ptでは足切りしない
-
-    位置づけ：
-      妙味ではなく、的中率を支える安い本線確認枠。
-      単なる外部印同士でもなく、単なる順流上位同士でもなく、印と順流評価が同じ車で重なるものだけを見る。
-    """
-    try:
-        exclude_keys = set(exclude_keys or set())
-        all_items = _all_2kei_point_items(col1_cars, col2_cars, role1, mark_map)
-        rec_order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
-        if rec_order:
-            velobi_top4 = set(rec_order[:4])
-        else:
-            # 念のためのフォールバック：列評価の前方から4車
-            tmp = []
-            for x in list(col1_cars or []) + list(col2_cars or []):
-                try:
-                    xi = int(x)
-                    if xi not in tmp:
-                        tmp.append(xi)
-                except Exception:
-                    pass
-            velobi_top4 = set(tmp[:4])
-        out = []
-        for sc, a, b in all_items:
-            key = tuple(sorted((int(a), int(b))))
-            if key in exclude_keys:
-                continue
-            # 評価重複は「印と順流評価の重なり」を見る枠。
-            # 妙味ptは表示・並び順の参考に使うが、足切りには使わない。
-            ma = _is_market_marked(a, mark_map)
-            mb = _is_market_marked(b, mark_map)
-            a_top = int(a) in velobi_top4
-            b_top = int(b) in velobi_top4
-
-            # 2車複の評価重複は、同じ車に「外部印＋順流評価1〜4」が重なることを条件にする。
-            # したがって2車とも、外部印あり かつ 順流評価1〜4でなければ出さない。
-            # 例：◎・順流1位 / 〇・順流3位 のような形だけを評価重複とする。
-            if not (ma and mb and a_top and b_top):
-                continue
-
-            marked_count = int(ma) + int(mb)
-            top_count = int(a_top) + int(b_top)
-            out.append((marked_count, top_count, float(sc), int(a), int(b)))
-
-        out.sort(key=lambda x: (-x[2], -x[0], -x[1], x[3], x[4]))
-        return [(sc, a, b, marked_count, top_count) for marked_count, top_count, sc, a, b in out[:EVAL_OVERLAP_MAX_2KEI]]
-    except Exception:
-        return []
-
-
-
-def _collect_eval_overlap_3kei(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
-    """
-    評価重複三連複を集める。
-
-    条件：
-      ・1列目-2列目-3列目の三連複候補
-      ・通常の上位123固定ではなく、列評価の構造を通す
-      ・3車すべてで、外部印と順流評価1〜4が同じ車に重なる組み合わせだけを採用
-
-    重要：
-      評価重複三連複は「妙味ptが高い買目」ではない。
-      外部印と順流評価が同じ車で重なっている、的中率補助の安い本線候補。
-      そのため、妙味ptの通過基準では切らない。
-      表示では、無印の代わりに順流順位などVeloBi側の根拠を出す。
-    """
-    try:
-        c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
-        c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
-        c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
-        if not c1 or not c2 or not c3:
-            return []
-
-        rec_order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
-        if rec_order:
-            velobi_top4 = set(rec_order[:4])
-        else:
-            tmp = []
-            for x in c1 + c2 + c3:
-                if int(x) not in tmp:
-                    tmp.append(int(x))
-            velobi_top4 = set(tmp[:4])
-
-        out = []
-        seen = set()
-
-        for i, a in enumerate(c1):
-            for j, b in enumerate(c2):
-                for k, c in enumerate(c3):
-                    a = int(a); b = int(b); c = int(c)
-                    if len({a, b, c}) != 3:
-                        continue
-
-                    key = tuple(sorted((a, b, c)))
-                    if key in seen:
-                        continue
-                    seen.add(key)
-
-                    marks = [
-                        _market_mark_label(a, mark_map),
-                        _market_mark_label(b, mark_map),
-                        _market_mark_label(c, mark_map),
-                    ]
-                    marked_count = sum(1 for m in marks if str(m) in MARKED_SET)
-                    top_count = sum(1 for x in (a, b, c) if int(x) in velobi_top4)
-                    both_count = sum(
-                        1
-                        for x, m in zip((a, b, c), marks)
-                        if str(m) in MARKED_SET and int(x) in velobi_top4
-                    )
-
-                    # 三連複の評価重複は、3車すべてが
-                    # 「外部印あり＋順流評価1〜4」を満たす場合だけ採用する。
-                    # 例：◎・順流1位 / 〇・順流3位 / △・順流2位 のような形だけ。
-                    if both_count < 3:
-                        continue
-
-                    sc3 = _myoumi_score_3kei(a, b, c, int(role1), mark_map)
-
-                    # 評価重複は安い本線寄りなので、妙味ptの低さで落とさない。
-                    # ソートは「印×評価の重複数」→「印数」→「VeloBi上位数」→「列順」→「妙味pt」。
-                    out.append((both_count, marked_count, top_count, i, j, k, float(sc3), a, b, c, marks))
-
-        out.sort(key=lambda x: (-x[0], -x[1], -x[2], x[3], x[4], x[5], -x[6], x[7], x[8], x[9]))
-        return [(sc3, a, b, c, marks, marked_count, top_count, both_count) for both_count, marked_count, top_count, _, _, _, sc3, a, b, c, marks in out[:EVAL_OVERLAP_MAX_3KEI]]
-    except Exception:
-        return []
-
-
-def _collect_myoumi_pickups(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
-    """
-    既存フォメから妙味ピックアップ候補を内部データとして返す。
-    戻り値：
-      two   = [(score, a, b), ...]          # フォメ列順を保持
-      three = [(score, a, b, c), ...]       # フォメ列順を保持
-    """
-    threshold_2kei = MYOUMI_PASS_THRESHOLD_2KEI
-    threshold_3kei = MYOUMI_PASS_THRESHOLD_3KEI
-    max_2kei = 3
-    max_3kei = 3
-
-    c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
-    c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
-    c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
-    r1 = int(role1)
-
-    rec_order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
-    rec_rank = {int(c): i for i, c in enumerate(rec_order)}
-    c1_rank = {int(c): i for i, c in enumerate(c1)}
-    c2_rank = {int(c): i for i, c in enumerate(c2)}
-
-    two = []
-    for a in c1:
-        for b in c2:
-            if int(a) == int(b):
-                continue
-            sc = _myoumi_score_2kei(a, b, r1, mark_map)
-            if sc >= threshold_2kei:
-                two.append((sc, int(a), int(b)))
-
-    two.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[2], 99)))
-    two = two[:max_2kei]
-
-    three = []
-    seen_ordered = set()
-    for a in c1:
-        for b in c2:
-            for c in c3:
-                if len({int(a), int(b), int(c)}) != 3:
-                    continue
-                # 三連複なので、同じ3車の並び違いは重複表示しない。
-                key = tuple(sorted((int(a), int(b), int(c))))
-                if key in seen_ordered:
-                    continue
-                seen_ordered.add(key)
-                sc = _myoumi_score_3kei(a, b, c, r1, mark_map, rec_order)
-                if sc >= threshold_3kei:
-                    three.append((sc, int(a), int(b), int(c)))
-
-    three.sort(key=lambda x: (-x[0], c1_rank.get(x[1], 99), c2_rank.get(x[2], 99), rec_rank.get(x[3], 99)))
-    three = three[:max_3kei]
-
-    return two, three
-
-
-def _make_myoumi_pickup_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
-    """
-    既存フォメから、妙味基準を超えた買い目だけを抽出する。
-    順位生成・フォメ生成には触らず、表示にだけ使う。
-
-    基準：
-    ・実戦買目の通過基準は MYOUMI_PASS_THRESHOLD_* を使う。
-    ・2車複は8.5pt以上、三連複は8.0pt以上を標準にする。
-    """
-    try:
-        two, three = _collect_myoumi_pickups(
-            col1_cars,
-            col2_cars,
-            col3_cars,
-            role1,
-            mark_map,
-            rec_order_for_forme,
-        )
-
-        lines = [f"【妙味ピックアップ｜2車{MYOUMI_PASS_THRESHOLD_2KEI:.1f}pt以上／三連複{MYOUMI_PASS_THRESHOLD_3KEI:.1f}pt以上】", ""]
-        lines.append("2車系：")
-        if two:
-            for sc, a, b in two:
-                lines.append(f"{a}-{b}　{sc:.1f}pt")
-        else:
-            lines.append("該当なし")
-
-        lines.append("")
-        lines.append("3連系：")
-        if three:
-            for sc, a, b, c in three:
-                lines.append(f"{_fmt_triple_display(a, b, c)}　{sc:.1f}pt")
-        else:
-            lines.append("該当なし")
-
-        return "\n".join(lines)
-    except Exception:
-        return ""
-
-
-
-def _myoumi_zone_label(score: float, threshold: float = 7.5) -> str:
-    """
-    妙味ポイントの表示区分。
-    threshold以上は通過、それ未満は参考扱い。
-    """
-    try:
-        sc = float(score)
-    except Exception:
-        sc = 0.0
-    return "通過" if sc >= float(threshold) else "参考"
-
-
-def _all_2kei_point_items(col1_cars, col2_cars, role1, mark_map):
-    """
-    2車系フォメ内の全2車複候補を、妙味pt付きで返す。
-    同一2車複が複数方向で出る場合は、ptが高い方向を採用する。
-    例：1-2 と 2-1 が両方ある場合、高い方の列順で表示する。
-    """
-    c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
-    c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
-    best = {}
-    order = []
-
-    for i, a in enumerate(c1):
-        for j, b in enumerate(c2):
-            if int(a) == int(b):
-                continue
-            key = tuple(sorted((int(a), int(b))))
-            sc = _myoumi_score_2kei(int(a), int(b), int(role1), mark_map)
-            item = (float(sc), int(a), int(b), i, j)
-            if key not in best:
-                best[key] = item
-                order.append(key)
-            else:
-                old = best[key]
-                # pt優先。同点なら先にフォメで出た方向を残す。
-                if (item[0], -item[3], -item[4]) > (old[0], -old[3], -old[4]):
-                    best[key] = item
-
-    items = [best[k] for k in order if k in best]
-    items.sort(key=lambda x: (-x[0], x[3], x[4], x[1], x[2]))
-    return [(sc, a, b) for sc, a, b, _, _ in items]
-
-
-def _all_3kei_point_items(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
-    """
-    三連複フォメ内の全候補を、妙味pt付きで返す。
-    三連複は重複なし3車として扱い、初回発生のフォメ列順で表示する。
-    """
-    c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
-    c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
-    c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
-    items = []
-    seen = set()
-
-    for i, a in enumerate(c1):
-        for j, b in enumerate(c2):
-            for k, c in enumerate(c3):
-                if len({int(a), int(b), int(c)}) != 3:
-                    continue
-                key = tuple(sorted((int(a), int(b), int(c))))
-                if key in seen:
-                    continue
-                seen.add(key)
-                sc = _myoumi_score_3kei(int(a), int(b), int(c), int(role1), mark_map, rec_order_for_forme)
-                items.append((float(sc), int(a), int(b), int(c), i, j, k))
-
-    items.sort(key=lambda x: (-x[0], x[4], x[5], x[6], x[1], x[2], x[3]))
-    return [(sc, a, b, c) for sc, a, b, c, _, _, _ in items]
-
-
-def _make_myoumi_point_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
-    """
-    検算用の妙味ポイント一覧。
-    買い目を直接決める欄ではなく、ヴェロビ的買目の根拠確認用として、
-    2車複・三連複のフォメ内候補をすべてpt表示する。
-    """
-    try:
-        threshold_2kei = MYOUMI_PASS_THRESHOLD_2KEI
-        threshold_3kei = MYOUMI_PASS_THRESHOLD_3KEI
-        two_all = _all_2kei_point_items(col1_cars, col2_cars, role1, mark_map)
-        three_all = _all_3kei_point_items(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme)
-
-        lines = [f"【妙味ポイント｜2車{threshold_2kei:.1f}pt以上／三連複{threshold_3kei:.1f}pt以上】", ""]
-
-        lines.append("2車複：")
-        if two_all:
-            for sc, a, b in two_all:
-                lines.append(f"{a}-{b}　{sc:.1f}pt［{_myoumi_zone_label(sc, threshold_2kei)}］")
-        else:
-            lines.append("該当なし")
-
-        lines.append("")
-        lines.append("三連複：")
-        if three_all:
-            for sc, a, b, c in three_all:
-                lines.append(f"{_fmt_triple_display(a, b, c)}　{sc:.1f}pt［{_myoumi_zone_label(sc, threshold_3kei)}］")
-        else:
-            lines.append("該当なし")
-
-        return "\n".join(lines)
-    except Exception:
-        return ""
-
-
-def _nishafuku_pairs_from_forme(col1_cars, col2_cars):
-    """
-    2車系フォメ col1=col2 を2車複の重複なしペアへ変換する。
-    例：17=174 → 1-7 / 1-4 / 7-4
-    """
-    pairs = []
-    seen = set()
-    c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
-    c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
-
-    for a in c1:
-        for b in c2:
-            if int(a) == int(b):
-                continue
-            key = tuple(sorted((int(a), int(b))))
-            if key in seen:
-                continue
-            seen.add(key)
-            # 表示はフォメに出た順を優先する
-            pairs.append((int(a), int(b)))
-
-    return pairs
-
-
-def _sanpuku_triples_from_forme(col1_cars, col2_cars, col3_cars):
-    """
-    三連複フォメ col1-col2-col3 を重複なし3車へ変換する。
-    表示は最初にフォメで発生した列順を保持する。
-    """
-    triples = []
-    seen = set()
-    c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
-    c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
-    c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
-
-    for a in c1:
-        for b in c2:
-            for c in c3:
-                if len({int(a), int(b), int(c)}) != 3:
-                    continue
-                key = tuple(sorted((int(a), int(b), int(c))))
-                if key in seen:
-                    continue
-                seen.add(key)
-                triples.append((int(a), int(b), int(c)))
-
-    return triples
-
-
-def _fmt_pair(a, b):
-    return f"{int(a)}-{int(b)}"
-
-
-def _fmt_triple(a, b, c):
-    return f"{int(a)}-{int(b)}-{int(c)}"
-
-
-def _triple_display_order(a, b, c):
-    """
-    三連複は組み合わせ券なので、表示は車番昇順に統一する。
-    重要：印・順流順位の注記も、この表示順に合わせて出す。
-    これをやらないと、1-7-4 のような列順表示と、
-    画面側の 1-4-7 表示を見比べた時に、印と順位がズレて見える。
-    """
-    try:
-        return sorted([int(a), int(b), int(c)])
-    except Exception:
-        return [int(a), int(b), int(c)]
-
-
-def _fmt_triple_display(a, b, c):
-    x, y, z = _triple_display_order(a, b, c)
-    return f"{x}-{y}-{z}"
-
-def _velobi_rank_index(car: int, rec_order_for_forme=None) -> int:
-    """順流メイン順のindex。見つからない車は後ろへ回す。"""
-    try:
-        order = [int(x) for x in (rec_order_for_forme or []) if str(x).isdigit()]
-        c = int(car)
-        if c in order:
-            return order.index(c)
-    except Exception:
-        pass
-    return 999
-
-
-def _velobi_ordered_cars(cars, rec_order_for_forme=None):
-    """評価重複の単系参考用に、車番ではなくVeloBi順流順位で並べる。"""
-    try:
-        return sorted([int(x) for x in cars], key=lambda x: (_velobi_rank_index(x, rec_order_for_forme), int(x)))
-    except Exception:
-        return [int(x) for x in cars]
-
-
-def _fmt_nitan_reference(a, b, rec_order_for_forme=None):
-    """2車複の評価重複を、VeloBi順の2車単参考表記に変換する。"""
-    x, y = _velobi_ordered_cars([a, b], rec_order_for_forme)
-    return f"{x}→{y}"
-
-
-def _fmt_santan_reference(a, b, c, rec_order_for_forme=None):
-    """三連複の評価重複を、VeloBi順の3連単参考表記に変換する。"""
-    x, y, z = _velobi_ordered_cars([a, b, c], rec_order_for_forme)
-    return f"{x}→{y}→{z}"
-
-
-def _pair_overlap_note_ordered(a, b, mark_map, rec_order_for_forme=None, top_n: int = 4):
-    """2車単参考表記の順番に合わせて注記を並べる。"""
-    cars = _velobi_ordered_cars([a, b], rec_order_for_forme)
-    return "/".join([
-        _overlap_note_for_car(x, mark_map, rec_order_for_forme, top_n=top_n)
-        for x in cars
-    ])
-
-
-def _triple_overlap_note_ordered(a, b, c, mark_map, rec_order_for_forme=None, top_n: int = 4):
-    """3連単参考表記の順番に合わせて注記を並べる。"""
-    cars = _velobi_ordered_cars([a, b, c], rec_order_for_forme)
-    return "/".join([
-        _overlap_note_for_car(x, mark_map, rec_order_for_forme, top_n=top_n)
-        for x in cars
-    ])
-
-
-def _triple_overlap_note(a, b, c, mark_map, rec_order_for_forme=None, top_n: int = 4):
-    """三連複の表示順と注記順を必ず一致させる。"""
-    cars = _triple_display_order(a, b, c)
-    return "/".join([
-        _overlap_note_for_car(x, mark_map, rec_order_for_forme, top_n=top_n)
-        for x in cars
-    ])
-
-
-
-def _fmt_cars_compact_for_forme(cars):
-    """車番リストをフォメ用の連結文字へ。例：[2,5] -> 25"""
-    try:
-        xs = []
-        for x in cars or []:
-            xi = int(x)
-            if xi not in xs:
-                xs.append(xi)
-        return "".join(str(x) for x in xs) if xs else "—"
-    except Exception:
-        return "—"
-
-
-# ==============================
-# 三展開合成フォメ 圧縮設定
-# ==============================
-ATTACK_FORME_MAX_TICKETS = 3   # 最終購入点数。v76は三連単1-23-24の3点。
-ATTACK_FORME_MAX_SECONDS = 2   # 2列目最大。A-BC-CD型のBC。
-ATTACK_FORME_MAX_THIRDS  = 2   # 3列目最大。v76は A-BC-BD 型。
-MATERIAL_FORME_MAX_THIRDS = 2   # 素材三連複フォメの3列目最大。超過分は4列目へ分離。
-
-
-def _expand_santan_forme(A, seconds, thirds):
-    """
-    A-BC-CD 型を三連単の実買い目へ展開する。
-    同一車番重複は自然除外する。
-    例：5-43-36 -> 5→4→3 / 5→4→6 / 5→3→6
-    """
-    out = []
-    try:
-        A = int(A)
-        for s in seconds or []:
-            for t in thirds or []:
-                s = int(s)
-                t = int(t)
-                if len({A, s, t}) != 3:
-                    continue
-                out.append(f"{A}→{s}→{t}")
-    except Exception:
-        pass
-    return out
-
-
-def _compress_attack_forme(A, seconds, thirds, rec_order_for_forme=None, max_tickets=None):
-    """
-    最終購入用の三展開合成フォメへ圧縮する。
-
-    目的：
-      ・素材フォメをそのまま11点などに広げない。
-      ・最終購入は原則3点。
-      ・A-BC-CD 型を優先する。
-      ・重複除外による自然な3点化を活かす。
-    """
-    try:
-        max_tickets = int(max_tickets or ATTACK_FORME_MAX_TICKETS)
-        A = int(A)
-
-        sec = []
-        for x in seconds or []:
-            xi = int(x)
-            if xi != A and xi not in sec:
-                sec.append(xi)
-
-        th = []
-        for x in thirds or []:
-            xi = int(x)
-            if xi != A and xi not in th:
-                th.append(xi)
-
-        sec = sorted(sec, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
-        th = sorted(th, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
-
-        sec = sec[:ATTACK_FORME_MAX_SECONDS]
-        th = th[:ATTACK_FORME_MAX_THIRDS]
-
-        while len(_expand_santan_forme(A, sec, th)) > max_tickets:
-            # 3列目を削る方が、2列目の攻め筋を残しやすい。
-            if len(th) > 1:
-                th.pop()
-            elif len(sec) > 1:
-                sec.pop()
-            else:
-                break
-
-        expanded = _expand_santan_forme(A, sec, th)
-        if not expanded:
-            return None
-
-        return {
-            "forme": f"{A}-{_fmt_cars_compact_for_forme(sec)}-{_fmt_cars_compact_for_forme(th)}",
-            "expanded": expanded,
-            "seconds": sec,
-            "thirds": th,
-        }
-    except Exception:
-        return None
-
-
-def _line_members_for_car_from_members(line_members_all, car):
-    """ライン配列 [[1,2],[3,4]] から指定車のラインを返す。"""
-    try:
-        c = int(car)
-        for mem in line_members_all or []:
-            xs = [int(x) for x in mem if str(x).isdigit()]
-            if c in xs:
-                return xs
-    except Exception:
-        pass
-    return []
-
-
-
-
-def _calc_santen_score_order(style_seq_map=None, active_cars=None, ko_order_for_tie=None, ko_score_map=None):
-    """
-    順流・渦・逆流の3展開から三展スコア順位を作る。
-    点数は各展開の順位を上位ほど加点（7車なら1位=7点）。
-
-    v75:
-      三展スコアにKO使用スコアの実数を加算する。
-      例：三展19点 + KO2.029 = 21.029
-      これにより三展同点を自然に割り、KO上位を軽く反映する。
-    """
-    try:
-        smap = style_seq_map or globals().get("STYLE_SEQ_MAP", {}) or {}
-        seqs = []
-        for k in ("順流", "渦", "逆流"):
-            xs = [int(x) for x in (smap.get(k, []) or []) if str(x).isdigit()]
-            if xs:
-                seqs.append(xs)
-        if not seqs:
-            return [], {}, {}
-
-        cars = []
-        if active_cars:
-            cars = [int(x) for x in active_cars if str(x).isdigit()]
-        if not cars:
-            for xs in seqs:
-                for x in xs:
-                    if int(x) not in cars:
-                        cars.append(int(x))
-
-        n = max([len(xs) for xs in seqs] + [len(cars), 1])
-        santen_score = {int(c): 0.0 for c in cars}
-        for xs in seqs:
-            for i, c in enumerate(xs):
-                c = int(c)
-                santen_score.setdefault(c, 0.0)
-                santen_score[c] += float(n - i)
-
-        kmap = ko_score_map or globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {}
-        ko_score = {}
-        for c in cars:
-            try:
-                ko_score[int(c)] = float(kmap.get(int(c), 0.0))
-            except Exception:
-                ko_score[int(c)] = 0.0
-
-        # --------------------------------------------------
-        # v85: 会場判定・最終H補正倍率・必要オッズ倍率をすべて
-        #      「三展+KO順位生成」へ反映する。
-        #
-        # 思想：
-        #   ・会場判定        = その会場で素直決着をどれだけ疑うか
-        #   ・最終H補正倍率  = H1番手減点/H2番手加点をどれだけ強く見るか
-        #   ・必要オッズ倍率 = 安い順当筋を嫌い、補正後順位をどれだけ重視するか
-        #
-        # これらを order_pressure にまとめ、
-        #   三展順位 × (1-order_pressure) + KO/H補正順位 × order_pressure
-        # で、最終のA/B/Cを作る。
-        # --------------------------------------------------
-        try:
-            min_odds_mult = float(globals().get("venue_min_odds_mult", 1.0) or 1.0)
-        except Exception:
-            min_odds_mult = 1.0
-
-        try:
-            venue_profile_for_order = str(globals().get("venue_profile", "unknown") or "unknown")
-        except Exception:
-            venue_profile_for_order = "unknown"
-
-        try:
-            home_flow_mult_for_order = float(globals().get("venue_home_flow_mult", 1.0) or 1.0)
-        except Exception:
-            home_flow_mult_for_order = 1.0
-
-        profile_pressure_map = {
-            "strong_good": 0.00,
-            "swing_return": 0.18,
-            "normal": 0.10,
-            "normal_watch": 0.32,
-            "cheap_hit": 0.28,
-            "bad": 0.50,
-            "low_hit_risk": 0.60,
-            "very_bad": 0.78,
-            "unknown": 0.10,
-        }
-
-        odds_pressure = clamp((min_odds_mult - 1.00) / 0.40, 0.0, 1.0)
-        profile_pressure = float(profile_pressure_map.get(venue_profile_for_order, 0.10))
-        home_pressure = clamp((home_flow_mult_for_order - 1.00) / 0.80, 0.0, 1.0)
-
-        # 必要オッズを主、会場判定を準主、H倍率を補助にする。
-        # low_hit_risk / H1.39 / 必要1.30 なら、おおむね0.66前後になる。
-        odds_blend = clamp(
-            0.50 * float(odds_pressure)
-            + 0.35 * float(profile_pressure)
-            + 0.15 * float(home_pressure),
-            0.0,
-            1.0,
-        )
-
-        santen_order = sorted(
-            [int(c) for c in cars],
-            key=lambda c: (-float(santen_score.get(int(c), 0.0)), int(c))
-        )
-        santen_rank_score = {int(c): float(len(cars) - i) for i, c in enumerate(santen_order)}
-
-        ko = [int(x) for x in (ko_order_for_tie or globals().get("KO_SCORE_ORDER_FOR_TIE", []) or []) if str(x).isdigit()]
-        if not ko:
-            ko = sorted(
-                [int(c) for c in cars],
-                key=lambda c: (-float(ko_score.get(int(c), 0.0)), int(c))
-            )
-        ko_rank = {int(c): i for i, c in enumerate(ko)}
-        ko_rank_score = {int(c): float(len(cars) - ko_rank.get(int(c), len(cars))) for c in cars}
-
-        total_score = {}
-        for c in cars:
-            c = int(c)
-            # 同点の微差だけ raw KO を足す。順位の主役は「三展順位×KO/H順位のブレンド」。
-            total_score[c] = (
-                (1.0 - odds_blend) * float(santen_rank_score.get(c, 0.0))
-                + odds_blend * float(ko_rank_score.get(c, 0.0))
-                + 0.001 * float(ko_score.get(c, 0.0))
-            )
-
-        order = sorted(
-            total_score.keys(),
-            key=lambda c: (-total_score.get(int(c), 0.0), ko_rank.get(int(c), 999), int(c))
-        )
-        detail = {
-            "santen": santen_score,
-            "ko": ko_score,
-            "total": total_score,
-            "santen_rank_score": santen_rank_score,
-            "ko_rank_score": ko_rank_score,
-            "venue_min_odds_mult": min_odds_mult,
-            "venue_profile": venue_profile_for_order,
-            "venue_home_flow_mult": home_flow_mult_for_order,
-            "odds_pressure": odds_pressure,
-            "profile_pressure": profile_pressure,
-            "home_pressure": home_pressure,
-            "odds_blend": odds_blend,
-        }
-        return order, total_score, detail
-    except Exception:
-        return [], {}, {}
-
-
-
-def _make_recommended_flow_34_12_block():
-    """
-    v89:
-    旧「三展開合成フォメ」の場所だけを置き換える表示ブロック。
-    他の出力（推奨戦法、メイン着順予想、ヴェロビ的買目、妙味通過、評価重複、期待値推奨）は消さない。
-
-    推奨流れ seq を
-      1位=A, 2位=B, 3位=C, 4位=D
-    として、34-12 の2車複だけを出す。
-      C=A, C=B, D=A, D=B
-    つまり 1=2 と 3=4 は買わない。
-    """
-    try:
-        seq = globals().get("RECOMMENDED_STYLE_SEQ", []) or []
-        style = str(globals().get("RECOMMENDED_STYLE", "推奨流れ") or "推奨流れ")
-
-        if not seq:
-            style_map = globals().get("STYLE_SEQ_MAP", {}) or {}
-            seq = style_map.get(style, []) or []
-
-        xs = []
-        seen = set()
-        for x in seq:
-            if str(x).isdigit():
-                c = int(x)
-                if c not in seen:
-                    seen.add(c)
-                    xs.append(c)
-
-        if len(xs) < 4:
-            return ""
-
-        A, B, C, D = xs[0], xs[1], xs[2], xs[3]
-        raw_pairs = [(C, A), (C, B), (D, A), (D, B)]
-
-        pairs = []
-        keys = set()
-        for a, b in raw_pairs:
-            if int(a) == int(b):
-                continue
-            key = tuple(sorted((int(a), int(b))))
-            if key in keys:
-                continue
-            keys.add(key)
-            pairs.append((int(a), int(b)))
-
-        if not pairs:
-            return ""
-
-        lines = []
-        lines.append("【推奨流れ 34-12 2車複フォメ】")
-        lines.append("")
-        # noteコピー整理で下部重複ブロックと誤判定されないよう、
-        # ここでは plain な「推奨戦法：」は使わない。
-        lines.append(f"対象戦法：{style}")
-        lines.append("推奨流れ：" + " → ".join(str(int(x)) for x in xs))
-        lines.append("")
-        for a, b in pairs:
-            lines.append(f"2車複｜{a}={b}")
-        return "\n".join(lines)
-    except Exception as e:
-        return f"【推奨流れ 34-12 2車複フォメ】生成不可（{e}）"
-
-
-def _make_recommended_flow_12_all_trio_switch_block():
-    """
-    画面表示用の短縮ブロック。
-    実効オッズ入力や12-34側の確率計算は使わない。
-    1-2ワイド確率から出した推奨下限と、短い条件・買い目だけを出す。
-    """
-    try:
-        seq = globals().get("RECOMMENDED_STYLE_SEQ", []) or []
-        style = str(globals().get("RECOMMENDED_STYLE", "推奨流れ") or "推奨流れ")
-
-        if not seq:
-            style_map = globals().get("STYLE_SEQ_MAP", {}) or {}
-            seq = style_map.get(style, []) or []
-
-        xs = []
-        seen = set()
-        for x in seq:
-            if str(x).isdigit():
-                c = int(x)
-                if c not in seen:
-                    seen.add(c)
-                    xs.append(c)
-
-        if len(xs) < 3:
-            return ""
-
-        A, B = int(xs[0]), int(xs[1])
-        rest = [int(x) for x in xs[2:] if int(x) not in (A, B)]
-        if not rest:
-            return ""
-
-        stats = globals().get("FLOW_SWITCH_STATS", None) or _get_flow_switch_stats_from_state()
-        trio = stats.get("trio12_all", {}) or {}
-        pairs = _make_flow_switch_pairs(xs)
-        rest_text = "".join(str(int(x)) for x in rest)
-
-        lines = []
-        lines.append("【ヴェロビ三連複推奨】")
-        lines.append("")
-        total_count = stats.get("total_count")
-        wide_hits = stats.get("wide12_hits")
-        # レース本文は短くする。集計説明は出さない。
-        lines.append("条件：")
-        lines.append(_flow12_market_nifuku_condition_lines(False, stats))
-        lines.append("")
-        lines.append("三連複：")
-        lines.append(f"{A}-{B}-{rest_text}")
-
-        if pairs:
-            lines.append("")
-            lines.append("【切替候補｜34-12 2車複】")
-            lines.append("")
-            lines.append("条件：")
-            lines.append(_flow12_market_nifuku_condition_lines(True, stats))
-            lines.append("")
-            lines.append("2車複：")
-            for a, b in pairs:
-                lines.append(f"{a}={b}")
-            lines.append("")
-            lines.append("買い基準：")
-            lines.append(_flow3412_nifuku_buy_criteria_line(stats))
-
-        return "\n".join(lines)
-    except Exception as e:
-        return f"【ヴェロビ三連複推奨】生成不可（{e}）"
-
-def _make_santen_score_attack_forme(max_tickets=None):
-    """
-    三展+KOスコア順位から、最終の三展開合成フォメを作る。
-
-    v81基本形：評価123・安め切りBOX型（5点）
-      三連単：A→B→C
-      2車単：B→A / C→A
-      2車複：A=C / B=C
-
-    役割：
-      A→B→C = 本線の一点3連単
-      B→A   = 評価2の逆転２車単
-      C→A   = 評価3の逆転・回収起爆剤２車単
-      A=C   = 評価2飛びの補助２車複
-      B=C   = 評価1飛びのズレ補助２車複
-    """
-    try:
-        order, score, detail = _calc_santen_score_order()
-        if len(order) < 3:
-            return None
-
-        A = int(order[0])
-        B = int(order[1])
-        C = int(order[2])
-
-        # v82: 1券種1行。
-        # 旧表示の「展開：A→B→C / B→A / ...」「抑え2車単」は使わない。
-        tickets_lines = [
-            f"3連単｜{A}→{B}→{C}　　本線の一点",
-            f"2車単｜{B}→{A}　　　評価2の逆転",
-            f"2車単｜{C}→{A}　　　評価3の逆転・回収起爆剤",
-            f"2車複｜{A}={C}　　　評価2飛びの補助",
-            f"2車複｜{B}={C}　　　評価1飛びのズレ補助",
-        ]
-
-        lines = []
-        lines.append("【三展+KOスコア順位】")
-        santen = (detail or {}).get("santen", {})
-        ko = (detail or {}).get("ko", {})
-        total = (detail or {}).get("total", score)
-        odds_blend = float((detail or {}).get("odds_blend", 0.0) or 0.0)
-        min_odds_mult = float((detail or {}).get("venue_min_odds_mult", 1.0) or 1.0)
-        venue_profile_for_order = str((detail or {}).get("venue_profile", "unknown") or "unknown")
-        home_flow_mult_for_order = float((detail or {}).get("venue_home_flow_mult", 1.0) or 1.0)
-        odds_pressure = float((detail or {}).get("odds_pressure", 0.0) or 0.0)
-        profile_pressure = float((detail or {}).get("profile_pressure", 0.0) or 0.0)
-        home_pressure = float((detail or {}).get("home_pressure", 0.0) or 0.0)
-        if odds_blend > 0:
-            lines.append(
-                f"※会場補正を順位へ反映：会場={venue_profile_for_order}／H倍率{home_flow_mult_for_order:.2f}／必要オッズ{min_odds_mult:.2f} "
-                f"→ 三展{(1.0-odds_blend)*100:.0f}%＋KO/H{odds_blend*100:.0f}%"
-            )
-            lines.append(
-                f"　内訳：必要{odds_pressure:.2f}・会場{profile_pressure:.2f}・H{home_pressure:.2f}"
-            )
-        for i, c in enumerate(order, start=1):
-            c = int(c)
-            lines.append(
-                f"{i}位：{c} (合成={total.get(c, 0.0):.3f}｜三展={santen.get(c, 0.0):.1f}+KO={ko.get(c, 0.0):.6f})"
-            )
-
-        return {
-            "forme": f"{A}-{B}-{C}",
-            "expanded": [f"{A}→{B}→{C}", f"{B}→{A}", f"{C}→{A}", f"{A}={C}", f"{B}={C}"],
-            "seconds": [B],
-            "thirds": [C],
-            "nitan_follow": [f"{B}→{A}", f"{C}→{A}"],
-            "nitan_forme": f"{B}{C}→{A}",
-            "fukusho_pairs": [f"{A}={C}", f"{B}={C}"],
-            "santen_order": order,
-            "santen_score": score,
-            "santen_detail": detail,
-            "santen_block": "\n".join(lines),
-            "tickets_lines": tickets_lines,
-            "tickets_block": "\n".join(tickets_lines),
-            "source": "santen_plus_ko_score_yasume_kiri_box_5ten",
-        }
-    except Exception:
-        return None
-
-def _make_pillar_santan_line_forme(overlap_triples, col2_cars, col3_cars, rec_order_for_forme=None, overlap_pairs=None, myoumi_pairs=None):
-    """
-    評価重複の柱三連単から、ライン補正フォメを作る。
-
-    思想：
-      ・評価重複三連単のうち、妙味ptが一番低いものを「一番素直な柱」とみなす。
-      ・柱 A→B→C を作る。
-      ・残す車番は「柱B・柱C・A同ライン補正」で作る。
-      ・ただし、どの列に残すかは基本三連複フォメを優先する。
-        - 2列目に存在するものだけを2列目へ残す。
-        - 3列目に存在するものだけを3列目へ残す。
-      ・つまり A - (残す車番 ∩ 2列目) - (残す車番 ∩ 3列目) の形で出す。
-
-    例1：
-      柱 7→5→3、ライン72、2列目251、3列目1346
-      → 7-25-3
-    例2：
-      柱 2→4→1、ライン423、2列目4163、3列目1375
-      → 2-413-13
-    """
-    try:
-        c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
-        c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
-        # v59: 基本フォメで4列目へ分離した車は、推奨ライン補正フォメの3列目へ戻さない。
-        # 例：1-7435-732 / 4列目=56 の場合、ライン補正で 5 をthird_seedに拾っても除外する。
-        # v67: 4列目は素材表示専用。
-        # 三展開合成フォメへは絶対に副作用を出さない。
-        third_exclude = set()
-        if not c2 or not c3:
-            return None
-
-        # v32：妙味2車複が出た場合は、評価重複より妙味を優先して補正フォメを作る。
-        # 妙味2車複が1点だけなら、最低ptの評価重複2車複を合成して3連系の形にする。
-        myoumi_pairs = list(myoumi_pairs or [])
-        has_myoumi_pillar = bool(myoumi_pairs)
-
-        # 評価重複の「一番数値が低い」ものを柱にする。
-        # 三連複評価重複がある場合は A→B→C を柱にする。
-        # 無い場合は、評価重複2車複 A→B を柱にし、3列目はライン補正と基本フォメから作る。
-        has_triple_pillar = (not has_myoumi_pillar) and bool(overlap_triples)
-
-        # v63: 妙味起点でも、先に A/B/C とライン補正用ヘルパを作る。
-        # v62ではこの初期化より前に A や _line_nearest_third_partners を参照し、
-        # 推奨フォメブロック自体が消えるケースがあった。
-        sc = 0.0
-        A = B = C = None
-
-        def _myoumi_init_key(item):
-            try:
-                scx, ax, bx = float(item[0]), int(item[1]), int(item[2])
-                ox = _velobi_ordered_cars([ax, bx], rec_order_for_forme)
-                return (-scx, [_velobi_rank_index(z, rec_order_for_forme) for z in ox], ox)
-            except Exception:
-                return (999.0, [999, 999], [9, 9])
-
-        if has_myoumi_pillar:
-            _base = sorted(myoumi_pairs, key=_myoumi_init_key)[0]
-            sc, a0, b0 = float(_base[0]), int(_base[1]), int(_base[2])
-            A, B = _velobi_ordered_cars([a0, b0], rec_order_for_forme)
-            C = None
-
-        note_text_obj = globals().get("note_text", "")
-        line_members_all = _parse_line_members_from_note_text(note_text_obj)
-        if not line_members_all:
-            line_members_all = _line_members_list_from_line_def(globals().get("line_def", {}))
-
-        a_line = _line_members_for_car_from_members(line_members_all, A) if A is not None else []
-        a_line_others = [int(x) for x in a_line if A is not None and int(x) != int(A)]
-
-        def _line_nearest_third_partners(car):
-            """採用した2着候補の直近の非軸ライン相手だけを返す。"""
-            try:
-                line = [int(x) for x in _line_members_for_car_from_members(line_members_all, car)]
-                ci = int(car)
-                if A is None or ci not in line:
-                    return []
-                idx = line.index(ci)
-                for j in range(idx + 1, len(line)):
-                    x = int(line[j])
-                    if x != int(A) and x != ci:
-                        return [x]
-                for j in range(idx - 1, -1, -1):
-                    x = int(line[j])
-                    if x != int(A) and x != ci:
-                        return [x]
-                return []
-            except Exception:
-                return []
-
-        if has_myoumi_pillar:
-            # v62 固定仕様：
-            # ・2列目は最大2車。
-            # ・妙味2車複を起点にするが、2車ラインの軸ライン相手だけは強制優先できる。
-            #   4車ライン/3車ラインの奥まで「軸ラインだから」で優先しない。
-            # ・押し出された妙味相手、評価重複残り、採用2着候補の直近非軸ライン相手だけを3列目へ。
-            # ・4列目へ分離した車は推奨3列目へ戻さない。
-            keep_set = set()
-            second_seed = set()
-            third_seed = set()
-
-            def _add_unique(lst, x):
-                try:
-                    xi = int(x)
-                    if xi != int(A) and xi not in lst:
-                        lst.append(xi)
-                except Exception:
-                    pass
-
-            def _myoumi_pair_rank(item):
-                try:
-                    scx, ax, bx = float(item[0]), int(item[1]), int(item[2])
-                    ox = _velobi_ordered_cars([ax, bx], rec_order_for_forme)
-                    return (-scx, [_velobi_rank_index(z, rec_order_for_forme) for z in ox], ox)
-                except Exception:
-                    return (999.0, [999, 999], [9, 9])
-
-            def _overlap_pair_rank(item):
-                try:
-                    scx, ax, bx = float(item[0]), int(item[1]), int(item[2])
-                    ox = _velobi_ordered_cars([ax, bx], rec_order_for_forme)
-                    return (scx, [_velobi_rank_index(z, rec_order_for_forme) for z in ox], ox)
-                except Exception:
-                    return (999.0, [999, 999], [9, 9])
-
-            myoumi_ys = []
-            for item in sorted(myoumi_pairs, key=_myoumi_pair_rank):
-                try:
-                    _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
-                    x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
-                    if int(x) == int(A):
-                        _add_unique(myoumi_ys, y)
-                except Exception:
-                    pass
-
-            overlap_ys = []
-            if overlap_pairs:
-                for item in sorted(overlap_pairs, key=_overlap_pair_rank):
-                    try:
-                        _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
-                        x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
-                        if int(x) == int(A):
-                            _add_unique(overlap_ys, y)
-                    except Exception:
-                        pass
-
-            # 2車ラインの軸相手だけは、妙味よりも「形」を優先して2列目へ入れる候補。
-            axis_line_partner = None
-            try:
-                a_line_xs = [int(x) for x in a_line]
-                if len(a_line_xs) == 2:
-                    other = [int(x) for x in a_line_xs if int(x) != int(A)]
-                    if other and other[0] in c2:
-                        axis_line_partner = int(other[0])
-            except Exception:
-                axis_line_partner = None
-
-            second_list = []
-            displaced_for_third = []
-
-            # まず最上位の妙味を1点採用。
-            if myoumi_ys:
-                _add_unique(second_list, myoumi_ys[0])
-
-            # 2車ラインの軸相手がいれば2列目へ優先採用。
-            if axis_line_partner is not None and axis_line_partner not in second_list:
-                _add_unique(second_list, axis_line_partner)
-
-            # 残り枠は妙味、なければ評価重複で埋める。
-            for y in myoumi_ys[1:]:
-                if len(second_list) >= 2:
-                    _add_unique(displaced_for_third, y)
-                else:
-                    _add_unique(second_list, y)
-            if len(second_list) < 2:
-                for y in overlap_ys:
-                    if len(second_list) >= 2:
-                        break
-                    _add_unique(second_list, y)
-
-            # 2列目の表示順は基本2列目の順に合わせる。
-            second_list = [int(x) for x in c2 if int(x) in set(second_list)][:2]
-
-            for y in second_list:
-                keep_set.add(int(y))
-                second_seed.add(int(y))
-                # 採用2着候補自身が基本3列目にもあるなら、入替3着として残す。
-                if int(y) in c3 and int(y) not in third_exclude:
-                    third_seed.add(int(y))
-                # 採用2着候補の直近非軸ライン相手を3列目へ。
-                for z in _line_nearest_third_partners(y):
-                    zi = int(z)
-                    if zi in c3 and zi not in third_exclude:
-                        keep_set.add(zi)
-                        third_seed.add(zi)
-
-            # 押し出された妙味相手は、基本3列目にいる場合のみ3列目へ。
-            for y in displaced_for_third:
-                yi = int(y)
-                if yi in c3 and yi not in third_exclude:
-                    keep_set.add(yi)
-                    third_seed.add(yi)
-
-            # 2列目に採用しなかった評価重複相手は、基本3列目にいる場合のみ3列目へ。
-            for y in overlap_ys:
-                yi = int(y)
-                if yi not in second_seed and yi in c3 and yi not in third_exclude:
-                    keep_set.add(yi)
-                    third_seed.add(yi)
-
-            # 3列目は基本3列目順、最大4車まで。4列目候補は戻さない。
-            third_seed = set(int(x) for x in third_seed if int(x) in c3 and int(x) not in third_exclude)
-            if len(third_seed) > 4:
-                third_seed = set([int(x) for x in c3 if int(x) in third_seed][:4])
-
-        elif has_triple_pillar:
-            def _key(item):
-                try:
-                    sc, a, b, c = float(item[0]), int(item[1]), int(item[2]), int(item[3])
-                    ordered = _velobi_ordered_cars([a, b, c], rec_order_for_forme)
-                    return (sc, [_velobi_rank_index(x, rec_order_for_forme) for x in ordered], ordered)
-                except Exception:
-                    return (999.0, [999, 999, 999], [9, 9, 9])
-
-            pillar = sorted(overlap_triples, key=_key)[0]
-            sc, a0, b0, c0 = float(pillar[0]), int(pillar[1]), int(pillar[2]), int(pillar[3])
-            A, B, C = _velobi_ordered_cars([a0, b0, c0], rec_order_for_forme)
-
-            # Cが3列目にいない形は、既存三連複フォメとつながらないので出さない。
-            if int(C) not in c3:
-                return None
-        else:
-            if not overlap_pairs:
-                return None
-
-            def _pair_key(item):
-                try:
-                    sc, a, b = float(item[0]), int(item[1]), int(item[2])
-                    ordered = _velobi_ordered_cars([a, b], rec_order_for_forme)
-                    return (sc, [_velobi_rank_index(x, rec_order_for_forme) for x in ordered], ordered)
-                except Exception:
-                    return (999.0, [999, 999], [9, 9])
-
-            pillar = sorted(overlap_pairs, key=_pair_key)[0]
-            sc, a0, b0 = float(pillar[0]), int(pillar[1]), int(pillar[2])
-            A, B = _velobi_ordered_cars([a0, b0], rec_order_for_forme)
-            C = None
-
-        note_text_obj = globals().get("note_text", "")
-        line_members_all = _parse_line_members_from_note_text(note_text_obj)
-        if not line_members_all:
-            line_members_all = _line_members_list_from_line_def(globals().get("line_def", {}))
-
-        a_line = _line_members_for_car_from_members(line_members_all, A)
-        a_line_others = [int(x) for x in a_line if int(x) != int(A)]
-
-        def _line_nearest_third_partners(car):
-            """
-            v62: 採用した2着候補の「直近の非軸ライン相手」だけを3列目へ返す。
-            ライン全員は入れない。隣が軸なら、そのさらに隣の非軸車を1車だけ見る。
-            例：246で2を2列目 -> 4のみ（6は奥）
-                52で5を2列目 -> 2
-                146で6を2列目・軸4 -> 1
-                416で4を2列目・軸7 -> 1
-            """
-            try:
-                line = [int(x) for x in _line_members_for_car_from_members(line_members_all, car)]
-                ci = int(car)
-                if ci not in line:
-                    return []
-                idx = line.index(ci)
-
-                # 後ろ方向を優先。軸は飛ばして、最初の非軸を1車だけ。
-                for j in range(idx + 1, len(line)):
-                    x = int(line[j])
-                    if x != int(A) and x != ci:
-                        return [x]
-
-                # 後ろに非軸がなければ前方向。軸は飛ばして、最初の非軸を1車だけ。
-                for j in range(idx - 1, -1, -1):
-                    x = int(line[j])
-                    if x != int(A) and x != ci:
-                        return [x]
-
-                return []
-            except Exception:
-                return []
-
-        # 残す車番：
-        # 三連複柱あり：柱B・柱C・A同ライン補正。
-        # 三連複柱なし：
-        #   ・2列目は「同じ軸Aから出た評価重複2車複の相手」だけを基本に残す。
-        #   ・3列目は、その相手のライン後ろ/前、Aライン残りなどを基本フォメの3列目に合わせて残す。
-        # これにより、青森4Rのような 4→7 / 4→2 では、
-        # 基本フォメ 4-7621-6153 に対して 4-72-15 となる。
-        if has_myoumi_pillar:
-            keep_set = {int(B)}
-            second_seed = set()
-            third_seed = set()
-
-            # v40:
-            # 妙味2車複が複数出ても、2列目へ全部は置かない。
-            # 2列目は妙味ptの高い順から最大2セットまで。
-            # 余った妙味相手は、基本フォメ3列目に存在する場合のみ3列目へ回す。
-            # 例：静岡4R 妙味 4-6 / 4-5 / 4-1、基本 4-6751-5163
-            #   -> 2列目=6,5 ／ 余り1は3列目へ -> 4-65-516
-            def _myoumi_pair_rank(item):
-                try:
-                    scx, ax, bx = float(item[0]), int(item[1]), int(item[2])
-                    ox = _velobi_ordered_cars([ax, bx], rec_order_for_forme)
-                    # 妙味は高ptを優先し、同点ならVeloBi順。
-                    return (-scx, [_velobi_rank_index(z, rec_order_for_forme) for z in ox], ox)
-                except Exception:
-                    return (999.0, [999, 999], [9, 9])
-
-            myoumi_second_ranked = []
-            myoumi_extra_ranked = []
-            for item in sorted(myoumi_pairs, key=_myoumi_pair_rank):
-                try:
-                    _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
-                    x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
-                    if int(x) == int(A) and int(y) != int(A):
-                        if int(y) not in myoumi_second_ranked and int(y) not in myoumi_extra_ranked:
-                            if len(myoumi_second_ranked) < 2:
-                                myoumi_second_ranked.append(int(y))
-                            else:
-                                myoumi_extra_ranked.append(int(y))
-                except Exception:
-                    pass
-
-            # v61:
-            # 妙味2車複が複数ある場合でも、軸ライン相手が基本2列目にいるなら
-            # 2列目へ優先採用する。
-            # 例：軸7・ライン72・妙味7-4/7-5・基本2列目245なら、
-            # 2列目は45ではなく24。押し出された5は3列目へ回し、7-24-51。
-            if len(myoumi_second_ranked) >= 2:
-                for xi in a_line_others:
-                    xi = int(xi)
-                    if xi != int(A) and xi in c2 and xi not in myoumi_second_ranked and xi not in third_exclude:
-                        displaced = None
-                        if len(myoumi_second_ranked) >= 2:
-                            displaced = myoumi_second_ranked.pop()
-                        myoumi_second_ranked.append(xi)
-                        if displaced is not None and displaced not in myoumi_extra_ranked:
-                            myoumi_extra_ranked.insert(0, int(displaced))
-                        break
-
-            for y in myoumi_second_ranked:
-                keep_set.add(int(y))
-                second_seed.add(int(y))
-                # 選抜した2着候補も、基本3列目にあるなら3着入替を許容。
-                if int(y) in c3:
-                    third_seed.add(int(y))
-                # 2着候補の同ライン残りは3列目候補。
-                # v54: ただしライン全員ではなく、直近の相手だけを採用する。
-                # 例：246の2を2列目にした場合、4は残すが6は実質4列目扱いで落とす。
-                for yi in _line_nearest_third_partners(y):
-                    keep_set.add(int(yi))
-                    third_seed.add(int(yi))
-
-            # 余った妙味相手は3列目にあれば回す（2列目には増やさない）。
-            for y in myoumi_extra_ranked:
-                if int(y) in c3:
-                    keep_set.add(int(y))
-                    third_seed.add(int(y))
-
-            # v61:
-            # 妙味複数時の軸ライン相手は、3列目へ無条件追加しない。
-            # 基本2列目にいるなら上で2列目へ採用し、いないなら無理に戻さない。
-
-            # 妙味が1点だけの場合は、2列目が薄くなりやすい。
-            # v53:
-            #   まず「軸Aのライン相手」が基本2列目にいるなら、評価重複より優先して2列目へ足す。
-            #   そのうえでまだ2列目が1車だけなら、最低ptの評価重複2車複を合成する。
-            #   例：静岡9R 妙味=5-2、軸ライン=51、基本2列目=132
-            #      -> 2列目は 1・2 を優先し、5-12-... にする（5-32 にはしない）。
-            if len(myoumi_second_ranked) <= 1:
-                # 軸ライン相手を2列目へ優先採用（基本2列目にある場合のみ）。
-                for xi in a_line_others:
-                    xi = int(xi)
-                    if xi != int(A) and xi in c2 and xi not in second_seed:
-                        keep_set.add(xi)
-                        second_seed.add(xi)
-                        # 軸ライン相手は2着候補。3着側へは基本フォメにある場合だけ控えめに残す。
-                        if xi in c3:
-                            third_seed.add(xi)
-                        if len(second_seed) >= 2:
-                            break
-
-            if len(myoumi_second_ranked) <= 1 and overlap_pairs:
-                def _pair_key2(item):
-                    try:
-                        sc2, a2, b2 = float(item[0]), int(item[1]), int(item[2])
-                        ordered2 = _velobi_ordered_cars([a2, b2], rec_order_for_forme)
-                        return (sc2, [_velobi_rank_index(x, rec_order_for_forme) for x in ordered2], ordered2)
-                    except Exception:
-                        return (999.0, [999, 999], [9, 9])
-
-                ranked_overlap_ys = []
-                for item in sorted(overlap_pairs, key=_pair_key2):
-                    try:
-                        _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
-                        x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
-                        yi = int(y)
-                        if int(x) == int(A) and yi != int(A) and yi not in ranked_overlap_ys:
-                            ranked_overlap_ys.append(yi)
-                    except Exception:
-                        pass
-
-                added_overlap_second = False
-                for yi in ranked_overlap_ys:
-                    # 軸ライン相手で2列目が2車に達している場合は、評価重複は2列目へ足さず3列目候補へ回す。
-                    if yi not in second_seed and not added_overlap_second and len(second_seed) < 2:
-                        keep_set.add(yi)
-                        second_seed.add(yi)
-                        added_overlap_second = True
-                        if yi in c3:
-                            third_seed.add(yi)
-                        # v54: 評価重複を2列目へ足した場合も、同ライン残りは直近相手だけ。
-                        for yyi in _line_nearest_third_partners(yi):
-                            keep_set.add(int(yyi))
-                            third_seed.add(int(yyi))
-                    else:
-                        # 2列目に足さなかった評価重複相手は、基本3列目にある場合だけ3着へ回す。
-                        if yi in c3:
-                            keep_set.add(yi)
-                            third_seed.add(yi)
-
-            # v52:
-            # 妙味2車複が複数ある場合、軸ライン残りを無条件で3列目へ入れると広がりすぎる。
-            # 3列目へ回すのは、
-            #   1) 採用した2着候補の同ライン残り
-            #   2) 余った妙味相手が基本3列目にあるもの
-            #   3) 評価重複2車複の相手が基本3列目にあるもの
-            # に絞る。
-            # 例：静岡8R 妙味=1-7/1-5、評価重複=1→4/1→3、基本=1-4753-73624
-            #   -> 2列目=75 ／ 3列目=7・2・3・4（6は入れない）
-            if overlap_pairs:
-                def _pair_key_myoumi_extra(item):
-                    try:
-                        scx, ax, bx = float(item[0]), int(item[1]), int(item[2])
-                        ox = _velobi_ordered_cars([ax, bx], rec_order_for_forme)
-                        return (scx, [_velobi_rank_index(z, rec_order_for_forme) for z in ox], ox)
-                    except Exception:
-                        return (999.0, [999, 999], [9, 9])
-                for item in sorted(overlap_pairs, key=_pair_key_myoumi_extra):
-                    try:
-                        _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
-                        x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
-                        yi = int(y)
-                        if int(x) == int(A) and yi != int(A) and yi in c3:
-                            keep_set.add(yi)
-                            third_seed.add(yi)
-                    except Exception:
-                        pass
-
-        elif has_triple_pillar:
-            keep_set = {int(B), int(C)}
-            second_seed = {int(B)}
-            third_seed = {int(C)}
-
-            # v35:
-            # 妙味が無い評価重複レースでは、2列目に使う2車複重複を
-            # 「ptが低い=一番素直な重複」から最大2セットに絞る。
-            # それ以外の重複相手は、基本フォメ3列目にあれば3列目へ回す。
-            # 例：2→5(2.0), 2→4(3.5), 2→1(4.3) なら
-            # 2列目=5,4 ／ 残り1は3列目へ。
-            all_pair_ranked = []
-            if overlap_pairs:
-                def _pair_key3(item):
-                    try:
-                        sc3, a3, b3 = float(item[0]), int(item[1]), int(item[2])
-                        ordered3 = _velobi_ordered_cars([a3, b3], rec_order_for_forme)
-                        # 低ptの重複を優先。
-                        return (sc3, [_velobi_rank_index(x, rec_order_for_forme) for x in ordered3], ordered3)
-                    except Exception:
-                        return (999.0, [999, 999], [9, 9])
-
-                for item in sorted(overlap_pairs, key=_pair_key3):
-                    try:
-                        _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
-                        x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
-                        if int(x) == int(A) and int(y) != int(A) and int(y) not in all_pair_ranked:
-                            all_pair_ranked.append(int(y))
-                    except Exception:
-                        pass
-
-            original_pair_count_for_triple = len(all_pair_ranked)
-
-            # 2列目は最大2セットまで。無ければ柱Bを残す。
-            pair_second_ranked = all_pair_ranked[:2] if all_pair_ranked else [int(B)]
-
-            # v37:
-            # 評価重複2車複が1セットしかない場合は、2列目が薄くなりすぎる。
-            # 軸ラインの残りが基本2列目に存在するなら、2列目にも追加する。
-            # 例：A=7、評価重複=7→5、軸ライン=72、基本2列目=251
-            #   -> 2列目は 5 + 2 = 52
-            if len(pair_second_ranked) == 1:
-                for x in a_line_others:
-                    xi = int(x)
-                    if xi != int(A) and xi in c2 and xi not in pair_second_ranked:
-                        pair_second_ranked.append(xi)
-                        if len(pair_second_ranked) >= 2:
-                            break
-
-            for y in pair_second_ranked:
-                keep_set.add(int(y))
-                second_seed.add(int(y))
-
-            # 余った評価重複相手は3列目にあれば回す。
-            for y in all_pair_ranked[2:]:
-                if int(y) in c3:
-                    keep_set.add(int(y))
-                    third_seed.add(int(y))
-
-            # Aラインの残りは3列目候補へ。
-            # これにより、軸ラインの後ろ目・三番手目を3着側に残す。
-            for x in a_line_others:
-                keep_set.add(int(x))
-                third_seed.add(int(x))
-
-            # v35では、2着候補Bのライン後ろは自動では足さない。
-            # ここを足すと 2-145-136 のように広がりすぎるため、
-            # 2-45-146 のように「低pt2セット＋軸ライン残り＋余り重複」へ絞る。
-
-            # あとで2列目表示に使うため、ローカル変数として保持。
-            _pair_second_ranked_for_triple = pair_second_ranked
-            _original_pair_count_for_triple = original_pair_count_for_triple
-        else:
-            keep_set = {int(B)}
-            second_seed = {int(B)}
-            third_seed = set()
-
-            # Aラインの残りは、2着候補ではなく3着候補側へ回す。
-            for x in a_line_others:
-                keep_set.add(int(x))
-                third_seed.add(int(x))
-
-            # 同じ軸Aから出ている評価重複2車複の相手を2列目候補にする。
-            # その相手のライン相手は3列目候補にする。
-            for item in overlap_pairs or []:
-                try:
-                    _sc, _a, _b = float(item[0]), int(item[1]), int(item[2])
-                    x, y = _velobi_ordered_cars([_a, _b], rec_order_for_forme)
-                    if int(x) == int(A) and int(y) != int(A):
-                        keep_set.add(int(y))
-                        second_seed.add(int(y))
-                        y_line = _line_members_for_car_from_members(line_members_all, y)
-                        for yy in y_line:
-                            if int(yy) != int(A) and int(yy) != int(y):
-                                keep_set.add(int(yy))
-                                third_seed.add(int(yy))
-                except Exception:
-                    pass
-
-            # Bの同ライン相手も3列目候補へ。
-            b_line = _line_members_for_car_from_members(line_members_all, B)
-            for x in b_line:
-                if int(x) != int(A) and int(x) != int(B):
-                    keep_set.add(int(x))
-                    third_seed.add(int(x))
-
-        # 表示順。
-        # 三連複柱ありで、同じ軸Aの評価重複2車複が3点以上ある場合は、
-        # 2列目をその評価重複2車複の相手順で出す。
-        # 例：青森7R 2→1 / 2→4 / 2→5 なら 2-145-...
-        # それ以外は従来どおり、基本フォメ2列目の順を守る。
-        sec_source = keep_set if has_triple_pillar else second_seed
-        pair_ranked = locals().get("_pair_second_ranked_for_triple", []) if has_triple_pillar else []
-        if has_triple_pillar and pair_ranked:
-            # v36:
-            # 三連複柱ありでも、2列目は「低ptの評価重複2車複 最大2セット」に絞る。
-            # ただし表示順は基本フォメ2列目の順を守る。
-            # 例：基本2列目=4516、低pt2セット=5,4 -> 45
-            pair_second_set = {int(x) for x in pair_ranked}
-            sec_candidates = [x for x in c2 if int(x) in pair_second_set and int(x) != int(A)]
-        else:
-            sec_candidates = [x for x in c2 if x in sec_source and x != int(A)]
-        if int(B) not in sec_candidates and int(B) != int(A):
-            sec_candidates.append(int(B))
-
-        valid_seconds = []
-        for s in sec_candidates:
-            if int(s) == int(A):
-                continue
-            if int(s) in c2 or int(s) == int(B):
-                valid_seconds.append(int(s))
-
-        valid_seconds = [x for i, x in enumerate(valid_seconds) if x not in valid_seconds[:i]]
-        if not valid_seconds:
-            return None
-
-        # 3列目：基本三連複フォメ3列目に存在するものだけを残す。
-        # 三連複柱ありは keep_set、2車複柱のみは third_seed を中心に使う。
-        third_source = keep_set if has_triple_pillar else third_seed
-        third_candidates = []
-        if C is not None and int(C) != int(A) and int(C) in c3:
-            third_candidates.append(int(C))
-
-        if has_triple_pillar:
-            # v36:
-            # 三連複柱ありは、3列目を「柱C + 軸ライン残り + 余った評価重複相手」に絞る。
-            # 基本フォメ3列目だけで絞ると、軸ライン残りが2列目側にしか無いケースで落ちるため、
-            # 軸ライン残りは3列目へ明示的に残す。
-            # 例：A=2, 軸ライン246, C=1, 低pt2列目=5・4, 余り重複=1 -> 146
-            third_pool = []
-
-            # v37:
-            # 評価重複2車複が1セットのみで、軸ライン残りを2列目にも足したケースは、
-            # 3列目も軸ライン残りを先に見せる。例：7-52-23。
-            one_pair_case = (locals().get("_original_pair_count_for_triple", 0) == 1)
-
-            if one_pair_case:
-                # 軸ラインの残りを先に3着側へ残す（基本フォメ列に無くても許容）
-                for x in a_line_others:
-                    if int(x) != int(A):
-                        third_pool.append(int(x))
-                # 柱C
-                if C is not None and int(C) != int(A):
-                    third_pool.append(int(C))
-            else:
-                # 柱C
-                if C is not None and int(C) != int(A):
-                    third_pool.append(int(C))
-
-                # 軸ラインの残りは3着側へ残す（基本フォメ列に無くても許容）。
-                # ただし柱Bそのものは「2着柱」なので、基本3列目に無い限り3列目へ回さない。
-                for x in a_line_others:
-                    xi = int(x)
-                    if xi == int(A):
-                        continue
-                    if xi == int(B) and xi not in c3:
-                        continue
-                    third_pool.append(xi)
-
-                # v39:
-                # 2列目を「低pt評価重複2車複 最大2セット」に絞った場合、
-                # 1セット目（柱B）のライン残りは足しすぎ防止で原則足さない。
-                # 2セット目以降の相手については、その同ライン残りが基本3列目にあれば3列目へ残す。
-                # 例：静岡1R 4→3 / 4→2、ライン341/25、基本3列目215
-                #   2列目=3,2。2セット目の2のライン残り5を3列目へ足し、4-32-215。
-                try:
-                    for y in list(pair_ranked or [])[1:]:
-                        for yi in _line_nearest_third_partners(y):
-                            yi = int(yi)
-                            if yi in c3:
-                                third_pool.append(yi)
-                except Exception:
-                    pass
-
-            # 余った評価重複相手は、基本フォメ3列目にあれば3着へ回す
-            if overlap_pairs:
-                try:
-                    used_seconds = set(pair_ranked or [])
-                    all_pairs_tmp = []
-                    def _pair_key4(item):
-                        try:
-                            sc4, a4, b4 = float(item[0]), int(item[1]), int(item[2])
-                            ordered4 = _velobi_ordered_cars([a4, b4], rec_order_for_forme)
-                            return (sc4, [_velobi_rank_index(x, rec_order_for_forme) for x in ordered4], ordered4)
-                        except Exception:
-                            return (999.0, [999, 999], [9, 9])
-                    for item in sorted(overlap_pairs, key=_pair_key4):
-                        sc4, a4, b4 = float(item[0]), int(item[1]), int(item[2])
-                        x4, y4 = _velobi_ordered_cars([a4, b4], rec_order_for_forme)
-                        if int(x4) == int(A) and int(y4) != int(A):
-                            all_pairs_tmp.append(int(y4))
-                    for y in all_pairs_tmp:
-                        if int(y) not in used_seconds and int(y) in c3:
-                            third_pool.append(int(y))
-                except Exception:
-                    pass
-
-            # 表示順。
-            # v37の1セット補正ケースは、軸ライン残り→柱Cの順を守る。
-            # v39: 候補が全て基本3列目に存在する場合は、基本3列目の順を優先する。
-            #      例：静岡1R 基本3列目=215 なら 4-32-215。
-            #      軸ライン残りなどで基本3列目外の候補が混じる場合はVeloBi順。
-            third_pool = [x for i, x in enumerate(third_pool) if x not in third_pool[:i] and int(x) != int(A)]
-            if not locals().get("one_pair_case", False):
-                if third_pool and all(int(z) in c3 for z in third_pool):
-                    c3_order = {int(v): i for i, v in enumerate(c3)}
-                    third_pool = sorted(third_pool, key=lambda z: (c3_order.get(int(z), 999), _velobi_rank_index(z, rec_order_for_forme), z))
-                else:
-                    third_pool = sorted(third_pool, key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
-            for x in third_pool:
-                if int(x) not in third_candidates:
-                    third_candidates.append(int(x))
-        else:
-            # v41:
-            # 2車複妙味から補正フォメを作る場合、2着候補の同ライン残りは
-            # 基本3列目に無くても3列目へ残す。
-            # 例：静岡4R 4-5が妙味、5のライン=52、基本=4-6751-5163。
-            #   2が基本3列目に無いままだと、5を2着にした時のライン相手が消えるため、
-            #   4-65-5162 のようにライン補正として3列目へ追加する。
-            for x in c3:
-                if int(x) in third_source and int(x) != int(A) and int(x) not in third_candidates:
-                    third_candidates.append(int(x))
-
-            if has_myoumi_pillar:
-                # 基本3列目外でも、ライン補正で作ったthird_seedは追加する。
-                # 表示順はVeloBi順を優先しつつ、既存候補の後ろへ足す。
-                extras = []
-                for x in third_seed:
-                    xi = int(x)
-                    if xi == int(A) or xi in third_candidates or xi in third_exclude:
-                        continue
-                    # 3連単展開側では c2/c3に無い車を弾く処理があるため、
-                    # ライン補正で追加した車はここで明示的に候補化しておく。
-                    extras.append(xi)
-                extras = sorted([x for i, x in enumerate(extras) if x not in extras[:i]], key=lambda z: (_velobi_rank_index(z, rec_order_for_forme), z))
-                for x in extras:
-                    if int(x) not in third_candidates:
-                        third_candidates.append(int(x))
-
-        # v59: 4列目候補は、どの経路で拾われても推奨フォメの3列目から除外する。
-        if third_exclude:
-            third_candidates = [int(x) for x in third_candidates if int(x) not in third_exclude]
-
-        if not third_candidates and C is not None and int(C) != int(A) and int(C) not in third_exclude:
-            third_candidates.append(int(C))
-
-        # 展開表示は同一車重複を除いた実買い目だけ。
-        expanded = []
-        for s in valid_seconds:
-            for t in third_candidates:
-                if len({int(A), int(s), int(t)}) != 3:
-                    continue
-                # 三連複フォメ側に全く出てこない相手は原則出さない。
-                # ただしv41では、妙味2車複の2着候補ライン残りとして追加した車は、
-                # 基本フォメ外でもライン補正候補として許可する。
-                if int(t) not in c2 and int(t) not in c3:
-                    if not (has_myoumi_pillar and int(t) in third_seed):
-                        continue
-                expanded.append(f"{int(A)}→{int(s)}→{int(t)}")
-
-        if not expanded:
-            return None
-
-        # v64: 最終購入用に3点へ圧縮。
-        # 既存の補正で作った valid_seconds / third_candidates を素材として、
-        # A-BC-CD 型の「三展開合成フォメ」に落とす。
-        attack = _compress_attack_forme(
-            A,
-            valid_seconds,
-            third_candidates,
-            rec_order_for_forme=rec_order_for_forme,
-            max_tickets=ATTACK_FORME_MAX_TICKETS,
-        )
-
-        # v72:
-        # 三展開合成フォメの3列目が2列目のコピーになるケースを補正する。
-        # 例：4-71-71 は、2列目=攻め、3列目=受けになっておらず、
-        #     的中責任が2列目側に寄りすぎる。
-        # 方針：
-        #   1) 2列目の後半車を残す（4-71なら1）
-        #   2) 軸絡み妙味で2列目に採用されなかった車を足す（例：3）
-        #   3) それが無ければ、軸ラインの直近相手を足す（例：6）
-        # これにより、妙味型なら 4-71-13、ライン型なら 4-71-16/76 に寄る。
-        def _rebuild_attack_thirds_if_copied(_attack):
-            try:
-                if not _attack:
-                    return _attack
-                secs0 = [int(x) for x in _attack.get("seconds", [])]
-                ths0 = [int(x) for x in _attack.get("thirds", [])]
-                if not secs0 or not ths0:
-                    return _attack
-
-                # コピー判定：3列目がすべて2列目内なら補正対象。
-                if not set(ths0).issubset(set(secs0)):
-                    return _attack
-
-                rebuilt = []
-
-                def _add_rebuilt(x):
-                    try:
-                        xi = int(x)
-                        if xi != int(A) and xi not in rebuilt:
-                            rebuilt.append(xi)
-                    except Exception:
-                        pass
-
-                # まず2列目の後半側を3着受けに残す。
-                if len(secs0) >= 2:
-                    _add_rebuilt(secs0[-1])
-                elif secs0:
-                    _add_rebuilt(secs0[0])
-
-                # v73:
-                # 2列目コピーを直す時、妙味残りを先に入れない。
-                # 妙味ptが高くても、三展開で薄い単騎・弱線なら3列目の受けとして危険。
-                # まず軸ラインの直近相手を足す。
-                # 4617なら軸4の直近相手6。これで 4-71-16 に寄せる。
-                if len(rebuilt) < ATTACK_FORME_MAX_THIRDS:
-                    try:
-                        for y0 in a_line_others:
-                            _add_rebuilt(y0)
-                            if len(rebuilt) >= ATTACK_FORME_MAX_THIRDS:
-                                break
-                    except Exception:
-                        pass
-
-                # まだ足りない場合だけ、妙味ペアの残りを補助で足す。
-                # ただし三展開のVeloBi順でかなり薄い車は採用しない。
-                # 7車なら上位5番手以内を目安にする。
-                if len(rebuilt) < ATTACK_FORME_MAX_THIRDS:
-                    try:
-                        myoumi_leftovers = []
-                        rank_limit = min(5, len(rec_order_for_forme or []))
-                        for item in sorted(myoumi_pairs or [], key=_myoumi_pair_rank):
-                            _scx, _ax, _bx = float(item[0]), int(item[1]), int(item[2])
-                            x0, y0 = _velobi_ordered_cars([_ax, _bx], rec_order_for_forme)
-                            if int(x0) == int(A) and int(y0) not in secs0:
-                                if _velobi_rank_index(y0, rec_order_for_forme) < rank_limit:
-                                    _add_unique(myoumi_leftovers, y0)
-                        for y0 in myoumi_leftovers:
-                            _add_rebuilt(y0)
-                            if len(rebuilt) >= ATTACK_FORME_MAX_THIRDS:
-                                break
-                    except Exception:
-                        pass
-
-                # それでも足りなければ、元の3列目素材から補う。
-                if len(rebuilt) < ATTACK_FORME_MAX_THIRDS:
-                    for y0 in third_candidates:
-                        _add_rebuilt(y0)
-                        if len(rebuilt) >= ATTACK_FORME_MAX_THIRDS:
-                            break
-
-                rebuilt = rebuilt[:ATTACK_FORME_MAX_THIRDS]
-                if not rebuilt:
-                    return _attack
-
-                fixed = _compress_attack_forme(
-                    A,
-                    secs0,
-                    rebuilt,
-                    rec_order_for_forme=rec_order_for_forme,
-                    max_tickets=ATTACK_FORME_MAX_TICKETS,
-                )
-                return fixed or _attack
-            except Exception:
-                return _attack
-
-        attack = _rebuild_attack_thirds_if_copied(attack)
-
-        # v74:
-        # 三展開合成フォメは、妙味・ライン補正ではなく三展スコア順位から作る。
-        # VeloBi列評価は素材として維持し、ここだけを 1-23-24 型へ差し替える。
-        santen_attack = _make_santen_score_attack_forme(max_tickets=ATTACK_FORME_MAX_TICKETS)
-        if santen_attack:
-            attack = santen_attack
-
-        if attack:
-            forme = attack["forme"]
-            expanded = attack["expanded"]
-            valid_seconds = attack.get("seconds", valid_seconds)
-            third_candidates = attack.get("thirds", third_candidates)
-        else:
-            forme = f"{int(A)}-{_fmt_cars_compact_for_forme(valid_seconds)}-{_fmt_cars_compact_for_forme(third_candidates)}"
-
-        if C is not None:
-            pillar_text = f"{int(A)}→{int(B)}→{int(C)}"
-        else:
-            pillar_text = f"{int(A)}→{int(B)}"
-        return {
-            "forme": forme,
-            "expanded": expanded,
-            "pillar": pillar_text,
-            "score": sc,
-            "source": attack.get("source") if isinstance(attack, dict) and attack.get("source") else ("myoumi" if has_myoumi_pillar else ("triple" if has_triple_pillar else "pair")),
-            "santen_block": attack.get("santen_block", "") if isinstance(attack, dict) else "",
-            # v79: 三展+KOから作った抑え2車単を表示側へ渡す
-            "nitan_forme": attack.get("nitan_forme", "") if isinstance(attack, dict) else "",
-            "nitan_follow": attack.get("nitan_follow", []) if isinstance(attack, dict) else [],
-        }
-    except Exception:
-        return None
-
-def _make_rule_buy_block(col1_cars, col2_cars, col3_cars, role1, mark_map, rec_order_for_forme=None):
-    """
-    現在の実戦ルールに基づく買い目整理。
-
-    方針：
-    ・2車複は2層表示にする。
-        1) 妙味通過：7.0pt以上。回収率狙い。
-        2) 評価重複：外部印とVeloBi列評価が重なる5.0pt以上。的中率補助。
-    ・通常三連複は出さない。
-      4-1-3 のような上位123評価そのままの買目は、根拠が薄いため廃止。
-    ・三連複も2車複と同じ配列で2層表示にする。
-        1) 妙味通過：8.0pt以上。回収率狙い。該当なしでも必ず表示。
-        2) 評価重複：外部印とVeloBi列評価が重なる的中率補助。
-    ・ワイドは現時点では未採用。
-    """
-    globals()["PILLAR_LINE_FORME_BLOCK"] = ""
-
-    try:
-        c1 = [int(x) for x in (col1_cars or []) if str(x).isdigit()]
-        c2 = [int(x) for x in (col2_cars or []) if str(x).isdigit()]
-        c3 = [int(x) for x in (col3_cars or []) if str(x).isdigit()]
-
-        if not c1 or not c2:
-            return ""
-
-        two, three = _collect_myoumi_pickups(
-            c1, c2, c3, role1, mark_map, rec_order_for_forme
-        )
-
-        # 妙味通過2車複
-        pickup_pairs = []
-        pickup_pair_keys = set()
-        for _, a, b in two:
-            key = tuple(sorted((int(a), int(b))))
-            if key not in pickup_pair_keys:
-                pickup_pair_keys.add(key)
-                pickup_pairs.append((int(a), int(b)))
-
-        # 評価重複2車複（妙味通過とは別枠）
-        overlap_pairs = _collect_eval_overlap_2kei(
-            c1, c2, int(role1), mark_map, exclude_keys=pickup_pair_keys, rec_order_for_forme=rec_order_for_forme
-        )
-
-        # 通常三連複は廃止。
-        # 代わりに、1列目-2列目-3列目の中で「評価がかぶる三連複」だけを別枠で出す。
-        center_triples = []
-        center_keys = set()
-        overlap_triples = _collect_eval_overlap_3kei(c1, c2, c3, int(role1), mark_map, rec_order_for_forme)
-
-        # v92: 旧「三展開合成フォメ」の差し替えブロックを、
-        #      基本推奨1-2-全三連複＋条件付き34-12切替として出す。
-        flow_34_12_block = _make_recommended_flow_12_all_trio_switch_block()
-        globals()["PILLAR_LINE_FORME_BLOCK"] = flow_34_12_block
-
-        lines = []
-        if flow_34_12_block:
-            lines.append(flow_34_12_block)
-            lines.append("")
-            lines.append("＊＊＊＊")
-            lines.append("")
-
-        lines.append("【ヴェロビ的買目】")
-
-        lines.append("")
-        lines.append(f"2車複｜妙味通過（{MYOUMI_PASS_THRESHOLD_2KEI:.1f}pt以上）：")
-        if pickup_pairs:
-            for a, b in pickup_pairs:
-                lines.append(_fmt_pair(a, b))
-        else:
-            lines.append("該当なし")
-
-        lines.append("")
-        lines.append("2車複’｜評価重複（2車単参考・VeloBi順）：")
-        if overlap_pairs:
-            for sc, a, b, marked_count, top_count in overlap_pairs:
-                mark_note = _pair_overlap_note_ordered(a, b, mark_map, rec_order_for_forme, top_n=4)
-                lines.append(f"{_fmt_nitan_reference(a, b, rec_order_for_forme)}　{sc:.1f}pt［評価重複｜{mark_note}］")
-        else:
-            lines.append("該当なし")
-
-        # 2車複と同じ配列で、三連複も「妙味通過」→「評価重複」の順に必ず表示する。
-        lines.append("")
-        lines.append(f"三連複｜妙味通過（{MYOUMI_PASS_THRESHOLD_3KEI:.1f}pt以上）：")
-        if three:
-            for sc, a, b, c in three:
-                lines.append(f"{_fmt_triple_display(a, b, c)}　{sc:.1f}pt［通過］")
-        else:
-            lines.append("該当なし")
-
-        lines.append("")
-        lines.append("三連複’｜評価重複（3連単参考・VeloBi順）：")
-        if overlap_triples:
-            for sc, a, b, c, marks, marked_count, top_count, both_count in overlap_triples:
-                mark_note = _triple_overlap_note_ordered(a, b, c, mark_map, rec_order_for_forme, top_n=4)
-                lines.append(f"{_fmt_santan_reference(a, b, c, rec_order_for_forme)}　{sc:.1f}pt［評価重複｜{mark_note}］")
-        else:
-            lines.append("該当なし")
-
-        # v92: ここだけ差し替える。
-        # 旧「三展開合成フォメ」は出さず、推奨流れから1-2-全三連複を出す。
-        # 重要：この下のヴェロビ的買目・妙味通過・評価重複・期待値推奨はそのまま残す。
-        globals()["PILLAR_LINE_FORME_BLOCK"] = _make_recommended_flow_12_all_trio_switch_block()
-
-        # --------------------------------------------------
-        # 期待値推奨：
-        # 2車複通過ペアを含む三連複のうち、
-        # 三連複側の妙味ptも通過基準以上のものだけ。
-        # 評価重複ペアは「安い本線」なので、期待値三連複の起点にはしない。
-        # --------------------------------------------------
-        ev_triples = []
-        ev_seen = set()
-
-        threshold_3kei = MYOUMI_PASS_THRESHOLD_3KEI
-        ev_source_triples = _all_3kei_point_items(c1, c2, c3, role1, mark_map, rec_order_for_forme)
-
-        if pickup_pair_keys and ev_source_triples:
-            for sc, a, b, c in ev_source_triples:
-                if float(sc) < threshold_3kei:
-                    continue
-
-                tri = (int(a), int(b), int(c))
-                tset = set(tri)
-                tkey = tuple(sorted(tri))
-
-                if tkey in center_keys:
-                    continue
-
-                linked = False
-                for pkey in pickup_pair_keys:
-                    if set(pkey).issubset(tset):
-                        linked = True
-                        break
-
-                if not linked:
-                    continue
-
-                if tkey in ev_seen:
-                    continue
-
-                ev_seen.add(tkey)
-                ev_triples.append((float(sc), tri))
-
-        if ev_triples:
-            lines.append("")
-            lines.append(f"【期待値推奨｜的中率低想定｜三連複{MYOUMI_PASS_THRESHOLD_3KEI:.1f}pt以上】")
-            lines.append("")
-            lines.append("三連複：")
-            for sc, (a, b, c) in ev_triples:
-                lines.append(f"{_fmt_triple_display(a, b, c)}　{sc:.1f}pt［通過］")
-
-        return "\n".join(lines)
-
-    except Exception:
-        return ""
-
-
-
-def _display_expect_myoumi_label(label: str) -> str:
+def _display_overall_myoumi_label(label: str) -> str:
     """
     v119: 全体妙味の内部判定は旧ロジックのまま残し、表示だけA/B/Cへ丸める。
     旧「低」→ A
@@ -11341,73 +7021,11 @@ def _display_expect_myoumi_label(label: str) -> str:
     return "B"
 
 
-def _display_expect_myoumi_labels_in_text(text: str) -> str:
+def _display_overall_myoumi_labels_in_text(text: str) -> str:
     """本文内に残る全体妙味表記も、表示だけA/B/Cへ統一する。"""
     def repl(m):
-        return "全体妙味：" + _display_expect_myoumi_label(m.group(1))
+        return "全体妙味：" + _display_overall_myoumi_label(m.group(1))
     return re.sub(r"全体妙味：(AA|A|B|C|荒|低)", repl, str(text))
-
-def _replace_axis_line_to_expect(text: str, label: str, recommended_ticket: str = "未判定") -> str:
-    """
-    note本文の最初の軸評価行を全体妙味へ置換する。
-    v263: 旧「三連複軸想定着内率」は現在の券種構成に合わないため廃止し、
-    最終判定済みの推奨車券（3連単／3連複）を表示する。
-    """
-    pat = r"軸評価：[A-E](?:☆☆|☆)?［[^］]*］（軸想定2着内率\s*\d+%）"
-    _ticket = str(recommended_ticket or "未判定").strip()
-    if _ticket not in ("3連単", "3連複"):
-        _ticket = "未判定"
-
-    def repl(_m):
-        # ここでは旧判定ラベルのまま差し込む。
-        # A/B/Cへの表示変換は _display_expect_myoumi_labels_in_text() で一度だけ行う。
-        return f"全体妙味：{str(label or '').strip()}（推奨車券：{_ticket}）"
-
-    return re.sub(pat, repl, text, count=1)
-
-
-def _strip_existing_top_summary(text: str) -> str:
-    """
-    既存の上部サマリーだけ削除する。
-    詳細部（デイ/ナイター/ミッドナイト/モーニング 以降）は絶対に残す。
-    """
-    lines = text.splitlines()
-    if not lines:
-        return text
-
-    axis_idx = None
-    for i, line in enumerate(lines):
-        if re.match(r"^(軸評価|期待値軸|全体妙味)：", line):
-            axis_idx = i
-            break
-
-    if axis_idx is None:
-        return text
-
-    # 軸行直後の空行を飛ばす
-    s = axis_idx + 1
-    while s < len(lines) and lines[s].strip() == "":
-        s += 1
-
-    # 既存サマリーがないなら何もしない
-    if s >= len(lines) or not lines[s].startswith("✅ 推奨戦法："):
-        return text
-
-    # 詳細部の開催区分行までをサマリーとみなして削除
-    e = s
-    detail_pat = re.compile(r"^(モーニング|デイ|ナイター|ミッドナイト)\s")
-    while e < len(lines):
-        if detail_pat.match(lines[e]):
-            break
-        e += 1
-
-    if e >= len(lines):
-        # 詳細部が見つからない時は危険なので削らない
-        return text
-
-    new_lines = lines[:s] + lines[e:]
-    return "\n".join(new_lines)
-
 
 # -----------------------------------------
 # 推奨戦法とメイン着順予想を箱で強調表示
@@ -11415,7 +7033,6 @@ def _strip_existing_top_summary(text: str) -> str:
 try:
     _rec_style = globals().get("RECOMMENDED_STYLE", "")
     _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
-    _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
 
     _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
 
@@ -11423,7 +7040,7 @@ try:
         _rec_display_seq = " → ".join(str(int(x)) for x in _rec_seq)
 
         # v163: note用コピーエリア上部の青網掛けボックスは表示しない。
-        # 推奨戦法・メイン着順・コピー用は note_text 本文側に残す。
+        # 推奨戦法・メイン着順は note_text 本文側に残す。
         pass
 
 except Exception as _e:
@@ -11431,657 +7048,86 @@ except Exception as _e:
 
 
 # -----------------------------------------
-# 全体妙味＋実車番フォーメーション自動生成
+# 全体妙味表示（旧フォーメーション生成とは分離）
 # -----------------------------------------
-nishatan_forme_line = ""
-sanpuku_forme_line = ""
-sanrentan_forme_line = ""
-myoumi_pickup_block = ""
-column_eval_block = ""
-expect_axis_label = "C"
-expect_axis_score = None
-expect_axis_role_marks = []
+def _calc_current_overall_myoumi_label(note_body, rec_seq, line_def_obj, mark_map):
+    """現行の全体妙味A/B/C表示に必要な軸・相手だけを組み立てる。"""
+    default = ("C", None, [])
+    try:
+        rec_order = [int(x) for x in (rec_seq or []) if str(x).isdigit()]
+        if len(rec_order) < 3:
+            return default
 
-try:
-    _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
-    _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
-    _line_def = globals().get("line_def", {})
-
-    if len(_rec_seq) >= 3:
-        role1 = int(_rec_seq[0])
-        role2 = int(_rec_seq[1])
-        role3_original = int(_rec_seq[2])
-
-        # =====================================================
-        # VeloBi列評価 v8：ライン順位割り振り型
-        # 理論の柱：
-        #   1列目 = 勝ち負けの軸
-        #   2列目 = 2着以内に入る相手
-        #   3列目 = 3着内・穴・ライン残り
-        #
-        # 重要：
-        #   ・評価上位123をそのまま2列目に押し込まない
-        #   ・各ラインを推奨順で順位付けし、ライン単位で2列目/3列目へ割り振る
-        #   ・通常三連複123を組めるよう、順流3番手は3列目にも残す
-        #   ・主導ライン3番手は穴が出やすいので、例外的に2列目にも入れてよい
-        #   ・妙味ptは列を壊すためではなく、後段の買う/切る検算に使う
-        # =====================================================
-        rec_order_for_forme = list(_rec_seq)
-
-        # ライン配列は、コピー欄の「ライン ...」を優先して復元する。
-        line_members_all = _parse_line_members_from_note_text(note_text)
+        role1 = int(rec_order[0])
+        line_members_all = _parse_line_members_from_note_text(note_body)
         if not line_members_all:
-            line_members_all = _line_members_list_from_line_def(_line_def)
-        ranked_lines = _rank_lines_by_order(line_members_all, rec_order_for_forme)
+            line_members_all = _line_members_list_from_line_def(line_def_obj or {})
+        ranked_lines = _rank_lines_by_order(line_members_all, rec_order)
 
-        # 軸が所属する主導ライン
-        eval1_line_members_text = _find_line_members_of_car_from_note_text(note_text, role1)
-        eval1_line_members_global = _find_line_members_of_car(_line_def, role1)
-        if eval1_line_members_text and int(role1) in [int(x) for x in eval1_line_members_text]:
-            eval1_line_members = [int(x) for x in eval1_line_members_text]
+        line_from_text = _find_line_members_of_car_from_note_text(note_body, role1)
+        line_from_global = _find_line_members_of_car(line_def_obj or {}, role1)
+        if line_from_text and role1 in [int(x) for x in line_from_text]:
+            axis_line = [int(x) for x in line_from_text]
         else:
-            eval1_line_members = [int(x) for x in (eval1_line_members_global or [])]
+            axis_line = [int(x) for x in (line_from_global or [])]
 
-        # 保険：ranked_lines側にも軸所属ラインがあればそちらを優先
-        for mem in ranked_lines:
-            if int(role1) in [int(x) for x in mem]:
-                eval1_line_members = [int(x) for x in mem]
+        for members in ranked_lines:
+            members = [int(x) for x in members]
+            if role1 in members:
+                axis_line = members
                 break
 
-        # 軸所属ラインの扱いを修正。
-        # 以前は「軸がライン先頭」と決め打ちして mem[1] を番手扱いにしていたため、
-        # 別府4Rの 124 のように軸2が番手の場合、スコア2位の1が2列目から落ちていた。
-        # 列評価では、軸所属ラインのうち軸以外で順流順位が最も高い車を
-        # まず2列目の本線相手として入れる。残りは穴ヒモ/三列目候補に回す。
-        eval1_line_others = []
-        if eval1_line_members:
-            eval1_line_others = [int(x) for x in eval1_line_members if int(x) != int(role1)]
-
-        rec_pos_map = {int(c): i for i, c in enumerate(rec_order_for_forme)}
-        eval1_line_others_sorted = sorted(
-            eval1_line_others,
-            key=lambda x: (rec_pos_map.get(int(x), 999), eval1_line_members.index(int(x)) if int(x) in eval1_line_members else 999, int(x))
+        rec_pos = {int(car): idx for idx, car in enumerate(rec_order)}
+        axis_others = [int(x) for x in axis_line if int(x) != role1]
+        axis_others = sorted(
+            axis_others,
+            key=lambda car: (
+                rec_pos.get(int(car), 999),
+                axis_line.index(int(car)) if int(car) in axis_line else 999,
+                int(car),
+            ),
         )
 
-        eval1_partner = []
-        eval1_thirdplus = []
-        if eval1_line_others_sorted:
-            eval1_partner = [int(eval1_line_others_sorted[0])]
-            eval1_thirdplus = [int(x) for x in eval1_line_others_sorted[1:]]
+        col1 = [role1]
+        col2 = []
+        if axis_others:
+            col2.append(int(axis_others[0]))
 
-        col1_cars = _uniq_keep([role1])
-
-        # 2列目：ライン単位の連対候補
-        # 1) 軸所属ラインの相方（軸が番手なら先頭、軸が先頭なら番手）
-        # 2) 他ラインの代表車（単騎は本人、複数ラインは推奨順最上位）
-        # 3) 軸所属ラインの残り後位は穴ヒモとして例外的に追加
-        col2_cars = []
-        for cand in eval1_partner:
-            if cand not in col1_cars and cand not in col2_cars:
-                col2_cars.append(cand)
-
-        for mem in ranked_lines:
-            mem = [int(x) for x in mem]
-            if not mem:
+        for members in ranked_lines:
+            members = [int(x) for x in members]
+            if not members or role1 in members:
                 continue
-            if int(role1) in mem:
-                continue
-
-            # そのライン内で推奨順が最も高い車を代表にする。
-            rep = None
-            for cand in rec_order_for_forme:
-                cand = int(cand)
-                if cand in mem:
-                    rep = cand
-                    break
-            if rep is None:
-                rep = int(mem[0])
-
-            if rep not in col1_cars and rep not in col2_cars:
-                col2_cars.append(rep)
-            if len(col2_cars) >= 3:
+            representative = next((int(car) for car in rec_order if int(car) in members), int(members[0]))
+            if representative not in col1 and representative not in col2:
+                col2.append(representative)
+            if len(col2) >= 3:
                 break
 
-        # 軸所属ラインの残りは、穴ヒモ枠として2列目にも残す
-        for cand in eval1_thirdplus:
-            cand = int(cand)
-            if cand not in col1_cars and cand not in col2_cars:
-                col2_cars.append(cand)
-
-        # 通常3車＋同ライン穴枠で最大4車まで
-        col2_cars = _uniq_keep(col2_cars[:4])
-
-        expect_axis_label, expect_axis_score, expect_axis_role_marks = _calc_expect_axis_score_label(col1_cars, col2_cars, role1, market_mark_map)
-
-        # 3列目：三連複候補 v42
-        # 重要修正：2列目に採用した車の同ライン残りは、基本3列目に必ず残す。
-        # 例：ライン52で2列目に5を採用したなら、2は基本3列目候補へ入れる。
-        # これを落とすと、4-5-2 のようなライン筋が基本フォメから消えてしまう。
-        col3_cars = []
-
-        def _add_col3(cand):
-            try:
-                cand = int(cand)
-            except Exception:
-                return
-            if cand not in col1_cars and cand not in col3_cars:
-                col3_cars.append(cand)
-
-        # 1) 順流3番手を最優先で入れる（通常123を組めるようにする）
-        _add_col3(role3_original)
-
-        # 2) 軸ラインの残り後位
-        for cand in eval1_thirdplus:
-            _add_col3(cand)
-
-        # 3) 2列目に採用された車の同ライン残りを必ず3列目へ
-        #    ここは基本フォメ側のライン整合性を作るため、通常の4車上限では落とさない。
-        for sec in col2_cars:
-            sec = int(sec)
-            sec_line = None
-            for mem in ranked_lines:
-                mem_i = [int(x) for x in mem]
-                if sec in mem_i:
-                    sec_line = mem_i
-                    break
-            if not sec_line:
-                continue
-            for mate in sec_line:
-                mate = int(mate)
-                if mate == int(role1) or mate == sec:
-                    continue
-                _add_col3(mate)
-
-        # 4) 余白があれば、従来どおり各ラインの残りをライン順位順に補充
-        for mem in ranked_lines:
-            mem = [int(x) for x in mem]
-            if not mem:
-                continue
-            if int(role1) in mem:
-                rest = [int(x) for x in mem[2:]]
-            else:
-                rep = None
-                for cand in rec_order_for_forme:
-                    cand = int(cand)
-                    if cand in mem:
-                        rep = cand
-                        break
-                if rep is None:
-                    rep = int(mem[0])
-                if len(mem) == 1:
-                    rest = [rep]
-                else:
-                    rest = [int(x) for x in mem if int(x) != int(rep)]
-
-            for cand in rest:
-                _add_col3(cand)
-                # 2列目ライン相手を落とさないため、最大5車まで許容
-                if len(col3_cars) >= 5:
-                    break
-            if len(col3_cars) >= 5:
-                break
-
-        # なお、2列目との重複は許可する。
-        # 例：2着候補でも、三連複の3列目残りにもなり得る。
-        col3_cars = _uniq_keep(col3_cars[:5])
-
-        # v69: 4列目分離前の3列目候補を素材表示用に保持する。
-        # ここを保持しないと、軸ライン直近相手（例：4617の6）が
-        # 先に4列目へ落ちた時点で復帰不能になる。
-        col3_cars_before_col4_split = _uniq_keep(col3_cars)
-
-        # v56：4列目を作る。
-        # 目的：フォーメーションは「全部を3列目に入れる」ものではない。
-        # 4車ライン、または軸ではない3車以上ラインで、ライン内VeloBi評価3番手以降まで
-        # 3列目へ一律に残すと、今回のように無駄な買い目が増える。
-        # そこで、ライン内の評価順位で3番手以降は4列目へ分離する。
-        # 例：1753で軸1なら、ライン内VeloBi順が 1,7,3,5 の場合、3・5は4列目寄り。
-        #     426なら、ライン内VeloBi順が 4,2,6 の場合、6は4列目寄り。
-        # ただし2車ライン・単騎は対象外。
-        col4_cars = []
-
-        def _line_velobi_depth_for_col4(cand):
-            try:
-                ci = int(cand)
-                for mem in ranked_lines:
-                    xs = [int(x) for x in mem]
-                    if ci not in xs or len(xs) < 3:
-                        continue
-
-                    # ライン内のVeloBi評価順。rec_order_for_formeに出る順を優先し、
-                    # 同順・欠落時はライン入力順で補正する。
-                    line_pos = {int(x): i for i, x in enumerate(xs)}
-                    xs_eval = sorted(xs, key=lambda z: (rec_pos_map.get(int(z), 999), line_pos.get(int(z), 999), int(z)))
-                    if ci not in xs_eval:
-                        continue
-                    depth = xs_eval.index(ci) + 1
-                    axis_in_line = int(role1) in xs
-
-                    # v58:
-                    # 2列目にいるだけでは3列目保護にしない。
-                    # 2列目は「連対候補」であって、深いライン位置の3着残りまで
-                    # 自動で買う意味ではないため。
-                    # ただし、軸との2車複妙味が通過していて、かつ2列目にも採用されている車は
-                    # 買い筋として明確なので3列目に残す。
-                    in_col2 = ci in [int(x) for x in col2_cars]
-                    pair_myoumi_pass = False
-                    try:
-                        pair_myoumi_pass = (_myoumi_score_2kei(int(role1), ci, int(role1), market_mark_map) >= MYOUMI_PASS_THRESHOLD_2KEI)
-                    except Exception:
-                        pair_myoumi_pass = False
-
-                    if in_col2 and pair_myoumi_pass:
-                        return False
-
-                    # ライン内の評価上位2番手までは3列目に残す。
-                    # 3番手以降は、上の明確な妙味保護がなければ4列目へ分離する。
-                    if depth <= 2:
-                        return False
-
-                    # 4車ラインは軸ラインでも深い。評価3番手以降は原則4列目。
-                    if len(xs) >= 4 and depth >= 3:
-                        return True
-
-                    # 軸ではない3車以上ラインも、評価3番手以降は原則4列目。
-                    if (not axis_in_line) and len(xs) >= 3 and depth >= 3:
-                        return True
-            except Exception:
-                pass
-            return False
-
-        col3_main = []
-        for cand in col3_cars:
-            ci = int(cand)
-            if _line_velobi_depth_for_col4(ci):
-                if ci not in col4_cars:
-                    col4_cars.append(ci)
-            else:
-                if ci not in col3_main:
-                    col3_main.append(ci)
-
-        col3_cars = _uniq_keep(col3_main)
-        col4_cars = _uniq_keep(col4_cars)
-
-        # v69：ここから下は「素材表示用」だけを4列化する。
-        # 重要：
-        #   ・三展開合成フォメ、妙味通過、期待値推奨、妙味ポイントは
-        #     従来計算側を使うため、4列目表示の影響を受けない。
-        #   ・素材表示の3列目圧縮では、4列目分離前の候補を使う。
-        #     これにより、軸ライン直近相手が先に4列目へ落ちても復帰できる。
-        #   ・例：ライン4617・軸4なら、6は軸ライン直近相手なので3列目に復帰。
-        #     7や3のような末端・弱別線側を4列目へ回しやすくする。
-        col3_cars_full_for_calc = _uniq_keep(col3_cars_before_col4_split)
-        col4_cars_display = _uniq_keep(col4_cars)
-
-        try:
-            _max_third = int(MATERIAL_FORME_MAX_THIRDS)
-        except Exception:
-            _max_third = 2
-
-        def _axis_nearest_partners_for_material():
-            """
-            素材表示用の保護候補。
-            軸ラインの直近相手だけを3列目優先に残す。
-            長いラインの末端を、軸との妙味だけで過保護しないための補正。
-            """
-            out = []
-            try:
-                A0 = int(role1)
-                for mem in ranked_lines:
-                    xs = [int(x) for x in mem]
-                    if A0 not in xs or len(xs) < 2:
-                        continue
-                    idx = xs.index(A0)
-
-                    # 軸の直後を最優先
-                    if idx + 1 < len(xs):
-                        x = int(xs[idx + 1])
-                        if x != A0:
-                            out.append(x)
-
-                    # 軸が番手以降にいるケースの直前も一応保護
-                    if idx - 1 >= 0:
-                        x = int(xs[idx - 1])
-                        if x != A0:
-                            out.append(x)
-                    break
-            except Exception:
-                pass
-            return _uniq_keep(out)
-
-        material_protect = [
-            int(x) for x in _axis_nearest_partners_for_material()
-            if int(x) in [int(v) for v in col3_cars_full_for_calc]
-        ]
-
-        # 表示用3列目は、単純な先頭2車切りではなく、
-        # まず軸ライン直近相手を保護し、その後に元のcol3順で補完する。
-        col3_cars_display = []
-        for x in material_protect:
-            if int(x) not in col3_cars_display:
-                col3_cars_display.append(int(x))
-
-        # 補完は「2列目と重複しない候補」を優先する。
-        # 例：4-7531 の素材3列目なら、1・7よりも2・6を優先しやすくする。
-        col2_set_for_material = {int(v) for v in col2_cars}
-        fill_pool = [int(x) for x in col3_cars_full_for_calc if int(x) not in col2_set_for_material]
-        fill_pool += [int(x) for x in col3_cars_full_for_calc if int(x) in col2_set_for_material]
-        fill_pool = _uniq_keep(fill_pool)
-
-        for x in fill_pool:
-            if _max_third > 0 and len(col3_cars_display) >= _max_third:
-                break
-            xi = int(x)
-            if xi not in col3_cars_display:
-                col3_cars_display.append(xi)
-
-        if _max_third > 0:
-            col3_cars_display = col3_cars_display[:_max_third]
-
-        # 表示用3列目に残らなかった候補は4列目へ。
-        for x in col3_cars_full_for_calc:
-            xi = int(x)
-            if xi not in col3_cars_display and xi not in col4_cars_display:
-                col4_cars_display.append(xi)
-
-        col3_cars_display = _uniq_keep(col3_cars_display)
-        col4_cars_display = _uniq_keep([int(x) for x in col4_cars_display if int(x) not in set(col3_cars_display)])
-
-        # v70：素材表示では「2列目＝信頼」「3列目＝妙味・補完」に分離する。
-        # 重要：ここは表示用だけ。三展開合成フォメ・妙味通過・期待値推奨には副作用を出さない。
-        try:
-            MATERIAL_FORME_MAX_SECONDS = int(globals().get("MATERIAL_FORME_MAX_SECONDS", 2))
-        except Exception:
-            MATERIAL_FORME_MAX_SECONDS = 2
-        try:
-            MATERIAL_FORME_MAX_THIRDS_V70 = int(globals().get("MATERIAL_FORME_MAX_THIRDS_V70", 4))
-        except Exception:
-            MATERIAL_FORME_MAX_THIRDS_V70 = 4
-
-        def _line_members_for_car_material(car):
-            try:
-                ci = int(car)
-                for mem in ranked_lines:
-                    xs = [int(x) for x in mem]
-                    if ci in xs:
-                        return xs
-            except Exception:
-                pass
-            return []
-
-        def _pair_myoumi_score_material(car):
-            try:
-                return float(_myoumi_score_2kei(int(role1), int(car), int(role1), market_mark_map))
-            except Exception:
-                return 0.0
-
-        def _add_unique_material(lst, x):
-            try:
-                xi = int(x)
-            except Exception:
-                return
-            if xi != int(role1) and xi not in lst:
-                lst.append(xi)
-
-        axis_line_material = []
-        for mem in ranked_lines:
-            xs = [int(x) for x in mem]
-            if int(role1) in xs:
-                axis_line_material = xs
-                break
-
-        axis_nearest_material = _axis_nearest_partners_for_material()
-        axis_nearest_set_material = {int(x) for x in axis_nearest_material}
-
-        # 2列目候補A：軸ライン内で、直近相手以外の「妙味はあるが末端すぎない」車。
-        # 高すぎる妙味を2列目に置きすぎると的中責任が重いので、同条件なら低pt側を信頼寄りにする。
-        axis_inner_candidates = []
-        if axis_line_material:
-            line_pos_material = {int(x): i for i, x in enumerate(axis_line_material)}
-            for x in axis_line_material:
-                xi = int(x)
-                if xi == int(role1) or xi in axis_nearest_set_material:
-                    continue
-                sc_m = _pair_myoumi_score_material(xi)
-                if sc_m >= globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 7.0):
-                    axis_inner_candidates.append((sc_m, rec_pos_map.get(xi, 999), line_pos_material.get(xi, 999), xi))
-            axis_inner_candidates = sorted(axis_inner_candidates, key=lambda z: (z[0], z[1], z[2], z[3]))
-
-        # 2列目候補B：他ラインの代表。ここは妙味より信頼度を優先し、推奨順の上位を拾う。
-        other_line_reps_material = []
-        for mem in ranked_lines:
-            xs = [int(x) for x in mem]
-            if not xs or int(role1) in xs:
-                continue
-            rep = None
-            for cand in rec_order_for_forme:
-                ci = int(cand)
-                if ci in xs:
-                    rep = ci
-                    break
-            if rep is None:
-                rep = int(xs[0])
-            # 単騎は2列目信頼枠に置くと妙味寄りになりやすいので、原則後回し。
-            line_len = len(xs)
-            other_line_reps_material.append((0 if line_len >= 2 else 1, rec_pos_map.get(rep, 999), -line_len, rep))
-        other_line_reps_material = sorted(other_line_reps_material, key=lambda z: (z[0], z[1], z[2], z[3]))
-
-        col2_cars_display = []
-        # 軸ライン内の妙味信頼候補を1車だけ入れる。例：4617の1。
-        if axis_inner_candidates:
-            _add_unique_material(col2_cars_display, axis_inner_candidates[0][3])
-        # 他ライン代表を1車入れる。例：25の5。
-        for _kind, _rp, _llen, rep in other_line_reps_material:
-            if len(col2_cars_display) >= MATERIAL_FORME_MAX_SECONDS:
-                break
-            _add_unique_material(col2_cars_display, rep)
-
-        # 足りない場合だけ、元2列目から信頼寄りを補完。
-        if len(col2_cars_display) < MATERIAL_FORME_MAX_SECONDS:
-            fill_seconds = sorted(
-                [int(x) for x in col2_cars if int(x) != int(role1)],
-                key=lambda z: (
-                    0 if _pair_myoumi_score_material(z) < globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 7.0) else 1,
-                    rec_pos_map.get(int(z), 999),
-                    int(z),
-                )
-            )
-            for x in fill_seconds:
-                if len(col2_cars_display) >= MATERIAL_FORME_MAX_SECONDS:
-                    break
-                _add_unique_material(col2_cars_display, x)
-
-        col2_cars_display = _uniq_keep(col2_cars_display[:MATERIAL_FORME_MAX_SECONDS])
-
-        # v71：3列目は「信頼2車＋妙味非単騎＋軸ライン直近相手」を優先する。
-        # 目的：妙味が高いだけの弱い単騎が先に入り、軸ライン直近相手を押し出す事故を防ぐ。
-        # 例：静岡7R 4617軸4なら、4-15-1576-23 を狙う。
-        col3_cars_display_v70 = []
-        for x in col2_cars_display:
-            _add_unique_material(col3_cars_display_v70, x)
-
-        # 元2列目のうち、妙味通過している車は3列目へ回す。
-        # ただし単騎・弱別線は最後に回す。
-        myoumi_third_pool_main = []
-        myoumi_third_pool_weak = []
-        for x in col2_cars:
-            xi = int(x)
-            if xi == int(role1):
-                continue
-            sc_m = _pair_myoumi_score_material(xi)
-            if sc_m >= globals().get("MYOUMI_PASS_THRESHOLD_2KEI", 7.0):
-                line_len = len(_line_members_for_car_material(xi))
-                item = (-sc_m, rec_pos_map.get(xi, 999), xi)
-                if line_len >= 2:
-                    myoumi_third_pool_main.append(item)
-                else:
-                    myoumi_third_pool_weak.append(item)
-
-        myoumi_third_pool_main = sorted(myoumi_third_pool_main, key=lambda z: (z[0], z[1], z[2]))
-        myoumi_third_pool_weak = sorted(myoumi_third_pool_weak, key=lambda z: (z[0], z[1], z[2]))
-
-        # 先に「ラインを持つ妙味」を入れる。例：7。
-        for *_rest, x in myoumi_third_pool_main:
-            if len(col3_cars_display_v70) >= MATERIAL_FORME_MAX_THIRDS_V70:
-                break
-            _add_unique_material(col3_cars_display_v70, x)
-
-        # 次に軸ライン直近相手を保護。例：4617の6。
-        for x in axis_nearest_material:
-            if len(col3_cars_display_v70) >= MATERIAL_FORME_MAX_THIRDS_V70:
-                break
-            _add_unique_material(col3_cars_display_v70, x)
-
-        # それでも足りなければ、元3列目フル候補から補完。
-        for x in col3_cars_full_for_calc:
-            if len(col3_cars_display_v70) >= MATERIAL_FORME_MAX_THIRDS_V70:
-                break
-            _add_unique_material(col3_cars_display_v70, x)
-
-        # 最後に弱い単騎妙味。枠が残った時だけ。
-        for *_rest, x in myoumi_third_pool_weak:
-            if len(col3_cars_display_v70) >= MATERIAL_FORME_MAX_THIRDS_V70:
-                break
-            _add_unique_material(col3_cars_display_v70, x)
-
-        col3_cars_display = _uniq_keep(col3_cars_display_v70[:MATERIAL_FORME_MAX_THIRDS_V70])
-
-        # 4列目は、表示素材に出る全候補のうち、2列目・3列目に採用しなかったもの。
-        # 弱い別線・末端・妙味だけの車をここへ逃がす。
-        all_material_candidates = []
-        for seq in (col2_cars, col3_cars_full_for_calc, rec_order_for_forme):
-            for x in seq:
-                xi = int(x)
-                if xi != int(role1):
-                    _add_unique_material(all_material_candidates, xi)
-
-        col4_cars_display = []
-        used_display = set([int(x) for x in col2_cars_display] + [int(x) for x in col3_cars_display])
-        for x in all_material_candidates:
-            xi = int(x)
-            if xi not in used_display:
-                _add_unique_material(col4_cars_display, xi)
-
-        # 4列目はVeloBi順で表示。弱い単騎が先に出て、評価上位薄目が後ろに回る違和感を防ぐ。
-        col4_cars_display = sorted(_uniq_keep(col4_cars_display), key=lambda z: (rec_pos_map.get(int(z), 999), int(z)))
-
-        col1_text = _fmt_cars(col1_cars)
-        col2_text = _fmt_cars(col2_cars_display)
-        col3_text = _fmt_cars(col3_cars_display)
-        col4_text = _fmt_cars(col4_cars_display)
-
-        # note上部サマリー用：VeloBi列評価の素材列を保持する。
-        globals()["NOTE_COL2_TEXT"] = col2_text
-        globals()["NOTE_COL3_TEXT"] = col3_text
-        globals()["NOTE_COL4_TEXT"] = col4_text
-
-        column_eval_block = (
-            "【VeloBi列評価】\n"
-            f"1列目｜軸候補：{col1_text}\n"
-            f"2列目｜2車複ヒモ候補：{col2_text}\n"
-            f"3列目｜三連複候補：{col3_text}"
-        )
-        if col4_cars_display:
-            column_eval_block += f"\n4列目｜薄目・4着寄り候補：{col4_text}"
-
-        nishatan_points = _count_nishatan(col1_cars, col2_cars_display)
-        sanpuku_points = _count_sanpuku(col1_cars, col2_cars_display, col3_cars_display)
-        sanrentan_points = _count_sanrentan(col1_cars, col2_cars_display, col3_cars_display)
-
-        nishatan_forme_line = f"2車系フォメ：1列目→2列目 {col1_text}→{col2_text} / {col1_text}={col2_text}（{nishatan_points}点）"
-        if col4_cars_display:
-            sanpuku_forme_line = f"三連複フォメ：1列目-2列目-3列目-4列目 {col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）-{col4_text}"
-        else:
-            sanpuku_forme_line = f"三連複フォメ：1列目-2列目-3列目 {col1_text}-{col2_text}-{col3_text}（{sanpuku_points}点）"
-        sanrentan_forme_line = f"3連単フォメ：1列目→2列目→3列目 {col1_text}→{col2_text}→{col3_text}（{sanrentan_points}点）"
-
-        # v59: 上部の推奨ライン補正フォメ生成でも、4列目候補を3列目へ戻さないために共有する。
-        # v67: 4列目表示は上部合成フォメへ渡さない。
-        globals()["PILLAR_EXCLUDE_THIRD_CARS"] = []
-
-        myoumi_pickup_block = _make_myoumi_pickup_block(
-            col1_cars,
-            col2_cars,
-            col3_cars,
-            role1,
-            market_mark_map,
-            rec_order_for_forme,
-        )
-        rule_buy_block = _make_rule_buy_block(
-            col1_cars,
-            col2_cars,
-            col3_cars,
-            role1,
-            market_mark_map,
-            rec_order_for_forme,
-        )
-        myoumi_point_block = _make_myoumi_point_block(
-            col1_cars,
-            col2_cars,
-            col3_cars,
-            role1,
-            market_mark_map,
-            rec_order_for_forme,
-        )
-
-        # v163: 全体妙味・旧フォメ・妙味ポイントの青網掛けボックスは表示しない。
-        # 必要な情報は note_text / 2車複考察側へ集約する。
-        pass
-    else:
-        nishatan_forme_line = "2車系フォメ：生成不可"
-        sanpuku_forme_line = "三連複フォメ：生成不可"
-        sanrentan_forme_line = "3連単フォメ：生成不可"
-
-except Exception as _e:
-    nishatan_forme_line = f"2車系フォメ：生成不可（{_e}）"
-    sanpuku_forme_line = f"三連複フォメ：生成不可（{_e}）"
-    sanrentan_forme_line = f"3連単フォメ：生成不可（{_e}）"
-    myoumi_pickup_block = ""
-    rule_buy_block = ""
-    myoumi_point_block = ""
-    column_eval_block = ""
-    st.caption(nishatan_forme_line)
-    st.caption(sanpuku_forme_line)
+        for car in axis_others[1:]:
+            if car not in col1 and car not in col2:
+                col2.append(car)
+
+        col2 = _uniq_keep(col2[:4])
+        return _calc_overall_myoumi_score_label(col1, col2, role1, mark_map or {})
+    except Exception:
+        return default
+
+
+overall_myoumi_label, _, _ = _calc_current_overall_myoumi_label(
+    note_text,
+    globals().get("RECOMMENDED_STYLE_SEQ", []),
+    globals().get("line_def", {}),
+    market_mark_map,
+)
 
 
 # -----------------------------------------
+# note上部に実戦用サマリーを差し込む# -----------------------------------------
 # note上部に実戦用サマリーを差し込む
 # 詳細部は行単位で保存する
 # v94: noteコピペ用は「最終推奨」中心に圧縮する。
-#      VeloBi列評価・旧フォメ・妙味ポイント全件・会場H詳細ログはnoteへ出さない。
+#      旧買い目ブロック・会場H詳細ログはnoteへ出さない。
 # -----------------------------------------
-def _extract_note_section_lines(block_text: str, header_prefix: str, max_items: int = 3):
-    """
-    rule_buy_block から指定見出し直下の買い目行だけを抜く。
-    note用の補助根拠を短くするための表示専用処理。
-    """
-    try:
-        lines = str(block_text or "").splitlines()
-        out = []
-        capture = False
-        for raw in lines:
-            s = raw.strip()
-            if not s:
-                if capture and out:
-                    break
-                continue
-            if s.startswith(header_prefix):
-                capture = True
-                continue
-            if capture and s.startswith(("2車複｜", "2車複’｜", "三連複｜", "三連複’｜", "【")):
-                break
-            if capture:
-                if s != "該当なし":
-                    out.append(s)
-                    if len(out) >= int(max_items):
-                        break
-        return out
-    except Exception:
-        return []
-
-
-
-
 def _is_car_seri_involved_for_axis(_car):
     try:
         _car = int(_car)
@@ -12251,8 +7297,6 @@ def _parse_santan_reference_triplet(ref_text):
         return tuple(nums)
     except Exception:
         return None
-
-
 
 
 def _v262_unique_flow_sequence(seq, active_cars=None):
@@ -12455,22 +7499,6 @@ def _v264_best_live_line_groups(line_sources, active_cars=None):
         if int(car) not in covered:
             best_groups.append([int(car)])
     return best_groups
-
-
-def _v264_line_info_for_car(car, line_groups):
-    """車番のライン識別子とライン人数を返す。未所属は単騎として扱う。"""
-    try:
-        car = int(car)
-    except Exception:
-        return ("unknown", str(car)), 1
-    for idx, group in enumerate(line_groups or []):
-        try:
-            cars = [int(x) for x in (group or []) if str(x).isdigit()]
-        except Exception:
-            cars = []
-        if car in cars:
-            return ("line", int(idx)), max(1, len(cars))
-    return ("single", car), 1
 
 
 def _v264_line_diverse_five_plan(plan, line_sources, active_cars=None, ko_score_map=None):
@@ -13124,11 +8152,11 @@ def _rows_average_strength_key(rows):
 
 def _choose_final_trio_structure_by_sidebar_power(base_structure, line_rows, nonline_rows):
     """
-    v253 最終構成再審査。
+    v270-R2 診断用の加重比較。
 
-    流れ・ライン全体の構造判定は従来どおり先に行い、最後だけ
-    サイドバー情報を反映済みの加重3連複評価でライン／非ラインを比較する。
-    完全同点時は従来の構造判定を維持する。
+    ライン主体／非ライン主体の候補評価を比較して表示理由へ残すだけで、
+    展開構造・券種・元5車を上書きしない。返却するstructureは旧呼び出しとの
+    互換用であり、最終判定には使用しない。
     """
     base_structure = str(base_structure or "非ライン主体")
     line_key = _rows_average_strength_key(line_rows)
@@ -13186,15 +8214,14 @@ def _decide_ticket_from_structure_and_santan_refs(
     protected_third_candidates=None,
 ):
     """
-    v255 券種判定（実オッズ・新規数値閾値は使わない）。
+    v270-R2 券種判定（実オッズ・新規数値閾値は使わない）。
 
-    ・非ライン主体：加重2車複3点と非ライン3連複3点の平均評価を比較
-      - 非ライン3連複が上位 → 3連複 A-BCD-BCD
-      - 2車複が上位または同点 → 2車複
+    ・非ライン主体：着順を固定できないため3連単対象外。
+      旧2車複／3連複平均比較で券種を変えず、後段の元5車三連複7点へ送る。
     ・ライン主体：採用3連複3点の3単参考を確認
-      - 3点すべての1着・2着が同一 → 3着2車へ1・2着折り返し4点
+      - 3点すべての1着・2着が同一 → 3着2車へ1・2着折り返し4点の候補
       - 1・2着候補の直後に続く同ライン車が3着候補内にいる場合、その1車を必ず保護
-      - それ以外 → 3連複 A-B-CDE
+      - それ以外 → 後段の元5車三連複7点へ送る
     """
     structure = str(structure or "")
     rows = list(trio_rows or [])
@@ -13205,21 +8232,14 @@ def _decide_ticket_from_structure_and_santan_refs(
     }
 
     if structure != "ライン主体":
+        # 加重2車複／3連複の比較値は診断用に保持するが、券種は変えない。
+        # 非ライン主体では着順固定ができないため、後段の本来のv270
+        # 「元5車を一車も切らない三連複7点」へ必ず送る。
         trio_key = _rows_average_strength_key(rows)
         pair_key = _rows_average_strength_key(pair_rows)
-        if trio_key and (not pair_key or trio_key > pair_key):
-            return {
-                "recommended_ticket": "3連複",
-                "ticket_reason": "非ライン主体で、加重3連複平均評価が加重2車複平均評価を上回る",
-                "santan_form": "",
-                "santan_tickets": tuple(),
-                "santan_common_first_second": tuple(),
-                "pair_power_key": pair_key,
-                "trio_power_key": trio_key,
-            }
         return {
-            "recommended_ticket": "2車複",
-            "ticket_reason": "非ライン主体で、加重2車複平均評価が加重3連複平均評価以上",
+            "recommended_ticket": "3連複",
+            "ticket_reason": "非ライン主体で着順を固定できないため3連単対象外。元5車三連複7点へ送る",
             "santan_form": "",
             "santan_tickets": tuple(),
             "santan_common_first_second": tuple(),
@@ -13381,134 +8401,6 @@ def _win_ai_confidence_profile(mark_map, active_cars=None):
     }
 
 
-def _confidence_trio_cars(row):
-    try:
-        cars = [int(x) for x in ((row or {}).get("cars") or []) if str(x).isdigit()]
-        if len(cars) == 3 and len(set(cars)) == 3:
-            return tuple(sorted(cars))
-    except Exception:
-        pass
-    try:
-        cars = (int((row or {}).get("a")), int((row or {}).get("b")), int((row or {}).get("c")))
-        if len(set(cars)) == 3:
-            return tuple(sorted(cars))
-    except Exception:
-        pass
-    return tuple()
-
-
-def _confidence_pair_trio_rows(all_trio_rows, first, second, limit=3):
-    """既存の加重3連複評価から、指定2車を含む3連複を第三車別に上位順で返す。"""
-    try:
-        first, second = int(first), int(second)
-    except Exception:
-        return []
-    if first == second:
-        return []
-
-    ranked = sorted(
-        list(all_trio_rows or []),
-        key=lambda row: (
-            float((row or {}).get("total_pt", 0.0) or 0.0),
-            float((row or {}).get("hit_score", 0.0) or 0.0),
-            float((row or {}).get("myoumi_score", 0.0) or 0.0),
-            str((row or {}).get("disp", "")),
-        ),
-        reverse=True,
-    )
-    out = []
-    seen_thirds = set()
-    for row in ranked:
-        cars = _confidence_trio_cars(row)
-        if len(cars) != 3 or first not in cars or second not in cars:
-            continue
-        thirds = [int(x) for x in cars if int(x) not in {first, second}]
-        if len(thirds) != 1:
-            continue
-        third = int(thirds[0])
-        if third in seen_thirds:
-            continue
-        seen_thirds.add(third)
-        cloned = dict(row or {})
-        cloned["cars"] = tuple(sorted((first, second, third)))
-        cloned["a"], cloned["b"], cloned["c"] = tuple(sorted((first, second, third)))
-        cloned["disp"] = "-".join(str(x) for x in sorted((first, second, third)))
-        cloned["santan_ref"] = f"{first}→{second}→{third}"
-        out.append(cloned)
-        if len(out) >= int(limit):
-            break
-    return out
-
-
-
-def _confidence_candidate_four_cars(trio_rows):
-    """3連複候補群の和集合が4車なら、その4車を返す。"""
-    cars = []
-    for row in list(trio_rows or []):
-        for car in _confidence_trio_cars(row):
-            car = int(car)
-            if car not in cars:
-                cars.append(car)
-    if len(cars) == 4:
-        return tuple(sorted(cars))
-    return tuple()
-
-
-def _confidence_four_car_box_rows(all_trio_rows, candidate_cars):
-    """指定4車の3連複BOX4通りを、既存の加重3連複評価行から取得する。"""
-    try:
-        cars = tuple(sorted({int(x) for x in (candidate_cars or []) if str(x).isdigit()}))
-    except Exception:
-        return []
-    if len(cars) != 4:
-        return []
-
-    row_map = {}
-    for row in list(all_trio_rows or []):
-        key = _confidence_trio_cars(row)
-        if len(key) != 3:
-            continue
-        old = row_map.get(key)
-        try:
-            score = (
-                float((row or {}).get("total_pt", 0.0) or 0.0),
-                float((row or {}).get("hit_score", 0.0) or 0.0),
-                float((row or {}).get("myoumi_score", 0.0) or 0.0),
-            )
-            old_score = (
-                float((old or {}).get("total_pt", 0.0) or 0.0),
-                float((old or {}).get("hit_score", 0.0) or 0.0),
-                float((old or {}).get("myoumi_score", 0.0) or 0.0),
-            ) if old is not None else None
-        except Exception:
-            score = (0.0, 0.0, 0.0)
-            old_score = None
-        if old is None or old_score is None or score > old_score:
-            row_map[key] = row
-
-    out = []
-    for combo in combinations(cars, 3):
-        key = tuple(sorted(combo))
-        row = row_map.get(key)
-        if row is None:
-            return []
-        cloned = dict(row or {})
-        cloned["cars"] = key
-        cloned["a"], cloned["b"], cloned["c"] = key
-        cloned["disp"] = "-".join(str(x) for x in key)
-        out.append(cloned)
-
-    return sorted(
-        out,
-        key=lambda row: (
-            float((row or {}).get("total_pt", 0.0) or 0.0),
-            float((row or {}).get("hit_score", 0.0) or 0.0),
-            float((row or {}).get("myoumi_score", 0.0) or 0.0),
-            str((row or {}).get("disp", "")),
-        ),
-        reverse=True,
-    )
-
 def _decide_ticket_with_win_ai_confidence(
     structure,
     trio_rows,
@@ -13569,11 +8461,16 @@ def _decide_ticket_with_win_ai_confidence(
         pair = {int(x) for x in (first_second or []) if str(x).isdigit()}
         top2 = {int(x) for x in (profile.get("top2", tuple()) or tuple())}
         top4 = {int(x) for x in (profile.get("top4", tuple()) or tuple())}
-        if len(pair) == 2 and pair == top2:
+
+        # 非ライン主体などで比較対象となる共通1・2着が存在しない場合、
+        # AI印を「不一致」とは判定しない。4印を確認した事実だけを表示する。
+        if len(pair) != 2:
+            return "AI4印確認済み（券種変更なし）"
+        if pair == top2:
             return "AI◎〇一致（判定補強・昇格なし）" if trifecta_kept else "AI◎〇一致（参考・昇格なし）"
-        if len(pair) == 2 and pair.issubset(top4):
+        if pair.issubset(top4):
             return "AI上位4車内（判定補助・昇格なし）"
-        return "AI印不一致（展開・ポイント判定を優先）"
+        return "AI印不一致（参考・券種変更なし）"
 
     # ガールズは後段で従来の元5車三連複7点へ統一する。
     if bool(is_girls_only):
@@ -13682,14 +8579,10 @@ def _decide_ticket_with_win_ai_confidence(
     return result
 
 
-def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_label, rule_buy_block, mark_map=None):
-    """
-    note貼り付け用の短縮推奨サマリー。
+def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
+    """note貼り付け用の現行v270サマリーを生成する。
 
-    v117:
-    ・三連複は評価1・2を軸に、2列目・3列目とも「全」表示にする。
-    ・2列目を評価3までに絞る表示を廃止し、ライン決着も安め上位4点で拾える形にする。
-    ・補助2車複は、旧2車複妙味通過＋34-12候補の中から8.5pt以上だけを統合し、説明文なしで短く表示する。
+    旧期待値推奨、34-12切替、三展開合成フォメ、VeloBi列フォメは参照しない。
     """
     try:
         xs = []
@@ -15157,7 +10050,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                             _p = int(_p)
                             if _p in _selected_pair_partners:
                                 continue
-                            # 同ラインは妙味通過枠だけで判定し、総合点補完から除外する。
+                            # 同ラインは妙味基準だけで判定し、総合点補完から除外する。
                             if _p in _line_mate_set:
                                 continue
                             _main_pair_rows.append(_r)
@@ -15391,11 +10284,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         _third_candidates = tuple(_nonline_candidates)
                         _trio_mode = "nonline_box"
 
-                    # v255：
-                    # ・ライン主体は共通1・2着を折り返して3着2車の4点。
+                    # v270-R2：
+                    # ・ライン主体だけ、共通1・2着と同ライン3着候補の明確さを確認する。
                     # ・ライン保護はA・B直後の同ライン車1車だけを固定対象にする。
-                    # ・残る1枠は、4番手以降の同ライン車と他ライン候補を既存評価で比較。
-                    # ・非ライン主体は加重2車複3点と非ライン3連複3点を同一尺度で比較。
+                    # ・非ライン主体は着順固定を行わず、元5車三連複7点へ送る。
+                    # ・加重2車複／3連複比較は診断値に限定し、券種を変えない。
                     # 新しい数値閾値や実オッズは使わない。
                     _protected_santan_thirds = (
                         (int(_line_protected_third),)
@@ -15404,7 +10297,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
                         and int(_line_protected_third) in set(_line_third_candidates or [])
                         else tuple()
                     )
-                    # v258：AI印は妙味加点と混ぜず、最終券種の信頼度ゲートとして使用。
+                    # v270-R2：AI印は補助表示だけに使用し、券種・構造・買い目を変更しない。
                     # 3連系のA・Bと3着候補は、必ず既存のライン主体候補から取得する。
                     # 流れ上位2車や非ライン候補から新しい3連単・3連複を生成しない。
                     _line_pair_for_confidence = (
@@ -16121,7 +11014,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
             lines.append("")
             lines.append("生成不可")
             lines.append("")
-        # v228: 意味が伝わらない「コピー用：xxxx」は表示しない。
+        # 旧版の補助文字列は表示しない。
         return "\n".join(lines).strip()
     except Exception as e:
         return f"note最終推奨サマリー生成不可：{e}"
@@ -16131,49 +11024,35 @@ def _make_note_final_summary_block(rec_style, rec_seq, rec_copy, expect_axis_lab
 try:
     _rec_style = globals().get("RECOMMENDED_STYLE", "")
     _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
-    _rec_copy = globals().get("RECOMMENDED_STYLE_COPY", "")
     _rec_seq = [int(x) for x in (_rec_seq or []) if str(x).isdigit()]
-
-    # 既存の上部サマリーだけを削除
-    note_text = _strip_existing_top_summary(note_text)
 
     _summary_core = _make_note_final_summary_block(
         _rec_style,
         _rec_seq,
-        _rec_copy,
-        expect_axis_label,
-        rule_buy_block,
         market_mark_map,
     )
-    summary_block = "\n\n" + _summary_core + "\n"
 
-    # v263: 最終サマリーの券種判定を、全体妙味行の補足表示にも使用する。
+    # 最終判定済みの券種と全体妙味を、展開評価の直後へ直接挿入する。
+    # 旧「軸評価」「期待値軸」「推奨戦法」ブロックは生成・置換とも行わない。
     _m_ticket = re.search(r"【推奨券種】(3連単|3連複)", _summary_core)
     _header_ticket = _m_ticket.group(1) if _m_ticket else "未判定"
-
-    # 軸評価行を全体妙味＋実際の推奨車券へ置換（この時点では旧ラベルのまま）
-    note_text = _replace_axis_line_to_expect(
-        note_text,
-        expect_axis_label,
-        _header_ticket,
+    _header_myoumi = _display_overall_myoumi_label(overall_myoumi_label)
+    _current_summary = (
+        f"全体妙味：{_header_myoumi}（推奨車券：{_header_ticket}）\n\n"
+        f"{_summary_core}\n"
     )
 
-    # 最初の全体妙味行の直後にだけ挿入
-    _m_axis = re.search(
-        r"全体妙味：(?:AA|A|B|C|荒|低)（推奨車券：(3連単|3連複|未判定)）",
-        note_text
-    )
-
-    if _m_axis:
+    _m_tenkai = re.search(r"^展開評価：[^\n]*$", note_text, flags=re.MULTILINE)
+    if _m_tenkai:
         note_text = note_text.replace(
-            _m_axis.group(0),
-            _m_axis.group(0) + summary_block,
-            1
+            _m_tenkai.group(0),
+            _m_tenkai.group(0) + "\n" + _current_summary,
+            1,
         )
     else:
-        note_text = summary_block + "\n\n" + note_text
+        note_text = _current_summary + "\n" + note_text
 
-    note_text = _display_expect_myoumi_labels_in_text(note_text)
+    note_text = _display_overall_myoumi_labels_in_text(note_text)
 
 except Exception as _e:
     st.caption(f"note上部サマリー生成不可：{_e}")
@@ -16181,12 +11060,10 @@ except Exception as _e:
 
 
 # -----------------------------------------
-# noteコピー表示整理（表示だけ。計算・順位・フォメ生成には触らない）
+# noteコピー表示整理（表示だけ。計算・順位・買い目生成には触らない）
 # 削除対象：
 # ・ラスト半周補正ブロック
 # ・会場×最終Hライン補正ブロック
-# ・下部の重複した推奨戦法〜コピー用
-# ・軸評価〜2車複候補〜絞り推奨買目〜仮想単勝
 # 残す対象：
 # ・上部サマリー
 # ・ライン評価グループ
@@ -16204,13 +11081,6 @@ def _clean_note_copy_display_only(text: str) -> str:
         while i < n:
             line = lines[i]
             s = line.strip()
-
-            # v228: 意味不明なコピー用行は全削除
-            if s.startswith("コピー用："):
-                i += 1
-                while i < n and lines[i].strip() == "":
-                    i += 1
-                continue
 
             # 1) ラスト半周補正ブロックを削除
             if s == "【ラスト半周補正】":
@@ -16231,23 +11101,6 @@ def _clean_note_copy_display_only(text: str) -> str:
                     i += 1
                 # 空行も1つ飛ばす
                 while i < n and lines[i].strip() == "":
-                    i += 1
-                continue
-
-            # 2) 下部の重複した推奨戦法〜仮想単勝まで削除
-            #    戦法別着順予想の後に出る plain な「推奨戦法：」から始まるブロックだけ対象。
-            if re.match(r"^推奨戦法：", s):
-                i += 1
-                # ＜短評＞直前まで飛ばす
-                while i < n and lines[i].strip() != "＜短評＞":
-                    i += 1
-                # ＜短評＞は残すので continue せず、次ループで処理
-                continue
-
-            # 3) 念のため、軸評価から始まってしまった下部買い目ブロックも削除
-            if re.match(r"^軸評価：", s):
-                i += 1
-                while i < n and lines[i].strip() != "＜短評＞":
                     i += 1
                 continue
 
@@ -16274,7 +11127,7 @@ def _clean_note_copy_display_only(text: str) -> str:
 
 
 # -----------------------------------------
-# 短評をアプリ向け定型コメントへ置換（表示だけ。計算・順位・フォメ生成には触らない）
+# 短評をアプリ向け定型コメントへ置換（表示だけ。計算・順位・買い目生成には触らない）
 # -----------------------------------------
 def _replace_tanpyou_with_simple_comment(text: str) -> str:
     try:
