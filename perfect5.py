@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v274（表示整理修正版）:
+# ・v273の三層分類と最大6点の券種候補は維持し、note上部の新方式表示だけを簡潔化。
+# ・表示は「軸層／ヒモ層／評価下位無印層／全体分類／券種候補／判定理由／買い目」に限定。
+# ・既存の総合加重単騎評価、加重2車複・3連複評価表、ライン評価、KO、三流れ着順予想、短評は一切削除・折り畳み・置換しない。
+# ・全体分類は各流れのA～E構成比の加重中心で決め、最も波乱側の分類も併記する。
 # v273（三層分類・券種試作版）:
 # ・現行v270-R3の買い目生成は変更せず、比較検証用の新方式ブロックを追加。
 # ・三流れの着内支持率→加重平均着順→1着支持率→的中評価→KOの順で「ヴェロビ軸順位」を作る。
@@ -9102,10 +9107,20 @@ def _v273_build_three_layer_trial_plan(
     for rec in flow_records:
         base = str(rec.get("base_class", "A"))
         class_share[base] = class_share.get(base, 0.0) + float(rec.get("ratio", 0.0) or 0.0)
-    max_share = max(class_share.values()) if class_share else 0.0
-    tied = [k for k, v in class_share.items() if abs(float(v) - float(max_share)) <= 1e-12]
-    # 同率時は波乱側を採る。楽観側へ寄せない。
-    overall_class = min(tied, key=lambda k: _V273_CLASS_ORDER.get(k, 0)) if tied else "A"
+    # v274: 一つの流れだけを採らず、A～E構成比の加重中心を全体分類にする。
+    # 例：D32%／C34%／B34%なら中心値はC。最も波乱側の分類は別に保持する。
+    class_center = sum(
+        float(_V273_CLASS_ORDER.get(k, 0)) * float(v or 0.0)
+        for k, v in class_share.items()
+    )
+    overall_class = min(
+        ("A", "B", "C", "D", "E"),
+        key=lambda k: (
+            abs(float(_V273_CLASS_ORDER.get(k, 0)) - float(class_center)),
+            -float(class_share.get(k, 0.0) or 0.0),
+            float(_V273_CLASS_ORDER.get(k, 0)),
+        ),
+    )
     volatile_class = min(
         [str(rec.get("base_class", "A")) for rec in flow_records],
         key=lambda k: _V273_CLASS_ORDER.get(k, 0),
@@ -9154,6 +9169,7 @@ def _v273_build_three_layer_trial_plan(
 
 
 def _v273_format_three_layer_trial_block(plan):
+    """v274: note上部へ載せる新方式の簡潔表示。既存の詳細表示には触れない。"""
     if not isinstance(plan, dict) or not plan:
         return []
 
@@ -9163,20 +9179,10 @@ def _v273_format_three_layer_trial_block(plan):
         except Exception:
             return "—"
 
-    ranking = list(plan.get("ranking", tuple()) or tuple())
     axis = int(plan.get("axis"))
     axis_mark = str(plan.get("axis_mark", "") or "無印")
     axis_type = str(plan.get("axis_type", "") or "軸")
     axis_row = dict(plan.get("axis_row", {}) or {})
-
-    rank_parts = []
-    for row in ranking:
-        try:
-            rank_parts.append(
-                f"{int(row.get('car'))}（着内{pct(row.get('top3_support'))}・平均{float(row.get('weighted_rank', 0.0)):.2f}・1着{pct(row.get('win_support'))}）"
-            )
-        except Exception:
-            pass
 
     def layer_text(rows, include_mark):
         vals = []
@@ -9190,13 +9196,6 @@ def _v273_format_three_layer_trial_block(plan):
                 pass
         return "・".join(vals) if vals else "なし"
 
-    flow_texts = []
-    for rec in plan.get("flow_records", tuple()) or tuple():
-        top3 = "→".join(str(x) for x in (rec.get("top3") or [])) or "—"
-        flow_texts.append(
-            f"{rec.get('style')}:{rec.get('class')}［{top3}／{rec.get('reason')}］"
-        )
-
     shares = plan.get("class_share", {}) or {}
     share_text = "／".join(
         f"{cls}{pct(shares.get(cls, 0.0))}"
@@ -9204,24 +9203,15 @@ def _v273_format_three_layer_trial_block(plan):
         if float(shares.get(cls, 0.0) or 0.0) > 0.0
     ) or "—"
 
-    out = ["【新方式試作｜現行買い目は変更しない】"]
-    if rank_parts:
-        out.append("【ヴェロビ軸順位】" + " → ".join(rank_parts))
-    out.append(
-        f"【軸層】{axis}（AI{axis_mark}・{axis_type}／着内{pct(axis_row.get('top3_support'))}・平均着順{float(axis_row.get('weighted_rank', 0.0)):.2f}・1着{pct(axis_row.get('win_support'))}）"
-    )
-    out.append("【ヒモ層】" + layer_text(plan.get("himo", tuple()), True))
-    out.append("【評価下位無印層】" + layer_text(plan.get("lower_unmarked", tuple()), False))
-    if plan.get("excluded"):
-        out.append("【三流れ上位3外】" + "・".join(str(x) for x in plan.get("excluded", tuple())))
-    out.append("【流れ別A～E】" + "／".join(flow_texts))
-    out.append(
-        f"【全体分類】{plan.get('overall_class')}（構成比:{share_text}／波乱側:{plan.get('volatile_class')}）"
-    )
-    out.append(
-        f"【試作券種候補】{plan.get('ticket_family')}・{int(plan.get('ticket_count', 0))}点／上限{int(plan.get('max_tickets', 6))}点"
-    )
-    out.append(f"【試作判定理由】{plan.get('ticket_reason', '')}")
+    out = [
+        f"【軸層】{axis}（AI{axis_mark}・{axis_type}／着内{pct(axis_row.get('top3_support'))}・平均着順{float(axis_row.get('weighted_rank', 0.0)):.2f}・1着{pct(axis_row.get('win_support'))}）",
+        "【ヒモ層】" + layer_text(plan.get("himo", tuple()), True),
+        "【評価下位無印層】" + layer_text(plan.get("lower_unmarked", tuple()), False),
+        "",
+        f"【全体分類】{plan.get('overall_class')}（構成比:{share_text}／波乱側:{plan.get('volatile_class')}）",
+        f"【券種候補】{plan.get('ticket_family')}・{int(plan.get('ticket_count', 0))}点／上限{int(plan.get('max_tickets', 6))}点",
+        f"【判定理由】{plan.get('ticket_reason', '')}",
+    ]
     for label, items in plan.get("ticket_groups", tuple()) or tuple():
         out.append(f"{label}】" + "　".join(str(x) for x in items))
     return out
