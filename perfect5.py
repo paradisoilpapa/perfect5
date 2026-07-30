@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v284（AI無印軸除外・印あり2車比較修正版）:
+# ・採用流れの着順上位からAI印あり（◎／〇／△／×）の車を順に2車抽出し、その2車だけを評価軸候補にする。
+# ・AI無印車は軸比較から除外するが、同ライン保護と流れ加重的中単騎評価によるヒモ選定には残す。
+# ・抽出したAI印あり2車のうち、AI評価が低い方を最終軸にする。
+# ・採用流れ、勢力上位3流れ、同ライン全車保護、加重単騎ヒモ、三連複6点固定は変更しない。
 # v283（勢力上位3流れ・加重単騎ヒモ修正版）:
 # ・全ライン／単騎を2車換算勢力で降順に並べ、上位3組だけを順流／渦／逆流の代表対象にする。
 # ・勢力4位以下は、H主導・旧渦・旧逆流であっても代表へ繰り上げず「その他（3列目候補）」にする。
@@ -8533,10 +8538,11 @@ def _decide_ticket_with_win_ai_confidence(
 
 
 # =========================================================
-# v281：各流れ1位候補で採用流れ選定
-#       → 採用流れ1・2位のAI評価が低い方を最終軸
+# v284：各流れ1位候補で採用流れ選定
+#       → 採用流れ上位からAI印あり2車を抽出
+#       → その2車のAI評価が低い方を最終軸
 #       → 最終軸の同ライン車を必須保護
-#       → 採用流れ上位でヒモ4車を完成
+#       → 流れ加重的中単騎評価でヒモ4車を完成
 # 買い目は三連複1車軸－4車－4車の6点だけ。
 # =========================================================
 _V281_STYLES = ("順流", "渦", "逆流")
@@ -8644,10 +8650,11 @@ def _v281_build_fixed_flow_plan(
        ・2車以上のライン＝ライン内KO使用スコア上位2車の合計
        ・単騎＝本人のKO使用スコア×2
     3) 2車換算勢力が最上位の流れを採用する。
-    4) 採用流れの1位・2位から、AI評価が低い方を最終軸にする。
-    5) 最終軸の同ライン車を軸以外すべて先にヒモへ確保する。
-    6) 残枠を、流れ比率を反映した流れ加重的中単騎評価の上位から補充する。
-    7) 三連複1車軸－4車－4車の6点を生成する。
+    4) 採用流れの着順上位からAI印あり（◎／〇／△／×）の車を順に2車抽出する。
+    5) 抽出した2車のうち、AI評価が低い方を最終軸にする。AI無印車は軸比較から除外する。
+    6) 最終軸の同ライン車を軸以外すべて先にヒモへ確保する。
+    7) 残枠を、流れ比率を反映した流れ加重的中単騎評価の上位から補充する。
+    8) 三連複1車軸－4車－4車の6点を生成する。
     """
     ratios = _v281_normalize_ratio_map(flow_ratio_map)
     seq_map = {
@@ -8756,13 +8763,19 @@ def _v281_build_fixed_flow_plan(
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複1車軸－4車－4車",
-            "ticket_reason": f"{adopted_style}着順予想の上位2車を取得できないため生成不可",
+            "ticket_reason": f"{adopted_style}着順予想から軸候補を取得できないため生成不可",
         }
 
+    # v284：採用流れの上位からAI印あり車だけを順に2車抽出する。
+    # AI無印車は軸比較から外すが、後段の同ライン保護・加重単騎ヒモには残す。
     axis_pair = []
-    for idx, car in enumerate(adopted_sequence[:2], start=1):
+    skipped_unmarked_axis = []
+    for idx, car in enumerate(adopted_sequence, start=1):
         car = int(car)
         mark = _v281_mark_for_car(mark_map, car)
+        if not mark:
+            skipped_unmarked_axis.append(car)
+            continue
         axis_pair.append({
             "car": car,
             "rank": idx,
@@ -8770,8 +8783,29 @@ def _v281_build_fixed_flow_plan(
             "ai_rank": _v281_ai_rank(mark),
             "score": _v281_map_float(ko_map, car, 0.0),
         })
+        if len(axis_pair) >= 2:
+            break
 
-    # AI評価が低い方を採用。入力仕様上、◎／〇／△／×は重複しない。
+    if len(axis_pair) < 2:
+        return {
+            **base_result,
+            "status": "insufficient_marked_axis_candidates",
+            "axis_pair": tuple(axis_pair),
+            "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
+            "axis": 0,
+            "axis_score": 0.0,
+            "axis_mark": "",
+            "axis_flow_rank": 0,
+            "axis_line": tuple(),
+            "same_line_himo": tuple(),
+            "himo": tuple(),
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複1車軸－4車－4車",
+            "ticket_reason": f"{adopted_style}着順予想からAI印ありの軸候補を2車取得できないため生成不可",
+        }
+
+    # AI印あり2車のうちAI評価が低い方を採用。入力仕様上、◎／〇／△／×は重複しない。
     axis_row = max(axis_pair, key=lambda row: int(row.get("ai_rank", 4)))
     axis = int(axis_row.get("car"))
     axis_score = float(axis_row.get("score", 0.0) or 0.0)
@@ -8787,6 +8821,7 @@ def _v281_build_fixed_flow_plan(
             **base_result,
             "status": "too_many_same_line_himo",
             "axis_pair": tuple(axis_pair),
+            "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
             "axis": axis,
             "axis_score": axis_score,
             "axis_mark": axis_mark,
@@ -8844,6 +8879,7 @@ def _v281_build_fixed_flow_plan(
             **base_result,
             "status": "insufficient_himo",
             "axis_pair": tuple(axis_pair),
+            "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
             "axis": axis,
             "axis_score": axis_score,
             "axis_mark": axis_mark,
@@ -8869,7 +8905,7 @@ def _v281_build_fixed_flow_plan(
         for rec in flow_candidates
     )
     axis_pair_text = "・".join(
-        f"{adopted_style}{int(rec['rank'])}位={int(rec['car'])}（AI{str(rec['mark'] or '無印')}）"
+        f"{adopted_style}{int(rec['rank'])}位={int(rec['car'])}（AI{str(rec['mark'])}）"
         for rec in axis_pair
     )
     if same_line_himo:
@@ -8882,7 +8918,7 @@ def _v281_build_fixed_flow_plan(
     added_text = "・".join(str(x) for x in weighted_added_himo) if weighted_added_himo else "なし"
     reason = (
         f"各流れ勢力［{candidate_text}］から2車換算スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
-        f"評価軸候補［{axis_pair_text}］のうちAI評価が低い{axis}を最終軸に選択。"
+        f"{adopted_style}着順上位からAI印あり2車［{axis_pair_text}］を抽出し、AI評価が低い{axis}を最終軸に選択。"
         f"{line_reason}し、流れ比率加重的中単騎評価上位から［{added_text}］を補充"
     )
 
@@ -8890,6 +8926,7 @@ def _v281_build_fixed_flow_plan(
         **base_result,
         "status": "ok",
         "axis_pair": tuple(axis_pair),
+        "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
         "axis": axis,
         "axis_score": axis_score,
         "axis_mark": axis_mark,
@@ -11021,8 +11058,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 _win_top4 = tuple()
                 _win_confidence_action = "判定なし"
 
-            # v283：2車換算勢力上位3組だけで三流れを構成し、勢力最上位の流れを採用する。
-            # 採用流れ1・2位のAI低評価側を軸にし、同ライン必須＋流れ加重的中単騎上位をヒモにする。
+            # v284：2車換算勢力上位3組だけで三流れを構成し、勢力最上位の流れを採用する。
+            # 採用流れ上位からAI印あり2車を抽出して低評価側を軸にし、同ライン必須＋流れ加重的中単騎上位をヒモにする。
             _v281_fixed_plan = _v281_build_fixed_flow_plan(
                 globals().get("STYLE_SEQ_MAP", {}) or {},
                 _flow_ratio_map_for_trio(),
@@ -11400,7 +11437,7 @@ try:
         market_mark_map,
     )
 
-    # v283：勢力上位3流れ・同ライン保護・流れ加重的中単騎ヒモの三連複6点を展開評価の直後へ表示する。
+    # v284：勢力上位3流れ・AI印あり2車比較軸・同ライン保護・流れ加重的中単騎ヒモの三連複6点を展開評価の直後へ表示する。
     _current_summary = f"{_summary_core}\n"
 
     _m_tenkai = re.search(r"^展開評価：[^\n]*$", note_text, flags=re.MULTILINE)
@@ -11502,7 +11539,7 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         m_jundo = re.search(r"・順当度：([^［\n]+)", txt)
         jundo = m_jundo.group(1).strip() if m_jundo else "未判定"
 
-        line1 = "・固定型：同ライン保護・AI低評価軸・加重単騎ヒモの三連複1車軸4車流し・6点。"
+        line1 = "・固定型：AI無印を軸比較から除外・AI印あり2車比較軸・同ライン保護・加重単騎ヒモの三連複1車軸4車流し・6点。"
         if axis != "未判定" and axis_style != "未判定":
             line2 = f"・最終軸は{axis}、採用流れは{axis_style}。"
         else:
