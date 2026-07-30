@@ -1,4 +1,14 @@
 # -*- coding: utf-8 -*-
+# v281（同ライン保護・AI妙味軸修正版）:
+# ・券種は三連複1車軸－4車－4車の6点固定を維持する。
+# ・順流／渦／逆流それぞれの着順予想1位を流れ選定候補として抽出する。
+# ・各流れ1位候補のうちKO使用スコア最上位の車が属する流れを採用流れにする。
+# ・採用流れの1位・2位を評価軸候補とし、AI評価が低い方を最終軸にする。
+# ・AI評価順は ◎＞〇＞△＞×＞無印 とし、AI印は流れ選定には使用しない。
+# ・最終軸の同ライン車は軸以外をすべて先にヒモへ確保し、ライン3番手以降も必ず保護する。
+# ・残りのヒモ枠は採用流れの着順予想上位から補充し、合計4車にする。
+# ・同一車が複数流れで1着候補の場合、採用流れは流れ想定比率が高い方、同率時は順流→渦→逆流とする。
+# ・既存の総合加重単騎評価、加重2車複・3連複評価表、ライン評価、KO、三流れ着順予想、短評は削除・折り畳み・置換しない。
 # v280（固定流れ軸・三連複6点修正版）:
 # ・A～Eの自動振り分け、券種変更、AI印による軸・ヒモ選定を廃止。
 # ・順流／渦／逆流それぞれの着順予想1位を軸候補として抽出する。
@@ -8633,15 +8643,19 @@ def _decide_ticket_with_win_ai_confidence(
 
 
 # =========================================================
-# v280：流れ1着候補 → KO使用スコア最終軸 → 同一流れ上位4車
+# v281：各流れ1位候補で採用流れ選定
+#       → 採用流れ1・2位のAI評価が低い方を最終軸
+#       → 最終軸の同ライン車を必須保護
+#       → 採用流れ上位でヒモ4車を完成
 # 買い目は三連複1車軸－4車－4車の6点だけ。
 # =========================================================
-_V280_STYLES = ("順流", "渦", "逆流")
-_V280_STYLE_ORDER = {style: idx for idx, style in enumerate(_V280_STYLES)}
+_V281_STYLES = ("順流", "渦", "逆流")
+_V281_STYLE_ORDER = {style: idx for idx, style in enumerate(_V281_STYLES)}
+_V281_AI_MARK_RANK = {"◎": 0, "〇": 1, "△": 2, "×": 3, "": 4}
 
 
-def _v280_normalize_mark(mark):
-    """AI印は表示専用。軸・ヒモ選定には使用しない。"""
+def _v281_normalize_mark(mark):
+    """AI印を ◎／〇／△／×／無印へ正規化する。"""
     mk = str(mark or "").strip()
     if mk == "○":
         return "〇"
@@ -8650,9 +8664,9 @@ def _v280_normalize_mark(mark):
     return mk if mk in {"◎", "〇", "△", "×"} else ""
 
 
-def _v280_normalize_ratio_map(flow_ratio_map):
+def _v281_normalize_ratio_map(flow_ratio_map):
     clean = {}
-    for style in _V280_STYLES:
+    for style in _V281_STYLES:
         try:
             value = float((flow_ratio_map or {}).get(style, 0.0) or 0.0)
             clean[style] = value if math.isfinite(value) and value >= 0.0 else 0.0
@@ -8660,11 +8674,11 @@ def _v280_normalize_ratio_map(flow_ratio_map):
             clean[style] = 0.0
     total = sum(clean.values())
     if total <= 0.0:
-        return {style: 1.0 / len(_V280_STYLES) for style in _V280_STYLES}
-    return {style: float(clean[style]) / float(total) for style in _V280_STYLES}
+        return {style: 1.0 / len(_V281_STYLES) for style in _V281_STYLES}
+    return {style: float(clean[style]) / float(total) for style in _V281_STYLES}
 
 
-def _v280_unique_sequence(seq):
+def _v281_unique_sequence(seq):
     out = []
     seen = set()
     for value in (seq or []):
@@ -8679,7 +8693,7 @@ def _v280_unique_sequence(seq):
     return out
 
 
-def _v280_map_float(mapping, car, default=0.0):
+def _v281_map_float(mapping, car, default=0.0):
     for key in (car, str(car)):
         try:
             if key in (mapping or {}):
@@ -8690,40 +8704,67 @@ def _v280_map_float(mapping, car, default=0.0):
     return float(default)
 
 
-def _v280_mark_for_car(mark_map, car):
+def _v281_mark_for_car(mark_map, car):
     for key in (car, str(car)):
         try:
             if key in (mark_map or {}):
-                return _v280_normalize_mark((mark_map or {}).get(key, ""))
+                return _v281_normalize_mark((mark_map or {}).get(key, ""))
         except Exception:
             pass
     return ""
 
 
-def _v280_build_fixed_flow_plan(style_seq_map, flow_ratio_map, mark_map, ko_map):
+def _v281_ai_rank(mark):
+    return int(_V281_AI_MARK_RANK.get(_v281_normalize_mark(mark), 4))
+
+
+def _v281_find_axis_line(line_def_obj, axis):
+    """反映済みラインから最終軸を含むラインを入力順のまま返す。"""
+    try:
+        axis = int(axis)
+    except Exception:
+        return []
+
+    if isinstance(line_def_obj, dict):
+        line_values = list(line_def_obj.values())
+    elif isinstance(line_def_obj, (list, tuple)):
+        line_values = list(line_def_obj)
+    else:
+        line_values = []
+
+    for members in line_values:
+        line = _v281_unique_sequence(members)
+        if axis in line:
+            return line
+    return []
+
+
+def _v281_build_fixed_flow_plan(style_seq_map, flow_ratio_map, mark_map, ko_map, line_def_obj):
     """
-    1) 順流・渦・逆流の各着順予想1位を軸候補にする。
-    2) 候補内のKO使用スコア最上位を最終軸にする。
-    3) 最終軸が1着候補となった流れから、軸を除く上位4車をヒモにする。
-    4) 三連複1車軸－4車－4車の6点を生成する。
+    1) 順流・渦・逆流の各着順予想1位を流れ選定候補にする。
+    2) 1位候補のKO使用スコア最上位車が属する流れを採用する。
+    3) 採用流れの1位・2位から、AI評価が低い方を最終軸にする。
+    4) 最終軸の同ライン車を軸以外すべて先にヒモへ確保する。
+    5) 残枠を採用流れの着順予想上位から補充する。
+    6) 三連複1車軸－4車－4車の6点を生成する。
     """
-    ratios = _v280_normalize_ratio_map(flow_ratio_map)
+    ratios = _v281_normalize_ratio_map(flow_ratio_map)
     seq_map = {
-        style: _v280_unique_sequence((style_seq_map or {}).get(style, []) or [])
-        for style in _V280_STYLES
+        style: _v281_unique_sequence((style_seq_map or {}).get(style, []) or [])
+        for style in _V281_STYLES
     }
 
     flow_candidates = []
     candidate_by_car = {}
     first_seen = 0
 
-    for style in _V280_STYLES:
+    for style in _V281_STYLES:
         seq = list(seq_map.get(style, []) or [])
         if not seq:
             continue
         car = int(seq[0])
-        score = _v280_map_float(ko_map, car, 0.0)
-        mark = _v280_mark_for_car(mark_map, car)
+        score = _v281_map_float(ko_map, car, 0.0)
+        mark = _v281_mark_for_car(mark_map, car)
         rec = {
             "style": style,
             "car": car,
@@ -8748,59 +8789,144 @@ def _v280_build_fixed_flow_plan(style_seq_map, flow_ratio_map, mark_map, ko_map)
     if not candidate_by_car:
         return None
 
-    # 最終軸はKO使用スコアだけで比較する。
-    # 完全同点時だけ、候補初出順と車番順を決定用の機械的なタイブレークに使う。
+    # KO使用スコアは「最終軸」ではなく「採用流れ」の選定にだけ使う。
     candidate_rows = list(candidate_by_car.values())
     candidate_rows.sort(key=lambda row: (
         -float(row.get("score", 0.0) or 0.0),
         int(row.get("first_seen", 999) or 999),
         int(row.get("car", 99) or 99),
     ))
-    axis_row = dict(candidate_rows[0])
+    flow_selector_row = dict(candidate_rows[0])
+    flow_selector_car = int(flow_selector_row.get("car"))
+    flow_selector_score = float(flow_selector_row.get("score", 0.0) or 0.0)
+
+    adopted_styles = [
+        style for style in (flow_selector_row.get("styles", []) or [])
+        if style in _V281_STYLE_ORDER
+    ]
+    if not adopted_styles:
+        return None
+    adopted_styles.sort(key=lambda style: (
+        -float(ratios.get(style, 0.0) or 0.0),
+        int(_V281_STYLE_ORDER.get(style, 99)),
+    ))
+    adopted_style = str(adopted_styles[0])
+    adopted_sequence = list(seq_map.get(adopted_style, []) or [])
+
+    if len(adopted_sequence) < 2:
+        return {
+            "status": "insufficient_axis_candidates",
+            "flow_candidates": tuple(flow_candidates),
+            "flow_selector_candidates": tuple(candidate_rows),
+            "flow_selector_car": flow_selector_car,
+            "flow_selector_score": flow_selector_score,
+            "adopted_style": adopted_style,
+            "adopted_styles": tuple(adopted_styles),
+            "adopted_sequence": tuple(adopted_sequence),
+            "axis_pair": tuple(),
+            "axis": 0,
+            "axis_score": 0.0,
+            "axis_mark": "",
+            "axis_flow_rank": 0,
+            "axis_line": tuple(),
+            "same_line_himo": tuple(),
+            "himo": tuple(),
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複1車軸－4車－4車",
+            "ticket_reason": f"{adopted_style}着順予想の上位2車を取得できないため生成不可",
+        }
+
+    axis_pair = []
+    for idx, car in enumerate(adopted_sequence[:2], start=1):
+        car = int(car)
+        mark = _v281_mark_for_car(mark_map, car)
+        axis_pair.append({
+            "car": car,
+            "rank": idx,
+            "mark": mark,
+            "ai_rank": _v281_ai_rank(mark),
+            "score": _v281_map_float(ko_map, car, 0.0),
+        })
+
+    # AI評価が低い方を採用。通常は印が重ならないため、この比較だけで一意に決まる。
+    # 無印は×より低い評価として扱う。万一同評価なら採用流れ2位を優先する。
+    axis_row = max(axis_pair, key=lambda row: (
+        int(row.get("ai_rank", 4)),
+        int(row.get("rank", 0) or 0),
+    ))
     axis = int(axis_row.get("car"))
     axis_score = float(axis_row.get("score", 0.0) or 0.0)
-    axis_mark = _v280_mark_for_car(mark_map, axis)
+    axis_mark = str(axis_row.get("mark", "") or "")
+    axis_flow_rank = int(axis_row.get("rank", 0) or 0)
 
-    # 同一軸が複数流れで1着候補の場合のみ、比率上位の流れをヒモ抽出元にする。
-    axis_styles = [
-        style for style in (axis_row.get("styles", []) or [])
-        if style in _V280_STYLE_ORDER
-    ]
-    if not axis_styles:
-        return None
-    axis_styles.sort(key=lambda style: (
-        -float(ratios.get(style, 0.0) or 0.0),
-        int(_V280_STYLE_ORDER.get(style, 99)),
-    ))
-    axis_style = str(axis_styles[0])
-    axis_sequence = list(seq_map.get(axis_style, []) or [])
+    axis_line = _v281_find_axis_line(line_def_obj, axis)
+    same_line_himo = [int(car) for car in axis_line if int(car) != axis]
+
+    # 同ライン車は全車必須。ヒモ4枠を超える場合は黙って切らず生成停止する。
+    if len(same_line_himo) > 4:
+        return {
+            "status": "too_many_same_line_himo",
+            "flow_candidates": tuple(flow_candidates),
+            "flow_selector_candidates": tuple(candidate_rows),
+            "flow_selector_car": flow_selector_car,
+            "flow_selector_score": flow_selector_score,
+            "adopted_style": adopted_style,
+            "adopted_styles": tuple(adopted_styles),
+            "adopted_sequence": tuple(adopted_sequence),
+            "axis_pair": tuple(axis_pair),
+            "axis": axis,
+            "axis_score": axis_score,
+            "axis_mark": axis_mark,
+            "axis_flow_rank": axis_flow_rank,
+            "axis_line": tuple(axis_line),
+            "same_line_himo": tuple(same_line_himo),
+            "himo": tuple(),
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複1車軸－4車－4車",
+            "ticket_reason": f"軸{axis}の同ライン車が4車を超えるため、必須保護を維持したまま6点生成できない",
+        }
 
     himo = []
-    for car in axis_sequence:
+    for car in same_line_himo:
+        if car != axis and car not in himo:
+            himo.append(int(car))
+
+    flow_added_himo = []
+    for car in adopted_sequence:
         car = int(car)
         if car == axis or car in himo:
             continue
         himo.append(car)
+        flow_added_himo.append(car)
         if len(himo) >= 4:
             break
 
-    # 「その軸の流れから上位4車」を崩さない。不足時は別流れから補完しない。
+    # 同ライン必須＋採用流れ上位で4車を作る。不足時は別流れから補完しない。
     if len(himo) < 4:
         return {
             "status": "insufficient_himo",
             "flow_candidates": tuple(flow_candidates),
-            "axis_candidates": tuple(candidate_rows),
+            "flow_selector_candidates": tuple(candidate_rows),
+            "flow_selector_car": flow_selector_car,
+            "flow_selector_score": flow_selector_score,
+            "adopted_style": adopted_style,
+            "adopted_styles": tuple(adopted_styles),
+            "adopted_sequence": tuple(adopted_sequence),
+            "axis_pair": tuple(axis_pair),
             "axis": axis,
             "axis_score": axis_score,
             "axis_mark": axis_mark,
-            "axis_style": axis_style,
-            "axis_styles": tuple(axis_styles),
-            "axis_sequence": tuple(axis_sequence),
+            "axis_flow_rank": axis_flow_rank,
+            "axis_line": tuple(axis_line),
+            "same_line_himo": tuple(same_line_himo),
+            "flow_added_himo": tuple(flow_added_himo),
             "himo": tuple(himo),
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複1車軸－4車－4車",
-            "ticket_reason": f"{axis_style}着順予想から軸{axis}を除いた車が4車未満のため生成不可",
+            "ticket_reason": f"同ライン必須車と{adopted_style}着順予想上位を合わせてもヒモが4車未満のため生成不可",
         }
 
     tickets = []
@@ -8812,30 +8938,50 @@ def _v280_build_fixed_flow_plan(style_seq_map, flow_ratio_map, mark_map, ko_map)
         f"{rec['style']}={int(rec['car'])}（KO={float(rec['score']):.6f}）"
         for rec in flow_candidates
     )
+    axis_pair_text = "・".join(
+        f"{adopted_style}{int(rec['rank'])}位={int(rec['car'])}（AI{str(rec['mark'] or '無印')}）"
+        for rec in axis_pair
+    )
+    if same_line_himo:
+        line_text = "".join(str(x) for x in axis_line)
+        same_line_text = "・".join(str(x) for x in same_line_himo)
+        line_reason = f"自ライン{line_text}の軸以外［{same_line_text}］を先に必須確保"
+    else:
+        line_reason = "軸は単騎のため自ライン必須車なし"
+
+    added_text = "・".join(str(x) for x in flow_added_himo) if flow_added_himo else "なし"
     reason = (
-        f"各流れ1着予想の軸候補［{candidate_text}］からKO使用スコア最上位の{axis}を選択。"
-        f"{axis_style}着順予想の軸除外上位4車をヒモ採用"
+        f"各流れ1着予想［{candidate_text}］からKO使用スコア最上位の{flow_selector_car}で{adopted_style}を採用。"
+        f"評価軸候補［{axis_pair_text}］のうちAI評価が低い{axis}を最終軸に選択。"
+        f"{line_reason}し、{adopted_style}着順予想上位から［{added_text}］を補充"
     )
 
     return {
         "status": "ok",
         "flow_candidates": tuple(flow_candidates),
-        "axis_candidates": tuple(candidate_rows),
+        "flow_selector_candidates": tuple(candidate_rows),
+        "flow_selector_car": flow_selector_car,
+        "flow_selector_score": flow_selector_score,
+        "adopted_style": adopted_style,
+        "adopted_styles": tuple(adopted_styles),
+        "adopted_sequence": tuple(adopted_sequence),
+        "axis_pair": tuple(axis_pair),
         "axis": axis,
         "axis_score": axis_score,
         "axis_mark": axis_mark,
-        "axis_style": axis_style,
-        "axis_styles": tuple(axis_styles),
-        "axis_sequence": tuple(axis_sequence),
+        "axis_flow_rank": axis_flow_rank,
+        "axis_line": tuple(axis_line),
+        "same_line_himo": tuple(same_line_himo),
+        "flow_added_himo": tuple(flow_added_himo),
         "himo": tuple(himo[:4]),
-        "ticket_groups": (("3連複", tuple(tickets)),),
+        "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
         "ticket_family": "3連複1車軸－4車－4車",
         "ticket_reason": reason,
     }
 
 
-def _v280_format_fixed_flow_block(plan):
+def _v281_format_fixed_flow_block(plan):
     if not isinstance(plan, dict) or not plan:
         return []
 
@@ -8850,22 +8996,48 @@ def _v280_format_fixed_flow_block(plan):
         except Exception:
             pass
 
+    adopted_style = str(plan.get("adopted_style", "") or "未判定")
+    flow_selector_car = int(plan.get("flow_selector_car", 0) or 0)
+    flow_selector_score = float(plan.get("flow_selector_score", 0.0) or 0.0)
+
+    axis_pair_parts = []
+    for rec in (plan.get("axis_pair", tuple()) or tuple()):
+        try:
+            rank = int(rec.get("rank", 0) or 0)
+            car = int(rec.get("car"))
+            mark = str(rec.get("mark", "") or "無印")
+            axis_pair_parts.append(f"{rank}位={car}（AI{mark}）")
+        except Exception:
+            pass
+
     axis = int(plan.get("axis", 0) or 0)
     axis_score = float(plan.get("axis_score", 0.0) or 0.0)
     axis_mark = str(plan.get("axis_mark", "") or "無印")
-    axis_style = str(plan.get("axis_style", "") or "未判定")
+    axis_flow_rank = int(plan.get("axis_flow_rank", 0) or 0)
+    axis_line = [int(x) for x in (plan.get("axis_line", tuple()) or tuple())]
+    same_line_himo = [int(x) for x in (plan.get("same_line_himo", tuple()) or tuple())]
     himo = [int(x) for x in (plan.get("himo", tuple()) or tuple())]
 
+    if axis_line:
+        line_label = "".join(str(x) for x in axis_line)
+        same_line_label = "・".join(str(x) for x in same_line_himo) if same_line_himo else "なし"
+        same_line_display = f"ライン{line_label}／必須ヒモ={same_line_label}"
+    else:
+        same_line_display = "単騎／必須ヒモなし"
+
     out = [
-        "【軸候補】" + (" ／ ".join(flow_candidate_parts) if flow_candidate_parts else "生成不可"),
-        f"【最終軸】{axis}（{axis_style}・KO使用スコア={axis_score:.6f}・AI{axis_mark}）",
+        "【流れ選定候補】" + (" ／ ".join(flow_candidate_parts) if flow_candidate_parts else "生成不可"),
+        f"【採用流れ】{adopted_style}（1着候補={flow_selector_car}・KO使用スコア={flow_selector_score:.6f}）",
+        "【評価軸候補】" + (" ／ ".join(axis_pair_parts) if axis_pair_parts else "生成不可"),
+        f"【最終軸】{axis}（{adopted_style}・{axis_flow_rank}位・AI{axis_mark}・KO使用スコア={axis_score:.6f}）",
+        f"【自ライン優先】{same_line_display}",
         "【ヒモ4車】" + ("・".join(str(x) for x in himo[:4]) if len(himo) >= 4 else "不足"),
         "",
         f"【推奨車券】{plan.get('ticket_family', '3連複1車軸－4車－4車')}・{int(plan.get('ticket_count', 0) or 0)}点",
         f"【選定理由】{plan.get('ticket_reason', '')}",
     ]
     for label, items in (plan.get("ticket_groups", tuple()) or tuple()):
-        out.append(f"{label}】" + "　".join(str(x) for x in items))
+        out.append(f"{label}" + "　".join(str(x) for x in items))
     return out
 
 
@@ -10916,13 +11088,14 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 _win_top4 = tuple()
                 _win_confidence_action = "判定なし"
 
-            # v280：各流れ1着候補→KO使用スコア最終軸→同一流れ上位4車。
-            # note上部の買い目は三連複1車軸4車流し・6点へ一本化する。
-            _v280_fixed_plan = _v280_build_fixed_flow_plan(
+            # v281：各流れ1位候補で採用流れを選び、採用流れ1・2位のAI低評価側を軸にする。
+            # 最終軸の同ライン車を必須保護し、残枠を採用流れ上位から補充する。
+            _v281_fixed_plan = _v281_build_fixed_flow_plan(
                 globals().get("STYLE_SEQ_MAP", {}) or {},
                 _flow_ratio_map_for_trio(),
                 mark_map or {},
                 globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {},
+                globals().get("line_def", {}) or {},
             )
 
             def _fmt_trio_summary_rows(_rows, include_santan_ref=True):
@@ -11140,13 +11313,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 except Exception:
                     return []
 
-            _v280_fixed_lines = _v280_format_fixed_flow_block(_v280_fixed_plan)
+            _v281_fixed_lines = _v281_format_fixed_flow_block(_v281_fixed_plan)
 
             lines.append(_fmt_flow_ratio_line(_flow_ratio_map_for_trio()))
             lines.append("")
 
-            if _v280_fixed_lines:
-                lines.extend(_v280_fixed_lines)
+            if _v281_fixed_lines:
+                lines.extend(_v281_fixed_lines)
                 lines.append("")
 
             # v231:
@@ -11247,7 +11420,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
             _fw_trio_lines = _make_flow_weighted_trio_lines()
 
-            # v280: 旧買い目判定・A～E振り分けの表示は廃止。
+            # v281: 旧買い目判定・A～E振り分けの表示は廃止。
             # 固定の三連複1車軸4車流し・6点だけを上部に表示する。
             # 旧計算値は互換性のため内部に残すが、note本文へは出力しない。
 
@@ -11292,7 +11465,7 @@ try:
         market_mark_map,
     )
 
-    # v280：全体妙味とA～Eを表示せず、固定流れ軸の三連複6点を展開評価の直後へ表示する。
+    # v281：全体妙味とA～Eを表示せず、同ライン保護・AI妙味軸の三連複6点を展開評価の直後へ表示する。
     _current_summary = f"{_summary_core}\n"
 
     _m_tenkai = re.search(r"^展開評価：[^\n]*$", note_text, flags=re.MULTILINE)
@@ -11394,7 +11567,7 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         m_jundo = re.search(r"・順当度：([^［\n]+)", txt)
         jundo = m_jundo.group(1).strip() if m_jundo else "未判定"
 
-        line1 = "・固定型：三連複1車軸4車流し・6点。"
+        line1 = "・固定型：同ライン保護・AI低評価軸の三連複1車軸4車流し・6点。"
         if axis != "未判定" and axis_style != "未判定":
             line2 = f"・最終軸は{axis}、採用流れは{axis_style}。"
         else:
