@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+# v273（三層分類・券種試作版）:
+# ・現行v270-R3の買い目生成は変更せず、比較検証用の新方式ブロックを追加。
+# ・三流れの着内支持率→加重平均着順→1着支持率→的中評価→KOの順で「ヴェロビ軸順位」を作る。
+# ・ヴェロビ軸順位1位を軸とし、AI◎なら堅軸、AI〇なら支持軸、AI△/×なら妙味軸、AI無印なら穴軸。
+# ・軸以外を「AI印ありのヒモ」「AI無印の評価下位」に三層分類し、各流れ上位3車をA～Eへ分類。
+# ・最大6点の試作券種候補を表示するが、現行の推奨券種・買い目は上書きしない。複数レース検証後に正式移行する。
 # v270-R3（大掃除完成版）:
 # ・本来のv270を基準に、男子3連単非該当・ガールズは元5車を一車も切らず三連複12-123-12345の7点。
 # ・3連単は、ライン主体の説明可能な展開、3単参考1・2着共通、直後同ライン3着候補の総合点単独1位、3車以上ラインをすべて満たす場合だけ。
@@ -8579,6 +8585,647 @@ def _decide_ticket_with_win_ai_confidence(
     return result
 
 
+
+# =========================================================
+# v273 試作：ヴェロビ軸順位／三層分類／流れ別A～E／最大6点券種候補
+# ※現行v270の推奨買い目は変更しない。比較検証用の表示だけを追加する。
+# =========================================================
+_V273_MARK_ORDER = {"◎": 0, "〇": 1, "△": 2, "×": 3}
+_V273_CLASS_ORDER = {"A": 0, "B": 1, "C": 2, "D": 3, "E": 4}
+
+
+def _v273_normalize_mark(mark):
+    mk = str(mark or "").strip()
+    if mk == "○":
+        return "〇"
+    if mk == "▲":
+        return "△"
+    return mk if mk in _V273_MARK_ORDER else ""
+
+
+def _v273_normalize_ratio_map(flow_ratio_map):
+    styles = ("順流", "渦", "逆流")
+    clean = {}
+    try:
+        for style in styles:
+            v = float((flow_ratio_map or {}).get(style, 0.0) or 0.0)
+            clean[style] = v if math.isfinite(v) and v >= 0.0 else 0.0
+    except Exception:
+        clean = {style: 0.0 for style in styles}
+    total = sum(clean.values())
+    if total <= 0.0:
+        return {style: 1.0 / 3.0 for style in styles}
+    return {style: float(clean[style]) / total for style in styles}
+
+
+def _v273_unique_active_cars(style_seq_map, hit_map=None, myoumi_map=None, mark_map=None):
+    out = []
+    seen = set()
+    for style in ("順流", "渦", "逆流"):
+        for x in ((style_seq_map or {}).get(style, []) or []):
+            try:
+                car = int(x)
+            except Exception:
+                continue
+            if car not in seen:
+                seen.add(car)
+                out.append(car)
+    for obj in (hit_map or {}, myoumi_map or {}, mark_map or {}):
+        try:
+            keys = obj.keys()
+        except Exception:
+            keys = []
+        for x in keys:
+            try:
+                car = int(x)
+            except Exception:
+                continue
+            if car not in seen:
+                seen.add(car)
+                out.append(car)
+    return sorted(out)
+
+
+def _v273_axis_ranking(style_seq_map, flow_ratio_map, hit_map=None, myoumi_map=None, ko_map=None, mark_map=None):
+    """三流れの着内安定性を最優先にしたヴェロビ軸順位。"""
+    ratios = _v273_normalize_ratio_map(flow_ratio_map)
+    active = _v273_unique_active_cars(style_seq_map, hit_map, myoumi_map, mark_map)
+    if not active:
+        return []
+
+    normalized_marks = {}
+    for car, mark in dict(mark_map or {}).items():
+        try:
+            ci = int(car)
+        except Exception:
+            continue
+        mk = _v273_normalize_mark(mark)
+        if mk:
+            normalized_marks[ci] = mk
+
+    seqs = {}
+    fallback_rank = len(active) + 1
+    for style in ("順流", "渦", "逆流"):
+        seq = []
+        for x in ((style_seq_map or {}).get(style, []) or []):
+            try:
+                car = int(x)
+            except Exception:
+                continue
+            if car in active and car not in seq:
+                seq.append(car)
+        for car in active:
+            if car not in seq:
+                seq.append(car)
+        seqs[style] = seq
+
+    rows = []
+    for car in active:
+        rank_by_style = {}
+        top3_support = 0.0
+        top2_support = 0.0
+        win_support = 0.0
+        weighted_rank = 0.0
+        flow_top3_count = 0
+        for style in ("順流", "渦", "逆流"):
+            seq = seqs.get(style, [])
+            try:
+                rank = seq.index(car) + 1
+            except ValueError:
+                rank = fallback_rank
+            rank_by_style[style] = int(rank)
+            ratio = float(ratios.get(style, 0.0) or 0.0)
+            weighted_rank += ratio * float(rank)
+            if rank <= 3:
+                top3_support += ratio
+                flow_top3_count += 1
+            if rank <= 2:
+                top2_support += ratio
+            if rank == 1:
+                win_support += ratio
+
+        try:
+            hit = float((hit_map or {}).get(car, 0.0) or 0.0)
+        except Exception:
+            hit = 0.0
+        try:
+            myoumi = float((myoumi_map or {}).get(car, 0.0) or 0.0)
+        except Exception:
+            myoumi = 0.0
+        try:
+            ko = float((ko_map or {}).get(car, 0.0) or 0.0)
+        except Exception:
+            ko = 0.0
+
+        rows.append({
+            "car": int(car),
+            "mark": normalized_marks.get(int(car), ""),
+            "top3_support": float(top3_support),
+            "top2_support": float(top2_support),
+            "win_support": float(win_support),
+            "weighted_rank": float(weighted_rank),
+            "flow_top3_count": int(flow_top3_count),
+            "rank_by_style": dict(rank_by_style),
+            "hit": float(hit),
+            "myoumi": float(myoumi),
+            "ko": float(ko),
+        })
+
+    # 合意順：着内支持率 → 加重平均着順 → 1着支持率 → 的中評価 → KO。
+    rows.sort(key=lambda row: (
+        float(row.get("top3_support", 0.0)),
+        -float(row.get("weighted_rank", 99.0)),
+        float(row.get("win_support", 0.0)),
+        float(row.get("hit", 0.0)),
+        float(row.get("ko", 0.0)),
+        float(row.get("myoumi", 0.0)),
+        -int(row.get("car", 99)),
+    ), reverse=True)
+    for idx, row in enumerate(rows, start=1):
+        row["axis_rank"] = int(idx)
+    return rows
+
+
+def _v273_axis_type(mark):
+    mk = _v273_normalize_mark(mark)
+    if mk == "◎":
+        return "堅軸"
+    if mk == "〇":
+        return "支持軸"
+    if mk in {"△", "×"}:
+        return "妙味軸"
+    return "穴軸"
+
+
+def _v273_classify_flow_top3(top3, mark_map):
+    """競馬本の人気構造を、AI印あり／無印の配置へ置換したA～E分類。"""
+    marks = []
+    for car in list(top3 or [])[:3]:
+        marks.append(_v273_normalize_mark((mark_map or {}).get(int(car), "")))
+    while len(marks) < 3:
+        marks.append("")
+    marked_positions = [idx + 1 for idx, mk in enumerate(marks) if mk]
+    marked_count = len(marked_positions)
+
+    if marked_count == 3:
+        ranks = [_V273_MARK_ORDER.get(mk, 99) for mk in marks]
+        if ranks == sorted(ranks):
+            return "E", "人気3車・AI順"
+        return "D2", "人気3車・順番入替"
+    if marked_count == 2:
+        unmarked_pos = next((idx + 1 for idx, mk in enumerate(marks) if not mk), 3)
+        if unmarked_pos == 3:
+            return "D1", "人気2車が上位・無印3着"
+        return "C2", f"無印が{unmarked_pos}着まで進出"
+    if marked_count == 1:
+        marked_pos = marked_positions[0]
+        if marked_pos == 1:
+            return "C1", "人気1車が1着・無印2席"
+        return "B", f"人気車は{marked_pos}着の1席のみ"
+    return "A", "上位3席すべてAI無印"
+
+
+def _v273_base_class(label):
+    s = str(label or "")
+    return s[:1] if s[:1] in _V273_CLASS_ORDER else "A"
+
+
+def _v273_partner_profiles(axis, ranking_rows, style_seq_map, flow_ratio_map):
+    ratios = _v273_normalize_ratio_map(flow_ratio_map)
+    rank_map = {int(row.get("car")): row for row in (ranking_rows or [])}
+    active = sorted(rank_map.keys())
+    seqs = {}
+    for style in ("順流", "渦", "逆流"):
+        seq = []
+        for x in ((style_seq_map or {}).get(style, []) or []):
+            try:
+                car = int(x)
+            except Exception:
+                continue
+            if car in active and car not in seq:
+                seq.append(car)
+        for car in active:
+            if car not in seq:
+                seq.append(car)
+        seqs[style] = seq
+
+    out = []
+    for car in active:
+        if int(car) == int(axis):
+            continue
+        co_top3_ratio = 0.0
+        co_top2_ratio = 0.0
+        co_flow_count = 0
+        top2_flow_count = 0
+        order_signs = []
+        styles = []
+        for style in ("順流", "渦", "逆流"):
+            seq = seqs.get(style, [])
+            try:
+                ar = seq.index(int(axis)) + 1
+                cr = seq.index(int(car)) + 1
+            except ValueError:
+                continue
+            ratio = float(ratios.get(style, 0.0) or 0.0)
+            if ar <= 3 and cr <= 3:
+                co_top3_ratio += ratio
+                co_flow_count += 1
+                styles.append(style)
+                order_signs.append(-1 if ar < cr else 1)
+            if ar <= 2 and cr <= 2:
+                co_top2_ratio += ratio
+                top2_flow_count += 1
+        consistent = bool(order_signs) and len(set(order_signs)) == 1
+        direction = ""
+        if consistent:
+            direction = "軸先着" if order_signs[0] == -1 else "相手先着"
+        row = dict(rank_map.get(car, {}) or {})
+        row.update({
+            "co_top3_ratio": float(co_top3_ratio),
+            "co_top2_ratio": float(co_top2_ratio),
+            "co_flow_count": int(co_flow_count),
+            "top2_flow_count": int(top2_flow_count),
+            "order_consistent": bool(consistent),
+            "direction": direction,
+            "co_styles": tuple(styles),
+        })
+        out.append(row)
+
+    out.sort(key=lambda row: (
+        float(row.get("co_top3_ratio", 0.0)),
+        float(row.get("co_top2_ratio", 0.0)),
+        1 if _v273_normalize_mark(row.get("mark")) else 0,
+        float(row.get("top3_support", 0.0)),
+        -float(row.get("weighted_rank", 99.0)),
+        float(row.get("hit", 0.0)),
+        float(row.get("ko", 0.0)),
+        -int(row.get("car", 99)),
+    ), reverse=True)
+    return out
+
+
+def _v273_flow_top3_records(style_seq_map, flow_ratio_map, mark_map):
+    ratios = _v273_normalize_ratio_map(flow_ratio_map)
+    records = []
+    for style in ("順流", "渦", "逆流"):
+        seq = []
+        for x in ((style_seq_map or {}).get(style, []) or []):
+            try:
+                car = int(x)
+            except Exception:
+                continue
+            if car not in seq:
+                seq.append(car)
+        top3 = tuple(seq[:3])
+        label, reason = _v273_classify_flow_top3(top3, mark_map)
+        records.append({
+            "style": style,
+            "ratio": float(ratios.get(style, 0.0) or 0.0),
+            "top3": top3,
+            "class": label,
+            "base_class": _v273_base_class(label),
+            "reason": reason,
+        })
+    return records
+
+
+def _v273_unique_flow_trios(flow_records):
+    out = []
+    seen = set()
+    for rec in sorted(list(flow_records or []), key=lambda x: float(x.get("ratio", 0.0)), reverse=True):
+        top3 = tuple(int(x) for x in (rec.get("top3") or []) if str(x).isdigit())
+        if len(top3) != 3 or len(set(top3)) != 3:
+            continue
+        key = tuple(sorted(top3))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"key": key, "style": rec.get("style", ""), "ratio": rec.get("ratio", 0.0)})
+    return out
+
+
+def _v273_choose_trial_ticket_family(axis_row, partner_rows, flow_records, overall_class, current_ticket=""):
+    """数値閾値を増やさず、流れ数と着順位置だけで最大6点の試作券種を選ぶ。"""
+    axis_flow_count = int((axis_row or {}).get("flow_top3_count", 0) or 0)
+    best = (partner_rows or [None])[0]
+    best_co_count = int((best or {}).get("co_flow_count", 0) or 0)
+    best_top2_count = int((best or {}).get("top2_flow_count", 0) or 0)
+    best_consistent = bool((best or {}).get("order_consistent", False))
+    flow_trios = _v273_unique_flow_trios(flow_records)
+
+    # E/Dで現行の厳格な3連単判定が成立済みなら、その4+2をそのまま試作側でも採用。
+    if str(overall_class) in {"E", "D"} and str(current_ticket) == "3連単":
+        return "3連単＋3連複", "現行の厳格な着順固定条件が成立"
+
+    # 軸と同じ相手が複数流れで上位2席に残り、前後関係も一定。
+    if best_co_count >= 2 and best_top2_count >= 2 and best_consistent:
+        return "2車単＋2車複", "軸と同一相手が複数流れで上位2席・前後関係も一定"
+
+    # 軸と同じ相手が複数流れで着内。ただし連対・前後が揺れる。
+    if best_co_count >= 2:
+        return "2車複＋ワイド", "軸と同一相手が複数流れで着内するが、連対位置または前後が揺れる"
+
+    # 軸は複数流れで残るが相手が流れごとに分散する。
+    if axis_flow_count >= 2 and 1 <= len(flow_trios) <= 3:
+        return "3連複＋ワイド", "軸は複数流れで残るが、相手・3着候補が流れごとに分散"
+
+    return "見送り", "軸または相手関係を最大6点へ再現可能に圧縮できない"
+
+
+def _v273_build_trial_tickets(
+    family,
+    axis,
+    partner_rows,
+    flow_records,
+    mark_map,
+    current_santan_tickets=None,
+    current_support_trio_rows=None,
+    max_tickets=6,
+):
+    max_tickets = max(0, int(max_tickets or 0))
+    groups = []
+
+    def uniq_pairs(rows, limit):
+        out = []
+        seen = set()
+        for row in rows or []:
+            try:
+                partner = int(row.get("car"))
+            except Exception:
+                continue
+            if partner == int(axis):
+                continue
+            key = tuple(sorted((int(axis), partner)))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(key)
+            if len(out) >= limit:
+                break
+        return out
+
+    if family == "3連単＋3連複":
+        santan = [str(x) for x in (current_santan_tickets or []) if str(x).strip()][:4]
+        trios = []
+        for row in (current_support_trio_rows or []):
+            try:
+                key = _v262_trio_key_from_row(row)
+            except Exception:
+                key = tuple()
+            if len(key) == 3:
+                trios.append("-".join(str(x) for x in key))
+            if len(trios) >= 2:
+                break
+        if santan:
+            groups.append(("3連単", santan))
+        if trios:
+            groups.append(("3連複", trios))
+        return groups
+
+    if family == "2車単＋2車複":
+        eligible = [row for row in (partner_rows or []) if int(row.get("co_flow_count", 0) or 0) >= 2 and bool(row.get("order_consistent"))]
+        pairs = uniq_pairs(eligible, 2)
+        nitan = []
+        nifuku = []
+        for a, b in pairs:
+            row = next((r for r in eligible if int(r.get("car")) in {a, b} - {int(axis)}), None)
+            partner = b if a == int(axis) else a
+            direction = str((row or {}).get("direction", ""))
+            if direction == "相手先着":
+                nitan.append(f"{partner}→{int(axis)}")
+            else:
+                nitan.append(f"{int(axis)}→{partner}")
+            nifuku.append(f"{min(a,b)}-{max(a,b)}")
+        groups.append(("2車単", nitan)) if nitan else None
+        groups.append(("2車複", nifuku)) if nifuku else None
+        return groups
+
+    if family == "2車複＋ワイド":
+        eligible = [row for row in (partner_rows or []) if float(row.get("co_top3_ratio", 0.0) or 0.0) > 0.0]
+        pairs = uniq_pairs(eligible, min(3, max_tickets // 2 if max_tickets else 0))
+        vals = [f"{min(a,b)}-{max(a,b)}" for a, b in pairs]
+        if vals:
+            groups.append(("2車複", vals))
+            groups.append(("ワイド", list(vals)))
+        return groups
+
+    if family == "3連複＋ワイド":
+        trios = []
+        for rec in _v273_unique_flow_trios(flow_records)[:3]:
+            trios.append("-".join(str(x) for x in rec.get("key", tuple())))
+
+        wide_pairs = []
+        seen = set()
+        # 各流れで、軸と同時に残るAI印あり車を1車ずつ。いなければ上位の相手を使う。
+        for rec in sorted(list(flow_records or []), key=lambda x: float(x.get("ratio", 0.0)), reverse=True):
+            top3 = [int(x) for x in (rec.get("top3") or []) if str(x).isdigit()]
+            if int(axis) not in top3:
+                continue
+            candidates = [x for x in top3 if x != int(axis) and _v273_normalize_mark((mark_map or {}).get(int(x), ""))]
+            if not candidates:
+                candidates = [x for x in top3 if x != int(axis)]
+            if not candidates:
+                continue
+            partner = int(candidates[0])
+            key = tuple(sorted((int(axis), partner)))
+            if key in seen:
+                continue
+            seen.add(key)
+            wide_pairs.append(f"{key[0]}-{key[1]}")
+            if len(wide_pairs) >= 3:
+                break
+
+        # 最大6点を厳守。三連複を先に残し、残枠へワイドを入れる。
+        trios = trios[:max_tickets]
+        remaining = max(0, max_tickets - len(trios))
+        wide_pairs = wide_pairs[:remaining]
+        if trios:
+            groups.append(("3連複", trios))
+        if wide_pairs:
+            groups.append(("ワイド", wide_pairs))
+        return groups
+
+    return groups
+
+
+def _v273_build_three_layer_trial_plan(
+    style_seq_map,
+    flow_ratio_map,
+    mark_map,
+    hit_map,
+    myoumi_map,
+    ko_map,
+    *,
+    current_ticket="",
+    current_santan_tickets=None,
+    current_support_trio_rows=None,
+    max_tickets=6,
+):
+    ranking = _v273_axis_ranking(
+        style_seq_map,
+        flow_ratio_map,
+        hit_map=hit_map,
+        myoumi_map=myoumi_map,
+        ko_map=ko_map,
+        mark_map=mark_map,
+    )
+    if not ranking:
+        return None
+
+    axis_row = dict(ranking[0])
+    axis = int(axis_row.get("car"))
+    normalized_marks = {}
+    for car, mark in dict(mark_map or {}).items():
+        try:
+            ci = int(car)
+        except Exception:
+            continue
+        mk = _v273_normalize_mark(mark)
+        if mk:
+            normalized_marks[ci] = mk
+
+    himo = [
+        dict(row) for row in ranking[1:]
+        if _v273_normalize_mark(row.get("mark")) and float(row.get("top3_support", 0.0) or 0.0) > 0.0
+    ]
+    lower_unmarked = [
+        dict(row) for row in ranking[1:]
+        if not _v273_normalize_mark(row.get("mark")) and float(row.get("top3_support", 0.0) or 0.0) > 0.0
+    ]
+    excluded = [
+        int(row.get("car")) for row in ranking[1:]
+        if float(row.get("top3_support", 0.0) or 0.0) <= 0.0
+    ]
+
+    flow_records = _v273_flow_top3_records(style_seq_map, flow_ratio_map, normalized_marks)
+    class_share = {k: 0.0 for k in ("A", "B", "C", "D", "E")}
+    for rec in flow_records:
+        base = str(rec.get("base_class", "A"))
+        class_share[base] = class_share.get(base, 0.0) + float(rec.get("ratio", 0.0) or 0.0)
+    max_share = max(class_share.values()) if class_share else 0.0
+    tied = [k for k, v in class_share.items() if abs(float(v) - float(max_share)) <= 1e-12]
+    # 同率時は波乱側を採る。楽観側へ寄せない。
+    overall_class = min(tied, key=lambda k: _V273_CLASS_ORDER.get(k, 0)) if tied else "A"
+    volatile_class = min(
+        [str(rec.get("base_class", "A")) for rec in flow_records],
+        key=lambda k: _V273_CLASS_ORDER.get(k, 0),
+    ) if flow_records else "A"
+
+    partners = _v273_partner_profiles(axis, ranking, style_seq_map, flow_ratio_map)
+    family, family_reason = _v273_choose_trial_ticket_family(
+        axis_row,
+        partners,
+        flow_records,
+        overall_class,
+        current_ticket=current_ticket,
+    )
+    tickets = _v273_build_trial_tickets(
+        family,
+        axis,
+        partners,
+        flow_records,
+        normalized_marks,
+        current_santan_tickets=current_santan_tickets,
+        current_support_trio_rows=current_support_trio_rows,
+        max_tickets=max_tickets,
+    )
+    ticket_count = sum(len(items) for _, items in tickets)
+
+    return {
+        "ranking": tuple(ranking),
+        "axis": axis,
+        "axis_row": axis_row,
+        "axis_mark": normalized_marks.get(axis, ""),
+        "axis_type": _v273_axis_type(normalized_marks.get(axis, "")),
+        "himo": tuple(himo),
+        "lower_unmarked": tuple(lower_unmarked),
+        "excluded": tuple(excluded),
+        "flow_records": tuple(flow_records),
+        "class_share": dict(class_share),
+        "overall_class": overall_class,
+        "volatile_class": volatile_class,
+        "partners": tuple(partners),
+        "ticket_family": family,
+        "ticket_reason": family_reason,
+        "ticket_groups": tuple((label, tuple(items)) for label, items in tickets),
+        "ticket_count": int(ticket_count),
+        "max_tickets": int(max_tickets),
+    }
+
+
+def _v273_format_three_layer_trial_block(plan):
+    if not isinstance(plan, dict) or not plan:
+        return []
+
+    def pct(v):
+        try:
+            return f"{float(v) * 100:.0f}%"
+        except Exception:
+            return "—"
+
+    ranking = list(plan.get("ranking", tuple()) or tuple())
+    axis = int(plan.get("axis"))
+    axis_mark = str(plan.get("axis_mark", "") or "無印")
+    axis_type = str(plan.get("axis_type", "") or "軸")
+    axis_row = dict(plan.get("axis_row", {}) or {})
+
+    rank_parts = []
+    for row in ranking:
+        try:
+            rank_parts.append(
+                f"{int(row.get('car'))}（着内{pct(row.get('top3_support'))}・平均{float(row.get('weighted_rank', 0.0)):.2f}・1着{pct(row.get('win_support'))}）"
+            )
+        except Exception:
+            pass
+
+    def layer_text(rows, include_mark):
+        vals = []
+        for row in rows or []:
+            try:
+                car = int(row.get("car"))
+                mk = _v273_normalize_mark(row.get("mark"))
+                suffix = f"{mk}" if include_mark and mk else "無印"
+                vals.append(f"{car}({suffix}・着内{pct(row.get('top3_support'))})")
+            except Exception:
+                pass
+        return "・".join(vals) if vals else "なし"
+
+    flow_texts = []
+    for rec in plan.get("flow_records", tuple()) or tuple():
+        top3 = "→".join(str(x) for x in (rec.get("top3") or [])) or "—"
+        flow_texts.append(
+            f"{rec.get('style')}:{rec.get('class')}［{top3}／{rec.get('reason')}］"
+        )
+
+    shares = plan.get("class_share", {}) or {}
+    share_text = "／".join(
+        f"{cls}{pct(shares.get(cls, 0.0))}"
+        for cls in ("E", "D", "C", "B", "A")
+        if float(shares.get(cls, 0.0) or 0.0) > 0.0
+    ) or "—"
+
+    out = ["【新方式試作｜現行買い目は変更しない】"]
+    if rank_parts:
+        out.append("【ヴェロビ軸順位】" + " → ".join(rank_parts))
+    out.append(
+        f"【軸層】{axis}（AI{axis_mark}・{axis_type}／着内{pct(axis_row.get('top3_support'))}・平均着順{float(axis_row.get('weighted_rank', 0.0)):.2f}・1着{pct(axis_row.get('win_support'))}）"
+    )
+    out.append("【ヒモ層】" + layer_text(plan.get("himo", tuple()), True))
+    out.append("【評価下位無印層】" + layer_text(plan.get("lower_unmarked", tuple()), False))
+    if plan.get("excluded"):
+        out.append("【三流れ上位3外】" + "・".join(str(x) for x in plan.get("excluded", tuple())))
+    out.append("【流れ別A～E】" + "／".join(flow_texts))
+    out.append(
+        f"【全体分類】{plan.get('overall_class')}（構成比:{share_text}／波乱側:{plan.get('volatile_class')}）"
+    )
+    out.append(
+        f"【試作券種候補】{plan.get('ticket_family')}・{int(plan.get('ticket_count', 0))}点／上限{int(plan.get('max_tickets', 6))}点"
+    )
+    out.append(f"【試作判定理由】{plan.get('ticket_reason', '')}")
+    for label, items in plan.get("ticket_groups", tuple()) or tuple():
+        out.append(f"{label}】" + "　".join(str(x) for x in items))
+    return out
+
 def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
     """note貼り付け用の現行v270サマリーを生成する。
 
@@ -10626,6 +11273,21 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 _win_top4 = tuple()
                 _win_confidence_action = "判定なし"
 
+            # v273：三層分類・A～E・最大6点の試作判定。
+            # 現行v270の推奨券種／買い目は一切上書きしない。
+            _v273_trial_plan = _v273_build_three_layer_trial_plan(
+                globals().get("STYLE_SEQ_MAP", {}) or {},
+                _flow_ratio_map_for_trio(),
+                mark_map or {},
+                _weighted_car_hit_map,
+                _weighted_car_myoumi_map,
+                globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {},
+                current_ticket=_recommended_ticket,
+                current_santan_tickets=_santan_tickets,
+                current_support_trio_rows=_supplement_trio_rows,
+                max_tickets=6,
+            )
+
             def _fmt_trio_summary_rows(_rows, include_santan_ref=True):
                 _out = []
                 for _r in (_rows or []):
@@ -10843,6 +11505,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
             lines.append(_fmt_flow_ratio_line(_flow_ratio_map_for_trio()))
             lines.append("")
+
+            _v273_trial_lines = _v273_format_three_layer_trial_block(_v273_trial_plan)
+            if _v273_trial_lines:
+                lines.extend(_v273_trial_lines)
+                lines.append("")
 
             # v231:
             # 加重2車複評価表はABCDを出さず、的中点・妙味点・総合点を小数点第一位で表示する。
