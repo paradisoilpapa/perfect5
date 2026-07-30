@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+# v285（採用流れ着順ヒモ・買い目基準一本化修正版）:
+# ・買い目の親順位を、採用流れの着順予想へ一本化する。
+# ・軸選定はv284どおり、採用流れ上位からAI印あり2車を抽出し、AI評価が低い方を最終軸にする。
+# ・最終軸の同ライン車だけは例外として全車を先に必須保護する。
+# ・ヒモの残枠は、採用流れの着順予想を上から順に補充する。
+# ・流れ加重的中単騎評価、加重2車複・3連複評価表、KO使用スコアは参考表示として残すが、ヒモ順位を上書きしない。
+# ・三連複1車軸－4車－4車の6点固定、勢力上位3流れ、ライン2車換算、単騎2倍は変更しない。
 # v284（AI無印軸除外・印あり2車比較修正版）:
 # ・採用流れの着順上位からAI印あり（◎／〇／△／×）の車を順に2車抽出し、その2車だけを評価軸候補にする。
 # ・AI無印車は軸比較から除外するが、同ライン保護と流れ加重的中単騎評価によるヒモ選定には残す。
@@ -8538,11 +8545,11 @@ def _decide_ticket_with_win_ai_confidence(
 
 
 # =========================================================
-# v284：各流れ1位候補で採用流れ選定
+# v285：各流れ1位候補で採用流れ選定
 #       → 採用流れ上位からAI印あり2車を抽出
 #       → その2車のAI評価が低い方を最終軸
 #       → 最終軸の同ライン車を必須保護
-#       → 流れ加重的中単騎評価でヒモ4車を完成
+#       → 採用流れの着順予想順でヒモ4車を完成
 # 買い目は三連複1車軸－4車－4車の6点だけ。
 # =========================================================
 _V281_STYLES = ("順流", "渦", "逆流")
@@ -8653,7 +8660,8 @@ def _v281_build_fixed_flow_plan(
     4) 採用流れの着順上位からAI印あり（◎／〇／△／×）の車を順に2車抽出する。
     5) 抽出した2車のうち、AI評価が低い方を最終軸にする。AI無印車は軸比較から除外する。
     6) 最終軸の同ライン車を軸以外すべて先にヒモへ確保する。
-    7) 残枠を、流れ比率を反映した流れ加重的中単騎評価の上位から補充する。
+    7) 残枠を、採用流れの着順予想上位から順に補充する。
+       買い目の基本順位は採用流れの着順予想とし、同ライン保護だけを例外とする。
     8) 三連複1車軸－4車－4車の6点を生成する。
     """
     ratios = _v281_normalize_ratio_map(flow_ratio_map)
@@ -8766,8 +8774,8 @@ def _v281_build_fixed_flow_plan(
             "ticket_reason": f"{adopted_style}着順予想から軸候補を取得できないため生成不可",
         }
 
-    # v284：採用流れの上位からAI印あり車だけを順に2車抽出する。
-    # AI無印車は軸比較から外すが、後段の同ライン保護・加重単騎ヒモには残す。
+    # v285：採用流れの上位からAI印あり車だけを順に2車抽出する。
+    # AI無印車は軸比較から外すが、後段の同ライン保護・採用流れ着順ヒモには残す。
     axis_pair = []
     skipped_unmarked_axis = []
     for idx, car in enumerate(adopted_sequence, start=1):
@@ -8840,37 +8848,16 @@ def _v281_build_fixed_flow_plan(
         if car != axis and car not in himo:
             himo.append(int(car))
 
-    # v283：残枠は採用流れ単独の着順ではなく、三流れ比率を統合した
-    # 「流れ加重的中単騎評価」の上位から補充する。
-    weighted_scores = {}
-    for raw_car, raw_value in (weighted_hit_map or {}).items():
-        try:
-            car = int(raw_car)
-            value = float(raw_value or 0.0)
-            if car <= 0 or not math.isfinite(value):
-                continue
-            weighted_scores[car] = max(value, float(weighted_scores.get(car, -math.inf)))
-        except Exception:
-            continue
-
-    adopted_rank = {int(car): idx for idx, car in enumerate(adopted_sequence)}
-    weighted_order = sorted(
-        weighted_scores,
-        key=lambda car: (
-            -float(weighted_scores.get(car, 0.0) or 0.0),
-            int(adopted_rank.get(int(car), 999)),
-            -float(_v281_map_float(ko_map, int(car), 0.0)),
-            int(car),
-        ),
-    )
-
-    weighted_added_himo = []
-    for car in weighted_order:
+    # v285：買い目の基本順位は採用流れの着順予想へ一本化する。
+    # 同ライン車だけを例外として先に必須保護し、残枠は採用流れの上位から順に補充する。
+    # 流れ加重的中単騎評価は参考表示に残すが、ヒモ順位を上書きしない。
+    flow_added_himo = []
+    for car in adopted_sequence:
         car = int(car)
         if car == axis or car in himo:
             continue
         himo.append(car)
-        weighted_added_himo.append(car)
+        flow_added_himo.append(car)
         if len(himo) >= 4:
             break
 
@@ -8886,13 +8873,12 @@ def _v281_build_fixed_flow_plan(
             "axis_flow_rank": axis_flow_rank,
             "axis_line": tuple(axis_line),
             "same_line_himo": tuple(same_line_himo),
-            "weighted_added_himo": tuple(weighted_added_himo),
-            "flow_added_himo": tuple(weighted_added_himo),
+            "flow_added_himo": tuple(flow_added_himo),
             "himo": tuple(himo),
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複1車軸－4車－4車",
-            "ticket_reason": "同ライン必須車と流れ加重的中単騎評価上位を合わせてもヒモが4車未満のため生成不可",
+            "ticket_reason": "同ライン必須車と採用流れの着順予想上位を合わせてもヒモが4車未満のため生成不可",
         }
 
     tickets = []
@@ -8915,11 +8901,11 @@ def _v281_build_fixed_flow_plan(
     else:
         line_reason = "軸は単騎のため自ライン必須車なし"
 
-    added_text = "・".join(str(x) for x in weighted_added_himo) if weighted_added_himo else "なし"
+    added_text = "・".join(str(x) for x in flow_added_himo) if flow_added_himo else "なし"
     reason = (
         f"各流れ勢力［{candidate_text}］から2車換算スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
         f"{adopted_style}着順上位からAI印あり2車［{axis_pair_text}］を抽出し、AI評価が低い{axis}を最終軸に選択。"
-        f"{line_reason}し、流れ比率加重的中単騎評価上位から［{added_text}］を補充"
+        f"{line_reason}し、{adopted_style}着順予想上位から［{added_text}］を補充"
     )
 
     return {
@@ -8933,8 +8919,7 @@ def _v281_build_fixed_flow_plan(
         "axis_flow_rank": axis_flow_rank,
         "axis_line": tuple(axis_line),
         "same_line_himo": tuple(same_line_himo),
-        "weighted_added_himo": tuple(weighted_added_himo),
-        "flow_added_himo": tuple(weighted_added_himo),
+        "flow_added_himo": tuple(flow_added_himo),
         "himo": tuple(himo[:4]),
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
@@ -11058,8 +11043,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 _win_top4 = tuple()
                 _win_confidence_action = "判定なし"
 
-            # v284：2車換算勢力上位3組だけで三流れを構成し、勢力最上位の流れを採用する。
-            # 採用流れ上位からAI印あり2車を抽出して低評価側を軸にし、同ライン必須＋流れ加重的中単騎上位をヒモにする。
+            # v285：2車換算勢力上位3組だけで三流れを構成し、勢力最上位の流れを採用する。
+            # 採用流れ上位からAI印あり2車を抽出して低評価側を軸にし、同ライン必須＋採用流れ着順上位をヒモにする。
             _v281_fixed_plan = _v281_build_fixed_flow_plan(
                 globals().get("STYLE_SEQ_MAP", {}) or {},
                 _flow_ratio_map_for_trio(),
@@ -11437,7 +11422,7 @@ try:
         market_mark_map,
     )
 
-    # v284：勢力上位3流れ・AI印あり2車比較軸・同ライン保護・流れ加重的中単騎ヒモの三連複6点を展開評価の直後へ表示する。
+    # v285：勢力上位3流れ・AI印あり2車比較軸・同ライン保護・採用流れ着順ヒモの三連複6点を展開評価の直後へ表示する。
     _current_summary = f"{_summary_core}\n"
 
     _m_tenkai = re.search(r"^展開評価：[^\n]*$", note_text, flags=re.MULTILINE)
@@ -11539,7 +11524,7 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         m_jundo = re.search(r"・順当度：([^［\n]+)", txt)
         jundo = m_jundo.group(1).strip() if m_jundo else "未判定"
 
-        line1 = "・固定型：AI無印を軸比較から除外・AI印あり2車比較軸・同ライン保護・加重単騎ヒモの三連複1車軸4車流し・6点。"
+        line1 = "・固定型：AI無印を軸比較から除外・AI印あり2車比較軸・同ライン保護・採用流れ着順ヒモの三連複1車軸4車流し・6点。"
         if axis != "未判定" and axis_style != "未判定":
             line2 = f"・最終軸は{axis}、採用流れは{axis_style}。"
         else:
