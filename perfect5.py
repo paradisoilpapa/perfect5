@@ -1,4 +1,20 @@
 # -*- coding: utf-8 -*-
+# v287（全場固定方位・ドーム無風・風速風向API完全自動版）:
+# ・現在の競輪場プリセット42場を維持し、千葉は追加しない。
+# ・屋外40場は、ホーム側からバンク正面を見る8方位基準をコード内マスタへ固定し、端末・利用者に依存しない再現性を確保する。
+# ・前橋と小倉はドーム場として indoor=True とし、風向「無風」・風速0.0m/sへ固定して外気APIの風を評価へ入れない。
+# ・手動方位登録、JSON保存、保存済み上書き設定を廃止する。
+# ・屋外場はOpen-Meteoから風速＋絶対風向を同時取得し、固定方位マスタからホーム基準8方向へ自動変換する。
+# ・APIの絶対風向、固定ホーム正面方位、変換後の相対風向を画面へ表示して検証可能にする。
+# ・買い目、流れ選定、軸・ヒモ、各評価表など風以外のロジックは変更しない。
+# v286（風速＋風向API自動反映・ホーム基準変換修正版）:
+# ・風補正をdirectional固定とし、風速と風向を常時セットで評価へ反映する。
+# ・Open-Meteoからwind_speed_10mとwind_direction_10mを同時取得し、どちらか欠けた場合は反映しない。
+# ・APIの絶対風向（風が吹いてくる方位）を、ホーム側からバンク正面を見る向きを「上」とする8方向へ変換する。
+# ・ホーム正面方位は北=0度／東=90度で扱い、競輪場マスタまたは競輪場別の保存設定を使用する。
+# ・競輪場マスタの方位が未登録の場合は、サイドバーで一度登録し、以後のAPI取得で風速＋相対風向を同時反映する。
+# ・Open-Meteoの風速単位指定をwind_speed_unit=msへ修正し、返却単位も検査する。
+# ・買い目、流れ選定、軸・ヒモ、各評価表など風以外のロジックは変更しない。
 # v285（採用流れ着順ヒモ・買い目基準一本化修正版）:
 # ・買い目の親順位を、採用流れの着順予想へ一本化する。
 # ・軸選定はv284どおり、採用流れ上位からAI印あり2車を抽出し、AI評価が低い方を最終軸にする。
@@ -103,12 +119,14 @@
 # v252: 3単参考の1・2着が割れる場合は三連複を維持。
 # v259: ライン強度を位置係数の正規化加重平均へ統一。
 
+import json
 import math
 import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from itertools import combinations, permutations
+from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
@@ -347,12 +365,12 @@ WIND_COEFF = {
     "左下": +0.035, "下": +0.05, "右下": +0.035,
     "無風": 0.0
 }
-WIND_MODE = "speed_only"
+WIND_MODE = "directional"
 WIND_SIGN = -1
 WIND_GAIN = 3.0
 WIND_CAP  = 0.10
 WIND_ZERO = 1.5
-SPECIAL_DIRECTIONAL_VELODROMES = {"弥彦", "前橋"}
+SPECIAL_DIRECTIONAL_VELODROMES = {"弥彦"}
 
 SESSION_HOUR = {"モーニング": 8, "デイ": 11, "ナイター": 18, "ミッドナイト": 22}
 JST = timezone(timedelta(hours=9))
@@ -404,50 +422,54 @@ KEIRIN_DATA = {
     "熊本":{"bank_angle":34.3,"straight_length":60.3,"bank_length":400},
     "手入力":{"bank_angle":30.0,"straight_length":52.0,"bank_length":400},
 }
+# home_azimuth: ホーム側からバンク正面を見る絶対方位（北=0°／東=90°）。
+# outdoor 40場はコード内固定、前橋・小倉はドーム場のため無風固定。
+# 方位は8方向単位で固定し、API絶対風向をホーム基準の上下左右へ変換する。
+# 固定値は、各場の「B→H横風」に対応する絶対風向を、ホーム側→バンク正面の方位として採用する。
 VELODROME_MASTER = {
-    "函館":{"lat":41.77694,"lon":140.76283,"home_azimuth":None},
-    "青森":{"lat":40.79717,"lon":140.66469,"home_azimuth":None},
-    "いわき平":{"lat":37.04533,"lon":140.89150,"home_azimuth":None},
-    "弥彦":{"lat":37.70778,"lon":138.82886,"home_azimuth":None},
-    "前橋":{"lat":36.39728,"lon":139.05778,"home_azimuth":None},
-    "取手":{"lat":35.90175,"lon":140.05631,"home_azimuth":None},
-    "宇都宮":{"lat":36.57197,"lon":139.88281,"home_azimuth":None},
-    "大宮":{"lat":35.91962,"lon":139.63417,"home_azimuth":None},
-    "西武園":{"lat":35.76983,"lon":139.44686,"home_azimuth":None},
-    "京王閣":{"lat":35.64294,"lon":139.53372,"home_azimuth":None},
-    "立川":{"lat":35.70214,"lon":139.42300,"home_azimuth":None},
-    "松戸":{"lat":35.80417,"lon":139.91119,"home_azimuth":None},
-    "川崎":{"lat":35.52844,"lon":139.70944,"home_azimuth":None},
-    "平塚":{"lat":35.32547,"lon":139.36342,"home_azimuth":None},
-    "小田原":{"lat":35.25089,"lon":139.14947,"home_azimuth":None},
-    "伊東":{"lat":34.954667,"lon":139.092639,"home_azimuth":None},
-    "静岡":{"lat":34.973722,"lon":138.419417,"home_azimuth":None},
-    "名古屋":{"lat":35.175560,"lon":136.854028,"home_azimuth":None},
-    "岐阜":{"lat":35.414194,"lon":136.783917,"home_azimuth":None},
-    "大垣":{"lat":35.361389,"lon":136.628444,"home_azimuth":None},
-    "豊橋":{"lat":34.770167,"lon":137.417250,"home_azimuth":None},
-    "富山":{"lat":36.757250,"lon":137.234833,"home_azimuth":None},
-    "松坂":{"lat":34.564611,"lon":136.533833,"home_azimuth":None},
-    "四日市":{"lat":34.965389,"lon":136.634500,"home_azimuth":None},
-    "福井":{"lat":36.066889,"lon":136.253722,"home_azimuth":None},
-    "奈良":{"lat":34.681111,"lon":135.823083,"home_azimuth":None},
-    "向日町":{"lat":34.949222,"lon":135.708389,"home_azimuth":None},
-    "和歌山":{"lat":34.228694,"lon":135.171833,"home_azimuth":None},
-    "岸和田":{"lat":34.477500,"lon":135.369389,"home_azimuth":None},
-    "玉野":{"lat":34.497333,"lon":133.961389,"home_azimuth":None},
-    "広島":{"lat":34.359778,"lon":132.502889,"home_azimuth":None},
-    "防府":{"lat":34.048778,"lon":131.568611,"home_azimuth":None},
-    "高松":{"lat":34.345936,"lon":134.061994,"home_azimuth":None},
-    "小松島":{"lat":34.005667,"lon":134.594556,"home_azimuth":None},
-    "高知":{"lat":33.566694,"lon":133.526083,"home_azimuth":None},
-    "松山":{"lat":33.808889,"lon":132.742333,"home_azimuth":None},
-    "小倉":{"lat":33.885722,"lon":130.883167,"home_azimuth":None},
-    "久留米":{"lat":33.316667,"lon":130.547778,"home_azimuth":None},
-    "武雄":{"lat":33.194083,"lon":130.023083,"home_azimuth":None},
-    "佐世保":{"lat":33.161667,"lon":129.712833,"home_azimuth":None},
-    "別府":{"lat":33.282806,"lon":131.460472,"home_azimuth":None},
-    "熊本":{"lat":32.789167,"lon":130.754722,"home_azimuth":None},
-    "手入力":{"lat":None,"lon":None,"home_azimuth":None},
+    "函館":{"lat":41.77694,"lon":140.76283,"home_azimuth":90.0,"indoor":False},
+    "青森":{"lat":40.79717,"lon":140.66469,"home_azimuth":45.0,"indoor":False},
+    "いわき平":{"lat":37.04533,"lon":140.89150,"home_azimuth":315.0,"indoor":False},
+    "弥彦":{"lat":37.70778,"lon":138.82886,"home_azimuth":90.0,"indoor":False},
+    "前橋":{"lat":36.39728,"lon":139.05778,"home_azimuth":None,"indoor":True},
+    "取手":{"lat":35.90175,"lon":140.05631,"home_azimuth":135.0,"indoor":False},
+    "宇都宮":{"lat":36.57197,"lon":139.88281,"home_azimuth":225.0,"indoor":False},
+    "大宮":{"lat":35.91962,"lon":139.63417,"home_azimuth":0.0,"indoor":False},
+    "西武園":{"lat":35.76983,"lon":139.44686,"home_azimuth":0.0,"indoor":False},
+    "京王閣":{"lat":35.64294,"lon":139.53372,"home_azimuth":225.0,"indoor":False},
+    "立川":{"lat":35.70214,"lon":139.42300,"home_azimuth":180.0,"indoor":False},
+    "松戸":{"lat":35.80417,"lon":139.91119,"home_azimuth":315.0,"indoor":False},
+    "川崎":{"lat":35.52844,"lon":139.70944,"home_azimuth":180.0,"indoor":False},
+    "平塚":{"lat":35.32547,"lon":139.36342,"home_azimuth":135.0,"indoor":False},
+    "小田原":{"lat":35.25089,"lon":139.14947,"home_azimuth":0.0,"indoor":False},
+    "伊東":{"lat":34.954667,"lon":139.092639,"home_azimuth":180.0,"indoor":False},
+    "静岡":{"lat":34.973722,"lon":138.419417,"home_azimuth":135.0,"indoor":False},
+    "名古屋":{"lat":35.175560,"lon":136.854028,"home_azimuth":225.0,"indoor":False},
+    "岐阜":{"lat":35.414194,"lon":136.783917,"home_azimuth":180.0,"indoor":False},
+    "大垣":{"lat":35.361389,"lon":136.628444,"home_azimuth":135.0,"indoor":False},
+    "豊橋":{"lat":34.770167,"lon":137.417250,"home_azimuth":90.0,"indoor":False},
+    "富山":{"lat":36.757250,"lon":137.234833,"home_azimuth":0.0,"indoor":False},
+    "松坂":{"lat":34.564611,"lon":136.533833,"home_azimuth":135.0,"indoor":False},
+    "四日市":{"lat":34.965389,"lon":136.634500,"home_azimuth":135.0,"indoor":False},
+    "福井":{"lat":36.066889,"lon":136.253722,"home_azimuth":90.0,"indoor":False},
+    "奈良":{"lat":34.681111,"lon":135.823083,"home_azimuth":180.0,"indoor":False},
+    "向日町":{"lat":34.949222,"lon":135.708389,"home_azimuth":0.0,"indoor":False},
+    "和歌山":{"lat":34.228694,"lon":135.171833,"home_azimuth":315.0,"indoor":False},
+    "岸和田":{"lat":34.477500,"lon":135.369389,"home_azimuth":225.0,"indoor":False},
+    "玉野":{"lat":34.497333,"lon":133.961389,"home_azimuth":90.0,"indoor":False},
+    "広島":{"lat":34.359778,"lon":132.502889,"home_azimuth":45.0,"indoor":False},
+    "防府":{"lat":34.048778,"lon":131.568611,"home_azimuth":0.0,"indoor":False},
+    "高松":{"lat":34.345936,"lon":134.061994,"home_azimuth":0.0,"indoor":False},
+    "小松島":{"lat":34.005667,"lon":134.594556,"home_azimuth":45.0,"indoor":False},
+    "高知":{"lat":33.566694,"lon":133.526083,"home_azimuth":0.0,"indoor":False},
+    "松山":{"lat":33.808889,"lon":132.742333,"home_azimuth":225.0,"indoor":False},
+    "小倉":{"lat":33.885722,"lon":130.883167,"home_azimuth":None,"indoor":True},
+    "久留米":{"lat":33.316667,"lon":130.547778,"home_azimuth":45.0,"indoor":False},
+    "武雄":{"lat":33.194083,"lon":130.023083,"home_azimuth":135.0,"indoor":False},
+    "佐世保":{"lat":33.161667,"lon":129.712833,"home_azimuth":135.0,"indoor":False},
+    "別府":{"lat":33.282806,"lon":131.460472,"home_azimuth":90.0,"indoor":False},
+    "熊本":{"lat":32.789167,"lon":130.754722,"home_azimuth":135.0,"indoor":False},
+    "手入力":{"lat":None,"lon":None,"home_azimuth":None,"indoor":False},
 }
 
 # KO(勝ち上がり)関連
@@ -1518,67 +1540,126 @@ def apply_anchor_line_bonus(score_raw: dict[int, float],
 
 # ==============================
 # 風の自動取得（Open-Meteo / 時刻固定）
-# 風向は手入力運用のため、APIでは風速だけ取得する軽量版
+# 風速＋絶対風向を必須取得し、ホーム基準の相対8方向へ変換する
 # ==============================
+WIND_DIRECTION_OPTIONS = ["無風", "左上", "上", "右上", "左", "右", "左下", "下", "右下"]
+
+
+def _normalize_azimuth(deg):
+    """方位角を0度以上360度未満へ正規化する。"""
+    x = float(deg)
+    if not math.isfinite(x):
+        raise ValueError("方位角が数値ではありません")
+    return x % 360.0
+
+
+def absolute_wind_compass_label(wind_from_deg):
+    """API絶対風向を8方位表示へ変換する（風が吹いてくる方位）。"""
+    labels = ("北", "北東", "東", "南東", "南", "南西", "西", "北西")
+    deg = _normalize_azimuth(wind_from_deg)
+    idx = int(((deg + 22.5) % 360.0) // 45.0)
+    return labels[idx]
+
+
+def wind_from_degree_to_home_direction(wind_from_deg, home_azimuth):
+    """
+    APIの絶対風向を、ホーム側からバンク正面を見た相対8方向へ変換する。
+
+    home_azimuth:
+        ホーム側からバンク正面を見る絶対方位。北=0度、東=90度。
+    戻り値:
+        (左上／上／右上／左／右／左下／下／右下, 相対角度)
+    """
+    wind_deg = _normalize_azimuth(wind_from_deg)
+    home_deg = _normalize_azimuth(home_azimuth)
+    relative_deg = (wind_deg - home_deg) % 360.0
+    labels = ("上", "右上", "右", "右下", "下", "左下", "左", "左上")
+    idx = int(((relative_deg + 22.5) % 360.0) // 45.0)
+    return labels[idx], relative_deg
+
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_openmeteo_hour(lat, lon, target_dt_naive):
     """
-    Open-Meteoから風速だけ取得する軽量版。
-    風向きはVeloBi側で手入力する前提なので取得しない。
+    Open-Meteoから同一時刻の風速＋風向を必須取得する。
     同じ場・同じ日時は1時間キャッシュして429を避ける。
     """
-    import numpy as np
-
     d = target_dt_naive.strftime("%Y-%m-%d")
     base = "https://api.open-meteo.com/v1/forecast"
-
-    url = (
-        f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
-        "&hourly=wind_speed_10m,precipitation,weather_code"
-        "&timezone=Asia%2FTokyo"
-        "&windspeed_unit=ms"
-        f"&start_date={d}&end_date={d}"
-    )
+    params = {
+        "latitude": round(float(lat), 5),
+        "longitude": round(float(lon), 5),
+        "hourly": "wind_speed_10m,wind_direction_10m,precipitation,weather_code",
+        "timezone": "Asia/Tokyo",
+        "wind_speed_unit": "ms",
+        "start_date": d,
+        "end_date": d,
+    }
 
     try:
-        r = requests.get(url, timeout=15)
+        r = requests.get(base, params=params, timeout=15)
         r.raise_for_status()
-
-        j = r.json().get("hourly", {})
-        times = [datetime.fromisoformat(t) for t in j.get("time", [])]
+        payload = r.json()
+        hourly = payload.get("hourly", {}) or {}
+        units = payload.get("hourly_units", {}) or {}
+        times = [datetime.fromisoformat(t) for t in hourly.get("time", [])]
 
         if not times:
-            raise RuntimeError("empty hourly times")
+            raise RuntimeError("時刻データが空です")
 
         diffs = [abs((t - target_dt_naive).total_seconds()) for t in times]
         k = int(np.argmin(diffs))
 
-        sp = j.get("wind_speed_10m", [])
-        pr = j.get("precipitation", [])
-        wc = j.get("weather_code", [])
+        speed_values = hourly.get("wind_speed_10m", [])
+        direction_values = hourly.get("wind_direction_10m", [])
+        precipitation_values = hourly.get("precipitation", [])
+        weather_code_values = hourly.get("weather_code", [])
 
-        speed = float(sp[k]) if k < len(sp) and sp[k] is not None else float("nan")
-        precip = float(pr[k]) if k < len(pr) and pr[k] is not None else 0.0
-        weather_code = int(wc[k]) if k < len(wc) and wc[k] is not None else None
+        if k >= len(speed_values) or speed_values[k] is None:
+            raise RuntimeError("風速データを取得できませんでした")
+        if k >= len(direction_values) or direction_values[k] is None:
+            raise RuntimeError("風向データを取得できませんでした")
+
+        speed = float(speed_values[k])
+        wind_from_deg = _normalize_azimuth(direction_values[k])
+        if not math.isfinite(speed):
+            raise RuntimeError("風速データが不正です")
+
+        speed_unit = str(units.get("wind_speed_10m", "")).strip().lower()
+        if speed_unit in {"km/h", "kmh"}:
+            speed /= 3.6
+        elif speed_unit not in {"", "m/s", "ms"}:
+            raise RuntimeError(f"未対応の風速単位です：{speed_unit}")
+
+        precip = (
+            float(precipitation_values[k])
+            if k < len(precipitation_values) and precipitation_values[k] is not None
+            else 0.0
+        )
+        weather_code = (
+            int(weather_code_values[k])
+            if k < len(weather_code_values) and weather_code_values[k] is not None
+            else None
+        )
 
         return {
             "time": times[k],
             "speed_ms": speed,
-            "deg": None,
+            "deg": wind_from_deg,
             "precipitation": precip,
             "weather_code": weather_code,
             "diff_min": diffs[k] / 60.0,
         }
 
-    except requests.exceptions.HTTPError as e:
-        if getattr(e.response, "status_code", None) == 429:
+    except requests.exceptions.HTTPError as exc:
+        if getattr(exc.response, "status_code", None) == 429:
             raise RuntimeError(
-                "Open-Meteoの取得制限中です。少し時間を空けるか、手入力の風速を使ってください。"
+                "Open-Meteoの取得制限中です。少し時間を空けるか、風速と風向を手入力してください。"
             )
-        raise RuntimeError(f"Open-Meteo取得失敗：{e}")
-
-    except Exception as e:
-        raise RuntimeError(f"Open-Meteo取得失敗：{e}")
+        raise RuntimeError(f"Open-Meteo取得失敗：{exc}")
+    except Exception as exc:
+        raise RuntimeError(f"Open-Meteo取得失敗：{exc}")
 
 # ==============================
 # サイドバー：開催情報 / バンク・風・頭数
@@ -1776,46 +1857,117 @@ globals()["NIFUKU_SAME_LINE_MYOUMI_MIN"] = float(NIFUKU_SAME_LINE_MYOUMI_MIN)
 race_time = st.sidebar.selectbox("開催区分", ["モーニング","デイ","ナイター","ミッドナイト"], 1)
 race_day = st.sidebar.date_input("日付（風取得用）", value=date.today())
 
+# 競輪場固定マスタを先に解決する。ドーム場はウィジェット生成前に無風へ固定する。
+info_xy = VELODROME_MASTER.get(track) or {}
+is_indoor_venue = bool(info_xy.get("indoor", False))
+
+if is_indoor_venue:
+    st.session_state.pop("_wind_api_pending", None)
+    st.session_state["wind_speed_input"] = 0.0
+    st.session_state["wind_speed"] = 0.0
+    st.session_state["wind_dir_input"] = "無風"
+    st.session_state.pop("wind_api_absolute_deg", None)
+    st.session_state.pop("wind_api_relative_deg", None)
+    st.session_state.pop("wind_api_time", None)
+else:
+    # API取得後の値は、次のrerun開始時にウィジェットへ反映する。
+    # ウィジェット生成後に同じsession_stateキーを書き換える例外を避けるための処理。
+    _pending_wind = st.session_state.pop("_wind_api_pending", None)
+    if isinstance(_pending_wind, dict):
+        st.session_state["wind_speed_input"] = float(_pending_wind["speed_ms"])
+        st.session_state["wind_speed"] = float(_pending_wind["speed_ms"])
+        st.session_state["wind_dir_input"] = str(_pending_wind["relative_dir"])
+        st.session_state["wind_api_absolute_deg"] = float(_pending_wind["absolute_deg"])
+        st.session_state["wind_api_relative_deg"] = float(_pending_wind["relative_deg"])
+        st.session_state["wind_api_time"] = str(_pending_wind["time"])
+
+if "wind_dir_input" not in st.session_state:
+    st.session_state["wind_dir_input"] = "無風"
+if "wind_speed_input" not in st.session_state:
+    st.session_state["wind_speed_input"] = float(st.session_state.get("wind_speed", 3.0))
+
 wind_dir = st.sidebar.selectbox(
-    "風向", ["無風","左上","上","右上","左","右","左下","下","右下"],
-    index=0, key="wind_dir_input"
+    "風向（ホームから見た方向）",
+    WIND_DIRECTION_OPTIONS,
+    key="wind_dir_input",
+    disabled=is_indoor_venue,
 )
+wind_speed = st.sidebar.number_input(
+    "風速(m/s)",
+    min_value=0.0,
+    max_value=60.0,
+    step=0.1,
+    key="wind_speed_input",
+    disabled=is_indoor_venue,
+)
+st.session_state["wind_speed"] = float(wind_speed)
 
-wind_speed_default = st.session_state.get("wind_speed", 3.0)
-wind_speed = st.sidebar.number_input("風速(m/s)", 0.0, 60.0, float(wind_speed_default), 0.1)
+with st.sidebar.expander("🌀 風速＋風向をAPIで自動取得（Open-Meteo）", expanded=False):
+    flash = st.session_state.pop("_wind_api_flash", None)
+    if flash:
+        st.success(str(flash))
 
-with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expanded=False):
-    st.sidebar.caption("基準時刻：モ=8時 / デ=11時 / ナ=18時 / ミ=22時（JST・tzなしで取得）")
+    st.caption("基準時刻：モ=8時 / デ=11時 / ナ=18時 / ミ=22時（JST）")
+    st.caption("風向は『風が吹いてくる方位』を、ホーム側から見た上下左右へ変換します。")
 
-    if st.sidebar.button("APIで取得→風速に反映", use_container_width=True):
-        info_xy = VELODROME_MASTER.get(track)
-        if not info_xy or info_xy.get("lat") is None or info_xy.get("lon") is None:
-            st.sidebar.error(f"{track} の座標が未登録です（VELODROME_MASTER に lat/lon を入れてください）")
-        else:
+    home_azimuth = info_xy.get("home_azimuth")
+
+    if is_indoor_venue:
+        st.info(f"{track}はドーム場のため、風向『無風』・風速0.0m/sで固定します。外気APIの風は評価へ入れません。")
+    elif track == "手入力":
+        st.info("手入力では固定方位と座標を使用しません。風速・風向を上の入力欄へ直接入力してください。")
+    else:
+        if home_azimuth is not None:
+            st.info(
+                f"固定ホーム正面方位：{float(home_azimuth):.1f}° "
+                f"（{absolute_wind_compass_label(home_azimuth)}向き・コード内固定マスタ）"
+            )
+
+        coords_ready = info_xy.get("lat") is not None and info_xy.get("lon") is not None
+        direction_ready = home_azimuth is not None
+        api_disabled = not coords_ready or not direction_ready
+
+        if not coords_ready:
+            st.error(f"{track}の緯度・経度が未登録です。")
+        if not direction_ready:
+            st.error(f"{track}の固定ホーム正面方位が未登録です。API風向は反映しません。")
+
+        if st.button(
+            "APIで取得→風速＋風向に反映",
+            use_container_width=True,
+            disabled=api_disabled,
+        ):
             try:
                 target = build_openmeteo_target_dt(race_day, race_time)
                 data = fetch_openmeteo_hour(info_xy["lat"], info_xy["lon"], target)
-
-                st.session_state["wind_speed"] = round(float(data["speed_ms"]), 2)
+                relative_dir, relative_deg = wind_from_degree_to_home_direction(
+                    data["deg"], home_azimuth
+                )
 
                 precip = float(data.get("precipitation", 0.0) or 0.0)
                 weather_code = data.get("weather_code", None)
+                speed_ms = round(float(data["speed_ms"]), 2)
 
                 st.session_state["precipitation"] = precip
                 st.session_state["weather_code"] = weather_code
                 st.session_state["is_wet"] = bool(precip >= 0.3)
-
-                st.sidebar.success(
-                    f"{track} {target:%Y-%m-%d %H:%M} "
-                    f"風速 {st.session_state['wind_speed']:.1f} m/s "
-                    f"降水 {precip:.1f}mm/h "
-                    f"（API側と{data['diff_min']:.0f}分ズレ）"
+                st.session_state["_wind_api_pending"] = {
+                    "speed_ms": speed_ms,
+                    "relative_dir": relative_dir,
+                    "absolute_deg": float(data["deg"]),
+                    "relative_deg": float(relative_deg),
+                    "time": data["time"].isoformat(),
+                }
+                st.session_state["_wind_api_flash"] = (
+                    f"{track} {data['time']:%Y-%m-%d %H:%M}｜"
+                    f"風速 {speed_ms:.1f}m/s｜"
+                    f"絶対風向 {data['deg']:.0f}°（{absolute_wind_compass_label(data['deg'])}）→ "
+                    f"ホーム基準『{relative_dir}』｜降水 {precip:.1f}mm/h｜"
+                    f"時刻差 {data['diff_min']:.0f}分"
                 )
                 st.rerun()
-
-            except Exception as e:
-                st.sidebar.error(f"取得に失敗：{e}")
-
+            except Exception as exc:
+                st.error(f"取得に失敗：{exc}")
 
 
 straight_length = st.sidebar.number_input("みなし直線(m)", 30.0, 80.0, float(info["straight_length"]), 0.1)
@@ -1945,6 +2097,9 @@ globals()["bank_length"]     = float(bank_length)
 globals()["bank_angle"]      = float(bank_angle)
 globals()["style"]           = float(style)
 globals()["wind_speed"]      = float(wind_speed)
+globals()["wind_dir"]        = str(wind_dir)
+globals()["eff_wind_speed"]  = float(wind_speed)
+globals()["eff_wind_dir"]    = str(wind_dir)
 globals()["race_class"]      = str(race_class)
 globals()["venue_profile"]   = str(st.session_state.get("venue_profile", "unknown"))
 globals()["venue_home_flow_mult"] = float(st.session_state.get("venue_home_flow_mult", 1.00))
@@ -1961,7 +2116,7 @@ globals()["eff_laps"]  = int(eff_laps)
 # メイン：入力
 # ==============================
 st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き：統合版）⭐")
-st.caption(f"風補正モード: {WIND_MODE}（'speed_only'=風速のみ / 'directional'=向きも薄く考慮）")
+st.caption(f"風補正モード: {WIND_MODE}固定（屋外は風速＋ホーム基準風向を常時反映／前橋・小倉はドーム無風固定）")
 
 st.subheader("2026/05/24更新")
 if "race_no_main" not in st.session_state:
