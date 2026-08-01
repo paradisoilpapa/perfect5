@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+# v288（採用流れ3番手補強・三連複7点フォメ修正版）:
+# ・採用流れ、AI印あり2車の評価軸候補、AI評価が低い方を最終軸にする処理はv287のまま維持する。
+# ・Aを最終軸、Bをもう一方の評価軸候補とする。
+# ・現行の同ライン保護＋採用流れ着順補充で選出した5車からA・Bを除き、採用流れ着順最上位をCとする。
+# ・残る2車をD・Eとし、三連複AB－ABC－ABCDEの7点へ展開する。
+# ・7点はABC／ABD／ABE／ACD／ACE／BCD／BCEとし、Aが外れた場合はB・Cを核とする2点で補完する。
+# ・総合加重単騎評価、加重2車複・3連複評価表、ライン評価、KO、三流れ着順予想、短評は削除・折り畳み・置換しない。
 # v287（全場固定方位・ドーム無風・風速風向API完全自動版）:
 # ・現在の競輪場プリセット42場を維持し、千葉は追加しない。
 # ・屋外40場は、ホーム側からバンク正面を見る8方位基準をコード内マスタへ固定し、端末・利用者に依存しない再現性を確保する。
@@ -8700,12 +8707,13 @@ def _decide_ticket_with_win_ai_confidence(
 
 
 # =========================================================
-# v285：各流れ1位候補で採用流れ選定
+# v288：各流れ1位候補で採用流れ選定
 #       → 採用流れ上位からAI印あり2車を抽出
-#       → その2車のAI評価が低い方を最終軸
+#       → その2車のAI評価が低い方を最終軸A、もう一方をB
 #       → 最終軸の同ライン車を必須保護
-#       → 採用流れの着順予想順でヒモ4車を完成
-# 買い目は三連複1車軸－4車－4車の6点だけ。
+#       → 採用流れの着順予想順で選出5車を完成
+#       → 選出5車からA・Bを除く採用流れ最上位をC
+# 買い目は三連複AB－ABC－ABCDEの7点。
 # =========================================================
 _V281_STYLES = ("順流", "渦", "逆流")
 _V281_STYLE_ORDER = {style: idx for idx, style in enumerate(_V281_STYLES)}
@@ -8813,11 +8821,14 @@ def _v281_build_fixed_flow_plan(
        ・単騎＝本人のKO使用スコア×2
     3) 2車換算勢力が最上位の流れを採用する。
     4) 採用流れの着順上位からAI印あり（◎／〇／△／×）の車を順に2車抽出する。
-    5) 抽出した2車のうち、AI評価が低い方を最終軸にする。AI無印車は軸比較から除外する。
-    6) 最終軸の同ライン車を軸以外すべて先にヒモへ確保する。
-    7) 残枠を、採用流れの着順予想上位から順に補充する。
+    5) 抽出した2車のうち、AI評価が低い方を最終軸A、もう一方をBにする。
+       AI無印車は軸比較から除外する。
+    6) 最終軸Aの同ライン車を軸以外すべて先にヒモへ確保する。
+    7) 残枠を、採用流れの着順予想上位から順に補充し、Aを含む選出5車を作る。
        買い目の基本順位は採用流れの着順予想とし、同ライン保護だけを例外とする。
-    8) 三連複1車軸－4車－4車の6点を生成する。
+    8) 選出5車からA・Bを除き、採用流れ着順最上位をC、残る2車をD・Eにする。
+    9) 三連複AB－ABC－ABCDEの7点
+       （ABC／ABD／ABE／ACD／ACE／BCD／BCE）を生成する。
     """
     ratios = _v281_normalize_ratio_map(flow_ratio_map)
     seq_map = {
@@ -8917,19 +8928,25 @@ def _v281_build_fixed_flow_plan(
             "status": "insufficient_axis_candidates",
             "axis_pair": tuple(),
             "axis": 0,
+            "secondary_axis": 0,
             "axis_score": 0.0,
             "axis_mark": "",
             "axis_flow_rank": 0,
             "axis_line": tuple(),
             "same_line_himo": tuple(),
             "himo": tuple(),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複1車軸－4車－4車",
+            "ticket_family": "3連複AB－ABC－ABCDE",
             "ticket_reason": f"{adopted_style}着順予想から軸候補を取得できないため生成不可",
         }
 
-    # v285：採用流れの上位からAI印あり車だけを順に2車抽出する。
+    # 採用流れの上位からAI印あり車だけを順に2車抽出する。
     # AI無印車は軸比較から外すが、後段の同ライン保護・採用流れ着順ヒモには残す。
     axis_pair = []
     skipped_unmarked_axis = []
@@ -8956,24 +8973,38 @@ def _v281_build_fixed_flow_plan(
             "axis_pair": tuple(axis_pair),
             "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
             "axis": 0,
+            "secondary_axis": 0,
             "axis_score": 0.0,
             "axis_mark": "",
             "axis_flow_rank": 0,
             "axis_line": tuple(),
             "same_line_himo": tuple(),
             "himo": tuple(),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複1車軸－4車－4車",
+            "ticket_family": "3連複AB－ABC－ABCDE",
             "ticket_reason": f"{adopted_style}着順予想からAI印ありの軸候補を2車取得できないため生成不可",
         }
 
-    # AI印あり2車のうちAI評価が低い方を採用。入力仕様上、◎／〇／△／×は重複しない。
+    # AI印あり2車のうちAI評価が低い方をAに採用。もう一方をBにする。
+    # 入力仕様上、◎／〇／△／×は重複しない。
     axis_row = max(axis_pair, key=lambda row: int(row.get("ai_rank", 4)))
+    secondary_axis_row = next(
+        row for row in axis_pair
+        if int(row.get("car")) != int(axis_row.get("car"))
+    )
     axis = int(axis_row.get("car"))
+    secondary_axis = int(secondary_axis_row.get("car"))
     axis_score = float(axis_row.get("score", 0.0) or 0.0)
     axis_mark = str(axis_row.get("mark", "") or "")
     axis_flow_rank = int(axis_row.get("rank", 0) or 0)
+    secondary_axis_mark = str(secondary_axis_row.get("mark", "") or "")
+    secondary_axis_flow_rank = int(secondary_axis_row.get("rank", 0) or 0)
 
     axis_line = _v281_find_axis_line(line_def_obj, axis)
     same_line_himo = [int(car) for car in axis_line if int(car) != axis]
@@ -8986,16 +9017,24 @@ def _v281_build_fixed_flow_plan(
             "axis_pair": tuple(axis_pair),
             "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
             "axis": axis,
+            "secondary_axis": secondary_axis,
+            "secondary_axis_mark": secondary_axis_mark,
+            "secondary_axis_flow_rank": secondary_axis_flow_rank,
             "axis_score": axis_score,
             "axis_mark": axis_mark,
             "axis_flow_rank": axis_flow_rank,
             "axis_line": tuple(axis_line),
             "same_line_himo": tuple(same_line_himo),
             "himo": tuple(),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複1車軸－4車－4車",
-            "ticket_reason": f"軸{axis}の同ライン車が4車を超えるため、必須保護を維持したまま6点生成できない",
+            "ticket_family": "3連複AB－ABC－ABCDE",
+            "ticket_reason": f"軸{axis}の同ライン車が4車を超えるため、必須保護を維持したまま7点生成できない",
         }
 
     himo = []
@@ -9003,7 +9042,7 @@ def _v281_build_fixed_flow_plan(
         if car != axis and car not in himo:
             himo.append(int(car))
 
-    # v285：買い目の基本順位は採用流れの着順予想へ一本化する。
+    # 買い目の基本順位は採用流れの着順予想へ一本化する。
     # 同ライン車だけを例外として先に必須保護し、残枠は採用流れの上位から順に補充する。
     # 流れ加重的中単騎評価は参考表示に残すが、ヒモ順位を上書きしない。
     flow_added_himo = []
@@ -9023,6 +9062,9 @@ def _v281_build_fixed_flow_plan(
             "axis_pair": tuple(axis_pair),
             "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
             "axis": axis,
+            "secondary_axis": secondary_axis,
+            "secondary_axis_mark": secondary_axis_mark,
+            "secondary_axis_flow_rank": secondary_axis_flow_rank,
             "axis_score": axis_score,
             "axis_mark": axis_mark,
             "axis_flow_rank": axis_flow_rank,
@@ -9030,16 +9072,106 @@ def _v281_build_fixed_flow_plan(
             "same_line_himo": tuple(same_line_himo),
             "flow_added_himo": tuple(flow_added_himo),
             "himo": tuple(himo),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複1車軸－4車－4車",
+            "ticket_family": "3連複AB－ABC－ABCDE",
             "ticket_reason": "同ライン必須車と採用流れの着順予想上位を合わせてもヒモが4車未満のため生成不可",
         }
 
-    tickets = []
-    for a, b in combinations(himo[:4], 2):
-        trio = tuple(sorted((axis, int(a), int(b))))
-        tickets.append("-".join(str(x) for x in trio))
+    selected_five = [axis] + [int(car) for car in himo[:4]]
+    if secondary_axis not in selected_five:
+        return {
+            **base_result,
+            "status": "secondary_axis_not_in_selected_five",
+            "axis_pair": tuple(axis_pair),
+            "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
+            "axis": axis,
+            "secondary_axis": secondary_axis,
+            "secondary_axis_mark": secondary_axis_mark,
+            "secondary_axis_flow_rank": secondary_axis_flow_rank,
+            "axis_score": axis_score,
+            "axis_mark": axis_mark,
+            "axis_flow_rank": axis_flow_rank,
+            "axis_line": tuple(axis_line),
+            "same_line_himo": tuple(same_line_himo),
+            "flow_added_himo": tuple(flow_added_himo),
+            "himo": tuple(himo[:4]),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複AB－ABC－ABCDE",
+            "ticket_reason": (
+                f"もう一方の評価軸候補{secondary_axis}が、同ライン必須保護を維持した選出5車に入らないため、"
+                "評価軸候補2車を第1列に置く7点フォメを生成できない"
+            ),
+        }
+
+    # Cは、選出5車からA・Bを除いた3車のうち、採用流れ着順最上位。
+    # D・Eは残る2車を採用流れ着順順に並べる。
+    adopted_rank_map = {int(car): idx for idx, car in enumerate(adopted_sequence, start=1)}
+    cde_candidates = [
+        int(car) for car in selected_five
+        if int(car) not in {axis, secondary_axis}
+    ]
+    cde_candidates = sorted(
+        cde_candidates,
+        key=lambda car: (int(adopted_rank_map.get(int(car), 999)), int(car)),
+    )
+    if len(cde_candidates) != 3 or len(set(cde_candidates)) != 3:
+        return {
+            **base_result,
+            "status": "invalid_formation_candidates",
+            "axis_pair": tuple(axis_pair),
+            "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
+            "axis": axis,
+            "secondary_axis": secondary_axis,
+            "secondary_axis_mark": secondary_axis_mark,
+            "secondary_axis_flow_rank": secondary_axis_flow_rank,
+            "axis_score": axis_score,
+            "axis_mark": axis_mark,
+            "axis_flow_rank": axis_flow_rank,
+            "axis_line": tuple(axis_line),
+            "same_line_himo": tuple(same_line_himo),
+            "flow_added_himo": tuple(flow_added_himo),
+            "himo": tuple(himo[:4]),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複AB－ABC－ABCDE",
+            "ticket_reason": "選出5車からA・Bを除いたC・D・Eを一意に確定できないため生成不可",
+        }
+
+    c_car, d_car, e_car = cde_candidates
+    c_flow_rank = int(adopted_rank_map.get(c_car, 0) or 0)
+    formation_five = (axis, secondary_axis, c_car, d_car, e_car)
+    ticket_form = f"{axis}{secondary_axis}-{axis}{secondary_axis}{c_car}-{axis}{secondary_axis}{c_car}{d_car}{e_car}"
+
+    combo_order = (
+        (axis, secondary_axis, c_car),
+        (axis, secondary_axis, d_car),
+        (axis, secondary_axis, e_car),
+        (axis, c_car, d_car),
+        (axis, c_car, e_car),
+        (secondary_axis, c_car, d_car),
+        (secondary_axis, c_car, e_car),
+    )
+    tickets = [
+        "-".join(str(x) for x in sorted(int(v) for v in combo))
+        for combo in combo_order
+    ]
 
     candidate_text = "・".join(
         f"{rec['style']}={rec['line_label']}（2車換算={float(rec['strength']):.6f}・1着候補={int(rec['car'])}）"
@@ -9059,8 +9191,10 @@ def _v281_build_fixed_flow_plan(
     added_text = "・".join(str(x) for x in flow_added_himo) if flow_added_himo else "なし"
     reason = (
         f"各流れ勢力［{candidate_text}］から2車換算スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
-        f"{adopted_style}着順上位からAI印あり2車［{axis_pair_text}］を抽出し、AI評価が低い{axis}を最終軸に選択。"
-        f"{line_reason}し、{adopted_style}着順予想上位から［{added_text}］を補充"
+        f"{adopted_style}着順上位からAI印あり2車［{axis_pair_text}］を抽出し、AI評価が低い{axis}を最終軸A、"
+        f"もう一方の{secondary_axis}をBに選択。{line_reason}し、{adopted_style}着順予想上位から［{added_text}］を補充。"
+        f"選出5車からA・Bを除いた3車のうち、{adopted_style}着順最上位の{c_car}（{c_flow_rank}位）をC、"
+        f"残る{d_car}・{e_car}をD・EとしてAB－ABC－ABCDEへ展開"
     )
 
     return {
@@ -9069,6 +9203,9 @@ def _v281_build_fixed_flow_plan(
         "axis_pair": tuple(axis_pair),
         "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
         "axis": axis,
+        "secondary_axis": secondary_axis,
+        "secondary_axis_mark": secondary_axis_mark,
+        "secondary_axis_flow_rank": secondary_axis_flow_rank,
         "axis_score": axis_score,
         "axis_mark": axis_mark,
         "axis_flow_rank": axis_flow_rank,
@@ -9076,12 +9213,17 @@ def _v281_build_fixed_flow_plan(
         "same_line_himo": tuple(same_line_himo),
         "flow_added_himo": tuple(flow_added_himo),
         "himo": tuple(himo[:4]),
+        "formation_five": tuple(formation_five),
+        "formation_c": c_car,
+        "formation_c_flow_rank": c_flow_rank,
+        "formation_d": d_car,
+        "formation_e": e_car,
+        "ticket_form": ticket_form,
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
-        "ticket_family": "3連複1車軸－4車－4車",
+        "ticket_family": "3連複AB－ABC－ABCDE",
         "ticket_reason": reason,
     }
-
 
 def _v281_format_fixed_flow_block(plan):
     if not isinstance(plan, dict) or not plan:
@@ -9118,12 +9260,18 @@ def _v281_format_fixed_flow_block(plan):
             pass
 
     axis = int(plan.get("axis", 0) or 0)
+    secondary_axis = int(plan.get("secondary_axis", 0) or 0)
     axis_score = float(plan.get("axis_score", 0.0) or 0.0)
     axis_mark = str(plan.get("axis_mark", "") or "無印")
     axis_flow_rank = int(plan.get("axis_flow_rank", 0) or 0)
     axis_line = [int(x) for x in (plan.get("axis_line", tuple()) or tuple())]
     same_line_himo = [int(x) for x in (plan.get("same_line_himo", tuple()) or tuple())]
     himo = [int(x) for x in (plan.get("himo", tuple()) or tuple())]
+    formation_c = int(plan.get("formation_c", 0) or 0)
+    formation_c_flow_rank = int(plan.get("formation_c_flow_rank", 0) or 0)
+    formation_d = int(plan.get("formation_d", 0) or 0)
+    formation_e = int(plan.get("formation_e", 0) or 0)
+    ticket_form = str(plan.get("ticket_form", "") or "")
 
     if axis_line:
         line_label = "".join(str(x) for x in axis_line)
@@ -9142,14 +9290,28 @@ def _v281_format_fixed_flow_block(plan):
         f"【最終軸】{axis}（{adopted_style}・{axis_flow_rank}位・AI{axis_mark}・KO使用スコア={axis_score:.6f}）",
         f"【自ライン優先】{same_line_display}",
         "【ヒモ4車】" + ("・".join(str(x) for x in himo[:4]) if len(himo) >= 4 else "不足"),
-        "",
-        f"【推奨車券】{plan.get('ticket_family', '3連複1車軸－4車－4車')}・{int(plan.get('ticket_count', 0) or 0)}点",
-        f"【選定理由】{plan.get('ticket_reason', '')}",
     ]
+
+    if axis > 0 and secondary_axis > 0:
+        out.append(f"【7点フォメ軸】A={axis}（最終軸）／B={secondary_axis}（もう一方の評価軸候補）")
+    if formation_c > 0:
+        out.append(
+            f"【2列目3番手】C={formation_c}（{adopted_style}{formation_c_flow_rank}位・"
+            "選出5車からA・Bを除く採用流れ最上位）"
+        )
+    if formation_d > 0 and formation_e > 0:
+        out.append(f"【残り2車】D={formation_d}／E={formation_e}")
+    if ticket_form:
+        out.append(f"【フォーメーション】{ticket_form}")
+
+    out.extend([
+        "",
+        f"【推奨車券】{plan.get('ticket_family', '3連複AB－ABC－ABCDE')}・{int(plan.get('ticket_count', 0) or 0)}点",
+        f"【選定理由】{plan.get('ticket_reason', '')}",
+    ])
     for label, items in (plan.get("ticket_groups", tuple()) or tuple()):
         out.append(f"{label}" + "　".join(str(x) for x in items))
     return out
-
 
 def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
     """note貼り付け用の現行v270サマリーを生成する。
@@ -11532,8 +11694,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
             _fw_trio_lines = _make_flow_weighted_trio_lines()
 
-            # v281: 旧買い目判定・A～E振り分けの表示は廃止。
-            # 固定の三連複1車軸4車流し・6点だけを上部に表示する。
+            # v288: 旧買い目判定は表示せず、現行の三連複AB－ABC－ABCDE・7点を上部に表示する。
             # 旧計算値は互換性のため内部に残すが、note本文へは出力しない。
 
             # v227: 検証に必要な総合加重単騎評価だけ残す。
@@ -11577,7 +11738,7 @@ try:
         market_mark_map,
     )
 
-    # v285：勢力上位3流れ・AI印あり2車比較軸・同ライン保護・採用流れ着順ヒモの三連複6点を展開評価の直後へ表示する。
+    # v288：勢力上位3流れ・AI印あり2車比較軸・採用流れ最上位C補強の三連複7点を展開評価の直後へ表示する。
     _current_summary = f"{_summary_core}\n"
 
     _m_tenkai = re.search(r"^展開評価：[^\n]*$", note_text, flags=re.MULTILINE)
@@ -11679,7 +11840,7 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         m_jundo = re.search(r"・順当度：([^［\n]+)", txt)
         jundo = m_jundo.group(1).strip() if m_jundo else "未判定"
 
-        line1 = "・固定型：AI無印を軸比較から除外・AI印あり2車比較軸・同ライン保護・採用流れ着順ヒモの三連複1車軸4車流し・6点。"
+        line1 = "・固定型：AI無印を軸比較から除外・AI印あり2車比較軸・同ライン保護・採用流れ着順ヒモ・採用流れ最上位C補強の三連複AB-ABC-ABCDE・7点。"
         if axis != "未判定" and axis_style != "未判定":
             line2 = f"・最終軸は{axis}、採用流れは{axis_style}。"
         else:
