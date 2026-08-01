@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+# v292（手動会場バイアス廃止・補充出走・前へ追加版）:
+# ・手動の会場バイアス補正バーを廃止し、会場styleへの当日補正は降水量による自動補正だけを使用する。
+# ・コメントチェックに「補充出走」を追加し、該当車を含むライン／単騎の2車換算勢力を1ラインにつき1回だけ0.98倍する。
+# ・「補充出走」は個人KO使用スコア、加重単騎評価、個人着順評価へ直接減点しない。
+# ・コメントチェックに「前へ」を追加し、該当車を含むラインの最終ホーム想定スコアへ1ラインにつき1回だけ+0.75する。
+# ・「前へ」は個人KO使用スコアやライン2車換算勢力へ直接加点せず、最終ホーム位置決めだけに使用する。
+# ・v291の日程補正、v290の過去会場成績補正廃止、v289の7点フォメとnote表示順は変更しない。
 # v291（7車以下3日目最終日・日程補正正規化版）:
 # ・出走数7車以下は通常3日制として、3日目を「最終日」の最大日程補正で扱う。
 # ・出走数8～9車は長期開催用として、5日目を「最終日」の最大日程補正で扱う。
@@ -11,7 +18,7 @@
 # ・過去的中率／回収率から作っていた会場判定、的中期待倍率、妙味期待倍率、必要オッズ倍率を廃止する。
 # ・会場成績を使った最終H1ライン減点／H2ライン加点と、その詳細表示を廃止する。
 # ・開催場の客観傾向は、オッズパーク等から入力する開催場決まり手成績を使用する。
-# ・バンク基本情報、風速・風向、雨量・当日会場バイアス、最終ホーム想定は維持する。
+# ・バンク基本情報、風速・風向、雨量による自動補正、最終ホーム想定は維持する。
 # ・v289の流れ選定、軸・ヒモ、A～E、三連複7点フォメ、note表示順は変更しない。
 # v289（note表示順整理・三連複7点フォメ版）:
 # ・v288の流れ選定、評価軸候補、最終軸、同ライン保護、5車抽出、C選別、7点生成ロジックは変更しない。
@@ -811,11 +818,30 @@ def calc_race_compactness(ratings_val: dict, active_cars: list):
 
 # H：最終ホーム想定ライン
 # ==============================
+# v292 コメント補正
+# ・前へ：最終ホーム位置だけを1ライン1回 +0.75
+# ・補充出走：ライン2車換算勢力だけを1ライン1回 0.98倍
+FRONT_HOME_LINE_BONUS = 0.75
+SUPPLEMENT_LINE_FACTOR = 0.98
+
+def _line_comment_checked(comment_map, members) -> bool:
+    """車番キーがint／strのどちらでも、ライン内にチェック車がいるか判定する。"""
+    mp = comment_map or {}
+    for car in (members or []):
+        try:
+            no = int(car)
+        except Exception:
+            continue
+        if bool(mp.get(no, mp.get(str(no), False))):
+            return True
+    return False
+
 def calc_home_line_scores(line_def: dict, H: dict, B: dict, active_cars: list[int]) -> dict:
     """
     H = 最終ホーム先頭通過回数を使って、
     最終周回ホームで前に出やすいラインを評価する。
-    ※本体スコアには混ぜず、展開表示用。
+    「前へ」チェックがあるラインは、位置決めだけを1ライン1回加点する。
+    ※本体KOスコアやライン2車換算勢力には混ぜない。
     """
     scores = {}
 
@@ -841,6 +867,12 @@ def calc_home_line_scores(line_def: dict, H: dict, B: dict, active_cars: list[in
 
         # 同点時の微差用：Bをほんの少しだけ見る
         score += float(B.get(head, 0)) * 0.01
+
+        # v292：「前へ」は個人能力ではなくライン位置だけを前へ動かす。
+        # 同じラインに複数チェックがあっても加点は1回だけ。
+        front_map = globals().get("front_comment", {}) or {}
+        if _line_comment_checked(front_map, mem):
+            score += float(FRONT_HOME_LINE_BONUS)
 
         scores[gid] = round(score, 3)
 
@@ -1749,15 +1781,12 @@ elif precip >= 0.3:
 else:
     weather_override = 0.0
 
-manual_override = st.sidebar.slider(
-    "会場バイアス補正（−2差し ←→ +2先行）",
-    -2.0, 2.0, 0.0, 0.1
-)
-
-override = clamp(manual_override + weather_override, -2.0, 2.0)
+# v292：主観入力となる手動会場バイアスは使用しない。
+# 当日の会場style補正は、API降水量から作る天候自動補正だけを反映する。
+override = clamp(weather_override, -2.0, 2.0)
 
 st.sidebar.caption(
-    f"天候自動補正：{weather_override:+.1f} / 最終バイアス補正：{override:+.1f}"
+    f"天候自動補正：{weather_override:+.1f}（手動会場バイアスなし）"
 )
 
 style = clamp(style_raw + 0.25 * override, -1.0, +1.0)
@@ -2048,21 +2077,26 @@ for i, no in enumerate(active_cars_live):
 # =====================================================
 # コメントチェック表
 #   前検コメントを見て手動チェック
-#   自力：自力 / 自力基本 / 自分で / 前で 等
+#   自力：自力 / 自力基本 / 自分で 等
 #   自力自在：自力自在 / 何でもやる / 前々自力 等
-#   自在：自在 / 前々 / 流れで / 位置取り 等
+#   自在：自在 / 流れで / 位置取り 等
+#   前へ：前へ / 前受け / 前々へ 等（最終ホーム想定ラインの位置決めだけに反映）
 #   番手：○○君 / ○○へ / 任せる / 近畿勢 等
 #   単騎：一人で / 単騎で / 決めず 等（ライン入力上の単騎とは別のコメント補助）
+#   補充出走：追加あっせん・補充（所属ライン／単騎の2車換算勢力だけを軽く減額）
 #   競り：競り対象の車番にチェックし、競り相手を選択
 #   後位信頼：3番手以降の明確追走/地区まとめ/流動を手動評価
 # =====================================================
 st.subheader("コメントチェック")
+st.caption("前へ＝最終ホーム想定+0.75（同一ライン1回）／補充出走＝ライン2車換算勢力×0.98（同一ライン1回）")
 
 jiryoku_comment_live = {}
 jiryoku_jizai_comment_live = {}
 jizai_comment_live = {}
 target_comment_live = {}
 single_comment_live = {}
+front_comment_live = {}
+supplement_comment_live = {}
 seri_comment_live = {}
 seri_target_live = {}
 line_follow_trust_live = {}
@@ -2092,6 +2126,12 @@ for i, no in enumerate(active_cars_live):
             key=f"jizai_comment_r{race_no}_{no}"
         )
 
+        front_comment_live[no] = st.checkbox(
+            "前へ",
+            value=False,
+            key=f"front_comment_r{race_no}_{no}"
+        )
+
         target_comment_live[no] = st.checkbox(
             "番手",
             value=False,
@@ -2102,6 +2142,12 @@ for i, no in enumerate(active_cars_live):
             "単騎",
             value=False,
             key=f"single_comment_r{race_no}_{no}"
+        )
+
+        supplement_comment_live[no] = st.checkbox(
+            "補充出走",
+            value=False,
+            key=f"supplement_comment_r{race_no}_{no}"
         )
 
         seri_comment_live[no] = st.checkbox(
@@ -2205,6 +2251,8 @@ if apply_input:
         "jizai_comment": dict(jizai_comment_live),
         "target_comment": dict(target_comment_live),
         "single_comment": dict(single_comment_live),
+        "front_comment": dict(front_comment_live),
+        "supplement_comment": dict(supplement_comment_live),
         "seri_comment": dict(seri_comment_live),
         "seri_target": dict(seri_target_live),
         "line_follow_trust": dict(line_follow_trust_live),
@@ -2246,6 +2294,8 @@ jiryoku_jizai_comment = snapshot.get("jiryoku_jizai_comment", {})
 jizai_comment = snapshot.get("jizai_comment", {})
 target_comment = snapshot.get("target_comment", {})
 single_comment = snapshot.get("single_comment", {})
+front_comment = snapshot.get("front_comment", {})
+supplement_comment = snapshot.get("supplement_comment", {})
 seri_comment = snapshot.get("seri_comment", {})
 seri_target = snapshot.get("seri_target", {})
 line_follow_trust = snapshot.get("line_follow_trust", {})
@@ -2255,6 +2305,8 @@ globals()["jiryoku_jizai_comment"] = jiryoku_jizai_comment
 globals()["jizai_comment"] = jizai_comment
 globals()["target_comment"] = target_comment
 globals()["single_comment"] = single_comment
+globals()["front_comment"] = front_comment
+globals()["supplement_comment"] = supplement_comment
 globals()["seri_comment"] = seri_comment
 globals()["seri_target"] = seri_target
 globals()["line_follow_trust"] = line_follow_trust
@@ -2550,6 +2602,9 @@ jiryoku_jizai_comment_map = globals().get("jiryoku_jizai_comment", {}) or {}
 jizai_comment_map   = globals().get("jizai_comment", {}) or {}
 target_comment_map  = globals().get("target_comment", {}) or {}
 single_comment_map  = globals().get("single_comment", {}) or {}
+# v292：以下2つは個人スコアには直接加減しない。
+front_comment_map = globals().get("front_comment", {}) or {}
+supplement_comment_map = globals().get("supplement_comment", {}) or {}
 seri_comment_map    = globals().get("seri_comment", {}) or {}
 seri_target_map     = globals().get("seri_target", {}) or {}
 line_follow_trust_map = globals().get("line_follow_trust", {}) or {}
@@ -3843,17 +3898,27 @@ def _t369_two_car_equivalent_strength(
 
 
 def _build_line_two_car_strength_map(lines, scores_map):
-    """ラインキー（例: '127'）→2車換算勢力の辞書を作る。"""
+    """ラインキー（例: '127'）→2車換算勢力の辞書を作る。
+
+    v292:
+    ・「補充出走」がライン内に1人以上いれば、そのライン／単騎の勢力だけ0.98倍。
+    ・同一ラインに複数チェックがあっても減額は1回だけ。
+    ・個人KO使用スコア自体は変更しない。
+    """
     out = {}
+    supplement_map = globals().get("supplement_comment", {}) or {}
     for line in _normalize_lines(lines):
         key = "".join(str(int(car)) for car in line)
         if not key:
             continue
-        out[key] = _t369_two_car_equivalent_strength(
+        strength = _t369_two_car_equivalent_strength(
             line,
             scores_map,
             default_score=0.0,
         )
+        if _line_comment_checked(supplement_map, line):
+            strength *= float(SUPPLEMENT_LINE_FACTOR)
+        out[key] = float(strength)
     return out
 
 
