@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+# v294（レースFR分離・ライン勢力比正規化版）:
+# ・レース全体FRとラインごとの2車換算勢力比を分離する。
+# ・ライン勢力比は開催日補正に左右されるレースFRを掛けず、全ライン合計が常に1.000になるよう正規化する。
+# ・ライン評価グループ、流れ比率、流れ別着順予想のライン補正は、この正規化したライン勢力比を使用する。
+# ・レース全体FRは展開評価用の独立値として維持し、ライン勢力比へ重ね掛けしない。
+# ・表示上の「FR」を「勢力比」へ変更し、レースFRとの意味の混同を防ぐ。
+# ・v293の7点フォメ、日程補正、天候取得、級別補正、補充出走、前へ等は変更しない。
 # v293（開催区分は天候取得時刻のみ・級別補正維持版）:
 # ・モーニング／デイ／ナイター／ミッドナイトの開催区分は、Open-Meteoの風速・風向・降水量を取得する基準時刻の指定だけに使用する。
 # ・ミッドナイトだけに適用していたライン係数およびSB補正上限の0.95倍を廃止し、全開催区分で同じ評価計算を使用する。
@@ -4164,26 +4171,31 @@ def _normalize_lines(_lines):
         out.append([int(ch) for ch in s])
     return out
 
-# --- v282：ラインFRは「ライン上位2車合計／単騎2倍」の2車換算勢力で作る ---
-def _build_line_fr_map_v282(lines, scores_map, FRv):
+# --- v294：ライン値は「ライン上位2車合計／単騎2倍」の2車換算勢力比で作る ---
+def _build_line_fr_map_v282(lines, scores_map, FRv=None):
+    """
+    v294:
+    レース全体FRとは切り離し、ライン／単騎の2車換算勢力を
+    全ライン合計1.000の相対シェアへ正規化して返す。
+
+    FRv は旧呼び出し互換のため受け取るが、勢力比計算には使用しない。
+    """
     normalized_lines = _normalize_lines(lines)
-    FRv = float(FRv or 0.0)
     if not normalized_lines:
         return {}
 
     strength_map = _build_line_two_car_strength_map(normalized_lines, scores_map)
     total = sum(float(value or 0.0) for value in strength_map.values())
-    sum_target = FRv if FRv > 0.0 else 1.0
 
     if total <= 0.0:
-        equal_share = sum_target / len(normalized_lines)
+        equal_share = 1.0 / len(normalized_lines)
         return {
             "".join(map(str, line)): equal_share
             for line in normalized_lines
         }
 
     return {
-        key: sum_target * (float(value or 0.0) / total)
+        key: float(value or 0.0) / total
         for key, value in strength_map.items()
     }
 
@@ -4191,7 +4203,7 @@ def _build_line_fr_map_v282(lines, scores_map, FRv):
 # --- v283：2車換算勢力上位3組だけを三流れ代表へ割り当てる ---
 def _v283_build_top3_strength_zones(line_items):
     """
-    全ライン／単騎を2車換算勢力（line_items[*]['fr']）で並べ、
+    全ライン／単騎を2車換算勢力比（line_items[*]['fr']）で並べ、
     上位3組だけを順流・渦・逆流の代表にする。
 
     ・旧FR／旧渦／旧逆流の対応は「流れ名の割当」にだけ使う。
@@ -4733,9 +4745,10 @@ try:
     globals()["score_map"] = score_map  # 後段参照用に保持
 
     # =========================================================
-    # v282：ライン／単騎を2車換算して line_fr_map を毎回再構築
+    # v294：ライン／単騎を2車換算し、合計1.000の勢力比へ正規化
     # ・2車以上のライン＝ライン内KO使用スコア上位2車の合計
     # ・単騎＝本人のKO使用スコア×2
+    # ・レース全体FRは掛けず、独立値として保持する
     # =========================================================
     try:
         line_two_car_strength_map = _build_line_two_car_strength_map(
@@ -4745,14 +4758,15 @@ try:
         line_fr_map = _build_line_fr_map_v282(
             all_lines,
             score_map,
-            FRv if FRv > 0.0 else 1.0,
         )
     except Exception:
         line_two_car_strength_map = {}
         line_fr_map = {}
 
+    globals()["RACE_FR_RAW"] = float(FRv)
     globals()["LINE_TWO_CAR_STRENGTH_MAP"] = dict(line_two_car_strength_map)
-    globals()["line_fr_map"] = dict(line_fr_map)
+    globals()["LINE_STRENGTH_SHARE_MAP"] = dict(line_fr_map)
+    globals()["line_fr_map"] = dict(line_fr_map)  # 旧後段互換：中身は正規化勢力比
 
     def _line_key(ln):
         try:
@@ -4829,7 +4843,7 @@ try:
     note_sections.append("")
 
     # =========================================================
-    # ライン想定FR（順流/渦/逆流 + その他）表示  ※区分け復活
+    # ライン勢力比（順流/渦/逆流 + その他）表示  ※合計1.000
     # =========================================================
     def _fmt_line(ln):
         try:
@@ -4941,7 +4955,7 @@ try:
             for item in items:
                 tag_txt = ("・" + "・".join(item.get("tags", []) or [])) if item.get("tags") else ""
                 parts.append(
-                    f"{_fmt_line(item.get('line', []))}［FR={float(item.get('fr', 0.0) or 0.0):.3f}{tag_txt}］"
+                    f"{_fmt_line(item.get('line', []))}［勢力比={float(item.get('fr', 0.0) or 0.0):.3f}{tag_txt}］"
                 )
             note_sections.append(f"{zone_name}：" + "／".join(parts))
 
@@ -4955,7 +4969,7 @@ try:
                 tags.extend(str(x) for x in (item.get("tags", []) or []) if str(x))
                 tag_txt = ("・" + "・".join(tags)) if tags else ""
                 other_parts.append(
-                    f"{_fmt_line(item.get('line', []))}［FR={float(item.get('fr', 0.0) or 0.0):.3f}{tag_txt}］"
+                    f"{_fmt_line(item.get('line', []))}［勢力比={float(item.get('fr', 0.0) or 0.0):.3f}{tag_txt}］"
                 )
             note_sections.append("その他（3列目候補）：" + "／".join(other_parts))
         else:
@@ -5972,8 +5986,8 @@ try:
 
     
 
-    lines_out.append(f"・VTXラインFR={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
-    lines_out.append(f"・逆流ラインFR={_u_fr:.3f}［{_band3_u(_u_fr)}］")
+    lines_out.append(f"・VTXライン勢力比={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
+    lines_out.append(f"・逆流ライン勢力比={_u_fr:.3f}［{_band3_u(_u_fr)}］")
 
     # 内訳要約（flow dbg）
     dbg = _flow.get("dbg", {}) if isinstance(_flow, dict) else {}
@@ -6051,8 +6065,8 @@ try:
             f"・順当度：{_compact_label}"
         )
 
-    lines_out.append(f"・VTXラインFR={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
-    lines_out.append(f"・逆流ラインFR={_u_fr:.3f}［{_band3_u(_u_fr)}］")
+    lines_out.append(f"・VTXライン勢力比={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
+    lines_out.append(f"・逆流ライン勢力比={_u_fr:.3f}［{_band3_u(_u_fr)}］")
 
     bs = 0.0
     bn = 0.0
