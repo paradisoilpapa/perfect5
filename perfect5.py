@@ -1,4 +1,12 @@
 # -*- coding: utf-8 -*-
+# v296（全競輪場座標・ホーム正面方位再監査版）:
+# ・ヴェロビ収録42競輪場の天候取得座標とホーム正面方位を全場再照合する。
+# ・天候取得座標は競輪場所在地へ統一し、会場外へずれていた座標を含めて42場すべてを再登録する。
+# ・ホーム正面方位は屋外40場を再照合し、既存値が全場整合していたため方位値自体は維持する。
+# ・防府は0.0°（北向き）、佐世保は135.0°（南東向き）であり、同じ方位ではないことを明確化する。
+# ・前橋・小倉はドーム場のためhome_azimuth=None・無風固定を維持する。
+# ・画面に会場マスタ監査日と天候取得座標を表示し、旧版・キャッシュとの取り違えを確認できるようにする。
+# ・風向変換、開催区分、級別補正、FR分離、日程補正、軸・ヒモ、7点フォメ、各評価表は変更しない。
 # v295（展開評価・短評表示一致修正版）:
 # ・短評3行目の展開表示を、旧「順当度」ではなく上部の「展開評価」と同じ判定結果から生成する。
 # ・上部が「展開評価：優位／互角／混戦」の場合、短評も必ず「展開は優位／互角／混戦」と一致させる。
@@ -476,52 +484,54 @@ KEIRIN_DATA = {
     "手入力":{"bank_angle":30.0,"straight_length":52.0,"bank_length":400},
 }
 # home_azimuth: ホーム側からバンク正面を見る絶対方位（北=0°／東=90°）。
-# outdoor 40場はコード内固定、前橋・小倉はドーム場のため無風固定。
+# 屋外40場はコード内固定、前橋・小倉はドーム場のため無風固定。
 # 方位は8方向単位で固定し、API絶対風向をホーム基準の上下左右へ変換する。
 # 固定値は、各場の「B→H横風」に対応する絶対風向を、ホーム側→バンク正面の方位として採用する。
+# v296再監査結果：防府=0°（北）、佐世保=135°（南東）。両場は同じ方位ではない。
+VELODROME_MASTER_REVISION = "2026-08-02"
 VELODROME_MASTER = {
-    "函館":{"lat":41.77694,"lon":140.76283,"home_azimuth":90.0,"indoor":False},
-    "青森":{"lat":40.79717,"lon":140.66469,"home_azimuth":45.0,"indoor":False},
-    "いわき平":{"lat":37.04533,"lon":140.89150,"home_azimuth":315.0,"indoor":False},
-    "弥彦":{"lat":37.70778,"lon":138.82886,"home_azimuth":90.0,"indoor":False},
-    "前橋":{"lat":36.39728,"lon":139.05778,"home_azimuth":None,"indoor":True},
-    "取手":{"lat":35.90175,"lon":140.05631,"home_azimuth":135.0,"indoor":False},
-    "宇都宮":{"lat":36.57197,"lon":139.88281,"home_azimuth":225.0,"indoor":False},
-    "大宮":{"lat":35.91962,"lon":139.63417,"home_azimuth":0.0,"indoor":False},
-    "西武園":{"lat":35.76983,"lon":139.44686,"home_azimuth":0.0,"indoor":False},
-    "京王閣":{"lat":35.64294,"lon":139.53372,"home_azimuth":225.0,"indoor":False},
-    "立川":{"lat":35.70214,"lon":139.42300,"home_azimuth":180.0,"indoor":False},
-    "松戸":{"lat":35.80417,"lon":139.91119,"home_azimuth":315.0,"indoor":False},
-    "川崎":{"lat":35.52844,"lon":139.70944,"home_azimuth":180.0,"indoor":False},
-    "平塚":{"lat":35.32547,"lon":139.36342,"home_azimuth":135.0,"indoor":False},
-    "小田原":{"lat":35.25089,"lon":139.14947,"home_azimuth":0.0,"indoor":False},
-    "伊東":{"lat":34.954667,"lon":139.092639,"home_azimuth":180.0,"indoor":False},
-    "静岡":{"lat":34.973722,"lon":138.419417,"home_azimuth":135.0,"indoor":False},
-    "名古屋":{"lat":35.175560,"lon":136.854028,"home_azimuth":225.0,"indoor":False},
-    "岐阜":{"lat":35.414194,"lon":136.783917,"home_azimuth":180.0,"indoor":False},
-    "大垣":{"lat":35.361389,"lon":136.628444,"home_azimuth":135.0,"indoor":False},
-    "豊橋":{"lat":34.770167,"lon":137.417250,"home_azimuth":90.0,"indoor":False},
-    "富山":{"lat":36.757250,"lon":137.234833,"home_azimuth":0.0,"indoor":False},
-    "松坂":{"lat":34.564611,"lon":136.533833,"home_azimuth":135.0,"indoor":False},
-    "四日市":{"lat":34.965389,"lon":136.634500,"home_azimuth":135.0,"indoor":False},
-    "福井":{"lat":36.066889,"lon":136.253722,"home_azimuth":90.0,"indoor":False},
-    "奈良":{"lat":34.681111,"lon":135.823083,"home_azimuth":180.0,"indoor":False},
-    "向日町":{"lat":34.949222,"lon":135.708389,"home_azimuth":0.0,"indoor":False},
-    "和歌山":{"lat":34.228694,"lon":135.171833,"home_azimuth":315.0,"indoor":False},
-    "岸和田":{"lat":34.477500,"lon":135.369389,"home_azimuth":225.0,"indoor":False},
-    "玉野":{"lat":34.497333,"lon":133.961389,"home_azimuth":90.0,"indoor":False},
-    "広島":{"lat":34.359778,"lon":132.502889,"home_azimuth":45.0,"indoor":False},
-    "防府":{"lat":34.048778,"lon":131.568611,"home_azimuth":0.0,"indoor":False},
-    "高松":{"lat":34.345936,"lon":134.061994,"home_azimuth":0.0,"indoor":False},
-    "小松島":{"lat":34.005667,"lon":134.594556,"home_azimuth":45.0,"indoor":False},
-    "高知":{"lat":33.566694,"lon":133.526083,"home_azimuth":0.0,"indoor":False},
-    "松山":{"lat":33.808889,"lon":132.742333,"home_azimuth":225.0,"indoor":False},
-    "小倉":{"lat":33.885722,"lon":130.883167,"home_azimuth":None,"indoor":True},
-    "久留米":{"lat":33.316667,"lon":130.547778,"home_azimuth":45.0,"indoor":False},
-    "武雄":{"lat":33.194083,"lon":130.023083,"home_azimuth":135.0,"indoor":False},
-    "佐世保":{"lat":33.161667,"lon":129.712833,"home_azimuth":135.0,"indoor":False},
-    "別府":{"lat":33.282806,"lon":131.460472,"home_azimuth":90.0,"indoor":False},
-    "熊本":{"lat":32.789167,"lon":130.754722,"home_azimuth":135.0,"indoor":False},
+    "函館":{"lat":41.777001,"lon":140.762957,"home_azimuth":90.0,"indoor":False},
+    "青森":{"lat":40.797113,"lon":140.664490,"home_azimuth":45.0,"indoor":False},
+    "いわき平":{"lat":37.045309,"lon":140.891459,"home_azimuth":315.0,"indoor":False},
+    "弥彦":{"lat":37.707481,"lon":138.827637,"home_azimuth":90.0,"indoor":False},
+    "前橋":{"lat":36.397276,"lon":139.057756,"home_azimuth":None,"indoor":True},
+    "取手":{"lat":35.901804,"lon":140.056357,"home_azimuth":135.0,"indoor":False},
+    "宇都宮":{"lat":36.573001,"lon":139.884288,"home_azimuth":225.0,"indoor":False},
+    "大宮":{"lat":35.919624,"lon":139.634170,"home_azimuth":0.0,"indoor":False},
+    "西武園":{"lat":35.769053,"lon":139.447220,"home_azimuth":0.0,"indoor":False},
+    "京王閣":{"lat":35.643541,"lon":139.533912,"home_azimuth":225.0,"indoor":False},
+    "立川":{"lat":35.703198,"lon":139.422558,"home_azimuth":180.0,"indoor":False},
+    "松戸":{"lat":35.804533,"lon":139.910679,"home_azimuth":315.0,"indoor":False},
+    "川崎":{"lat":35.528948,"lon":139.710735,"home_azimuth":180.0,"indoor":False},
+    "平塚":{"lat":35.325323,"lon":139.362633,"home_azimuth":135.0,"indoor":False},
+    "小田原":{"lat":35.250770,"lon":139.148460,"home_azimuth":0.0,"indoor":False},
+    "伊東":{"lat":34.954718,"lon":139.092920,"home_azimuth":180.0,"indoor":False},
+    "静岡":{"lat":34.972782,"lon":138.418922,"home_azimuth":135.0,"indoor":False},
+    "名古屋":{"lat":35.175772,"lon":136.855025,"home_azimuth":225.0,"indoor":False},
+    "岐阜":{"lat":35.414136,"lon":136.783714,"home_azimuth":180.0,"indoor":False},
+    "大垣":{"lat":35.361332,"lon":136.628452,"home_azimuth":135.0,"indoor":False},
+    "豊橋":{"lat":34.770280,"lon":137.417265,"home_azimuth":90.0,"indoor":False},
+    "富山":{"lat":36.757271,"lon":137.234873,"home_azimuth":0.0,"indoor":False},
+    "松坂":{"lat":34.564675,"lon":136.533881,"home_azimuth":135.0,"indoor":False},
+    "四日市":{"lat":34.984933,"lon":136.645461,"home_azimuth":135.0,"indoor":False},
+    "福井":{"lat":36.060798,"lon":136.199380,"home_azimuth":90.0,"indoor":False},
+    "奈良":{"lat":34.703360,"lon":135.779077,"home_azimuth":180.0,"indoor":False},
+    "向日町":{"lat":34.946608,"lon":135.698769,"home_azimuth":0.0,"indoor":False},
+    "和歌山":{"lat":34.240481,"lon":135.170923,"home_azimuth":315.0,"indoor":False},
+    "岸和田":{"lat":34.481514,"lon":135.393619,"home_azimuth":225.0,"indoor":False},
+    "玉野":{"lat":34.497176,"lon":133.960688,"home_azimuth":90.0,"indoor":False},
+    "広島":{"lat":34.355465,"lon":132.466965,"home_azimuth":45.0,"indoor":False},
+    "防府":{"lat":34.066973,"lon":131.578636,"home_azimuth":0.0,"indoor":False},
+    "高松":{"lat":34.345806,"lon":134.061962,"home_azimuth":0.0,"indoor":False},
+    "小松島":{"lat":34.005107,"lon":134.594259,"home_azimuth":45.0,"indoor":False},
+    "高知":{"lat":33.552468,"lon":133.532950,"home_azimuth":0.0,"indoor":False},
+    "松山":{"lat":33.808411,"lon":132.742611,"home_azimuth":225.0,"indoor":False},
+    "小倉":{"lat":33.872077,"lon":130.887759,"home_azimuth":None,"indoor":True},
+    "久留米":{"lat":33.300938,"lon":130.544418,"home_azimuth":45.0,"indoor":False},
+    "武雄":{"lat":33.183616,"lon":130.023074,"home_azimuth":135.0,"indoor":False},
+    "佐世保":{"lat":33.155523,"lon":129.730690,"home_azimuth":135.0,"indoor":False},
+    "別府":{"lat":33.322369,"lon":131.497860,"home_azimuth":90.0,"indoor":False},
+    "熊本":{"lat":32.795915,"lon":130.740262,"home_azimuth":135.0,"indoor":False},
     "手入力":{"lat":None,"lon":None,"home_azimuth":None,"indoor":False},
 }
 
@@ -1674,7 +1684,12 @@ with st.sidebar.expander("🌀 風速＋風向をAPIで自動取得（Open-Meteo
         if home_azimuth is not None:
             st.info(
                 f"固定ホーム正面方位：{float(home_azimuth):.1f}° "
-                f"（{absolute_wind_compass_label(home_azimuth)}向き・コード内固定マスタ）"
+                f"（{absolute_wind_compass_label(home_azimuth)}向き・コード内固定マスタ／"
+                f"監査日{VELODROME_MASTER_REVISION}）"
+            )
+            st.caption(
+                f"天候取得座標：{float(info_xy['lat']):.6f}, "
+                f"{float(info_xy['lon']):.6f}"
             )
 
         coords_ready = info_xy.get("lat") is not None and info_xy.get("lon") is not None
