@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+# v289（note表示順整理・三連複7点フォメ版）:
+# ・v288の流れ選定、評価軸候補、最終軸、同ライン保護、5車抽出、C選別、7点生成ロジックは変更しない。
+# ・上部は流れ選定からフォーメーションまでを表示し、推奨車券の直下に実際の3連複7点を表示する。
+# ・選定理由は実際の買い目の直後に表示する。
+# ・開催区分、ライン、最終ホーム、ライン評価、KO、三流れ着順予想を続けて表示する。
+# ・総合加重単騎評価、加重2車複評価表、加重3連複評価表は三流れ着順予想の後へ移動する。
+# ・短評は従来どおり末尾に残し、既存の詳細表示は削除・折り畳み・置換しない。
 # v288（採用流れ3番手補強・三連複7点フォメ修正版）:
 # ・採用流れ、AI印あり2車の評価軸候補、AI評価が低い方を最終軸にする処理はv287のまま維持する。
 # ・Aを最終軸、Bをもう一方の評価軸候補とする。
@@ -9307,10 +9314,10 @@ def _v281_format_fixed_flow_block(plan):
     out.extend([
         "",
         f"【推奨車券】{plan.get('ticket_family', '3連複AB－ABC－ABCDE')}・{int(plan.get('ticket_count', 0) or 0)}点",
-        f"【選定理由】{plan.get('ticket_reason', '')}",
     ])
     for label, items in (plan.get("ticket_groups", tuple()) or tuple()):
         out.append(f"{label}" + "　".join(str(x) for x in items))
+    out.append(f"【選定理由】{plan.get('ticket_reason', '')}")
     return out
 
 def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
@@ -11694,10 +11701,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
             _fw_trio_lines = _make_flow_weighted_trio_lines()
 
-            # v288: 旧買い目判定は表示せず、現行の三連複AB－ABC－ABCDE・7点を上部に表示する。
-            # 旧計算値は互換性のため内部に残すが、note本文へは出力しない。
+            # v289: 上部サマリーは推奨と実買い目までに限定する。
+            # 総合加重単騎評価、加重2車複・3連複評価表は、
+            # 三流れ着順予想の後へ表示するため別ブロックとして保持する。
+            globals()["V289_WEIGHTED_EVAL_BLOCK"] = ""
 
-            # v227: 検証に必要な総合加重単騎評価だけ残す。
             if _fw_trio_lines:
                 _score_lines = [
                     str(x) for x in _fw_trio_lines
@@ -11705,16 +11713,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                     or str(x).startswith("流れ加重妙味単騎評価】")
                 ]
                 if _score_lines:
-                    lines.append("【総合加重単騎評価】")
-                    lines.extend(_score_lines)
-                    lines.append("")
-                    lines.append("【加重2車複評価表】")
-                    lines.extend(_fmt_weighted_pair_table(_overall_sorted_rows, _limit=21))
-                    lines.append("")
-                    lines.append("【加重3連複評価表】")
-                    lines.extend(_fmt_weighted_trio_table(_weighted_trio_rows, _limit=35))
-                    lines.append("")
-                    lines.append("")
+                    _weighted_eval_lines = ["【総合加重単騎評価】"]
+                    _weighted_eval_lines.extend(_score_lines)
+                    _weighted_eval_lines.append("")
+                    _weighted_eval_lines.append("【加重2車複評価表】")
+                    _weighted_eval_lines.extend(_fmt_weighted_pair_table(_overall_sorted_rows, _limit=21))
+                    _weighted_eval_lines.append("")
+                    _weighted_eval_lines.append("【加重3連複評価表】")
+                    _weighted_eval_lines.extend(_fmt_weighted_trio_table(_weighted_trio_rows, _limit=35))
+                    globals()["V289_WEIGHTED_EVAL_BLOCK"] = "\n".join(_weighted_eval_lines).strip()
         else:
             lines.append("【買目考察】")
             lines.append("")
@@ -11755,6 +11762,30 @@ try:
 except Exception as _e:
     st.caption(f"note上部サマリー生成不可：{_e}")
 
+
+# v289：総合加重単騎評価と加重評価表を、三流れ着順予想の直後へ移動する。
+# 表示順だけを変更し、計算・順位・買い目生成には触らない。
+try:
+    _weighted_eval_block = str(globals().get("V289_WEIGHTED_EVAL_BLOCK", "") or "").strip()
+    if _weighted_eval_block:
+        _m_reverse_flow = re.search(
+            r"(^【逆流メイン着順予想】\n[^\n]*(?:\n|$))",
+            note_text,
+            flags=re.MULTILINE,
+        )
+        if _m_reverse_flow:
+            _insert_at = _m_reverse_flow.end()
+            _before = note_text[:_insert_at].rstrip("\n")
+            _after = note_text[_insert_at:].lstrip("\n")
+            note_text = _before + "\n\n" + _weighted_eval_block + "\n\n" + _after
+        elif "＜短評＞" in note_text:
+            note_text = note_text.replace(
+                "＜短評＞",
+                _weighted_eval_block + "\n\n＜短評＞",
+                1,
+            )
+except Exception as _e:
+    st.caption(f"note加重評価表示順整理不可：{_e}")
 
 
 # -----------------------------------------
