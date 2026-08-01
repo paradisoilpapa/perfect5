@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v295（展開評価・短評表示一致修正版）:
+# ・短評3行目の展開表示を、旧「順当度」ではなく上部の「展開評価」と同じ判定結果から生成する。
+# ・上部が「展開評価：優位／互角／混戦」の場合、短評も必ず「展開は優位／互角／混戦」と一致させる。
+# ・展開評価の計算、流れ選定、軸・ヒモ、7点フォメ、各評価表などの予想ロジックは変更しない。
 # v294（レースFR分離・ライン勢力比正規化版）:
 # ・レース全体FRとラインごとの2車換算勢力比を分離する。
 # ・ライン勢力比は開催日補正に左右されるレースFRを掛けず、全ライン合計が常に1.000になるよう正規化する。
@@ -11590,9 +11594,9 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         axis = m_axis.group(1).strip() if m_axis else "未判定"
         axis_style = m_axis.group(2).strip() if m_axis else "未判定"
 
-        # 順当度を旧短評から取得
-        m_jundo = re.search(r"・順当度：([^［\n]+)", txt)
-        jundo = m_jundo.group(1).strip() if m_jundo else "未判定"
+        # 上部の展開評価をそのまま取得し、短評と必ず一致させる
+        m_tenkai = re.search(r"^展開評価：([^\n]+)$", txt, flags=re.MULTILINE)
+        tenkai = m_tenkai.group(1).strip() if m_tenkai else "未判定"
 
         line1 = "・固定型：AI無印を軸比較から除外・AI印あり2車比較軸・同ライン保護・採用流れ着順ヒモ・採用流れ最上位C補強の三連複AB-ABC-ABCDE・7点。"
         if axis != "未判定" and axis_style != "未判定":
@@ -11600,8 +11604,8 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         else:
             line2 = "・最終軸と採用流れは未判定。"
 
-        if jundo and jundo != "未判定":
-            line3 = f"・展開は{jundo}。"
+        if tenkai and tenkai != "未判定":
+            line3 = f"・展開は{tenkai}。"
         else:
             line3 = "・展開は未判定。"
 
