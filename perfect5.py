@@ -1,4 +1,18 @@
 # -*- coding: utf-8 -*-
+# v291（7車以下3日目最終日・日程補正正規化版）:
+# ・出走数7車以下は通常3日制として、3日目を「最終日」の最大日程補正で扱う。
+# ・出走数8～9車は長期開催用として、5日目を「最終日」の最大日程補正で扱う。
+# ・開催日選択肢を出走数に応じて自動切替し、存在しない4日目以降を7車以下では表示しない。
+# ・実際の経過日数と補正段階を分離し、3日目（最終日）は実日数3日のまま最終日係数を適用する。
+# ・周回疲労の上限を開催進行に合わせて段階化し、中日で早期上限到達せず最終日に最大3.0となるよう修正する。
+# ・v290の過去会場成績補正廃止、客観会場データ、流れ選定、軸・ヒモ、7点フォメ、note表示順は変更しない。
+# v290（過去会場成績補正廃止・客観会場データ一本化版）:
+# ・会場別の過去的中率／回収率の手入力欄を廃止する。
+# ・過去的中率／回収率から作っていた会場判定、的中期待倍率、妙味期待倍率、必要オッズ倍率を廃止する。
+# ・会場成績を使った最終H1ライン減点／H2ライン加点と、その詳細表示を廃止する。
+# ・開催場の客観傾向は、オッズパーク等から入力する開催場決まり手成績を使用する。
+# ・バンク基本情報、風速・風向、雨量・当日会場バイアス、最終ホーム想定は維持する。
+# ・v289の流れ選定、軸・ヒモ、A～E、三連複7点フォメ、note表示順は変更しない。
 # v289（note表示順整理・三連複7点フォメ版）:
 # ・v288の流れ選定、評価軸候補、最終軸、同ライン保護、5車抽出、C選別、7点生成ロジックは変更しない。
 # ・上部は流れ選定からフォーメーションまでを表示し、推奨車券の直下に実際の3連複7点を表示する。
@@ -904,290 +918,9 @@ def track_effective_ratio(track_name: str,
 
 
 # =====================================================
-# 会場成績手入力補正 × 最終ホームライン流れ補正
-#   入力例：
-#     的中率 = 12/40     → 30.0%
-#     回収率 = 12000/8000 → 150.0%
-#   思想：
-#     成績が悪い会場ほど、最終H1番手ライン先頭のイン減速を疑い、
-#     最終H2番手ライン、とくに番手の外スピード差しを評価する。
+# v290：過去の会場別的中率・回収率による補正は廃止。
+# 会場固有の客観傾向は「開催場決まり手成績」で評価する。
 # =====================================================
-
-def parse_fraction_rate(text: str, percent: bool = True):
-    """
-    '12/40' や '12000/8000' を率に変換する。
-    percent=True なら 30.0 のように％値で返す。
-    空欄・不正値・分母0は None。
-    """
-    s = str(text or "").strip()
-    if not s:
-        return None
-
-    try:
-        if "/" in s:
-            a, b = s.split("/", 1)
-            a = float(str(a).replace(",", "").strip())
-            b = float(str(b).replace(",", "").strip())
-            if b <= 0:
-                return None
-            rate = a / b
-        else:
-            v = float(s.replace("%", "").replace(",", "").strip())
-            rate = v / 100.0 if v > 1.0 else v
-
-        if not math.isfinite(rate):
-            return None
-
-        return rate * 100.0 if percent else rate
-
-    except Exception:
-        return None
-
-
-def judge_venue_profile(hit_rate, return_rate):
-    """
-    hit_rate / return_rate は％値。
-    例：30.0, 120.0
-    """
-    hr = None if hit_rate is None else float(hit_rate)
-    rr = None if return_rate is None else float(return_rate)
-
-    if hr is None and rr is None:
-        return "unknown"
-
-    # 回収率が強い。的中率が低ければ一撃型。
-    if rr is not None and rr >= 100.0:
-        if hr is None or hr >= 35.0:
-            return "strong_good"
-        return "swing_return"
-
-    # 的中しているのに安い。順位は壊さず必要オッズ側で締める。
-    if hr is not None and hr >= 31.0 and rr is not None and rr < 80.0:
-        return "cheap_hit"
-
-    # 的中率がかなり低い。
-    if hr is not None and hr < 22.0:
-        if rr is not None and rr < 50.0:
-            return "very_bad"
-        return "low_hit_risk"
-
-    # 回収率がかなり悪い。
-    if rr is not None and rr < 50.0:
-        return "bad"
-
-    # 回収率が低め。
-    if rr is not None and rr < 70.0:
-        return "normal_watch"
-
-    return "normal"
-
-
-def _venue_fit_hit_coef(hit_rate):
-    """
-    v203:
-    会場別の的中率を、2車複の「的中期待」へ小幅倍率として反映する。
-    hit_rate は％値（例：25.3）。未入力時は 1.00。
-
-    強くしすぎると会場判定に振り回されるため、概ね 0.90〜1.08 に収める。
-    """
-    try:
-        if hit_rate is None:
-            return 1.00
-        hr = float(hit_rate)
-        if not math.isfinite(hr):
-            return 1.00
-        if hr >= 35.0:
-            return 1.08
-        if hr >= 30.0:
-            return 1.04
-        if hr >= 25.0:
-            return 1.00
-        if hr >= 22.0:
-            return 0.96
-        if hr >= 18.0:
-            return 0.92
-        return 0.90
-    except Exception:
-        return 1.00
-
-
-def _venue_fit_myoumi_coef(return_rate):
-    """
-    v203:
-    会場別の回収率を、2車複の「妙味期待」へ小幅倍率として反映する。
-    return_rate は％値（例：75.5）。未入力時は 1.00。
-
-    回収率が低い開催では、妙味A++頼みの買目が自然に下がる。
-    逆に回収率が高い開催では、妙味期待を少し信頼する。
-    """
-    try:
-        if return_rate is None:
-            return 1.00
-        rr = float(return_rate)
-        if not math.isfinite(rr):
-            return 1.00
-        if rr >= 120.0:
-            return 1.10
-        if rr >= 100.0:
-            return 1.06
-        if rr >= 85.0:
-            return 1.00
-        if rr >= 70.0:
-            return 0.94
-        if rr >= 50.0:
-            return 0.90
-        return 0.88
-    except Exception:
-        return 1.00
-
-
-VENUE_HOME_FLOW_MULT = {
-    "strong_good": 0.50,
-    "swing_return": 0.85,
-    "normal": 1.00,
-    "normal_watch": 1.10,
-    "cheap_hit": 0.90,
-    "bad": 1.25,
-    "low_hit_risk": 1.35,
-    "very_bad": 1.50,
-    "unknown": 1.00,
-}
-
-VENUE_MIN_ODDS_MULT = {
-    "strong_good": 0.95,
-    "swing_return": 1.05,
-    "normal": 1.00,
-    "normal_watch": 1.10,
-    "cheap_hit": 1.25,
-    "bad": 1.20,
-    "low_hit_risk": 1.30,
-    "very_bad": 1.40,
-    "unknown": 1.00,
-}
-
-# 係数は「補正点」ではなく倍率前の思想値。
-# 実際は HOME_FLOW_BASE_SCALE と会場倍率を掛けて使う。
-HOME_FLOW_BASE_SCALE = 0.04
-HOME_FLOW_COEF = {
-    "top_line": {
-        "head":      -0.70,
-        "second":    -0.20,
-        "third":     -0.10,
-        "single":    -0.50,
-    },
-    "second_line": {
-        "head":      +0.50,
-        "second":    +0.70,
-        "third":     +0.25,
-        "single":    +0.20,
-    },
-    "other_line": {
-        "head":       0.00,
-        "second":     0.00,
-        "third":      0.00,
-        "single":     0.00,
-    },
-}
-
-
-def calc_venue_shape_index(track_name: str):
-    """
-    バンク形状から、長いみなし直線リスクを軽く算出する。
-    会場成績の補助係数として使い、実績入力を主にする。
-    """
-    d = KEIRIN_DATA.get(track_name)
-    if not d:
-        return {"minashi_ratio": 0.0, "bank_support": 0.0, "stretch_risk": 0.0}
-
-    angle = float(d.get("bank_angle", 30.0) or 30.0)
-    straight = float(d.get("straight_length", 52.0) or 52.0)
-    bank = float(d.get("bank_length", 400.0) or 400.0)
-
-    minashi = 1.75 * straight + 0.25 * bank
-    minashi_ratio = minashi / max(bank, 1e-9)
-    bank_support = angle / max(minashi_ratio, 1e-9)
-
-    stretch_risk = 0.0
-    if minashi_ratio >= 0.520:
-        stretch_risk += 1.00
-    elif minashi_ratio >= 0.510:
-        stretch_risk += 0.60
-    elif minashi_ratio >= 0.500:
-        stretch_risk += 0.30
-
-    if bank_support < 62.5:
-        stretch_risk += 0.60
-    elif bank_support < 65.0:
-        stretch_risk += 0.30
-
-    if bank <= 340:
-        stretch_risk *= 0.75
-
-    return {
-        "minashi_ratio": round(float(minashi_ratio), 6),
-        "bank_support": round(float(bank_support), 3),
-        "stretch_risk": round(float(clamp(stretch_risk, 0.0, 1.50)), 3),
-    }
-
-
-def venue_home_flow_multiplier(track_name: str, venue_profile: str) -> float:
-    """
-    会場成績による倍率を主、バンク形状リスクを従として合成する。
-    strong_good は元評価を壊さないため弱く、very_bad は強くする。
-    """
-    profile_mult = float(VENUE_HOME_FLOW_MULT.get(str(venue_profile), 1.00))
-
-    try:
-        shape = calc_venue_shape_index(track_name)
-        shape_risk = float(shape.get("stretch_risk", 0.0) or 0.0)
-    except Exception:
-        shape_risk = 0.0
-
-    shape_mult = 1.00 + 0.10 * shape_risk
-    return round(clamp(profile_mult * shape_mult, 0.40, 1.80), 3)
-
-
-def home_flow_adjust_by_venue(
-    no: int,
-    role: str,
-    gid,
-    home_top_gid,
-    home_second_gid,
-    track_name: str,
-    venue_profile: str,
-):
-    """
-    最終ホーム想定ライン補正。
-    - 1番手ライン：イン減速リスクとして減点。特に先頭。
-    - 2番手ライン：外スピードラインとして加点。特に番手。
-    - その他：据え置き。
-    """
-    if gid is None:
-        return 0.0, "ライン不明"
-
-    if gid == home_top_gid:
-        line_pos = "top_line"
-        line_label = "H1番手"
-    elif home_second_gid is not None and gid == home_second_gid:
-        line_pos = "second_line"
-        line_label = "H2番手"
-    else:
-        line_pos = "other_line"
-        line_label = "その他"
-
-    r = str(role or "single")
-    if r == "thirdplus":
-        r = "third"
-
-    mult = venue_home_flow_multiplier(track_name, venue_profile)
-    scale = float(HOME_FLOW_BASE_SCALE) * float(mult)
-    coef = float(HOME_FLOW_COEF.get(line_pos, {}).get(r, 0.0))
-    adj = round(coef * scale, 3)
-
-    reason = f"{line_label}/{r} 係数{coef:+.2f}×倍率{mult:.2f}"
-    return adj, reason
-
-
 
 def wind_adjust(wind_dir, wind_speed, role, prof_escape):
     s = max(0.0, float(wind_speed))
@@ -1740,53 +1473,9 @@ track = st.sidebar.selectbox(
 info = KEIRIN_DATA[track]
 st.session_state["track"] = track
 
-with st.sidebar.expander("📊 会場別 成績補正", expanded=True):
-    venue_hit_input = st.text_input(
-        "的中率（的中R/投票R）",
-        value="",
-        placeholder="例：12/40",
-        key="venue_hit_input",
-    )
-    venue_return_input = st.text_input(
-        "回収率（払戻/投資）",
-        value="",
-        placeholder="例：12000/8000",
-        key="venue_return_input",
-    )
-
-    venue_hit_rate = parse_fraction_rate(venue_hit_input, percent=True)
-    venue_return_rate = parse_fraction_rate(venue_return_input, percent=True)
-    venue_profile = judge_venue_profile(venue_hit_rate, venue_return_rate)
-
-    venue_home_flow_mult = venue_home_flow_multiplier(track, venue_profile)
-    venue_min_odds_mult = float(VENUE_MIN_ODDS_MULT.get(venue_profile, 1.00))
-    venue_hit_expect_coef = _venue_fit_hit_coef(venue_hit_rate)
-    venue_myoumi_expect_coef = _venue_fit_myoumi_coef(venue_return_rate)
-
-    venue_shape = calc_venue_shape_index(track)
-
-    hit_txt = "—" if venue_hit_rate is None else f"{venue_hit_rate:.1f}%"
-    ret_txt = "—" if venue_return_rate is None else f"{venue_return_rate:.1f}%"
-
-    st.write(f"的中率：**{hit_txt}**")
-    st.write(f"回収率：**{ret_txt}**")
-    st.write(f"会場判定：**{venue_profile}**")
-    st.write(f"開催適合補正：的中期待×**{venue_hit_expect_coef:.2f}** ／ 妙味期待×**{venue_myoumi_expect_coef:.2f}**")
-    st.write(f"最終H補正倍率：**{venue_home_flow_mult:.2f}**")
-    st.write(f"必要オッズ倍率：**{venue_min_odds_mult:.2f}**")
-    st.caption(
-        f"みなし直線率 {venue_shape.get('minashi_ratio', 0.0):.3f} / "
-        f"カント支え {venue_shape.get('bank_support', 0.0):.1f} / "
-        f"形状リスク {venue_shape.get('stretch_risk', 0.0):.2f}"
-    )
-
-st.session_state["venue_hit_rate"] = venue_hit_rate
-st.session_state["venue_return_rate"] = venue_return_rate
-st.session_state["venue_profile"] = venue_profile
-st.session_state["venue_home_flow_mult"] = venue_home_flow_mult
-st.session_state["venue_min_odds_mult"] = venue_min_odds_mult
-st.session_state["venue_hit_expect_coef"] = venue_hit_expect_coef
-st.session_state["venue_myoumi_expect_coef"] = venue_myoumi_expect_coef
+st.sidebar.caption(
+    "※過去の会場別的中率・回収率補正は廃止。会場傾向は開催場決まり手成績を使用します。"
+)
 
 st.sidebar.markdown("### 🏟️ 開催場決まり手成績")
 with st.sidebar.expander("数値入力（オッズパーク等の表をそのまま％入力）", expanded=True):
@@ -1990,22 +1679,51 @@ bank_length     = st.sidebar.number_input("周長(m)", 300.0, 500.0, float(info[
 st.session_state["bank_length"] = float(bank_length)
 
 base_laps = st.sidebar.number_input("周回（通常4）", 1, 10, 4, 1)
-day_label = st.sidebar.selectbox(
-    "開催日",
-    ["初日", "2日目", "3日目", "4日目", "5日目", "最終日"],
-    0
-)
 
-DAY_LAP_ADD = {
-    "初日": 1,
-    "2日目": 2,
-    "3日目": 3,
-    "4日目": 4,
-    "5日目": 5,
-    "最終日": 6,
-}
+# v291：出走数に応じて通常開催の日程を自動切替する。
+# 7車以下は通常3日制、8～9車は長期開催用の5日制として扱う。
+if int(n_cars) <= 7:
+    schedule_total_days = 3
+    day_options = ["初日", "2日目", "3日目（最終日）"]
+    day_index_map = {
+        "初日": 1,
+        "2日目": 2,
+        "3日目（最終日）": 3,
+    }
+    day_stage_map = {
+        "初日": "初日",
+        "2日目": "2日目",
+        "3日目（最終日）": "最終日",
+    }
+else:
+    schedule_total_days = 5
+    day_options = ["初日", "2日目", "3日目", "4日目", "5日目（最終日）"]
+    day_index_map = {
+        "初日": 1,
+        "2日目": 2,
+        "3日目": 3,
+        "4日目": 4,
+        "5日目（最終日）": 5,
+    }
+    day_stage_map = {
+        "初日": "初日",
+        "2日目": "2日目",
+        "3日目": "3日目",
+        "4日目": "4日目",
+        "5日目（最終日）": "最終日",
+    }
 
-eff_laps = int(base_laps) + DAY_LAP_ADD[day_label]
+day_label = st.sidebar.selectbox("開催日", day_options, 0)
+day_index = int(day_index_map[day_label])
+day_stage = str(day_stage_map[day_label])
+
+if int(n_cars) <= 7:
+    st.sidebar.caption("7車以下：3日目を最終日補正として処理")
+else:
+    st.sidebar.caption("8～9車：5日目を最終日補正として処理")
+
+# 経過日数は実際の日数、係数はday_stage（初日／中日／最終日）で評価する。
+eff_laps = int(base_laps) + int(day_index)
 
 race_class = st.sidebar.selectbox(
     "級別",
@@ -2060,10 +1778,10 @@ DAY_FACTOR = {
     "2日目": 1.00,
     "3日目": 0.99,
     "4日目": 0.98,
-    "5日目": 0.97,
     "最終日": 0.96,
 }
-day_factor = DAY_FACTOR[day_label]
+# 7車以下の3日目、8～9車の5日目はday_stage="最終日"となり最大補正を使う。
+day_factor = DAY_FACTOR[day_stage]
 
 cap_base = clamp(0.06 + 0.02*style, 0.04, 0.08)
 line_factor_eff = cf["line"] * day_factor
@@ -2078,7 +1796,6 @@ DAY_SHIFT = {
     "2日目": 0.0,
     "3日目": +0.2,
     "4日目": +0.4,
-    "5日目": +0.6,
     "最終日": +0.8,
 }
 CLASS_SHIFT = {
@@ -2090,17 +1807,43 @@ CLASS_SHIFT = {
 }
 HEADCOUNT_SHIFT = {5: -0.20, 6: -0.10, 7: -0.05, 8: 0.0, 9: +0.10}
 
-def fatigue_extra(eff_laps: int, day_label: str, n_cars: int, race_class: str) -> float:
-    d = float(DAY_SHIFT.get(day_label, 0.0))
+def fatigue_extra(
+    eff_laps: int,
+    day_stage: str,
+    n_cars: int,
+    race_class: str,
+    day_index: int | None = None,
+    schedule_total_days: int | None = None,
+) -> float:
+    """
+    v291：実経過日数で疲労を作りつつ、開催途中で3.0へ早期到達しないよう
+    開催進行に応じた上限を掛ける。最終日は必ず上限3.0。
+    """
+    d = float(DAY_SHIFT.get(day_stage, 0.0))
     c = float(CLASS_SHIFT.get(race_class, 0.0))
     h = float(HEADCOUNT_SHIFT.get(int(n_cars), 0.0))
-    x = (float(eff_laps) - 2.0) + d + c + h
-    return max(0.0, x)
+    raw = max(0.0, (float(eff_laps) - 2.0) + d + c + h)
+
+    try:
+        idx = max(1, int(day_index if day_index is not None else 1))
+        total = max(2, int(schedule_total_days if schedule_total_days is not None else 3))
+        progress = clamp((idx - 1) / (total - 1), 0.0, 1.0)
+    except Exception:
+        progress = 1.0 if str(day_stage) == "最終日" else 0.0
+
+    # 初日上限2.60から最終日3.00へ緩やかに上げる。
+    stage_cap = 2.60 + 0.40 * float(progress)
+    if str(day_stage) == "最終日":
+        stage_cap = 3.00
+
+    return float(clamp(raw, 0.0, stage_cap))
 
 # === PATCH-L200:（以下そのまま） ==========================================
 # ...（あなたの last200_bonus 以降は変更なし）
 
-fatigue_value = fatigue_extra(eff_laps, day_label, n_cars, race_class)
+fatigue_value = fatigue_extra(
+    eff_laps, day_stage, n_cars, race_class, day_index, schedule_total_days
+)
 
 globals()["fatigue_value"] = float(fatigue_value)
 globals()["fatigue_extra_value"] = float(fatigue_value)
@@ -2115,13 +1858,11 @@ globals()["wind_dir"]        = str(wind_dir)
 globals()["eff_wind_speed"]  = float(wind_speed)
 globals()["eff_wind_dir"]    = str(wind_dir)
 globals()["race_class"]      = str(race_class)
-globals()["venue_profile"]   = str(st.session_state.get("venue_profile", "unknown"))
-globals()["venue_home_flow_mult"] = float(st.session_state.get("venue_home_flow_mult", 1.00))
-globals()["venue_min_odds_mult"]  = float(st.session_state.get("venue_min_odds_mult", 1.00))
-globals()["venue_hit_expect_coef"] = float(st.session_state.get("venue_hit_expect_coef", 1.00))
-globals()["venue_myoumi_expect_coef"] = float(st.session_state.get("venue_myoumi_expect_coef", 1.00))
 globals()["n_cars"]          = int(n_cars)
 globals()["day_label"] = str(day_label)
+globals()["day_stage"] = str(day_stage)
+globals()["day_index"] = int(day_index)
+globals()["schedule_total_days"] = int(schedule_total_days)
 globals()["eff_laps"]  = int(eff_laps)
     
 
@@ -2861,7 +2602,9 @@ for no in active_cars:
     # =====================================================
     # 周回疲労（DAY×頭数×級別を反映）
     # =====================================================
-    extra = fatigue_extra(eff_laps, day_label, n_cars, race_class)
+    extra = fatigue_extra(
+        eff_laps, day_stage, n_cars, race_class, day_index, schedule_total_days
+    )
     extra = min(extra, 3.0)   # 応急上限（暴走止め）
 
     fatigue_scale = (
@@ -4875,50 +4618,6 @@ try:
         note_sections.append(f"※ラスト半周補正エラー：{_e}")
 
     # =========================================================
-    # 会場成績 × 最終ホームライン補正（買い目用スコア）
-    # H1番手ラインはイン減速で減点、H2番手ラインは外スピードで加点
-    # =========================================================
-    try:
-        _line_def = globals().get("line_def", {})
-        _car_to_group = globals().get("car_to_group", {})
-        _track = globals().get("track", st.session_state.get("track", ""))
-        _venue_profile = globals().get("venue_profile", st.session_state.get("venue_profile", "unknown"))
-        _home_top_gid = globals().get("home_top_gid", None)
-        _home_second_gid = globals().get("home_second_gid", None)
-
-        _home_flow_bonus_map = {}
-        _home_flow_reason_map = {}
-        _before_home_flow_map = dict(score_map)
-
-        for _n in list(score_map.keys()):
-            _car = int(_n)
-            _role = role_in_line(_car, _line_def) if isinstance(_line_def, dict) else "single"
-            _gid = _car_to_group.get(_car, None) if isinstance(_car_to_group, dict) else None
-
-            _hf_bonus, _hf_reason = home_flow_adjust_by_venue(
-                no=_car,
-                role=_role,
-                gid=_gid,
-                home_top_gid=_home_top_gid,
-                home_second_gid=_home_second_gid,
-                track_name=_track,
-                venue_profile=_venue_profile,
-            )
-
-            _home_flow_bonus_map[_car] = float(_hf_bonus)
-            _home_flow_reason_map[_car] = str(_hf_reason)
-
-            score_map[_car] = float(score_map.get(_car, 0.0)) + float(_hf_bonus)
-
-        globals()["home_flow_bonus_map"] = dict(_home_flow_bonus_map)
-        globals()["home_flow_reason_map"] = dict(_home_flow_reason_map)
-        globals()["score_map_before_home_flow"] = dict(_before_home_flow_map)
-        globals()["score_map_home_flow_applied"] = dict(score_map)
-
-    except Exception as _e:
-        note_sections.append(f"※会場×最終H補正エラー：{_e}")
-
-    # =========================================================
     # v178：開催場決まり手補正（常時適用・雨天補正とは別枠）
     # 入力された1着/2着決まり手率を、役割別の小幅ptへ変換して加算。
     # =========================================================
@@ -5243,42 +4942,6 @@ try:
     except Exception as _e:
         note_sections.append(f"※ラスト半周補正表示エラー：{_e}")
         note_sections.append("")
-    # =========================================================
-    # 会場×最終Hライン補正 表示
-    # =========================================================
-    try:
-        _hf_bonus_map = globals().get("home_flow_bonus_map", {})
-        _hf_reason_map = globals().get("home_flow_reason_map", {})
-        _hf_before_map = globals().get("score_map_before_home_flow", {})
-        _hf_after_map = globals().get("score_map_home_flow_applied", {})
-
-        if isinstance(_hf_bonus_map, dict) and _hf_bonus_map:
-            note_sections.append("【会場×最終Hライン補正】")
-            note_sections.append(
-                f"会場判定={globals().get('venue_profile', 'unknown')} ／ "
-                f"補正倍率={float(globals().get('venue_home_flow_mult', 1.0)):.2f} ／ "
-                f"必要オッズ倍率={float(globals().get('venue_min_odds_mult', 1.0)):.2f}"
-            )
-
-            _hf_pairs = sorted(
-                [(int(k), float(v)) for k, v in _hf_bonus_map.items()],
-                key=lambda t: t[0]
-            )
-
-            for _car, _bonus in _hf_pairs:
-                _before = float(_hf_before_map.get(_car, 0.0) or 0.0)
-                _after = float(_hf_after_map.get(_car, _before + _bonus) or 0.0)
-                _reason_txt = str(_hf_reason_map.get(_car, ""))
-                note_sections.append(
-                    f"{_car}：補正前={_before:.6f} ／ H補正={_bonus:+.3f} ／ 補正後={_after:.6f}［{_reason_txt}］"
-                )
-
-            note_sections.append("")
-
-    except Exception as _e:
-        note_sections.append(f"※会場×最終H補正表示エラー：{_e}")
-        note_sections.append("")
-
     # =========================================================
     # KO使用スコア（降順）
     # =========================================================
@@ -9783,18 +9446,6 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                         _rank_order.get(str(_row.get("myoumi_rank")), 0),
                     )
 
-                # v203: 会場成績を2車複BOX評価の内部ptへ小幅反映する。
-                # 的中率 → 的中期待係数、回収率 → 妙味期待係数。
-                # 買目採用ルールは変えず、総合pt計算前の材料だけを補正する。
-                try:
-                    _venue_hit_coef = float(globals().get("venue_hit_expect_coef", st.session_state.get("venue_hit_expect_coef", 1.00)) or 1.00)
-                except Exception:
-                    _venue_hit_coef = 1.00
-                try:
-                    _venue_myoumi_coef = float(globals().get("venue_myoumi_expect_coef", st.session_state.get("venue_myoumi_expect_coef", 1.00)) or 1.00)
-                except Exception:
-                    _venue_myoumi_coef = 1.00
-
                 _long_span_pairs = []
                 _long_span_keys = set()
                 for _a, _b in combinations(_long_span_all_cars, 2):
@@ -9814,13 +9465,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                         except Exception:
                             _base_sc = 0.0
                         _sc = _scenario_myoumi_bonus_2kei(_key[0], _key[1], _base_sc)
-                        # v203: 回収率が低い開催では妙味期待を少し弱め、回収率が高い開催では少し強める。
-                        _sc = round(max(0.0, min(10.8, float(_sc) * float(_venue_myoumi_coef))), 2)
+                        _sc = round(max(0.0, min(10.8, float(_sc))), 2)
 
                         _disp = f"{_key[0]}-{_key[1]}"
                         _hit_score = _longspan_hit_score_pair(_key[0], _key[1])
-                        # v203: 的中率が低い開催では的中期待を少し弱め、的中率が高い開催では少し強める。
-                        _hit_score = round(max(0.0, min(12.0, float(_hit_score) * float(_venue_hit_coef))), 2)
+                        _hit_score = round(max(0.0, min(12.0, float(_hit_score))), 2)
                         if _hit_score >= 10.0:
                             _hit_rank = "A"
                         elif _hit_score >= 8.0:
@@ -11792,7 +11441,6 @@ except Exception as _e:
 # noteコピー表示整理（表示だけ。計算・順位・買い目生成には触らない）
 # 削除対象：
 # ・ラスト半周補正ブロック
-# ・会場×最終Hライン補正ブロック
 # 残す対象：
 # ・上部サマリー
 # ・ライン評価グループ
@@ -11813,17 +11461,6 @@ def _clean_note_copy_display_only(text: str) -> str:
 
             # 1) ラスト半周補正ブロックを削除
             if s == "【ラスト半周補正】":
-                i += 1
-                # 次の空行まで飛ばす
-                while i < n and lines[i].strip() != "":
-                    i += 1
-                # 空行も1つ飛ばす
-                while i < n and lines[i].strip() == "":
-                    i += 1
-                continue
-
-            # 1-b) 会場×最終Hライン補正ブロックを削除
-            if s == "【会場×最終Hライン補正】":
                 i += 1
                 # 次の空行まで飛ばす
                 while i < n and lines[i].strip() != "":
