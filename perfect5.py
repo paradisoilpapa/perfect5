@@ -11256,12 +11256,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 _final_seq = _v281_unique_sequence(
                     (_v281_fixed_plan or {}).get("adopted_sequence", tuple()) or []
                 )
-                _pressure_lines.append("【最終予想候補】")
-                _pressure_lines.append(f"採用流れ={_adopted}")
-                _pressure_lines.append(" → ".join(str(x) for x in _final_seq) if _final_seq else "該当なし")
                 globals()["AI_PRESSURE_DISPLAY_BLOCK"] = "\n".join(_pressure_lines).strip()
+                globals()["AI_PRESSURE_FINAL_CANDIDATE_BLOCK"] = "\n".join([
+                    "【最終予想候補】",
+                    f"採用流れ={_adopted}",
+                    " → ".join(str(x) for x in _final_seq) if _final_seq else "該当なし",
+                ]).strip()
             except Exception:
                 globals()["AI_PRESSURE_DISPLAY_BLOCK"] = ""
+                globals()["AI_PRESSURE_FINAL_CANDIDATE_BLOCK"] = ""
 
             def _fmt_trio_summary_rows(_rows, include_santan_ref=True):
                 _out = []
@@ -11636,14 +11639,27 @@ try:
         market_mark_map,
     )
 
-    # v288：勢力上位3流れ・AI印あり2車比較軸・採用流れ最上位C補強の三連複7点を展開評価の直後へ表示する。
-    _current_summary = f"{_summary_core}\n"
+    # v295：最終予想候補を流れ想定比率の直後へ置き、その後に買い目サマリーを続ける。
+    _final_candidate_block = str(
+        globals().get("AI_PRESSURE_FINAL_CANDIDATE_BLOCK", "") or ""
+    ).strip()
+    _current_summary_parts = [
+        _block for _block in (_final_candidate_block, _summary_core) if str(_block or "").strip()
+    ]
+    _current_summary = "\n\n".join(_current_summary_parts) + "\n"
 
+    _m_flow_ratio = re.search(r"^流れ想定比率】[^\n]*$", note_text, flags=re.MULTILINE)
     _m_tenkai = re.search(r"^展開評価：[^\n]*$", note_text, flags=re.MULTILINE)
-    if _m_tenkai:
+    if _m_flow_ratio:
+        note_text = note_text.replace(
+            _m_flow_ratio.group(0),
+            _m_flow_ratio.group(0) + "\n\n" + _current_summary,
+            1,
+        )
+    elif _m_tenkai:
         note_text = note_text.replace(
             _m_tenkai.group(0),
-            _m_tenkai.group(0) + "\n" + _current_summary,
+            _m_tenkai.group(0) + "\n\n" + _current_summary,
             1,
         )
     else:
@@ -11654,7 +11670,8 @@ except Exception as _e:
     st.caption(f"note上部サマリー生成不可：{_e}")
 
 
-# v294：元の三流れ着順予想の直後へ、AI重圧補正後順位・最終候補・加重評価表を表示する。
+# v295：元の三流れ着順予想の直後へ、AI重圧補正後順位と加重評価表を表示する。
+# 最終予想候補は流れ想定比率の直後へ移動済みのため、ここでは重複表示しない。
 try:
     _pressure_display_block = str(globals().get("AI_PRESSURE_DISPLAY_BLOCK", "") or "").strip()
     _weighted_eval_block = str(globals().get("V289_WEIGHTED_EVAL_BLOCK", "") or "").strip()
