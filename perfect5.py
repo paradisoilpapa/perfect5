@@ -8662,7 +8662,10 @@ def _v281_build_fixed_flow_plan(
     2) 各候補が属するライン／単騎を2車換算する。
        ・2車以上のライン＝ライン内KO使用スコア上位2車の合計
        ・単騎＝本人のKO使用スコア×2
-    3) 2車換算勢力が最上位の流れを採用する。
+    3) 2車換算勢力へライン長補正と流れ比率差ペナルティを加え、
+       主流決定スコアが最上位の流れを採用する。
+       ・単騎=-0.55／2車=0.00／3車=+0.55
+       ・流れ比率首位との差1ポイントにつき-0.02
     4) 採用流れの着順上位からAI印あり（◎／〇／△／×）の車を順に2車抽出する。
     5) 抽出した2車のうち、AI評価が低い方を最終軸A、もう一方をBにする。
        AI無印車は軸比較から除外する。
@@ -8708,6 +8711,13 @@ def _v281_build_fixed_flow_plan(
             default_score=0.0,
         )
 
+    # 主流決定用の初期係数。
+    # 2車ラインを基準に、3連複でライン3車を残せる構造価値を3車へ加点する。
+    # 4車以上の例外構成でも1車増えるごとに同じ幅を加える。
+    line_length_unit = 0.55
+    ratio_gap_unit = 2.00  # 比率は0～1なので、0.01（1ポイント）差で0.02減点。
+    max_ratio = max((float(ratios.get(style, 0.0) or 0.0) for style in _V281_STYLES), default=0.0)
+
     flow_candidates = []
     for style in _V281_STYLES:
         seq = list(seq_map.get(style, []) or [])
@@ -8720,14 +8730,26 @@ def _v281_build_fixed_flow_plan(
         )
         if not candidate_line:
             candidate_line = _candidate_line(car)
+        strength = float(_candidate_strength(candidate_line))
+        ratio = float(ratios.get(style, 0.0) or 0.0)
+        line_count = len(candidate_line)
+        line_length_adjustment = line_length_unit * float(line_count - 2)
+        ratio_gap = max(0.0, float(max_ratio) - ratio)
+        ratio_gap_penalty = ratio_gap_unit * ratio_gap
+        selection_score = strength + line_length_adjustment - ratio_gap_penalty
         rec = {
             "style": style,
             "car": car,
             "score": _v281_map_float(ko_map, car, 0.0),
-            "strength": float(_candidate_strength(candidate_line)),
+            "strength": strength,
             "line": tuple(candidate_line),
             "line_label": _line_label(candidate_line),
-            "ratio": float(ratios.get(style, 0.0) or 0.0),
+            "line_count": int(line_count),
+            "line_length_adjustment": float(line_length_adjustment),
+            "ratio": ratio,
+            "ratio_gap": float(ratio_gap),
+            "ratio_gap_penalty": float(ratio_gap_penalty),
+            "selection_score": float(selection_score),
             "mark": _v281_mark_for_car(mark_map, car),
             "sequence": tuple(seq),
         }
@@ -8736,11 +8758,12 @@ def _v281_build_fixed_flow_plan(
     if not flow_candidates:
         return None
 
-    # 採用流れは個人KOではなく、ライン／単騎の2車換算勢力で決める。
-    # 完全同値時だけ、流れ想定比率→順流・渦・逆流の固定順→車番で決める。
+    # 採用流れは、2車換算勢力＋ライン長補正－流れ比率差ペナルティで決める。
+    # 完全同値時だけ、2車換算勢力→流れ想定比率→固定順→車番で決める。
     candidate_rows = sorted(
         flow_candidates,
         key=lambda row: (
+            -float(row.get("selection_score", 0.0) or 0.0),
             -float(row.get("strength", 0.0) or 0.0),
             -float(row.get("ratio", 0.0) or 0.0),
             int(_V281_STYLE_ORDER.get(str(row.get("style", "")), 99)),
@@ -8751,6 +8774,9 @@ def _v281_build_fixed_flow_plan(
     flow_selector_car = int(flow_selector_row.get("car"))
     flow_selector_score = float(flow_selector_row.get("score", 0.0) or 0.0)
     flow_selector_strength = float(flow_selector_row.get("strength", 0.0) or 0.0)
+    flow_selector_selection_score = float(flow_selector_row.get("selection_score", 0.0) or 0.0)
+    flow_selector_line_length_adjustment = float(flow_selector_row.get("line_length_adjustment", 0.0) or 0.0)
+    flow_selector_ratio_gap_penalty = float(flow_selector_row.get("ratio_gap_penalty", 0.0) or 0.0)
     flow_selector_line = tuple(flow_selector_row.get("line", tuple()) or tuple())
     flow_selector_line_label = str(flow_selector_row.get("line_label", "—") or "—")
     adopted_style = str(flow_selector_row.get("style", ""))
@@ -8763,6 +8789,9 @@ def _v281_build_fixed_flow_plan(
         "flow_selector_car": flow_selector_car,
         "flow_selector_score": flow_selector_score,
         "flow_selector_strength": flow_selector_strength,
+        "flow_selector_selection_score": flow_selector_selection_score,
+        "flow_selector_line_length_adjustment": flow_selector_line_length_adjustment,
+        "flow_selector_ratio_gap_penalty": flow_selector_ratio_gap_penalty,
         "flow_selector_line": flow_selector_line,
         "flow_selector_line_label": flow_selector_line_label,
         "adopted_style": adopted_style,
@@ -9022,7 +9051,9 @@ def _v281_build_fixed_flow_plan(
     ]
 
     candidate_text = "・".join(
-        f"{rec['style']}={rec['line_label']}（2車換算={float(rec['strength']):.6f}・1着候補={int(rec['car'])}）"
+        f"{rec['style']}={rec['line_label']}（2車換算={float(rec['strength']):.6f}・"
+        f"長さ補正={float(rec['line_length_adjustment']):+.2f}・比率差減点={float(rec['ratio_gap_penalty']):.2f}・"
+        f"主流決定={float(rec['selection_score']):.6f}・1着候補={int(rec['car'])}）"
         for rec in flow_candidates
     )
     axis_pair_text = "・".join(
@@ -9038,7 +9069,7 @@ def _v281_build_fixed_flow_plan(
 
     added_text = "・".join(str(x) for x in flow_added_himo) if flow_added_himo else "なし"
     reason = (
-        f"各流れ勢力［{candidate_text}］から2車換算スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
+        f"各流れ勢力［{candidate_text}］から主流決定スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
         f"{adopted_style}着順上位からAI印あり2車［{axis_pair_text}］を抽出し、AI評価が低い{axis}を最終軸A、"
         f"もう一方の{secondary_axis}をBに選択。{line_reason}し、{adopted_style}着順予想上位から［{added_text}］を補充。"
         f"選出5車からA・Bを除いた3車のうち、{adopted_style}着順最上位の{c_car}（{c_flow_rank}位）をC、"
@@ -9084,10 +9115,14 @@ def _v281_format_fixed_flow_block(plan):
             car = int(rec.get("car"))
             score = float(rec.get("score", 0.0) or 0.0)
             strength = float(rec.get("strength", 0.0) or 0.0)
+            line_length_adjustment = float(rec.get("line_length_adjustment", 0.0) or 0.0)
+            ratio_gap_penalty = float(rec.get("ratio_gap_penalty", 0.0) or 0.0)
+            selection_score = float(rec.get("selection_score", strength) or strength)
             line_label = str(rec.get("line_label", "—") or "—")
             mark = str(rec.get("mark", "") or "無印")
             flow_candidate_parts.append(
-                f"{style}={car}（勢力={line_label}:{strength:.6f}・KO={score:.6f}・AI{mark}）"
+                f"{style}={car}（勢力={line_label}:{strength:.6f}・長さ={line_length_adjustment:+.2f}・"
+                f"比率差={-ratio_gap_penalty:+.2f}・主流={selection_score:.6f}・KO={score:.6f}・AI{mark}）"
             )
         except Exception:
             pass
@@ -9095,6 +9130,7 @@ def _v281_format_fixed_flow_block(plan):
     adopted_style = str(plan.get("adopted_style", "") or "未判定")
     flow_selector_car = int(plan.get("flow_selector_car", 0) or 0)
     flow_selector_strength = float(plan.get("flow_selector_strength", 0.0) or 0.0)
+    flow_selector_selection_score = float(plan.get("flow_selector_selection_score", flow_selector_strength) or flow_selector_strength)
     flow_selector_line_label = str(plan.get("flow_selector_line_label", "—") or "—")
 
     axis_pair_parts = []
@@ -9132,7 +9168,7 @@ def _v281_format_fixed_flow_block(plan):
         "【流れ選定候補】" + (" ／ ".join(flow_candidate_parts) if flow_candidate_parts else "生成不可"),
         (
             f"【採用流れ】{adopted_style}（勢力={flow_selector_line_label}:"
-            f"{flow_selector_strength:.6f}・1着候補={flow_selector_car}）"
+            f"{flow_selector_strength:.6f}・主流決定={flow_selector_selection_score:.6f}・1着候補={flow_selector_car}）"
         ),
         "【評価軸候補】" + (" ／ ".join(axis_pair_parts) if axis_pair_parts else "生成不可"),
         f"【最終軸】{axis}（{adopted_style}・{axis_flow_rank}位・AI{axis_mark}・KO使用スコア={axis_score:.6f}）",
