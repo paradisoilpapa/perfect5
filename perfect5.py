@@ -6581,7 +6581,6 @@ for _car, _mark in [
     except Exception:
         pass
 
-
 def _uniq_keep(seq):
     out = []
     seen = set()
@@ -8559,6 +8558,74 @@ def _v281_ai_rank(mark):
     return int(_V281_AI_MARK_RANK.get(_v281_normalize_mark(mark), 4))
 
 
+_AI_PRESSURE_COEFFICIENT = {"◎": 0.30, "〇": 0.18, "△": 0.10, "×": 0.04, "": 0.0}
+_AI_PRESSURE_CAP = {"◎": 0.080, "〇": 0.050, "△": 0.030, "×": 0.015, "": 0.0}
+
+
+def _build_ai_pressure_style_seq_map(style_seq_map, mark_map, ko_map):
+    """
+    元の三流れ着順予想を残したまま、AI印による重圧を順位構成へ反映する。
+
+    ・開催時間は使わない。
+    ・補正は全車、全順位に適用する（1着固定なし）。
+    ・各流れの主役ラインは変更しない。ここで動かすのは着順だけ。
+    ・元順位を主成分、KO差を補助成分にし、印の重圧で差が小さい車だけ入れ替える。
+    """
+    clean_map = {
+        style: _v281_unique_sequence((style_seq_map or {}).get(style, []) or [])
+        for style in _V281_STYLES
+    }
+    cars = _v281_unique_sequence(
+        [car for style in _V281_STYLES for car in clean_map.get(style, [])]
+    )
+    ko_values = [_v281_map_float(ko_map, car, 0.0) for car in cars]
+    if len(ko_values) >= 2:
+        ko_mean = sum(ko_values) / len(ko_values)
+        variance = sum((value - ko_mean) ** 2 for value in ko_values) / len(ko_values)
+        sigma = math.sqrt(max(variance, 0.0))
+    else:
+        ko_mean = ko_values[0] if ko_values else 0.0
+        sigma = 0.0
+
+    # 極端に横並びのレースでも補正が消えず、荒いレースでも過大化しない範囲。
+    sigma_used = min(max(float(sigma), 0.12), 0.30)
+    # ◎は基礎差が小さければ約2順位、〇は約1順位動き得る初期感度。
+    # KOが抜けた◎には下のko_supportが働くため、機械的な降格にはしない。
+    rank_step = max(0.015, sigma_used * 0.15)
+
+    penalty_map = {}
+    adjusted_map = {}
+    detail_map = {}
+    for car in cars:
+        mark = _v281_mark_for_car(mark_map, car)
+        coefficient = float(_AI_PRESSURE_COEFFICIENT.get(mark, 0.0))
+        cap = float(_AI_PRESSURE_CAP.get(mark, 0.0))
+        penalty_map[int(car)] = min(sigma_used * coefficient, cap)
+
+    for style in _V281_STYLES:
+        seq = list(clean_map.get(style, []) or [])
+        n = len(seq)
+        scored = []
+        for rank_index, car in enumerate(seq):
+            ko_value = _v281_map_float(ko_map, car, ko_mean)
+            ko_z = (ko_value - ko_mean) / sigma_used if sigma_used > 1e-12 else 0.0
+            # 元順位1つ分の差を rank_step とし、KOは最大でも約0.35順位分だけ補強する。
+            base_order_score = float(n - rank_index) * rank_step
+            ko_support = max(-0.35, min(0.35, ko_z * 0.18)) * rank_step
+            pressure = float(penalty_map.get(int(car), 0.0) or 0.0)
+            final_score = base_order_score + ko_support - pressure
+            scored.append((int(car), final_score, rank_index, ko_value, pressure))
+        scored.sort(key=lambda row: (-float(row[1]), int(row[2]), int(row[0])))
+        adjusted_map[style] = [int(row[0]) for row in scored]
+        detail_map[style] = tuple(scored)
+
+    globals()["AI_PRESSURE_SIGMA"] = float(sigma_used)
+    globals()["AI_PRESSURE_PENALTY_MAP"] = dict(penalty_map)
+    globals()["AI_PRESSURE_DETAIL_MAP"] = dict(detail_map)
+    globals()["AI_PRESSURE_STYLE_SEQ_MAP"] = dict(adjusted_map)
+    return adjusted_map
+
+
 def _v281_find_axis_line(line_def_obj, axis):
     """反映済みラインから最終軸を含むラインを入力順のまま返す。"""
     try:
@@ -8588,6 +8655,7 @@ def _v281_build_fixed_flow_plan(
     line_def_obj,
     line_strength_map=None,
     weighted_hit_map=None,
+    style_main_line_map=None,
 ):
     """
     1) 順流・渦・逆流の各着順予想1位を流れ選定候補にする。
@@ -8646,7 +8714,12 @@ def _v281_build_fixed_flow_plan(
         if not seq:
             continue
         car = int(seq[0])
-        candidate_line = _candidate_line(car)
+        # AI重圧で別ライン車が着順1位へ上がっても、流れの基準ラインは変更しない。
+        candidate_line = _v281_unique_sequence(
+            (style_main_line_map or {}).get(style, []) or []
+        )
+        if not candidate_line:
+            candidate_line = _candidate_line(car)
         rec = {
             "style": style,
             "car": car,
@@ -11124,14 +11197,35 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
             # v285：2車換算勢力上位3組だけで三流れを構成し、勢力最上位の流れを採用する。
             # 採用流れ上位からAI印あり2車を抽出して低評価側を軸にし、同ライン必須＋採用流れ着順上位をヒモにする。
             _v281_fixed_plan = _v281_build_fixed_flow_plan(
-                globals().get("STYLE_SEQ_MAP", {}) or {},
+                globals().get("AI_PRESSURE_STYLE_SEQ_MAP", {}) or globals().get("STYLE_SEQ_MAP", {}) or {},
                 _flow_ratio_map_for_trio(),
                 mark_map or {},
                 globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {},
                 globals().get("line_def", {}) or {},
                 globals().get("LINE_TWO_CAR_STRENGTH_MAP", {}) or {},
                 _weighted_car_hit_map or {},
+                globals().get("STYLE_SCENARIO_MAIN_LINE_MAP", {}) or {},
             )
+
+            # 元順位の直後に、三流れの重圧補正順位と採用流れの最終候補を表示する。
+            try:
+                _pressure_map = globals().get("AI_PRESSURE_STYLE_SEQ_MAP", {}) or {}
+                _pressure_lines = []
+                for _style in _V281_STYLES:
+                    _seq = _v281_unique_sequence(_pressure_map.get(_style, []) or [])
+                    _pressure_lines.append(f"【AI重圧補正後・{_style}メイン着順予想】")
+                    _pressure_lines.append(" → ".join(str(x) for x in _seq) if _seq else "該当なし")
+                    _pressure_lines.append("")
+                _adopted = str((_v281_fixed_plan or {}).get("adopted_style", "") or "未判定")
+                _final_seq = _v281_unique_sequence(
+                    (_v281_fixed_plan or {}).get("adopted_sequence", tuple()) or []
+                )
+                _pressure_lines.append("【最終予想候補】")
+                _pressure_lines.append(f"採用流れ={_adopted}")
+                _pressure_lines.append(" → ".join(str(x) for x in _final_seq) if _final_seq else "該当なし")
+                globals()["AI_PRESSURE_DISPLAY_BLOCK"] = "\n".join(_pressure_lines).strip()
+            except Exception:
+                globals()["AI_PRESSURE_DISPLAY_BLOCK"] = ""
 
             def _fmt_trio_summary_rows(_rows, include_santan_ref=True):
                 _out = []
@@ -11488,6 +11582,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
 
 
+# 元の三流れ予想は参考表示として保持し、買い目用には重圧補正後順位を別生成する。
+AI_PRESSURE_STYLE_SEQ_MAP = _build_ai_pressure_style_seq_map(
+    globals().get("STYLE_SEQ_MAP", {}) or {},
+    market_mark_map or {},
+    globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {},
+)
+
 try:
     _rec_style = globals().get("RECOMMENDED_STYLE", "")
     _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
@@ -11517,11 +11618,15 @@ except Exception as _e:
     st.caption(f"note上部サマリー生成不可：{_e}")
 
 
-# v289：総合加重単騎評価と加重評価表を、三流れ着順予想の直後へ移動する。
-# 表示順だけを変更し、計算・順位・買い目生成には触らない。
+# v294：元の三流れ着順予想の直後へ、AI重圧補正後順位・最終候補・加重評価表を表示する。
 try:
+    _pressure_display_block = str(globals().get("AI_PRESSURE_DISPLAY_BLOCK", "") or "").strip()
     _weighted_eval_block = str(globals().get("V289_WEIGHTED_EVAL_BLOCK", "") or "").strip()
-    if _weighted_eval_block:
+    _post_flow_blocks = [
+        _block for _block in (_pressure_display_block, _weighted_eval_block) if _block
+    ]
+    _post_flow_block = "\n\n".join(_post_flow_blocks)
+    if _post_flow_block:
         _m_reverse_flow = re.search(
             r"(^【逆流メイン着順予想】\n[^\n]*(?:\n|$))",
             note_text,
@@ -11531,15 +11636,15 @@ try:
             _insert_at = _m_reverse_flow.end()
             _before = note_text[:_insert_at].rstrip("\n")
             _after = note_text[_insert_at:].lstrip("\n")
-            note_text = _before + "\n\n" + _weighted_eval_block + "\n\n" + _after
+            note_text = _before + "\n\n" + _post_flow_block + "\n\n" + _after
         elif "＜短評＞" in note_text:
             note_text = note_text.replace(
                 "＜短評＞",
-                _weighted_eval_block + "\n\n＜短評＞",
+                _post_flow_block + "\n\n＜短評＞",
                 1,
             )
 except Exception as _e:
-    st.caption(f"note加重評価表示順整理不可：{_e}")
+    st.caption(f"note重圧補正・加重評価表示順整理不可：{_e}")
 
 
 # -----------------------------------------
