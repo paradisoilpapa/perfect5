@@ -8669,11 +8669,12 @@ def _v281_build_fixed_flow_plan(
     4) 採用流れの着順上位からAI印あり（◎／〇／△／×）の車を順に2車抽出する。
     5) 抽出した2車のうち、AI評価が低い方を最終軸A、もう一方をBにする。
        AI無印車は軸比較から除外する。
-    6) 最終軸Aの同ライン車を軸以外すべて先にヒモへ確保する。
-    7) 残枠を、採用流れの着順予想上位から順に補充し、Aを含む選出5車を作る。
+    6) もう一方の評価軸候補Bをヒモへ必須確保する。
+    7) 最終軸Aの同ライン車を軸以外すべてヒモへ確保する。
+    8) 残枠を、採用流れの着順予想上位から順に補充し、Aを含む選出5車を作る。
        買い目の基本順位は採用流れの着順予想とし、同ライン保護だけを例外とする。
-    8) 選出5車からA・Bを除き、採用流れ着順最上位をC、残る2車をD・Eにする。
-    9) 三連複AB－ABC－ABCDEの7点
+    9) 選出5車からA・Bを除き、採用流れ着順最上位をC、残る2車をD・Eにする。
+    10) 三連複AB－ABC－ABCDEの7点
        （ABC／ABD／ABE／ACD／ACE／BCD／BCE）を生成する。
     """
     ratios = _v281_normalize_ratio_map(flow_ratio_map)
@@ -8885,9 +8886,10 @@ def _v281_build_fixed_flow_plan(
 
     axis_line = _v281_find_axis_line(line_def_obj, axis)
     same_line_himo = [int(car) for car in axis_line if int(car) != axis]
+    mandatory_himo = _v281_unique_sequence([secondary_axis] + same_line_himo)
 
-    # 同ライン車は全車必須。ヒモ4枠を超える場合は黙って切らず生成停止する。
-    if len(same_line_himo) > 4:
+    # Bと同ライン車は全車必須。ヒモ4枠を超える場合は黙って切らず生成停止する。
+    if len(mandatory_himo) > 4:
         return {
             **base_result,
             "status": "too_many_same_line_himo",
@@ -8911,16 +8913,20 @@ def _v281_build_fixed_flow_plan(
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複AB－ABC－ABCDE",
-            "ticket_reason": f"軸{axis}の同ライン車が4車を超えるため、必須保護を維持したまま7点生成できない",
+            "ticket_reason": (
+                f"もう一方の評価軸候補{secondary_axis}と軸{axis}の同ライン必須車を合わせると"
+                "ヒモ4枠を超えるため、必須保護を維持したまま7点生成できない"
+            ),
         }
 
-    himo = []
+    # 7点フォメの第1列に必要なBを、選出5車から漏れないよう最初に予約する。
+    himo = [secondary_axis]
     for car in same_line_himo:
         if car != axis and car not in himo:
             himo.append(int(car))
 
     # 買い目の基本順位は採用流れの着順予想へ一本化する。
-    # 同ライン車だけを例外として先に必須保護し、残枠は採用流れの上位から順に補充する。
+    # Bと同ライン車を先に必須保護し、残枠は採用流れの上位から順に補充する。
     # 流れ加重的中単騎評価は参考表示に残すが、ヒモ順位を上書きしない。
     flow_added_himo = []
     for car in adopted_sequence:
@@ -9063,9 +9069,9 @@ def _v281_build_fixed_flow_plan(
     if same_line_himo:
         line_text = "".join(str(x) for x in axis_line)
         same_line_text = "・".join(str(x) for x in same_line_himo)
-        line_reason = f"自ライン{line_text}の軸以外［{same_line_text}］を先に必須確保"
+        line_reason = f"B={secondary_axis}を先に確保し、自ライン{line_text}の軸以外［{same_line_text}］を必須確保"
     else:
-        line_reason = "軸は単騎のため自ライン必須車なし"
+        line_reason = f"B={secondary_axis}を先に確保し、軸は単騎のため自ライン必須車なし"
 
     added_text = "・".join(str(x) for x in flow_added_himo) if flow_added_himo else "なし"
     reason = (
