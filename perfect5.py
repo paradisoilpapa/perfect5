@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+# v299（note短評非表示版）:
+# ・noteコピー表示から＜短評＞以下を外す。
+# ・計算、冒頭表示、後半の各評価表、別線C補強、三連複7点生成は変更しない。
 # v298（note表示整理版）:
 # ・冒頭を展開評価、ヴェロビ想定隊列、最終予想候補、流れ比率、採用流れ、評価軸候補、推奨7点へ整理する。
 # ・流れ選定候補、最終軸、自ライン優先、ヒモ4車、A～E内訳、個別フォーメーション行、選定理由はnote表示から外す。
@@ -1974,7 +1977,7 @@ globals()["eff_laps"]  = int(eff_laps)
 st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き：統合版）⭐")
 st.caption(f"風補正モード: {WIND_MODE}固定（屋外は風速＋ホーム基準風向を常時反映／前橋・小倉はドーム無風固定）")
 
-st.subheader("v298・2026/08/05更新")
+st.subheader("v299・2026/08/05更新")
 if "race_no_main" not in st.session_state:
     st.session_state["race_no_main"] = 1
 c1, c2, c3 = st.columns([6,2,2])
@@ -11788,7 +11791,11 @@ def _clean_note_copy_display_only(text: str) -> str:
             line = lines[i]
             s = line.strip()
 
-            # 1) ラスト半周補正ブロックを削除
+            # 1) 短評は冒頭情報と重複し、条件付き補正を固定説明できないため表示しない。
+            if s == "＜短評＞":
+                break
+
+            # 2) ラスト半周補正ブロックを削除
             if s == "【ラスト半周補正】":
                 i += 1
                 # 次の空行まで飛ばす
@@ -11868,7 +11875,6 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
 note_text = _clean_note_copy_display_only(note_text)
 note_text = re.sub(r"^全体妙味：[^\n]*\n?", "", note_text, flags=re.MULTILINE)
 note_text = re.sub(r"^【全体分類】[^\n]*\n?", "", note_text, flags=re.MULTILINE)
-note_text = _replace_tanpyou_with_simple_comment(note_text)
 
 st.text_area("ここを選択してコピー", note_text, height=620)
 # =========================
