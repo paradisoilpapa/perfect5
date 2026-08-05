@@ -1,10 +1,81 @@
 # -*- coding: utf-8 -*-
-# v286（別線C補強・ヴェロビ独自想定隊列修正版）:
-# ・A・B・従来Cが同一の3車以上ラインになる場合、選出5車内の他ライン最上位をCへ上げる。
-# ・元のCは選出5車から削除せず、三連複AB－ABC－ABCDEの7点を維持する。
-# ・想定隊列はライン先頭車ではなく、各ライン全車のS回数＋内枠補正の最高値で並べる。
-# ・単騎は想定隊列の先頭に置かず、2番手以降では評価順を維持する。
-# ・ヴェロビ独自想定隊列とH主導ラインを分離し、隊列先頭ラインを最も有利として補正する。
+# v297（別線C補強・ヴェロビ独自想定隊列版）:
+# ・A・B・従来Cが同じ3車以上ラインの場合、選出5車内の別線最上位車をCへ繰り上げ、2列目の同ライン偏重を避ける。
+# ・従来Cは選出5車から除外せずD・Eへ移し、三連複AB－ABC－ABCDEの7点を維持する。
+# ・ライン構成は入力どおり維持し、各ライン全車のSと車番からヴェロビ独自の想定隊列を生成する。
+# ・ライン代表は各車の「S＋内枠補正」の最大値とし、単騎は想定隊列の先頭から除外する。
+# ・想定隊列先頭ラインを位置取り上もっとも有利なラインとして既存の位置補正へ接続し、H主導ラインとは分離する。
+# ・v296までの現行修正と詳細表示を維持する。
+# v296（全競輪場座標・ホーム正面方位再監査版）:
+# ・ヴェロビ収録42競輪場の天候取得座標とホーム正面方位を全場再照合する。
+# ・天候取得座標は競輪場所在地へ統一し、会場外へずれていた座標を含めて42場すべてを再登録する。
+# ・ホーム正面方位は屋外40場を再照合し、既存値が全場整合していたため方位値自体は維持する。
+# ・防府は0.0°（北向き）、佐世保は135.0°（南東向き）であり、同じ方位ではないことを明確化する。
+# ・前橋・小倉はドーム場のためhome_azimuth=None・無風固定を維持する。
+# ・画面に会場マスタ監査日と天候取得座標を表示し、旧版・キャッシュとの取り違えを確認できるようにする。
+# ・風向変換、開催区分、級別補正、FR分離、日程補正、軸・ヒモ、7点フォメ、各評価表は変更しない。
+# v295（展開評価・短評表示一致修正版）:
+# ・短評3行目の展開表示を、旧「順当度」ではなく上部の「展開評価」と同じ判定結果から生成する。
+# ・上部が「展開評価：優位／互角／混戦」の場合、短評も必ず「展開は優位／互角／混戦」と一致させる。
+# ・展開評価の計算、流れ選定、軸・ヒモ、7点フォメ、各評価表などの予想ロジックは変更しない。
+# v294（レースFR分離・ライン勢力比正規化版）:
+# ・レース全体FRとラインごとの2車換算勢力比を分離する。
+# ・ライン勢力比は開催日補正に左右されるレースFRを掛けず、全ライン合計が常に1.000になるよう正規化する。
+# ・ライン評価グループ、流れ比率、流れ別着順予想のライン補正は、この正規化したライン勢力比を使用する。
+# ・レース全体FRは展開評価用の独立値として維持し、ライン勢力比へ重ね掛けしない。
+# ・表示上の「FR」を「勢力比」へ変更し、レースFRとの意味の混同を防ぐ。
+# ・v293の7点フォメ、日程補正、天候取得、級別補正、補充出走、前へ等は変更しない。
+# v293（開催区分は天候取得時刻のみ・級別補正維持版）:
+# ・モーニング／デイ／ナイター／ミッドナイトの開催区分は、Open-Meteoの風速・風向・降水量を取得する基準時刻の指定だけに使用する。
+# ・ミッドナイトだけに適用していたライン係数およびSB補正上限の0.95倍を廃止し、全開催区分で同じ評価計算を使用する。
+# ・天候取得基準時刻は、モーニング8時／デイ11時／ナイター18時／ミッドナイト22時を維持する。
+# ・既存のＳ級／Ａ級／Ａ級チャレンジ／ガールズ／アドバンスの級別補正は今回は変更しない。
+# ・F1／F2の入力欄、表示、予想スコア補正は追加しない。
+# ・v292の手動会場バイアス廃止、補充出走、前へ、v291の日程補正、v289の7点フォメとnote表示順は変更しない。
+# v292（手動会場バイアス廃止・補充出走・前へ追加版）:
+# ・手動の会場バイアス補正バーを廃止し、会場styleへの当日補正は降水量による自動補正だけを使用する。
+# ・コメントチェックに「補充出走」を追加し、該当車を含むライン／単騎の2車換算勢力を1ラインにつき1回だけ0.98倍する。
+# ・「補充出走」は個人KO使用スコア、加重単騎評価、個人着順評価へ直接減点しない。
+# ・コメントチェックに「前へ」を追加し、該当車を含むラインの最終ホーム想定スコアへ1ラインにつき1回だけ+0.75する。
+# ・「前へ」は個人KO使用スコアやライン2車換算勢力へ直接加点せず、最終ホーム位置決めだけに使用する。
+# ・v291の日程補正、v289の7点フォメとnote表示順は変更しない。
+# v291（7車以下3日目最終日・日程補正正規化版）:
+# ・出走数7車以下は通常3日制として、3日目を「最終日」の最大日程補正で扱う。
+# ・出走数8～9車は長期開催用として、5日目を「最終日」の最大日程補正で扱う。
+# ・開催日選択肢を出走数に応じて自動切替し、存在しない4日目以降を7車以下では表示しない。
+# ・実際の経過日数と補正段階を分離し、3日目（最終日）は実日数3日のまま最終日係数を適用する。
+# ・周回疲労の上限を開催進行に合わせて段階化し、中日で早期上限到達せず最終日に最大3.0となるよう修正する。
+# ・客観会場データ、流れ選定、軸・ヒモ、7点フォメ、note表示順は変更しない。
+# v289（note表示順整理・三連複7点フォメ版）:
+# ・v288の流れ選定、評価軸候補、最終軸、同ライン保護、5車抽出、C選別、7点生成ロジックは変更しない。
+# ・上部は流れ選定からフォーメーションまでを表示し、推奨車券の直下に実際の3連複7点を表示する。
+# ・選定理由は実際の買い目の直後に表示する。
+# ・開催区分、ライン、最終ホーム、ライン評価、KO、三流れ着順予想を続けて表示する。
+# ・総合加重単騎評価、加重2車複評価表、加重3連複評価表は三流れ着順予想の後へ移動する。
+# ・短評は従来どおり末尾に残し、既存の詳細表示は削除・折り畳み・置換しない。
+# v288（採用流れ3番手補強・三連複7点フォメ修正版）:
+# ・採用流れ、AI印あり2車の評価軸候補、AI評価が低い方を最終軸にする処理はv287のまま維持する。
+# ・Aを最終軸、Bをもう一方の評価軸候補とする。
+# ・現行の同ライン保護＋採用流れ着順補充で選出した5車からA・Bを除き、採用流れ着順最上位をCとする。
+# ・残る2車をD・Eとし、三連複AB－ABC－ABCDEの7点へ展開する。
+# ・7点はABC／ABD／ABE／ACD／ACE／BCD／BCEとし、Aが外れた場合はB・Cを核とする2点で補完する。
+# ・総合加重単騎評価、加重2車複・3連複評価表、ライン評価、KO、三流れ着順予想、短評は削除・折り畳み・置換しない。
+# v287（全場固定方位・ドーム無風・風速風向API完全自動版）:
+# ・現在の競輪場プリセット42場を維持し、千葉は追加しない。
+# ・屋外40場は、ホーム側からバンク正面を見る8方位基準をコード内マスタへ固定し、端末・利用者に依存しない再現性を確保する。
+# ・前橋と小倉はドーム場として indoor=True とし、風向「無風」・風速0.0m/sへ固定して外気APIの風を評価へ入れない。
+# ・手動方位登録、JSON保存、保存済み上書き設定を廃止する。
+# ・屋外場はOpen-Meteoから風速＋絶対風向を同時取得し、固定方位マスタからホーム基準8方向へ自動変換する。
+# ・APIの絶対風向、固定ホーム正面方位、変換後の相対風向を画面へ表示して検証可能にする。
+# ・買い目、流れ選定、軸・ヒモ、各評価表など風以外のロジックは変更しない。
+# v286（風速＋風向API自動反映・ホーム基準変換修正版）:
+# ・風補正をdirectional固定とし、風速と風向を常時セットで評価へ反映する。
+# ・Open-Meteoからwind_speed_10mとwind_direction_10mを同時取得し、どちらか欠けた場合は反映しない。
+# ・APIの絶対風向（風が吹いてくる方位）を、ホーム側からバンク正面を見る向きを「上」とする8方向へ変換する。
+# ・ホーム正面方位は北=0度／東=90度で扱い、競輪場マスタまたは競輪場別の保存設定を使用する。
+# ・競輪場マスタの方位が未登録の場合は、サイドバーで一度登録し、以後のAPI取得で風速＋相対風向を同時反映する。
+# ・Open-Meteoの風速単位指定をwind_speed_unit=msへ修正し、返却単位も検査する。
+# ・買い目、流れ選定、軸・ヒモ、各評価表など風以外のロジックは変更しない。
 # v285（採用流れ着順ヒモ・買い目基準一本化修正版）:
 # ・買い目の親順位を、採用流れの着順予想へ一本化する。
 # ・軸選定はv284どおり、採用流れ上位からAI印あり2車を抽出し、AI評価が低い方を最終軸にする。
@@ -109,12 +180,14 @@
 # v252: 3単参考の1・2着が割れる場合は三連複を維持。
 # v259: ライン強度を位置係数の正規化加重平均へ統一。
 
+import json
 import math
 import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from itertools import combinations, permutations
+from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
@@ -353,12 +426,12 @@ WIND_COEFF = {
     "左下": +0.035, "下": +0.05, "右下": +0.035,
     "無風": 0.0
 }
-WIND_MODE = "speed_only"
+WIND_MODE = "directional"
 WIND_SIGN = -1
 WIND_GAIN = 3.0
 WIND_CAP  = 0.10
 WIND_ZERO = 1.5
-SPECIAL_DIRECTIONAL_VELODROMES = {"弥彦", "前橋"}
+SPECIAL_DIRECTIONAL_VELODROMES = {"弥彦"}
 
 SESSION_HOUR = {"モーニング": 8, "デイ": 11, "ナイター": 18, "ミッドナイト": 22}
 JST = timezone(timedelta(hours=9))
@@ -410,50 +483,56 @@ KEIRIN_DATA = {
     "熊本":{"bank_angle":34.3,"straight_length":60.3,"bank_length":400},
     "手入力":{"bank_angle":30.0,"straight_length":52.0,"bank_length":400},
 }
+# home_azimuth: ホーム側からバンク正面を見る絶対方位（北=0°／東=90°）。
+# 屋外40場はコード内固定、前橋・小倉はドーム場のため無風固定。
+# 方位は8方向単位で固定し、API絶対風向をホーム基準の上下左右へ変換する。
+# 固定値は、各場の「B→H横風」に対応する絶対風向を、ホーム側→バンク正面の方位として採用する。
+# v296再監査結果：防府=0°（北）、佐世保=135°（南東）。両場は同じ方位ではない。
+VELODROME_MASTER_REVISION = "2026-08-02"
 VELODROME_MASTER = {
-    "函館":{"lat":41.77694,"lon":140.76283,"home_azimuth":None},
-    "青森":{"lat":40.79717,"lon":140.66469,"home_azimuth":None},
-    "いわき平":{"lat":37.04533,"lon":140.89150,"home_azimuth":None},
-    "弥彦":{"lat":37.70778,"lon":138.82886,"home_azimuth":None},
-    "前橋":{"lat":36.39728,"lon":139.05778,"home_azimuth":None},
-    "取手":{"lat":35.90175,"lon":140.05631,"home_azimuth":None},
-    "宇都宮":{"lat":36.57197,"lon":139.88281,"home_azimuth":None},
-    "大宮":{"lat":35.91962,"lon":139.63417,"home_azimuth":None},
-    "西武園":{"lat":35.76983,"lon":139.44686,"home_azimuth":None},
-    "京王閣":{"lat":35.64294,"lon":139.53372,"home_azimuth":None},
-    "立川":{"lat":35.70214,"lon":139.42300,"home_azimuth":None},
-    "松戸":{"lat":35.80417,"lon":139.91119,"home_azimuth":None},
-    "川崎":{"lat":35.52844,"lon":139.70944,"home_azimuth":None},
-    "平塚":{"lat":35.32547,"lon":139.36342,"home_azimuth":None},
-    "小田原":{"lat":35.25089,"lon":139.14947,"home_azimuth":None},
-    "伊東":{"lat":34.954667,"lon":139.092639,"home_azimuth":None},
-    "静岡":{"lat":34.973722,"lon":138.419417,"home_azimuth":None},
-    "名古屋":{"lat":35.175560,"lon":136.854028,"home_azimuth":None},
-    "岐阜":{"lat":35.414194,"lon":136.783917,"home_azimuth":None},
-    "大垣":{"lat":35.361389,"lon":136.628444,"home_azimuth":None},
-    "豊橋":{"lat":34.770167,"lon":137.417250,"home_azimuth":None},
-    "富山":{"lat":36.757250,"lon":137.234833,"home_azimuth":None},
-    "松坂":{"lat":34.564611,"lon":136.533833,"home_azimuth":None},
-    "四日市":{"lat":34.965389,"lon":136.634500,"home_azimuth":None},
-    "福井":{"lat":36.066889,"lon":136.253722,"home_azimuth":None},
-    "奈良":{"lat":34.681111,"lon":135.823083,"home_azimuth":None},
-    "向日町":{"lat":34.949222,"lon":135.708389,"home_azimuth":None},
-    "和歌山":{"lat":34.228694,"lon":135.171833,"home_azimuth":None},
-    "岸和田":{"lat":34.477500,"lon":135.369389,"home_azimuth":None},
-    "玉野":{"lat":34.497333,"lon":133.961389,"home_azimuth":None},
-    "広島":{"lat":34.359778,"lon":132.502889,"home_azimuth":None},
-    "防府":{"lat":34.048778,"lon":131.568611,"home_azimuth":None},
-    "高松":{"lat":34.345936,"lon":134.061994,"home_azimuth":None},
-    "小松島":{"lat":34.005667,"lon":134.594556,"home_azimuth":None},
-    "高知":{"lat":33.566694,"lon":133.526083,"home_azimuth":None},
-    "松山":{"lat":33.808889,"lon":132.742333,"home_azimuth":None},
-    "小倉":{"lat":33.885722,"lon":130.883167,"home_azimuth":None},
-    "久留米":{"lat":33.316667,"lon":130.547778,"home_azimuth":None},
-    "武雄":{"lat":33.194083,"lon":130.023083,"home_azimuth":None},
-    "佐世保":{"lat":33.161667,"lon":129.712833,"home_azimuth":None},
-    "別府":{"lat":33.282806,"lon":131.460472,"home_azimuth":None},
-    "熊本":{"lat":32.789167,"lon":130.754722,"home_azimuth":None},
-    "手入力":{"lat":None,"lon":None,"home_azimuth":None},
+    "函館":{"lat":41.777001,"lon":140.762957,"home_azimuth":90.0,"indoor":False},
+    "青森":{"lat":40.797113,"lon":140.664490,"home_azimuth":45.0,"indoor":False},
+    "いわき平":{"lat":37.045309,"lon":140.891459,"home_azimuth":315.0,"indoor":False},
+    "弥彦":{"lat":37.707481,"lon":138.827637,"home_azimuth":90.0,"indoor":False},
+    "前橋":{"lat":36.397276,"lon":139.057756,"home_azimuth":None,"indoor":True},
+    "取手":{"lat":35.901804,"lon":140.056357,"home_azimuth":135.0,"indoor":False},
+    "宇都宮":{"lat":36.573001,"lon":139.884288,"home_azimuth":225.0,"indoor":False},
+    "大宮":{"lat":35.919624,"lon":139.634170,"home_azimuth":0.0,"indoor":False},
+    "西武園":{"lat":35.769053,"lon":139.447220,"home_azimuth":0.0,"indoor":False},
+    "京王閣":{"lat":35.643541,"lon":139.533912,"home_azimuth":225.0,"indoor":False},
+    "立川":{"lat":35.703198,"lon":139.422558,"home_azimuth":180.0,"indoor":False},
+    "松戸":{"lat":35.804533,"lon":139.910679,"home_azimuth":315.0,"indoor":False},
+    "川崎":{"lat":35.528948,"lon":139.710735,"home_azimuth":180.0,"indoor":False},
+    "平塚":{"lat":35.325323,"lon":139.362633,"home_azimuth":135.0,"indoor":False},
+    "小田原":{"lat":35.250770,"lon":139.148460,"home_azimuth":0.0,"indoor":False},
+    "伊東":{"lat":34.954718,"lon":139.092920,"home_azimuth":180.0,"indoor":False},
+    "静岡":{"lat":34.972782,"lon":138.418922,"home_azimuth":135.0,"indoor":False},
+    "名古屋":{"lat":35.175772,"lon":136.855025,"home_azimuth":225.0,"indoor":False},
+    "岐阜":{"lat":35.414136,"lon":136.783714,"home_azimuth":180.0,"indoor":False},
+    "大垣":{"lat":35.361332,"lon":136.628452,"home_azimuth":135.0,"indoor":False},
+    "豊橋":{"lat":34.770280,"lon":137.417265,"home_azimuth":90.0,"indoor":False},
+    "富山":{"lat":36.757271,"lon":137.234873,"home_azimuth":0.0,"indoor":False},
+    "松坂":{"lat":34.564675,"lon":136.533881,"home_azimuth":135.0,"indoor":False},
+    "四日市":{"lat":34.984933,"lon":136.645461,"home_azimuth":135.0,"indoor":False},
+    "福井":{"lat":36.060798,"lon":136.199380,"home_azimuth":90.0,"indoor":False},
+    "奈良":{"lat":34.703360,"lon":135.779077,"home_azimuth":180.0,"indoor":False},
+    "向日町":{"lat":34.946608,"lon":135.698769,"home_azimuth":0.0,"indoor":False},
+    "和歌山":{"lat":34.240481,"lon":135.170923,"home_azimuth":315.0,"indoor":False},
+    "岸和田":{"lat":34.481514,"lon":135.393619,"home_azimuth":225.0,"indoor":False},
+    "玉野":{"lat":34.497176,"lon":133.960688,"home_azimuth":90.0,"indoor":False},
+    "広島":{"lat":34.355465,"lon":132.466965,"home_azimuth":45.0,"indoor":False},
+    "防府":{"lat":34.066973,"lon":131.578636,"home_azimuth":0.0,"indoor":False},
+    "高松":{"lat":34.345806,"lon":134.061962,"home_azimuth":0.0,"indoor":False},
+    "小松島":{"lat":34.005107,"lon":134.594259,"home_azimuth":45.0,"indoor":False},
+    "高知":{"lat":33.552468,"lon":133.532950,"home_azimuth":0.0,"indoor":False},
+    "松山":{"lat":33.808411,"lon":132.742611,"home_azimuth":225.0,"indoor":False},
+    "小倉":{"lat":33.872077,"lon":130.887759,"home_azimuth":None,"indoor":True},
+    "久留米":{"lat":33.300938,"lon":130.544418,"home_azimuth":45.0,"indoor":False},
+    "武雄":{"lat":33.183616,"lon":130.023074,"home_azimuth":135.0,"indoor":False},
+    "佐世保":{"lat":33.155523,"lon":129.730690,"home_azimuth":135.0,"indoor":False},
+    "別府":{"lat":33.322369,"lon":131.497860,"home_azimuth":90.0,"indoor":False},
+    "熊本":{"lat":32.795915,"lon":130.740262,"home_azimuth":135.0,"indoor":False},
+    "手入力":{"lat":None,"lon":None,"home_azimuth":None,"indoor":False},
 }
 
 # KO(勝ち上がり)関連
@@ -765,13 +844,33 @@ def calc_race_compactness(ratings_val: dict, active_cars: list):
         "top_gap": float(top_gap),
     }
 
-# H：最終ホーム主導ライン
+# H：最終ホーム想定ライン
 # ==============================
+# v292 コメント補正
+# ・前へ：最終ホーム位置だけを1ライン1回 +0.75
+# ・補充出走：ライン2車換算勢力だけを1ライン1回 0.98倍
+FRONT_HOME_LINE_BONUS = 0.75
+SUPPLEMENT_LINE_FACTOR = 0.98
+START_POSITION_CAR_STEP = 0.10
+
+def _line_comment_checked(comment_map, members) -> bool:
+    """車番キーがint／strのどちらでも、ライン内にチェック車がいるか判定する。"""
+    mp = comment_map or {}
+    for car in (members or []):
+        try:
+            no = int(car)
+        except Exception:
+            continue
+        if bool(mp.get(no, mp.get(str(no), False))):
+            return True
+    return False
+
 def calc_home_line_scores(line_def: dict, H: dict, B: dict, active_cars: list[int]) -> dict:
     """
     H = 最終ホーム先頭通過回数を使って、
     最終周回ホームで前に出やすいラインを評価する。
-    ※本体スコアには混ぜず、展開表示用。
+    「前へ」チェックがあるラインは、位置決めだけを1ライン1回加点する。
+    ※本体KOスコアやライン2車換算勢力には混ぜない。
     """
     scores = {}
 
@@ -798,6 +897,12 @@ def calc_home_line_scores(line_def: dict, H: dict, B: dict, active_cars: list[in
         # 同点時の微差用：Bをほんの少しだけ見る
         score += float(B.get(head, 0)) * 0.01
 
+        # v292：「前へ」は個人能力ではなくライン位置だけを前へ動かす。
+        # 同じラインに複数チェックがあっても加点は1回だけ。
+        front_map = globals().get("front_comment", {}) or {}
+        if _line_comment_checked(front_map, mem):
+            score += float(FRONT_HOME_LINE_BONUS)
+
         scores[gid] = round(score, 3)
 
     return scores
@@ -816,95 +921,46 @@ def make_home_line_order(line_def: dict, H: dict, B: dict, active_cars: list[int
     )
 
 
-def calc_velobi_position_line_scores(
-    line_def: dict,
-    S: dict,
-    active_cars: list[int],
-    n_cars: int,
-) -> dict:
+def calc_velobi_queue_scores(line_def: dict, S: dict, active_cars: list[int]) -> dict:
     """
-    ヴェロビ独自想定隊列用の位置取り評価。
+    v297：ライン構成を変えず、ライン全車の位置取り力から想定隊列を作る。
 
-    ・位置取り実績に近いS回数を主評価にする。
-    ・ライン先頭車に固定せず、ライン全車の最高値を代表値にする。
-    ・同じS回数なら内枠ほど有利になるよう、車番補正を微差で加える。
-    ・単騎も評価値は作るが、隊列先頭には採用しない。
-
-    車番補正は1車番差につき0.10。S回数1回分より小さくし、
-    Sを主指標、車番を僅差時の位置取り補助とする。
+    ・Sを主成分とする。
+    ・同程度のSなら、1番車がもっとも有利で車番が大きいほど不利とする。
+    ・ライン先頭に固定せず、ライン内で最大の車をそのラインの代表値にする。
     """
     scores = {}
-    representatives = {}
-    max_no = max(1, int(n_cars or 0))
-
     for gid, members in (line_def or {}).items():
-        mem = [int(x) for x in (members or []) if int(x) in active_cars]
+        mem = [int(x) for x in (members or []) if int(x) in (active_cars or [])]
         if not mem:
             continue
-
-        car_rows = []
-        for car in mem:
-            s_count = float((S or {}).get(car, (S or {}).get(str(car), 0.0)) or 0.0)
-            frame_bonus = 0.10 * float(max_no - int(car))
-            position_score = s_count + frame_bonus
-            car_rows.append((position_score, s_count, -int(car), int(car)))
-
-        best = max(car_rows)
-        scores[gid] = round(float(best[0]), 3)
-        representatives[gid] = int(best[3])
-
-    return {
-        "scores": scores,
-        "representatives": representatives,
-    }
-
-
-def make_velobi_position_line_order(
-    line_def: dict,
-    S: dict,
-    active_cars: list[int],
-    n_cars: int,
-) -> list:
-    """
-    ヴェロビ独自想定隊列を返す。
-    基本は位置取り評価順。ただし単騎は隊列先頭に置かない。
-    単騎は2番手以降では評価順の位置を維持する。
-    """
-    result = calc_velobi_position_line_scores(line_def, S, active_cars, n_cars)
-    scores = dict(result.get("scores", {}) or {})
-    representatives = dict(result.get("representatives", {}) or {})
-
-    order = sorted(
-        scores.keys(),
-        key=lambda gid: (
-            -float(scores.get(gid, 0.0)),
-            int(representatives.get(gid, 99)),
-            str(gid),
-        ),
-    )
-
-    if order:
-        first_gid = order[0]
-        first_members = [
-            int(x) for x in (line_def or {}).get(first_gid, [])
-            if int(x) in active_cars
+        member_scores = [
+            float(S.get(car, S.get(str(car), 0.0)) or 0.0)
+            + float(10 - car) * float(START_POSITION_CAR_STEP)
+            for car in mem
         ]
-        if len(first_members) == 1:
-            first_multi_idx = next(
-                (
-                    idx for idx, gid in enumerate(order)
-                    if len([
-                        int(x) for x in (line_def or {}).get(gid, [])
-                        if int(x) in active_cars
-                    ]) >= 2
-                ),
-                None,
-            )
-            if first_multi_idx is not None:
-                multi_gid = order.pop(first_multi_idx)
-                order.insert(0, multi_gid)
+        score = max(member_scores)
+        front_map = globals().get("front_comment", {}) or {}
+        if _line_comment_checked(front_map, mem):
+            score += float(FRONT_HOME_LINE_BONUS)
+        scores[gid] = round(score, 3)
+    return scores
 
-    return order
+
+def make_velobi_queue_order(line_def: dict, S: dict, active_cars: list[int]) -> list:
+    """単騎を先頭から除外し、非単騎ラインを先頭にした独自想定隊列を返す。"""
+    scores = calc_velobi_queue_scores(line_def, S, active_cars)
+    ranked = sorted(
+        scores.keys(),
+        key=lambda gid: (-float(scores.get(gid, 0.0)), str(gid)),
+    )
+    if len(ranked) <= 1:
+        return ranked
+    non_single = [gid for gid in ranked if len(line_def.get(gid, []) or []) >= 2]
+    if not non_single:
+        return ranked
+    first_gid = non_single[0]
+    return [first_gid] + [gid for gid in ranked if gid != first_gid]
 
 
 def format_home_line_order(line_def: dict, order: list) -> str:
@@ -962,292 +1018,6 @@ def track_effective_ratio(track_name: str,
     L_eff = back + alpha_goal * home + beta_corner * corner_total
     ratio = (L_eff / lap) if lap > 0 else 0.50
     return clamp(ratio, 0.20, 0.90)
-
-
-# =====================================================
-# 会場成績手入力補正 × 最終ホームライン流れ補正
-#   入力例：
-#     的中率 = 12/40     → 30.0%
-#     回収率 = 12000/8000 → 150.0%
-#   思想：
-#     成績が悪い会場ほど、最終H1番手ライン先頭のイン減速を疑い、
-#     最終H2番手ライン、とくに番手の外スピード差しを評価する。
-# =====================================================
-
-def parse_fraction_rate(text: str, percent: bool = True):
-    """
-    '12/40' や '12000/8000' を率に変換する。
-    percent=True なら 30.0 のように％値で返す。
-    空欄・不正値・分母0は None。
-    """
-    s = str(text or "").strip()
-    if not s:
-        return None
-
-    try:
-        if "/" in s:
-            a, b = s.split("/", 1)
-            a = float(str(a).replace(",", "").strip())
-            b = float(str(b).replace(",", "").strip())
-            if b <= 0:
-                return None
-            rate = a / b
-        else:
-            v = float(s.replace("%", "").replace(",", "").strip())
-            rate = v / 100.0 if v > 1.0 else v
-
-        if not math.isfinite(rate):
-            return None
-
-        return rate * 100.0 if percent else rate
-
-    except Exception:
-        return None
-
-
-def judge_venue_profile(hit_rate, return_rate):
-    """
-    hit_rate / return_rate は％値。
-    例：30.0, 120.0
-    """
-    hr = None if hit_rate is None else float(hit_rate)
-    rr = None if return_rate is None else float(return_rate)
-
-    if hr is None and rr is None:
-        return "unknown"
-
-    # 回収率が強い。的中率が低ければ一撃型。
-    if rr is not None and rr >= 100.0:
-        if hr is None or hr >= 35.0:
-            return "strong_good"
-        return "swing_return"
-
-    # 的中しているのに安い。順位は壊さず必要オッズ側で締める。
-    if hr is not None and hr >= 31.0 and rr is not None and rr < 80.0:
-        return "cheap_hit"
-
-    # 的中率がかなり低い。
-    if hr is not None and hr < 22.0:
-        if rr is not None and rr < 50.0:
-            return "very_bad"
-        return "low_hit_risk"
-
-    # 回収率がかなり悪い。
-    if rr is not None and rr < 50.0:
-        return "bad"
-
-    # 回収率が低め。
-    if rr is not None and rr < 70.0:
-        return "normal_watch"
-
-    return "normal"
-
-
-def _venue_fit_hit_coef(hit_rate):
-    """
-    v203:
-    会場別の的中率を、2車複の「的中期待」へ小幅倍率として反映する。
-    hit_rate は％値（例：25.3）。未入力時は 1.00。
-
-    強くしすぎると会場判定に振り回されるため、概ね 0.90〜1.08 に収める。
-    """
-    try:
-        if hit_rate is None:
-            return 1.00
-        hr = float(hit_rate)
-        if not math.isfinite(hr):
-            return 1.00
-        if hr >= 35.0:
-            return 1.08
-        if hr >= 30.0:
-            return 1.04
-        if hr >= 25.0:
-            return 1.00
-        if hr >= 22.0:
-            return 0.96
-        if hr >= 18.0:
-            return 0.92
-        return 0.90
-    except Exception:
-        return 1.00
-
-
-def _venue_fit_myoumi_coef(return_rate):
-    """
-    v203:
-    会場別の回収率を、2車複の「妙味期待」へ小幅倍率として反映する。
-    return_rate は％値（例：75.5）。未入力時は 1.00。
-
-    回収率が低い開催では、妙味A++頼みの買目が自然に下がる。
-    逆に回収率が高い開催では、妙味期待を少し信頼する。
-    """
-    try:
-        if return_rate is None:
-            return 1.00
-        rr = float(return_rate)
-        if not math.isfinite(rr):
-            return 1.00
-        if rr >= 120.0:
-            return 1.10
-        if rr >= 100.0:
-            return 1.06
-        if rr >= 85.0:
-            return 1.00
-        if rr >= 70.0:
-            return 0.94
-        if rr >= 50.0:
-            return 0.90
-        return 0.88
-    except Exception:
-        return 1.00
-
-
-VENUE_HOME_FLOW_MULT = {
-    "strong_good": 0.50,
-    "swing_return": 0.85,
-    "normal": 1.00,
-    "normal_watch": 1.10,
-    "cheap_hit": 0.90,
-    "bad": 1.25,
-    "low_hit_risk": 1.35,
-    "very_bad": 1.50,
-    "unknown": 1.00,
-}
-
-VENUE_MIN_ODDS_MULT = {
-    "strong_good": 0.95,
-    "swing_return": 1.05,
-    "normal": 1.00,
-    "normal_watch": 1.10,
-    "cheap_hit": 1.25,
-    "bad": 1.20,
-    "low_hit_risk": 1.30,
-    "very_bad": 1.40,
-    "unknown": 1.00,
-}
-
-# 係数は「補正点」ではなく倍率前の思想値。
-# 実際は HOME_FLOW_BASE_SCALE と会場倍率を掛けて使う。
-HOME_FLOW_BASE_SCALE = 0.04
-HOME_FLOW_COEF = {
-    "top_line": {
-        "head":      +0.70,
-        "second":    +0.50,
-        "third":     +0.30,
-        "single":     0.00,
-    },
-    "second_line": {
-        "head":      +0.20,
-        "second":    +0.15,
-        "third":     +0.10,
-        "single":    +0.05,
-    },
-    "other_line": {
-        "head":       0.00,
-        "second":     0.00,
-        "third":      0.00,
-        "single":     0.00,
-    },
-}
-
-
-def calc_venue_shape_index(track_name: str):
-    """
-    バンク形状から、長いみなし直線リスクを軽く算出する。
-    会場成績の補助係数として使い、実績入力を主にする。
-    """
-    d = KEIRIN_DATA.get(track_name)
-    if not d:
-        return {"minashi_ratio": 0.0, "bank_support": 0.0, "stretch_risk": 0.0}
-
-    angle = float(d.get("bank_angle", 30.0) or 30.0)
-    straight = float(d.get("straight_length", 52.0) or 52.0)
-    bank = float(d.get("bank_length", 400.0) or 400.0)
-
-    minashi = 1.75 * straight + 0.25 * bank
-    minashi_ratio = minashi / max(bank, 1e-9)
-    bank_support = angle / max(minashi_ratio, 1e-9)
-
-    stretch_risk = 0.0
-    if minashi_ratio >= 0.520:
-        stretch_risk += 1.00
-    elif minashi_ratio >= 0.510:
-        stretch_risk += 0.60
-    elif minashi_ratio >= 0.500:
-        stretch_risk += 0.30
-
-    if bank_support < 62.5:
-        stretch_risk += 0.60
-    elif bank_support < 65.0:
-        stretch_risk += 0.30
-
-    if bank <= 340:
-        stretch_risk *= 0.75
-
-    return {
-        "minashi_ratio": round(float(minashi_ratio), 6),
-        "bank_support": round(float(bank_support), 3),
-        "stretch_risk": round(float(clamp(stretch_risk, 0.0, 1.50)), 3),
-    }
-
-
-def venue_home_flow_multiplier(track_name: str, venue_profile: str) -> float:
-    """
-    会場成績による倍率を主、バンク形状リスクを従として合成する。
-    strong_good は元評価を壊さないため弱く、very_bad は強くする。
-    """
-    profile_mult = float(VENUE_HOME_FLOW_MULT.get(str(venue_profile), 1.00))
-
-    try:
-        shape = calc_venue_shape_index(track_name)
-        shape_risk = float(shape.get("stretch_risk", 0.0) or 0.0)
-    except Exception:
-        shape_risk = 0.0
-
-    shape_mult = 1.00 + 0.10 * shape_risk
-    return round(clamp(profile_mult * shape_mult, 0.40, 1.80), 3)
-
-
-def home_flow_adjust_by_venue(
-    no: int,
-    role: str,
-    gid,
-    home_top_gid,
-    home_second_gid,
-    track_name: str,
-    venue_profile: str,
-):
-    """
-    ヴェロビ独自想定隊列の位置補正。
-    - 1番手ライン：最も有利として加点。
-    - 2番手ライン：1番手より小さく加点。
-    - その他：据え置き。
-    """
-    if gid is None:
-        return 0.0, "ライン不明"
-
-    if gid == home_top_gid:
-        line_pos = "top_line"
-        line_label = "想定隊列1番手"
-    elif home_second_gid is not None and gid == home_second_gid:
-        line_pos = "second_line"
-        line_label = "想定隊列2番手"
-    else:
-        line_pos = "other_line"
-        line_label = "その他"
-
-    r = str(role or "single")
-    if r == "thirdplus":
-        r = "third"
-
-    mult = venue_home_flow_multiplier(track_name, venue_profile)
-    scale = float(HOME_FLOW_BASE_SCALE) * float(mult)
-    coef = float(HOME_FLOW_COEF.get(line_pos, {}).get(r, 0.0))
-    adj = round(coef * scale, 3)
-
-    reason = f"{line_label}/{r} 係数{coef:+.2f}×倍率{mult:.2f}"
-    return adj, reason
-
 
 
 def wind_adjust(wind_dir, wind_speed, role, prof_escape):
@@ -1615,67 +1385,126 @@ def apply_anchor_line_bonus(score_raw: dict[int, float],
 
 # ==============================
 # 風の自動取得（Open-Meteo / 時刻固定）
-# 風向は手入力運用のため、APIでは風速だけ取得する軽量版
+# 風速＋絶対風向を必須取得し、ホーム基準の相対8方向へ変換する
 # ==============================
+WIND_DIRECTION_OPTIONS = ["無風", "左上", "上", "右上", "左", "右", "左下", "下", "右下"]
+
+
+def _normalize_azimuth(deg):
+    """方位角を0度以上360度未満へ正規化する。"""
+    x = float(deg)
+    if not math.isfinite(x):
+        raise ValueError("方位角が数値ではありません")
+    return x % 360.0
+
+
+def absolute_wind_compass_label(wind_from_deg):
+    """API絶対風向を8方位表示へ変換する（風が吹いてくる方位）。"""
+    labels = ("北", "北東", "東", "南東", "南", "南西", "西", "北西")
+    deg = _normalize_azimuth(wind_from_deg)
+    idx = int(((deg + 22.5) % 360.0) // 45.0)
+    return labels[idx]
+
+
+def wind_from_degree_to_home_direction(wind_from_deg, home_azimuth):
+    """
+    APIの絶対風向を、ホーム側からバンク正面を見た相対8方向へ変換する。
+
+    home_azimuth:
+        ホーム側からバンク正面を見る絶対方位。北=0度、東=90度。
+    戻り値:
+        (左上／上／右上／左／右／左下／下／右下, 相対角度)
+    """
+    wind_deg = _normalize_azimuth(wind_from_deg)
+    home_deg = _normalize_azimuth(home_azimuth)
+    relative_deg = (wind_deg - home_deg) % 360.0
+    labels = ("上", "右上", "右", "右下", "下", "左下", "左", "左上")
+    idx = int(((relative_deg + 22.5) % 360.0) // 45.0)
+    return labels[idx], relative_deg
+
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_openmeteo_hour(lat, lon, target_dt_naive):
     """
-    Open-Meteoから風速だけ取得する軽量版。
-    風向きはVeloBi側で手入力する前提なので取得しない。
+    Open-Meteoから同一時刻の風速＋風向を必須取得する。
     同じ場・同じ日時は1時間キャッシュして429を避ける。
     """
-    import numpy as np
-
     d = target_dt_naive.strftime("%Y-%m-%d")
     base = "https://api.open-meteo.com/v1/forecast"
-
-    url = (
-        f"{base}?latitude={lat:.5f}&longitude={lon:.5f}"
-        "&hourly=wind_speed_10m,precipitation,weather_code"
-        "&timezone=Asia%2FTokyo"
-        "&windspeed_unit=ms"
-        f"&start_date={d}&end_date={d}"
-    )
+    params = {
+        "latitude": round(float(lat), 5),
+        "longitude": round(float(lon), 5),
+        "hourly": "wind_speed_10m,wind_direction_10m,precipitation,weather_code",
+        "timezone": "Asia/Tokyo",
+        "wind_speed_unit": "ms",
+        "start_date": d,
+        "end_date": d,
+    }
 
     try:
-        r = requests.get(url, timeout=15)
+        r = requests.get(base, params=params, timeout=15)
         r.raise_for_status()
-
-        j = r.json().get("hourly", {})
-        times = [datetime.fromisoformat(t) for t in j.get("time", [])]
+        payload = r.json()
+        hourly = payload.get("hourly", {}) or {}
+        units = payload.get("hourly_units", {}) or {}
+        times = [datetime.fromisoformat(t) for t in hourly.get("time", [])]
 
         if not times:
-            raise RuntimeError("empty hourly times")
+            raise RuntimeError("時刻データが空です")
 
         diffs = [abs((t - target_dt_naive).total_seconds()) for t in times]
         k = int(np.argmin(diffs))
 
-        sp = j.get("wind_speed_10m", [])
-        pr = j.get("precipitation", [])
-        wc = j.get("weather_code", [])
+        speed_values = hourly.get("wind_speed_10m", [])
+        direction_values = hourly.get("wind_direction_10m", [])
+        precipitation_values = hourly.get("precipitation", [])
+        weather_code_values = hourly.get("weather_code", [])
 
-        speed = float(sp[k]) if k < len(sp) and sp[k] is not None else float("nan")
-        precip = float(pr[k]) if k < len(pr) and pr[k] is not None else 0.0
-        weather_code = int(wc[k]) if k < len(wc) and wc[k] is not None else None
+        if k >= len(speed_values) or speed_values[k] is None:
+            raise RuntimeError("風速データを取得できませんでした")
+        if k >= len(direction_values) or direction_values[k] is None:
+            raise RuntimeError("風向データを取得できませんでした")
+
+        speed = float(speed_values[k])
+        wind_from_deg = _normalize_azimuth(direction_values[k])
+        if not math.isfinite(speed):
+            raise RuntimeError("風速データが不正です")
+
+        speed_unit = str(units.get("wind_speed_10m", "")).strip().lower()
+        if speed_unit in {"km/h", "kmh"}:
+            speed /= 3.6
+        elif speed_unit not in {"", "m/s", "ms"}:
+            raise RuntimeError(f"未対応の風速単位です：{speed_unit}")
+
+        precip = (
+            float(precipitation_values[k])
+            if k < len(precipitation_values) and precipitation_values[k] is not None
+            else 0.0
+        )
+        weather_code = (
+            int(weather_code_values[k])
+            if k < len(weather_code_values) and weather_code_values[k] is not None
+            else None
+        )
 
         return {
             "time": times[k],
             "speed_ms": speed,
-            "deg": None,
+            "deg": wind_from_deg,
             "precipitation": precip,
             "weather_code": weather_code,
             "diff_min": diffs[k] / 60.0,
         }
 
-    except requests.exceptions.HTTPError as e:
-        if getattr(e.response, "status_code", None) == 429:
+    except requests.exceptions.HTTPError as exc:
+        if getattr(exc.response, "status_code", None) == 429:
             raise RuntimeError(
-                "Open-Meteoの取得制限中です。少し時間を空けるか、手入力の風速を使ってください。"
+                "Open-Meteoの取得制限中です。少し時間を空けるか、風速と風向を手入力してください。"
             )
-        raise RuntimeError(f"Open-Meteo取得失敗：{e}")
-
-    except Exception as e:
-        raise RuntimeError(f"Open-Meteo取得失敗：{e}")
+        raise RuntimeError(f"Open-Meteo取得失敗：{exc}")
+    except Exception as exc:
+        raise RuntimeError(f"Open-Meteo取得失敗：{exc}")
 
 # ==============================
 # サイドバー：開催情報 / バンク・風・頭数
@@ -1741,54 +1570,6 @@ track = st.sidebar.selectbox(
 )
 info = KEIRIN_DATA[track]
 st.session_state["track"] = track
-
-with st.sidebar.expander("📊 会場別 成績補正", expanded=True):
-    venue_hit_input = st.text_input(
-        "的中率（的中R/投票R）",
-        value="",
-        placeholder="例：12/40",
-        key="venue_hit_input",
-    )
-    venue_return_input = st.text_input(
-        "回収率（払戻/投資）",
-        value="",
-        placeholder="例：12000/8000",
-        key="venue_return_input",
-    )
-
-    venue_hit_rate = parse_fraction_rate(venue_hit_input, percent=True)
-    venue_return_rate = parse_fraction_rate(venue_return_input, percent=True)
-    venue_profile = judge_venue_profile(venue_hit_rate, venue_return_rate)
-
-    venue_home_flow_mult = venue_home_flow_multiplier(track, venue_profile)
-    venue_min_odds_mult = float(VENUE_MIN_ODDS_MULT.get(venue_profile, 1.00))
-    venue_hit_expect_coef = _venue_fit_hit_coef(venue_hit_rate)
-    venue_myoumi_expect_coef = _venue_fit_myoumi_coef(venue_return_rate)
-
-    venue_shape = calc_venue_shape_index(track)
-
-    hit_txt = "—" if venue_hit_rate is None else f"{venue_hit_rate:.1f}%"
-    ret_txt = "—" if venue_return_rate is None else f"{venue_return_rate:.1f}%"
-
-    st.write(f"的中率：**{hit_txt}**")
-    st.write(f"回収率：**{ret_txt}**")
-    st.write(f"会場判定：**{venue_profile}**")
-    st.write(f"開催適合補正：的中期待×**{venue_hit_expect_coef:.2f}** ／ 妙味期待×**{venue_myoumi_expect_coef:.2f}**")
-    st.write(f"最終H補正倍率：**{venue_home_flow_mult:.2f}**")
-    st.write(f"必要オッズ倍率：**{venue_min_odds_mult:.2f}**")
-    st.caption(
-        f"みなし直線率 {venue_shape.get('minashi_ratio', 0.0):.3f} / "
-        f"カント支え {venue_shape.get('bank_support', 0.0):.1f} / "
-        f"形状リスク {venue_shape.get('stretch_risk', 0.0):.2f}"
-    )
-
-st.session_state["venue_hit_rate"] = venue_hit_rate
-st.session_state["venue_return_rate"] = venue_return_rate
-st.session_state["venue_profile"] = venue_profile
-st.session_state["venue_home_flow_mult"] = venue_home_flow_mult
-st.session_state["venue_min_odds_mult"] = venue_min_odds_mult
-st.session_state["venue_hit_expect_coef"] = venue_hit_expect_coef
-st.session_state["venue_myoumi_expect_coef"] = venue_myoumi_expect_coef
 
 st.sidebar.markdown("### 🏟️ 開催場決まり手成績")
 with st.sidebar.expander("数値入力（オッズパーク等の表をそのまま％入力）", expanded=True):
@@ -1870,49 +1651,126 @@ with st.sidebar.expander("🎯 2車複｜同ライン妙味基準", expanded=Tru
 
 globals()["NIFUKU_SAME_LINE_MYOUMI_MIN"] = float(NIFUKU_SAME_LINE_MYOUMI_MIN)
 
-race_time = st.sidebar.selectbox("開催区分", ["モーニング","デイ","ナイター","ミッドナイト"], 1)
+race_time = st.sidebar.selectbox("開催区分（天候取得時刻用）", ["モーニング","デイ","ナイター","ミッドナイト"], 1)
+st.sidebar.caption("予想係数は区分で変更せず、風速・風向・降水量の取得時刻だけを切り替えます。")
 race_day = st.sidebar.date_input("日付（風取得用）", value=date.today())
 
+# 競輪場固定マスタを先に解決する。ドーム場はウィジェット生成前に無風へ固定する。
+info_xy = VELODROME_MASTER.get(track) or {}
+is_indoor_venue = bool(info_xy.get("indoor", False))
+
+if is_indoor_venue:
+    st.session_state.pop("_wind_api_pending", None)
+    st.session_state["wind_speed_input"] = 0.0
+    st.session_state["wind_speed"] = 0.0
+    st.session_state["wind_dir_input"] = "無風"
+    st.session_state.pop("wind_api_absolute_deg", None)
+    st.session_state.pop("wind_api_relative_deg", None)
+    st.session_state.pop("wind_api_time", None)
+else:
+    # API取得後の値は、次のrerun開始時にウィジェットへ反映する。
+    # ウィジェット生成後に同じsession_stateキーを書き換える例外を避けるための処理。
+    _pending_wind = st.session_state.pop("_wind_api_pending", None)
+    if isinstance(_pending_wind, dict):
+        st.session_state["wind_speed_input"] = float(_pending_wind["speed_ms"])
+        st.session_state["wind_speed"] = float(_pending_wind["speed_ms"])
+        st.session_state["wind_dir_input"] = str(_pending_wind["relative_dir"])
+        st.session_state["wind_api_absolute_deg"] = float(_pending_wind["absolute_deg"])
+        st.session_state["wind_api_relative_deg"] = float(_pending_wind["relative_deg"])
+        st.session_state["wind_api_time"] = str(_pending_wind["time"])
+
+if "wind_dir_input" not in st.session_state:
+    st.session_state["wind_dir_input"] = "無風"
+if "wind_speed_input" not in st.session_state:
+    st.session_state["wind_speed_input"] = float(st.session_state.get("wind_speed", 3.0))
+
 wind_dir = st.sidebar.selectbox(
-    "風向", ["無風","左上","上","右上","左","右","左下","下","右下"],
-    index=0, key="wind_dir_input"
+    "風向（ホームから見た方向）",
+    WIND_DIRECTION_OPTIONS,
+    key="wind_dir_input",
+    disabled=is_indoor_venue,
 )
+wind_speed = st.sidebar.number_input(
+    "風速(m/s)",
+    min_value=0.0,
+    max_value=60.0,
+    step=0.1,
+    key="wind_speed_input",
+    disabled=is_indoor_venue,
+)
+st.session_state["wind_speed"] = float(wind_speed)
 
-wind_speed_default = st.session_state.get("wind_speed", 3.0)
-wind_speed = st.sidebar.number_input("風速(m/s)", 0.0, 60.0, float(wind_speed_default), 0.1)
+with st.sidebar.expander("🌀 風速＋風向をAPIで自動取得（Open-Meteo）", expanded=False):
+    flash = st.session_state.pop("_wind_api_flash", None)
+    if flash:
+        st.success(str(flash))
 
-with st.sidebar.expander("🌀 風をAPIで自動取得（Open-Meteo）", expanded=False):
-    st.sidebar.caption("基準時刻：モ=8時 / デ=11時 / ナ=18時 / ミ=22時（JST・tzなしで取得）")
+    st.caption("基準時刻：モ=8時 / デ=11時 / ナ=18時 / ミ=22時（JST）")
+    st.caption("風向は『風が吹いてくる方位』を、ホーム側から見た上下左右へ変換します。")
 
-    if st.sidebar.button("APIで取得→風速に反映", use_container_width=True):
-        info_xy = VELODROME_MASTER.get(track)
-        if not info_xy or info_xy.get("lat") is None or info_xy.get("lon") is None:
-            st.sidebar.error(f"{track} の座標が未登録です（VELODROME_MASTER に lat/lon を入れてください）")
-        else:
+    home_azimuth = info_xy.get("home_azimuth")
+
+    if is_indoor_venue:
+        st.info(f"{track}はドーム場のため、風向『無風』・風速0.0m/sで固定します。外気APIの風は評価へ入れません。")
+    elif track == "手入力":
+        st.info("手入力では固定方位と座標を使用しません。風速・風向を上の入力欄へ直接入力してください。")
+    else:
+        if home_azimuth is not None:
+            st.info(
+                f"固定ホーム正面方位：{float(home_azimuth):.1f}° "
+                f"（{absolute_wind_compass_label(home_azimuth)}向き・コード内固定マスタ／"
+                f"監査日{VELODROME_MASTER_REVISION}）"
+            )
+            st.caption(
+                f"天候取得座標：{float(info_xy['lat']):.6f}, "
+                f"{float(info_xy['lon']):.6f}"
+            )
+
+        coords_ready = info_xy.get("lat") is not None and info_xy.get("lon") is not None
+        direction_ready = home_azimuth is not None
+        api_disabled = not coords_ready or not direction_ready
+
+        if not coords_ready:
+            st.error(f"{track}の緯度・経度が未登録です。")
+        if not direction_ready:
+            st.error(f"{track}の固定ホーム正面方位が未登録です。API風向は反映しません。")
+
+        if st.button(
+            "APIで取得→風速＋風向に反映",
+            use_container_width=True,
+            disabled=api_disabled,
+        ):
             try:
                 target = build_openmeteo_target_dt(race_day, race_time)
                 data = fetch_openmeteo_hour(info_xy["lat"], info_xy["lon"], target)
-
-                st.session_state["wind_speed"] = round(float(data["speed_ms"]), 2)
+                relative_dir, relative_deg = wind_from_degree_to_home_direction(
+                    data["deg"], home_azimuth
+                )
 
                 precip = float(data.get("precipitation", 0.0) or 0.0)
                 weather_code = data.get("weather_code", None)
+                speed_ms = round(float(data["speed_ms"]), 2)
 
                 st.session_state["precipitation"] = precip
                 st.session_state["weather_code"] = weather_code
                 st.session_state["is_wet"] = bool(precip >= 0.3)
-
-                st.sidebar.success(
-                    f"{track} {target:%Y-%m-%d %H:%M} "
-                    f"風速 {st.session_state['wind_speed']:.1f} m/s "
-                    f"降水 {precip:.1f}mm/h "
-                    f"（API側と{data['diff_min']:.0f}分ズレ）"
+                st.session_state["_wind_api_pending"] = {
+                    "speed_ms": speed_ms,
+                    "relative_dir": relative_dir,
+                    "absolute_deg": float(data["deg"]),
+                    "relative_deg": float(relative_deg),
+                    "time": data["time"].isoformat(),
+                }
+                st.session_state["_wind_api_flash"] = (
+                    f"{track} {data['time']:%Y-%m-%d %H:%M}｜"
+                    f"風速 {speed_ms:.1f}m/s｜"
+                    f"絶対風向 {data['deg']:.0f}°（{absolute_wind_compass_label(data['deg'])}）→ "
+                    f"ホーム基準『{relative_dir}』｜降水 {precip:.1f}mm/h｜"
+                    f"時刻差 {data['diff_min']:.0f}分"
                 )
                 st.rerun()
-
-            except Exception as e:
-                st.sidebar.error(f"取得に失敗：{e}")
-
+            except Exception as exc:
+                st.error(f"取得に失敗：{exc}")
 
 
 straight_length = st.sidebar.number_input("みなし直線(m)", 30.0, 80.0, float(info["straight_length"]), 0.1)
@@ -1921,22 +1779,51 @@ bank_length     = st.sidebar.number_input("周長(m)", 300.0, 500.0, float(info[
 st.session_state["bank_length"] = float(bank_length)
 
 base_laps = st.sidebar.number_input("周回（通常4）", 1, 10, 4, 1)
-day_label = st.sidebar.selectbox(
-    "開催日",
-    ["初日", "2日目", "3日目", "4日目", "5日目", "最終日"],
-    0
-)
 
-DAY_LAP_ADD = {
-    "初日": 1,
-    "2日目": 2,
-    "3日目": 3,
-    "4日目": 4,
-    "5日目": 5,
-    "最終日": 6,
-}
+# v291：出走数に応じて通常開催の日程を自動切替する。
+# 7車以下は通常3日制、8～9車は長期開催用の5日制として扱う。
+if int(n_cars) <= 7:
+    schedule_total_days = 3
+    day_options = ["初日", "2日目", "3日目（最終日）"]
+    day_index_map = {
+        "初日": 1,
+        "2日目": 2,
+        "3日目（最終日）": 3,
+    }
+    day_stage_map = {
+        "初日": "初日",
+        "2日目": "2日目",
+        "3日目（最終日）": "最終日",
+    }
+else:
+    schedule_total_days = 5
+    day_options = ["初日", "2日目", "3日目", "4日目", "5日目（最終日）"]
+    day_index_map = {
+        "初日": 1,
+        "2日目": 2,
+        "3日目": 3,
+        "4日目": 4,
+        "5日目（最終日）": 5,
+    }
+    day_stage_map = {
+        "初日": "初日",
+        "2日目": "2日目",
+        "3日目": "3日目",
+        "4日目": "4日目",
+        "5日目（最終日）": "最終日",
+    }
 
-eff_laps = int(base_laps) + DAY_LAP_ADD[day_label]
+day_label = st.sidebar.selectbox("開催日", day_options, 0)
+day_index = int(day_index_map[day_label])
+day_stage = str(day_stage_map[day_label])
+
+if int(n_cars) <= 7:
+    st.sidebar.caption("7車以下：3日目を最終日補正として処理")
+else:
+    st.sidebar.caption("8～9車：5日目を最終日補正として処理")
+
+# 経過日数は実際の日数、係数はday_stage（初日／中日／最終日）で評価する。
+eff_laps = int(base_laps) + int(day_index)
 
 race_class = st.sidebar.selectbox(
     "級別",
@@ -1962,15 +1849,12 @@ elif precip >= 0.3:
 else:
     weather_override = 0.0
 
-manual_override = st.sidebar.slider(
-    "会場バイアス補正（−2差し ←→ +2先行）",
-    -2.0, 2.0, 0.0, 0.1
-)
-
-override = clamp(manual_override + weather_override, -2.0, 2.0)
+# v292：主観入力となる手動会場バイアスは使用しない。
+# 当日の会場style補正は、API降水量から作る天候自動補正だけを反映する。
+override = clamp(weather_override, -2.0, 2.0)
 
 st.sidebar.caption(
-    f"天候自動補正：{weather_override:+.1f} / 最終バイアス補正：{override:+.1f}"
+    f"天候自動補正：{weather_override:+.1f}（手動会場バイアスなし）"
 )
 
 style = clamp(style_raw + 0.25 * override, -1.0, +1.0)
@@ -1991,17 +1875,16 @@ DAY_FACTOR = {
     "2日目": 1.00,
     "3日目": 0.99,
     "4日目": 0.98,
-    "5日目": 0.97,
     "最終日": 0.96,
 }
-day_factor = DAY_FACTOR[day_label]
+# 7車以下の3日目、8～9車の5日目はday_stage="最終日"となり最大補正を使う。
+day_factor = DAY_FACTOR[day_stage]
 
 cap_base = clamp(0.06 + 0.02*style, 0.04, 0.08)
 line_factor_eff = cf["line"] * day_factor
 cap_SB_eff = cap_base * day_factor
-if race_time == "ミッドナイト":
-    line_factor_eff *= 0.95
-    cap_SB_eff *= 0.95
+# v293: 開催区分は天候取得時刻の指定だけに使用する。
+# モーニング／デイ／ナイター／ミッドナイトで評価係数は変えない。
 
 # ===== 日程・級別・頭数で“周回疲労の効き”を薄くシフト（出力には出さない） =====
 DAY_SHIFT = {
@@ -2009,7 +1892,6 @@ DAY_SHIFT = {
     "2日目": 0.0,
     "3日目": +0.2,
     "4日目": +0.4,
-    "5日目": +0.6,
     "最終日": +0.8,
 }
 CLASS_SHIFT = {
@@ -2021,17 +1903,43 @@ CLASS_SHIFT = {
 }
 HEADCOUNT_SHIFT = {5: -0.20, 6: -0.10, 7: -0.05, 8: 0.0, 9: +0.10}
 
-def fatigue_extra(eff_laps: int, day_label: str, n_cars: int, race_class: str) -> float:
-    d = float(DAY_SHIFT.get(day_label, 0.0))
+def fatigue_extra(
+    eff_laps: int,
+    day_stage: str,
+    n_cars: int,
+    race_class: str,
+    day_index: int | None = None,
+    schedule_total_days: int | None = None,
+) -> float:
+    """
+    v291：実経過日数で疲労を作りつつ、開催途中で3.0へ早期到達しないよう
+    開催進行に応じた上限を掛ける。最終日は必ず上限3.0。
+    """
+    d = float(DAY_SHIFT.get(day_stage, 0.0))
     c = float(CLASS_SHIFT.get(race_class, 0.0))
     h = float(HEADCOUNT_SHIFT.get(int(n_cars), 0.0))
-    x = (float(eff_laps) - 2.0) + d + c + h
-    return max(0.0, x)
+    raw = max(0.0, (float(eff_laps) - 2.0) + d + c + h)
+
+    try:
+        idx = max(1, int(day_index if day_index is not None else 1))
+        total = max(2, int(schedule_total_days if schedule_total_days is not None else 3))
+        progress = clamp((idx - 1) / (total - 1), 0.0, 1.0)
+    except Exception:
+        progress = 1.0 if str(day_stage) == "最終日" else 0.0
+
+    # 初日上限2.60から最終日3.00へ緩やかに上げる。
+    stage_cap = 2.60 + 0.40 * float(progress)
+    if str(day_stage) == "最終日":
+        stage_cap = 3.00
+
+    return float(clamp(raw, 0.0, stage_cap))
 
 # === PATCH-L200:（以下そのまま） ==========================================
 # ...（あなたの last200_bonus 以降は変更なし）
 
-fatigue_value = fatigue_extra(eff_laps, day_label, n_cars, race_class)
+fatigue_value = fatigue_extra(
+    eff_laps, day_stage, n_cars, race_class, day_index, schedule_total_days
+)
 
 globals()["fatigue_value"] = float(fatigue_value)
 globals()["fatigue_extra_value"] = float(fatigue_value)
@@ -2042,14 +1950,15 @@ globals()["bank_length"]     = float(bank_length)
 globals()["bank_angle"]      = float(bank_angle)
 globals()["style"]           = float(style)
 globals()["wind_speed"]      = float(wind_speed)
+globals()["wind_dir"]        = str(wind_dir)
+globals()["eff_wind_speed"]  = float(wind_speed)
+globals()["eff_wind_dir"]    = str(wind_dir)
 globals()["race_class"]      = str(race_class)
-globals()["venue_profile"]   = str(st.session_state.get("venue_profile", "unknown"))
-globals()["venue_home_flow_mult"] = float(st.session_state.get("venue_home_flow_mult", 1.00))
-globals()["venue_min_odds_mult"]  = float(st.session_state.get("venue_min_odds_mult", 1.00))
-globals()["venue_hit_expect_coef"] = float(st.session_state.get("venue_hit_expect_coef", 1.00))
-globals()["venue_myoumi_expect_coef"] = float(st.session_state.get("venue_myoumi_expect_coef", 1.00))
 globals()["n_cars"]          = int(n_cars)
 globals()["day_label"] = str(day_label)
+globals()["day_stage"] = str(day_stage)
+globals()["day_index"] = int(day_index)
+globals()["schedule_total_days"] = int(schedule_total_days)
 globals()["eff_laps"]  = int(eff_laps)
     
 
@@ -2058,9 +1967,9 @@ globals()["eff_laps"]  = int(eff_laps)
 # メイン：入力
 # ==============================
 st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き：統合版）⭐")
-st.caption(f"風補正モード: {WIND_MODE}（'speed_only'=風速のみ / 'directional'=向きも薄く考慮）")
+st.caption(f"風補正モード: {WIND_MODE}固定（屋外は風速＋ホーム基準風向を常時反映／前橋・小倉はドーム無風固定）")
 
-st.subheader("2026/05/24更新")
+st.subheader("v297・2026/08/05更新")
 if "race_no_main" not in st.session_state:
     st.session_state["race_no_main"] = 1
 c1, c2, c3 = st.columns([6,2,2])
@@ -2235,21 +2144,26 @@ for i, no in enumerate(active_cars_live):
 # =====================================================
 # コメントチェック表
 #   前検コメントを見て手動チェック
-#   自力：自力 / 自力基本 / 自分で / 前で 等
+#   自力：自力 / 自力基本 / 自分で 等
 #   自力自在：自力自在 / 何でもやる / 前々自力 等
-#   自在：自在 / 前々 / 流れで / 位置取り 等
+#   自在：自在 / 流れで / 位置取り 等
+#   前へ：前へ / 前受け / 前々へ 等（最終ホーム想定ラインの位置決めだけに反映）
 #   番手：○○君 / ○○へ / 任せる / 近畿勢 等
 #   単騎：一人で / 単騎で / 決めず 等（ライン入力上の単騎とは別のコメント補助）
+#   補充出走：追加あっせん・補充（所属ライン／単騎の2車換算勢力だけを軽く減額）
 #   競り：競り対象の車番にチェックし、競り相手を選択
 #   後位信頼：3番手以降の明確追走/地区まとめ/流動を手動評価
 # =====================================================
 st.subheader("コメントチェック")
+st.caption("前へ＝最終ホーム想定+0.75（同一ライン1回）／補充出走＝ライン2車換算勢力×0.98（同一ライン1回）")
 
 jiryoku_comment_live = {}
 jiryoku_jizai_comment_live = {}
 jizai_comment_live = {}
 target_comment_live = {}
 single_comment_live = {}
+front_comment_live = {}
+supplement_comment_live = {}
 seri_comment_live = {}
 seri_target_live = {}
 line_follow_trust_live = {}
@@ -2279,6 +2193,12 @@ for i, no in enumerate(active_cars_live):
             key=f"jizai_comment_r{race_no}_{no}"
         )
 
+        front_comment_live[no] = st.checkbox(
+            "前へ",
+            value=False,
+            key=f"front_comment_r{race_no}_{no}"
+        )
+
         target_comment_live[no] = st.checkbox(
             "番手",
             value=False,
@@ -2289,6 +2209,12 @@ for i, no in enumerate(active_cars_live):
             "単騎",
             value=False,
             key=f"single_comment_r{race_no}_{no}"
+        )
+
+        supplement_comment_live[no] = st.checkbox(
+            "補充出走",
+            value=False,
+            key=f"supplement_comment_r{race_no}_{no}"
         )
 
         seri_comment_live[no] = st.checkbox(
@@ -2392,6 +2318,8 @@ if apply_input:
         "jizai_comment": dict(jizai_comment_live),
         "target_comment": dict(target_comment_live),
         "single_comment": dict(single_comment_live),
+        "front_comment": dict(front_comment_live),
+        "supplement_comment": dict(supplement_comment_live),
         "seri_comment": dict(seri_comment_live),
         "seri_target": dict(seri_target_live),
         "line_follow_trust": dict(line_follow_trust_live),
@@ -2433,6 +2361,8 @@ jiryoku_jizai_comment = snapshot.get("jiryoku_jizai_comment", {})
 jizai_comment = snapshot.get("jizai_comment", {})
 target_comment = snapshot.get("target_comment", {})
 single_comment = snapshot.get("single_comment", {})
+front_comment = snapshot.get("front_comment", {})
+supplement_comment = snapshot.get("supplement_comment", {})
 seri_comment = snapshot.get("seri_comment", {})
 seri_target = snapshot.get("seri_target", {})
 line_follow_trust = snapshot.get("line_follow_trust", {})
@@ -2442,6 +2372,8 @@ globals()["jiryoku_jizai_comment"] = jiryoku_jizai_comment
 globals()["jizai_comment"] = jizai_comment
 globals()["target_comment"] = target_comment
 globals()["single_comment"] = single_comment
+globals()["front_comment"] = front_comment
+globals()["supplement_comment"] = supplement_comment
 globals()["seri_comment"] = seri_comment
 globals()["seri_target"] = seri_target
 globals()["line_follow_trust"] = line_follow_trust
@@ -2484,41 +2416,27 @@ globals()["race_compact_label"] = race_compact_label
 globals()["race_compact_gap"] = race_compact_gap
 globals()["race_compact"] = race_compact
 
-# ヴェロビ独自想定隊列：S主評価＋内枠有利。ライン全車の最高値を代表にする。
-velobi_position_result = calc_velobi_position_line_scores(
-    line_def, S, active_cars, n_cars
-)
-velobi_position_scores = dict(velobi_position_result.get("scores", {}) or {})
-velobi_position_representatives = dict(
-    velobi_position_result.get("representatives", {}) or {}
-)
-home_line_order = make_velobi_position_line_order(
-    line_def, S, active_cars, n_cars
-)
+# v297：想定隊列はS＋車番から独自生成する。H主導ラインは別計算で維持する。
+home_line_scores = calc_velobi_queue_scores(line_def, S, active_cars)
+home_line_order = make_velobi_queue_order(line_def, S, active_cars)
 home_line_text = format_home_line_order(line_def, home_line_order)
 
-# 想定隊列の1・2番手。位置取り補正に使う。
 home_top_gid = home_line_order[0] if home_line_order else None
 home_second_gid = home_line_order[1] if len(home_line_order) >= 2 else None
 globals()["home_top_gid"] = home_top_gid
 globals()["home_second_gid"] = home_second_gid
-globals()["velobi_position_scores"] = dict(velobi_position_scores)
-globals()["velobi_position_representatives"] = dict(velobi_position_representatives)
 
-# H主導ライン判定は想定隊列と分離し、従来どおりH・Bから決める。
+# H主導ライン判定（独自想定隊列とは分離）
 # Hスコアが低すぎる場合は「主導なし」とする
-home_line_scores = calc_home_line_scores(line_def, H, B, active_cars)
-h_lead_order = make_home_line_order(line_def, H, B, active_cars)
-h_lead_gid = h_lead_order[0] if h_lead_order else None
-h_lead_score = float(home_line_scores.get(h_lead_gid, 0.0)) if h_lead_gid is not None else 0.0
+home_lead_scores = calc_home_line_scores(line_def, H, B, active_cars)
+home_lead_order = make_home_line_order(line_def, H, B, active_cars)
+home_lead_gid = home_lead_order[0] if home_lead_order else None
+home_top_score = float(home_lead_scores.get(home_lead_gid, 0.0)) if home_lead_gid is not None else 0.0
 
-if h_lead_gid is not None and h_lead_score >= 1.0:
-    home_top_line = format_home_line_order(line_def, [h_lead_gid])
+if home_lead_gid is not None and home_top_score >= 1.0:
+    home_top_line = format_home_line_order(line_def, [home_lead_gid])
 else:
     home_top_line = "主導なし"
-
-globals()["h_lead_gid"] = h_lead_gid
-globals()["h_lead_score"] = h_lead_score
 
 
 
@@ -2751,6 +2669,9 @@ jiryoku_jizai_comment_map = globals().get("jiryoku_jizai_comment", {}) or {}
 jizai_comment_map   = globals().get("jizai_comment", {}) or {}
 target_comment_map  = globals().get("target_comment", {}) or {}
 single_comment_map  = globals().get("single_comment", {}) or {}
+# v292：以下2つは個人スコアには直接加減しない。
+front_comment_map = globals().get("front_comment", {}) or {}
+supplement_comment_map = globals().get("supplement_comment", {}) or {}
 seri_comment_map    = globals().get("seri_comment", {}) or {}
 seri_target_map     = globals().get("seri_target", {}) or {}
 line_follow_trust_map = globals().get("line_follow_trust", {}) or {}
@@ -2803,7 +2724,9 @@ for no in active_cars:
     # =====================================================
     # 周回疲労（DAY×頭数×級別を反映）
     # =====================================================
-    extra = fatigue_extra(eff_laps, day_label, n_cars, race_class)
+    extra = fatigue_extra(
+        eff_laps, day_stage, n_cars, race_class, day_index, schedule_total_days
+    )
     extra = min(extra, 3.0)   # 応急上限（暴走止め）
 
     fatigue_scale = (
@@ -2876,7 +2799,7 @@ for no in active_cars:
         if role == "head":
             jiryoku_comment_bonus += 0.015
         try:
-            h_line = line_def.get(h_lead_gid, []) if h_lead_gid is not None else []
+            h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
             if h_line and int(h_line[0]) == int(no):
                 jiryoku_comment_bonus += 0.025
         except Exception:
@@ -2893,7 +2816,7 @@ for no in active_cars:
         if role in ("head", "single"):
             jizai_comment_bonus += 0.005
         try:
-            h_line = line_def.get(h_lead_gid, []) if h_lead_gid is not None else []
+            h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
             if h_line and int(h_line[0]) == int(no):
                 jiryoku_comment_bonus += 0.015
         except Exception:
@@ -2958,7 +2881,7 @@ for no in active_cars:
 
                 # H主導ラインの先頭なら、ライン成立度を少し上乗せ
                 try:
-                    h_line = line_def.get(h_lead_gid, []) if h_lead_gid is not None else []
+                    h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
                     if h_line and int(h_line[0]) == int(no):
                         line_cushion_bonus += 0.020
                 except Exception:
@@ -4042,17 +3965,27 @@ def _t369_two_car_equivalent_strength(
 
 
 def _build_line_two_car_strength_map(lines, scores_map):
-    """ラインキー（例: '127'）→2車換算勢力の辞書を作る。"""
+    """ラインキー（例: '127'）→2車換算勢力の辞書を作る。
+
+    v292:
+    ・「補充出走」がライン内に1人以上いれば、そのライン／単騎の勢力だけ0.98倍。
+    ・同一ラインに複数チェックがあっても減額は1回だけ。
+    ・個人KO使用スコア自体は変更しない。
+    """
     out = {}
+    supplement_map = globals().get("supplement_comment", {}) or {}
     for line in _normalize_lines(lines):
         key = "".join(str(int(car)) for car in line)
         if not key:
             continue
-        out[key] = _t369_two_car_equivalent_strength(
+        strength = _t369_two_car_equivalent_strength(
             line,
             scores_map,
             default_score=0.0,
         )
+        if _line_comment_checked(supplement_map, line):
+            strength *= float(SUPPLEMENT_LINE_FACTOR)
+        out[key] = float(strength)
     return out
 
 
@@ -4291,26 +4224,31 @@ def _normalize_lines(_lines):
         out.append([int(ch) for ch in s])
     return out
 
-# --- v282：ラインFRは「ライン上位2車合計／単騎2倍」の2車換算勢力で作る ---
-def _build_line_fr_map_v282(lines, scores_map, FRv):
+# --- v294：ライン値は「ライン上位2車合計／単騎2倍」の2車換算勢力比で作る ---
+def _build_line_fr_map_v282(lines, scores_map, FRv=None):
+    """
+    v294:
+    レース全体FRとは切り離し、ライン／単騎の2車換算勢力を
+    全ライン合計1.000の相対シェアへ正規化して返す。
+
+    FRv は旧呼び出し互換のため受け取るが、勢力比計算には使用しない。
+    """
     normalized_lines = _normalize_lines(lines)
-    FRv = float(FRv or 0.0)
     if not normalized_lines:
         return {}
 
     strength_map = _build_line_two_car_strength_map(normalized_lines, scores_map)
     total = sum(float(value or 0.0) for value in strength_map.values())
-    sum_target = FRv if FRv > 0.0 else 1.0
 
     if total <= 0.0:
-        equal_share = sum_target / len(normalized_lines)
+        equal_share = 1.0 / len(normalized_lines)
         return {
             "".join(map(str, line)): equal_share
             for line in normalized_lines
         }
 
     return {
-        key: sum_target * (float(value or 0.0) / total)
+        key: float(value or 0.0) / total
         for key, value in strength_map.items()
     }
 
@@ -4318,7 +4256,7 @@ def _build_line_fr_map_v282(lines, scores_map, FRv):
 # --- v283：2車換算勢力上位3組だけを三流れ代表へ割り当てる ---
 def _v283_build_top3_strength_zones(line_items):
     """
-    全ライン／単騎を2車換算勢力（line_items[*]['fr']）で並べ、
+    全ライン／単騎を2車換算勢力比（line_items[*]['fr']）で並べ、
     上位3組だけを順流・渦・逆流の代表にする。
 
     ・旧FR／旧渦／旧逆流の対応は「流れ名の割当」にだけ使う。
@@ -4665,8 +4603,8 @@ try:
             _is_h_lead_thirdplus = False
             try:
                 _h_members = []
-                if h_lead_gid is not None and isinstance(_line_def, dict):
-                    _h_members = [int(x) for x in _line_def.get(h_lead_gid, [])]
+                if home_top_gid is not None and isinstance(_line_def, dict):
+                    _h_members = [int(x) for x in _line_def.get(home_top_gid, [])]
 
                 if (
                     len(_h_members) >= 3
@@ -4817,50 +4755,6 @@ try:
         note_sections.append(f"※ラスト半周補正エラー：{_e}")
 
     # =========================================================
-    # 会場成績 × ヴェロビ独自想定隊列補正（買い目用スコア）
-    # 想定隊列1番手を最も有利、2番手を次に有利として加点する。
-    # =========================================================
-    try:
-        _line_def = globals().get("line_def", {})
-        _car_to_group = globals().get("car_to_group", {})
-        _track = globals().get("track", st.session_state.get("track", ""))
-        _venue_profile = globals().get("venue_profile", st.session_state.get("venue_profile", "unknown"))
-        _home_top_gid = globals().get("home_top_gid", None)
-        _home_second_gid = globals().get("home_second_gid", None)
-
-        _home_flow_bonus_map = {}
-        _home_flow_reason_map = {}
-        _before_home_flow_map = dict(score_map)
-
-        for _n in list(score_map.keys()):
-            _car = int(_n)
-            _role = role_in_line(_car, _line_def) if isinstance(_line_def, dict) else "single"
-            _gid = _car_to_group.get(_car, None) if isinstance(_car_to_group, dict) else None
-
-            _hf_bonus, _hf_reason = home_flow_adjust_by_venue(
-                no=_car,
-                role=_role,
-                gid=_gid,
-                home_top_gid=_home_top_gid,
-                home_second_gid=_home_second_gid,
-                track_name=_track,
-                venue_profile=_venue_profile,
-            )
-
-            _home_flow_bonus_map[_car] = float(_hf_bonus)
-            _home_flow_reason_map[_car] = str(_hf_reason)
-
-            score_map[_car] = float(score_map.get(_car, 0.0)) + float(_hf_bonus)
-
-        globals()["home_flow_bonus_map"] = dict(_home_flow_bonus_map)
-        globals()["home_flow_reason_map"] = dict(_home_flow_reason_map)
-        globals()["score_map_before_home_flow"] = dict(_before_home_flow_map)
-        globals()["score_map_home_flow_applied"] = dict(score_map)
-
-    except Exception as _e:
-        note_sections.append(f"※会場×最終H補正エラー：{_e}")
-
-    # =========================================================
     # v178：開催場決まり手補正（常時適用・雨天補正とは別枠）
     # 入力された1着/2着決まり手率を、役割別の小幅ptへ変換して加算。
     # =========================================================
@@ -4904,9 +4798,10 @@ try:
     globals()["score_map"] = score_map  # 後段参照用に保持
 
     # =========================================================
-    # v282：ライン／単騎を2車換算して line_fr_map を毎回再構築
+    # v294：ライン／単騎を2車換算し、合計1.000の勢力比へ正規化
     # ・2車以上のライン＝ライン内KO使用スコア上位2車の合計
     # ・単騎＝本人のKO使用スコア×2
+    # ・レース全体FRは掛けず、独立値として保持する
     # =========================================================
     try:
         line_two_car_strength_map = _build_line_two_car_strength_map(
@@ -4916,14 +4811,15 @@ try:
         line_fr_map = _build_line_fr_map_v282(
             all_lines,
             score_map,
-            FRv if FRv > 0.0 else 1.0,
         )
     except Exception:
         line_two_car_strength_map = {}
         line_fr_map = {}
 
+    globals()["RACE_FR_RAW"] = float(FRv)
     globals()["LINE_TWO_CAR_STRENGTH_MAP"] = dict(line_two_car_strength_map)
-    globals()["line_fr_map"] = dict(line_fr_map)
+    globals()["LINE_STRENGTH_SHARE_MAP"] = dict(line_fr_map)
+    globals()["line_fr_map"] = dict(line_fr_map)  # 旧後段互換：中身は正規化勢力比
 
     def _line_key(ln):
         try:
@@ -4992,7 +4888,7 @@ try:
 
         # H：最終ホーム想定ライン
         try:
-            note_sections.append(f"ヴェロビ独自想定隊列　{home_line_text}")
+            note_sections.append(f"ヴェロビ想定隊列　{home_line_text}")
             note_sections.append(f"H主導ライン　{home_top_line}")
         except Exception:
             pass
@@ -5000,7 +4896,7 @@ try:
     note_sections.append("")
 
     # =========================================================
-    # ライン想定FR（順流/渦/逆流 + その他）表示  ※区分け復活
+    # ライン勢力比（順流/渦/逆流 + その他）表示  ※合計1.000
     # =========================================================
     def _fmt_line(ln):
         try:
@@ -5027,7 +4923,7 @@ try:
         return tuple(int(x) for x in (a or [])) == tuple(int(x) for x in (b or []))
 
     try:
-        h_line_members = line_def.get(h_lead_gid, []) if h_lead_gid is not None else []
+        h_line_members = line_def.get(home_top_gid, []) if home_top_gid is not None else []
     except Exception:
         h_line_members = []
 
@@ -5112,7 +5008,7 @@ try:
             for item in items:
                 tag_txt = ("・" + "・".join(item.get("tags", []) or [])) if item.get("tags") else ""
                 parts.append(
-                    f"{_fmt_line(item.get('line', []))}［FR={float(item.get('fr', 0.0) or 0.0):.3f}{tag_txt}］"
+                    f"{_fmt_line(item.get('line', []))}［勢力比={float(item.get('fr', 0.0) or 0.0):.3f}{tag_txt}］"
                 )
             note_sections.append(f"{zone_name}：" + "／".join(parts))
 
@@ -5126,7 +5022,7 @@ try:
                 tags.extend(str(x) for x in (item.get("tags", []) or []) if str(x))
                 tag_txt = ("・" + "・".join(tags)) if tags else ""
                 other_parts.append(
-                    f"{_fmt_line(item.get('line', []))}［FR={float(item.get('fr', 0.0) or 0.0):.3f}{tag_txt}］"
+                    f"{_fmt_line(item.get('line', []))}［勢力比={float(item.get('fr', 0.0) or 0.0):.3f}{tag_txt}］"
                 )
             note_sections.append("その他（3列目候補）：" + "／".join(other_parts))
         else:
@@ -5185,42 +5081,6 @@ try:
     except Exception as _e:
         note_sections.append(f"※ラスト半周補正表示エラー：{_e}")
         note_sections.append("")
-    # =========================================================
-    # 会場×最終Hライン補正 表示
-    # =========================================================
-    try:
-        _hf_bonus_map = globals().get("home_flow_bonus_map", {})
-        _hf_reason_map = globals().get("home_flow_reason_map", {})
-        _hf_before_map = globals().get("score_map_before_home_flow", {})
-        _hf_after_map = globals().get("score_map_home_flow_applied", {})
-
-        if isinstance(_hf_bonus_map, dict) and _hf_bonus_map:
-            note_sections.append("【会場×最終Hライン補正】")
-            note_sections.append(
-                f"会場判定={globals().get('venue_profile', 'unknown')} ／ "
-                f"補正倍率={float(globals().get('venue_home_flow_mult', 1.0)):.2f} ／ "
-                f"必要オッズ倍率={float(globals().get('venue_min_odds_mult', 1.0)):.2f}"
-            )
-
-            _hf_pairs = sorted(
-                [(int(k), float(v)) for k, v in _hf_bonus_map.items()],
-                key=lambda t: t[0]
-            )
-
-            for _car, _bonus in _hf_pairs:
-                _before = float(_hf_before_map.get(_car, 0.0) or 0.0)
-                _after = float(_hf_after_map.get(_car, _before + _bonus) or 0.0)
-                _reason_txt = str(_hf_reason_map.get(_car, ""))
-                note_sections.append(
-                    f"{_car}：補正前={_before:.6f} ／ H補正={_bonus:+.3f} ／ 補正後={_after:.6f}［{_reason_txt}］"
-                )
-
-            note_sections.append("")
-
-    except Exception as _e:
-        note_sections.append(f"※会場×最終H補正表示エラー：{_e}")
-        note_sections.append("")
-
     # =========================================================
     # KO使用スコア（降順）
     # =========================================================
@@ -6047,8 +5907,8 @@ try:
             # H主導ラインの3番手以降で、3着内率40%以上の車だけ対象
             _promote_targets = []
 
-            if h_lead_gid is not None and isinstance(line_def, dict):
-                _h_members = [int(x) for x in line_def.get(h_lead_gid, [])]
+            if home_top_gid is not None and isinstance(line_def, dict):
+                _h_members = [int(x) for x in line_def.get(home_top_gid, [])]
 
                 if len(_h_members) >= 3:
                     for _car3 in _h_members[2:]:
@@ -6179,8 +6039,8 @@ try:
 
     
 
-    lines_out.append(f"・VTXラインFR={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
-    lines_out.append(f"・逆流ラインFR={_u_fr:.3f}［{_band3_u(_u_fr)}］")
+    lines_out.append(f"・VTXライン勢力比={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
+    lines_out.append(f"・逆流ライン勢力比={_u_fr:.3f}［{_band3_u(_u_fr)}］")
 
     # 内訳要約（flow dbg）
     dbg = _flow.get("dbg", {}) if isinstance(_flow, dict) else {}
@@ -6258,8 +6118,8 @@ try:
             f"・順当度：{_compact_label}"
         )
 
-    lines_out.append(f"・VTXラインFR={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
-    lines_out.append(f"・逆流ラインFR={_u_fr:.3f}［{_band3_u(_u_fr)}］")
+    lines_out.append(f"・VTXライン勢力比={_vtx_fr:.3f}［{_band3_vtx(_vtx_fr)}］")
+    lines_out.append(f"・逆流ライン勢力比={_u_fr:.3f}［{_band3_u(_u_fr)}］")
 
     bs = 0.0
     bn = 0.0
@@ -6408,7 +6268,7 @@ try:
             if home_top_line == "主導なし":
                 recommend_reason.append("H主導ラインなし")
             else:
-                h_line = line_def.get(h_lead_gid, []) if h_lead_gid is not None else []
+                h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
                 h_zone = _current_zone_for_line(h_line)
 
                 if h_zone in ("順流", "渦", "逆流"):
@@ -6445,7 +6305,7 @@ try:
 
         try:
             if home_top_line != "主導なし":
-                h_line = line_def.get(h_lead_gid, []) if h_lead_gid is not None else []
+                h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
                 h_zone = _current_zone_for_line(h_line)
 
                 if h_zone in ("順流", "渦", "逆流"):
@@ -6481,7 +6341,7 @@ try:
         try:
             if not is_girls_like:
                 if home_top_line != "主導なし":
-                    h_line = line_def.get(h_lead_gid, []) if h_lead_gid is not None else []
+                    h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
                     h_zone = _current_zone_for_line(h_line)
 
                     h_match = (
@@ -6754,7 +6614,6 @@ for _car, _mark in [
         market_mark_map[int(_car)] = _mark
     except Exception:
         pass
-
 
 def _uniq_keep(seq):
     out = []
@@ -8656,11 +8515,12 @@ def _decide_ticket_with_win_ai_confidence(
 
 
 # =========================================================
-# v285：各流れ1位候補で採用流れ選定
+# v288：各流れ1位候補で採用流れ選定
 #       → 採用流れ上位からAI印あり2車を抽出
-#       → その2車のAI評価が低い方を最終軸
+#       → その2車のAI評価が低い方を最終軸A、もう一方をB
 #       → 最終軸の同ライン車を必須保護
-#       → 採用流れの着順予想順でヒモ4車を完成
+#       → 採用流れの着順予想順で選出5車を完成
+#       → 選出5車からA・Bを除く採用流れ最上位をC
 # 買い目は三連複AB－ABC－ABCDEの7点。
 # =========================================================
 _V281_STYLES = ("順流", "渦", "逆流")
@@ -8732,6 +8592,74 @@ def _v281_ai_rank(mark):
     return int(_V281_AI_MARK_RANK.get(_v281_normalize_mark(mark), 4))
 
 
+_AI_PRESSURE_COEFFICIENT = {"◎": 0.30, "〇": 0.18, "△": 0.10, "×": 0.04, "": 0.0}
+_AI_PRESSURE_CAP = {"◎": 0.080, "〇": 0.050, "△": 0.030, "×": 0.015, "": 0.0}
+
+
+def _build_ai_pressure_style_seq_map(style_seq_map, mark_map, ko_map):
+    """
+    元の三流れ着順予想を残したまま、AI印による重圧を順位構成へ反映する。
+
+    ・開催時間は使わない。
+    ・補正は全車、全順位に適用する（1着固定なし）。
+    ・各流れの主役ラインは変更しない。ここで動かすのは着順だけ。
+    ・元順位を主成分、KO差を補助成分にし、印の重圧で差が小さい車だけ入れ替える。
+    """
+    clean_map = {
+        style: _v281_unique_sequence((style_seq_map or {}).get(style, []) or [])
+        for style in _V281_STYLES
+    }
+    cars = _v281_unique_sequence(
+        [car for style in _V281_STYLES for car in clean_map.get(style, [])]
+    )
+    ko_values = [_v281_map_float(ko_map, car, 0.0) for car in cars]
+    if len(ko_values) >= 2:
+        ko_mean = sum(ko_values) / len(ko_values)
+        variance = sum((value - ko_mean) ** 2 for value in ko_values) / len(ko_values)
+        sigma = math.sqrt(max(variance, 0.0))
+    else:
+        ko_mean = ko_values[0] if ko_values else 0.0
+        sigma = 0.0
+
+    # 極端に横並びのレースでも補正が消えず、荒いレースでも過大化しない範囲。
+    sigma_used = min(max(float(sigma), 0.12), 0.30)
+    # ◎は基礎差が小さければ約2順位、〇は約1順位動き得る初期感度。
+    # KOが抜けた◎には下のko_supportが働くため、機械的な降格にはしない。
+    rank_step = max(0.015, sigma_used * 0.15)
+
+    penalty_map = {}
+    adjusted_map = {}
+    detail_map = {}
+    for car in cars:
+        mark = _v281_mark_for_car(mark_map, car)
+        coefficient = float(_AI_PRESSURE_COEFFICIENT.get(mark, 0.0))
+        cap = float(_AI_PRESSURE_CAP.get(mark, 0.0))
+        penalty_map[int(car)] = min(sigma_used * coefficient, cap)
+
+    for style in _V281_STYLES:
+        seq = list(clean_map.get(style, []) or [])
+        n = len(seq)
+        scored = []
+        for rank_index, car in enumerate(seq):
+            ko_value = _v281_map_float(ko_map, car, ko_mean)
+            ko_z = (ko_value - ko_mean) / sigma_used if sigma_used > 1e-12 else 0.0
+            # 元順位1つ分の差を rank_step とし、KOは最大でも約0.35順位分だけ補強する。
+            base_order_score = float(n - rank_index) * rank_step
+            ko_support = max(-0.35, min(0.35, ko_z * 0.18)) * rank_step
+            pressure = float(penalty_map.get(int(car), 0.0) or 0.0)
+            final_score = base_order_score + ko_support - pressure
+            scored.append((int(car), final_score, rank_index, ko_value, pressure))
+        scored.sort(key=lambda row: (-float(row[1]), int(row[2]), int(row[0])))
+        adjusted_map[style] = [int(row[0]) for row in scored]
+        detail_map[style] = tuple(scored)
+
+    globals()["AI_PRESSURE_SIGMA"] = float(sigma_used)
+    globals()["AI_PRESSURE_PENALTY_MAP"] = dict(penalty_map)
+    globals()["AI_PRESSURE_DETAIL_MAP"] = dict(detail_map)
+    globals()["AI_PRESSURE_STYLE_SEQ_MAP"] = dict(adjusted_map)
+    return adjusted_map
+
+
 def _v281_find_axis_line(line_def_obj, axis):
     """反映済みラインから最終軸を含むラインを入力順のまま返す。"""
     try:
@@ -8761,19 +8689,29 @@ def _v281_build_fixed_flow_plan(
     line_def_obj,
     line_strength_map=None,
     weighted_hit_map=None,
+    style_main_line_map=None,
 ):
     """
     1) 順流・渦・逆流の各着順予想1位を流れ選定候補にする。
     2) 各候補が属するライン／単騎を2車換算する。
        ・2車以上のライン＝ライン内KO使用スコア上位2車の合計
        ・単騎＝本人のKO使用スコア×2
-    3) 2車換算勢力が最上位の流れを採用する。
+    3) 2車換算勢力へライン長補正と流れ比率差ペナルティを加え、
+       主流決定スコアが最上位の流れを採用する。
+       ・単騎=-0.55／2車=0.00／3車=+0.55
+       ・流れ比率首位との差1ポイントにつき-0.02
     4) 採用流れの着順上位からAI印あり（◎／〇／△／×）の車を順に2車抽出する。
-    5) 抽出した2車のうち、AI評価が低い方を最終軸にする。AI無印車は軸比較から除外する。
-    6) 最終軸の同ライン車を軸以外すべて先にヒモへ確保する。
-    7) 残枠を、採用流れの着順予想上位から順に補充する。
+    5) 抽出した2車のうち、AI評価が低い方を最終軸A、もう一方をBにする。
+       AI無印車は軸比較から除外する。
+    6) もう一方の評価軸候補Bをヒモへ必須確保する。
+    7) 最終軸Aの同ライン車を軸以外すべてヒモへ確保する。
+    8) 残枠を、採用流れの着順予想上位から順に補充し、Aを含む選出5車を作る。
        買い目の基本順位は採用流れの着順予想とし、同ライン保護だけを例外とする。
-    8) 三連複AB－ABC－ABCDEの7点を生成する。
+    9) 選出5車からA・Bを除き、採用流れ着順最上位を原則Cにする。
+       A・B・原則Cが同じ3車以上ラインなら、選出5車内の別線最上位をCへ繰り上げる。
+       原則Cは選出5車に残してD・Eへ移す。
+    10) 三連複AB－ABC－ABCDEの7点
+       （ABC／ABD／ABE／ACD／ACE／BCD／BCE）を生成する。
     """
     ratios = _v281_normalize_ratio_map(flow_ratio_map)
     seq_map = {
@@ -8810,21 +8748,45 @@ def _v281_build_fixed_flow_plan(
             default_score=0.0,
         )
 
+    # 主流決定用の初期係数。
+    # 2車ラインを基準に、3連複でライン3車を残せる構造価値を3車へ加点する。
+    # 4車以上の例外構成でも1車増えるごとに同じ幅を加える。
+    line_length_unit = 0.55
+    ratio_gap_unit = 2.00  # 比率は0～1なので、0.01（1ポイント）差で0.02減点。
+    max_ratio = max((float(ratios.get(style, 0.0) or 0.0) for style in _V281_STYLES), default=0.0)
+
     flow_candidates = []
     for style in _V281_STYLES:
         seq = list(seq_map.get(style, []) or [])
         if not seq:
             continue
         car = int(seq[0])
-        candidate_line = _candidate_line(car)
+        # AI重圧で別ライン車が着順1位へ上がっても、流れの基準ラインは変更しない。
+        candidate_line = _v281_unique_sequence(
+            (style_main_line_map or {}).get(style, []) or []
+        )
+        if not candidate_line:
+            candidate_line = _candidate_line(car)
+        strength = float(_candidate_strength(candidate_line))
+        ratio = float(ratios.get(style, 0.0) or 0.0)
+        line_count = len(candidate_line)
+        line_length_adjustment = line_length_unit * float(line_count - 2)
+        ratio_gap = max(0.0, float(max_ratio) - ratio)
+        ratio_gap_penalty = ratio_gap_unit * ratio_gap
+        selection_score = strength + line_length_adjustment - ratio_gap_penalty
         rec = {
             "style": style,
             "car": car,
             "score": _v281_map_float(ko_map, car, 0.0),
-            "strength": float(_candidate_strength(candidate_line)),
+            "strength": strength,
             "line": tuple(candidate_line),
             "line_label": _line_label(candidate_line),
-            "ratio": float(ratios.get(style, 0.0) or 0.0),
+            "line_count": int(line_count),
+            "line_length_adjustment": float(line_length_adjustment),
+            "ratio": ratio,
+            "ratio_gap": float(ratio_gap),
+            "ratio_gap_penalty": float(ratio_gap_penalty),
+            "selection_score": float(selection_score),
             "mark": _v281_mark_for_car(mark_map, car),
             "sequence": tuple(seq),
         }
@@ -8833,11 +8795,12 @@ def _v281_build_fixed_flow_plan(
     if not flow_candidates:
         return None
 
-    # 採用流れは個人KOではなく、ライン／単騎の2車換算勢力で決める。
-    # 完全同値時だけ、流れ想定比率→順流・渦・逆流の固定順→車番で決める。
+    # 採用流れは、2車換算勢力＋ライン長補正－流れ比率差ペナルティで決める。
+    # 完全同値時だけ、2車換算勢力→流れ想定比率→固定順→車番で決める。
     candidate_rows = sorted(
         flow_candidates,
         key=lambda row: (
+            -float(row.get("selection_score", 0.0) or 0.0),
             -float(row.get("strength", 0.0) or 0.0),
             -float(row.get("ratio", 0.0) or 0.0),
             int(_V281_STYLE_ORDER.get(str(row.get("style", "")), 99)),
@@ -8848,6 +8811,9 @@ def _v281_build_fixed_flow_plan(
     flow_selector_car = int(flow_selector_row.get("car"))
     flow_selector_score = float(flow_selector_row.get("score", 0.0) or 0.0)
     flow_selector_strength = float(flow_selector_row.get("strength", 0.0) or 0.0)
+    flow_selector_selection_score = float(flow_selector_row.get("selection_score", 0.0) or 0.0)
+    flow_selector_line_length_adjustment = float(flow_selector_row.get("line_length_adjustment", 0.0) or 0.0)
+    flow_selector_ratio_gap_penalty = float(flow_selector_row.get("ratio_gap_penalty", 0.0) or 0.0)
     flow_selector_line = tuple(flow_selector_row.get("line", tuple()) or tuple())
     flow_selector_line_label = str(flow_selector_row.get("line_label", "—") or "—")
     adopted_style = str(flow_selector_row.get("style", ""))
@@ -8860,6 +8826,9 @@ def _v281_build_fixed_flow_plan(
         "flow_selector_car": flow_selector_car,
         "flow_selector_score": flow_selector_score,
         "flow_selector_strength": flow_selector_strength,
+        "flow_selector_selection_score": flow_selector_selection_score,
+        "flow_selector_line_length_adjustment": flow_selector_line_length_adjustment,
+        "flow_selector_ratio_gap_penalty": flow_selector_ratio_gap_penalty,
         "flow_selector_line": flow_selector_line,
         "flow_selector_line_label": flow_selector_line_label,
         "adopted_style": adopted_style,
@@ -8873,19 +8842,25 @@ def _v281_build_fixed_flow_plan(
             "status": "insufficient_axis_candidates",
             "axis_pair": tuple(),
             "axis": 0,
+            "secondary_axis": 0,
             "axis_score": 0.0,
             "axis_mark": "",
             "axis_flow_rank": 0,
             "axis_line": tuple(),
             "same_line_himo": tuple(),
             "himo": tuple(),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複AB－ABC－ABCDE",
             "ticket_reason": f"{adopted_style}着順予想から軸候補を取得できないため生成不可",
         }
 
-    # v285：採用流れの上位からAI印あり車だけを順に2車抽出する。
+    # 採用流れの上位からAI印あり車だけを順に2車抽出する。
     # AI無印車は軸比較から外すが、後段の同ライン保護・採用流れ着順ヒモには残す。
     axis_pair = []
     skipped_unmarked_axis = []
@@ -8912,65 +8887,82 @@ def _v281_build_fixed_flow_plan(
             "axis_pair": tuple(axis_pair),
             "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
             "axis": 0,
+            "secondary_axis": 0,
             "axis_score": 0.0,
             "axis_mark": "",
             "axis_flow_rank": 0,
             "axis_line": tuple(),
             "same_line_himo": tuple(),
             "himo": tuple(),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複AB－ABC－ABCDE",
             "ticket_reason": f"{adopted_style}着順予想からAI印ありの軸候補を2車取得できないため生成不可",
         }
 
-    # AI印あり2車のうちAI評価が低い方を採用。入力仕様上、◎／〇／△／×は重複しない。
+    # AI印あり2車のうちAI評価が低い方をAに採用。もう一方をBにする。
+    # 入力仕様上、◎／〇／△／×は重複しない。
     axis_row = max(axis_pair, key=lambda row: int(row.get("ai_rank", 4)))
+    secondary_axis_row = next(
+        row for row in axis_pair
+        if int(row.get("car")) != int(axis_row.get("car"))
+    )
     axis = int(axis_row.get("car"))
+    secondary_axis = int(secondary_axis_row.get("car"))
     axis_score = float(axis_row.get("score", 0.0) or 0.0)
     axis_mark = str(axis_row.get("mark", "") or "")
     axis_flow_rank = int(axis_row.get("rank", 0) or 0)
+    secondary_axis_mark = str(secondary_axis_row.get("mark", "") or "")
+    secondary_axis_flow_rank = int(secondary_axis_row.get("rank", 0) or 0)
 
     axis_line = _v281_find_axis_line(line_def_obj, axis)
     same_line_himo = [int(car) for car in axis_line if int(car) != axis]
+    mandatory_himo = _v281_unique_sequence([secondary_axis] + same_line_himo)
 
-    # 同ライン車は全車必須。ヒモ4枠を超える場合は黙って切らず生成停止する。
-    if len(same_line_himo) > 4:
+    # Bと同ライン車は全車必須。ヒモ4枠を超える場合は黙って切らず生成停止する。
+    if len(mandatory_himo) > 4:
         return {
             **base_result,
             "status": "too_many_same_line_himo",
             "axis_pair": tuple(axis_pair),
             "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
             "axis": axis,
+            "secondary_axis": secondary_axis,
+            "secondary_axis_mark": secondary_axis_mark,
+            "secondary_axis_flow_rank": secondary_axis_flow_rank,
             "axis_score": axis_score,
             "axis_mark": axis_mark,
             "axis_flow_rank": axis_flow_rank,
             "axis_line": tuple(axis_line),
             "same_line_himo": tuple(same_line_himo),
             "himo": tuple(),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複AB－ABC－ABCDE",
-            "ticket_reason": f"軸{axis}の同ライン車が4車を超えるため、必須保護を維持したまま6点生成できない",
+            "ticket_reason": (
+                f"もう一方の評価軸候補{secondary_axis}と軸{axis}の同ライン必須車を合わせると"
+                "ヒモ4枠を超えるため、必須保護を維持したまま7点生成できない"
+            ),
         }
 
-    # 7点フォメのもう一方の評価軸Bを最初に確保する。
-    other_axis_row = next(
-        (row for row in axis_pair if int(row.get("car")) != axis),
-        None,
-    )
-    other_axis = int(other_axis_row.get("car")) if other_axis_row else 0
-
-    himo = []
-    if other_axis > 0 and other_axis != axis:
-        himo.append(other_axis)
-
+    # 7点フォメの第1列に必要なBを、選出5車から漏れないよう最初に予約する。
+    himo = [secondary_axis]
     for car in same_line_himo:
         if car != axis and car not in himo:
             himo.append(int(car))
 
-    # v285：買い目の基本順位は採用流れの着順予想へ一本化する。
-    # 同ライン車だけを例外として先に必須保護し、残枠は採用流れの上位から順に補充する。
+    # 買い目の基本順位は採用流れの着順予想へ一本化する。
+    # Bと同ライン車を先に必須保護し、残枠は採用流れの上位から順に補充する。
     # 流れ加重的中単騎評価は参考表示に残すが、ヒモ順位を上書きしない。
     flow_added_himo = []
     for car in adopted_sequence:
@@ -8989,6 +8981,9 @@ def _v281_build_fixed_flow_plan(
             "axis_pair": tuple(axis_pair),
             "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
             "axis": axis,
+            "secondary_axis": secondary_axis,
+            "secondary_axis_mark": secondary_axis_mark,
+            "secondary_axis_flow_rank": secondary_axis_flow_rank,
             "axis_score": axis_score,
             "axis_mark": axis_mark,
             "axis_flow_rank": axis_flow_rank,
@@ -8996,51 +8991,28 @@ def _v281_build_fixed_flow_plan(
             "same_line_himo": tuple(same_line_himo),
             "flow_added_himo": tuple(flow_added_himo),
             "himo": tuple(himo),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複AB－ABC－ABCDE",
             "ticket_reason": "同ライン必須車と採用流れの着順予想上位を合わせてもヒモが4車未満のため生成不可",
         }
 
-    # A=最終軸、B=もう一方の評価軸。
-    # Cは選出5車からA・Bを除く採用流れ最上位を基本とする。
-    # ただしA・B・Cが同じ3車以上ラインなら、同ラインへの集中を避け、
-    # 選出5車内の他ライン最上位をCへ上げる。元Cは選出5車に残す。
-    selected_five = [axis] + [int(x) for x in himo[:4]]
-    selected_set = set(selected_five)
-
-    c_candidates = [
-        int(car) for car in adopted_sequence
-        if int(car) in selected_set and int(car) not in {axis, other_axis}
-    ]
-    original_c = int(c_candidates[0]) if c_candidates else 0
-    c = original_c
-    c_replaced_for_line_balance = False
-
-    if (
-        c > 0
-        and len(axis_line) >= 3
-        and axis in axis_line
-        and other_axis in axis_line
-        and c in axis_line
-    ):
-        outside_line_candidates = [
-            int(car) for car in adopted_sequence
-            if int(car) in selected_set
-            and int(car) not in {axis, other_axis}
-            and int(car) not in axis_line
-        ]
-        if outside_line_candidates:
-            c = int(outside_line_candidates[0])
-            c_replaced_for_line_balance = True
-
-    if c <= 0:
+    selected_five = [axis] + [int(car) for car in himo[:4]]
+    if secondary_axis not in selected_five:
         return {
             **base_result,
-            "status": "insufficient_second_row_candidate",
+            "status": "secondary_axis_not_in_selected_five",
             "axis_pair": tuple(axis_pair),
             "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
             "axis": axis,
+            "secondary_axis": secondary_axis,
+            "secondary_axis_mark": secondary_axis_mark,
+            "secondary_axis_flow_rank": secondary_axis_flow_rank,
             "axis_score": axis_score,
             "axis_mark": axis_mark,
             "axis_flow_rank": axis_flow_rank,
@@ -9048,48 +9020,105 @@ def _v281_build_fixed_flow_plan(
             "same_line_himo": tuple(same_line_himo),
             "flow_added_himo": tuple(flow_added_himo),
             "himo": tuple(himo[:4]),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複AB－ABC－ABCDE",
-            "ticket_reason": "選出5車から2列目3番手Cを取得できないため生成不可",
+            "ticket_reason": (
+                f"もう一方の評価軸候補{secondary_axis}が、同ライン必須保護を維持した選出5車に入らないため、"
+                "評価軸候補2車を第1列に置く7点フォメを生成できない"
+            ),
         }
 
-    remaining_two = [
-        int(car) for car in adopted_sequence
-        if int(car) in selected_set and int(car) not in {axis, other_axis, c}
+    # 原則Cは、選出5車からA・Bを除いた3車のうち、採用流れ着順最上位。
+    # v297：A・B・原則Cが同じ3車以上ラインなら、選出5車内の別線最上位をCへ繰り上げる。
+    # 原則Cは落とさずD・Eへ移し、選出5車と7点は維持する。
+    adopted_rank_map = {int(car): idx for idx, car in enumerate(adopted_sequence, start=1)}
+    cde_candidates = [
+        int(car) for car in selected_five
+        if int(car) not in {axis, secondary_axis}
     ]
-    for car in selected_five:
-        if car not in {axis, other_axis, c} and car not in remaining_two:
-            remaining_two.append(int(car))
-    remaining_two = remaining_two[:2]
+    cde_candidates = sorted(
+        cde_candidates,
+        key=lambda car: (int(adopted_rank_map.get(int(car), 999)), int(car)),
+    )
+    if len(cde_candidates) != 3 or len(set(cde_candidates)) != 3:
+        return {
+            **base_result,
+            "status": "invalid_formation_candidates",
+            "axis_pair": tuple(axis_pair),
+            "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
+            "axis": axis,
+            "secondary_axis": secondary_axis,
+            "secondary_axis_mark": secondary_axis_mark,
+            "secondary_axis_flow_rank": secondary_axis_flow_rank,
+            "axis_score": axis_score,
+            "axis_mark": axis_mark,
+            "axis_flow_rank": axis_flow_rank,
+            "axis_line": tuple(axis_line),
+            "same_line_himo": tuple(same_line_himo),
+            "flow_added_himo": tuple(flow_added_himo),
+            "himo": tuple(himo[:4]),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複AB－ABC－ABCDE",
+            "ticket_reason": "選出5車からA・Bを除いたC・D・Eを一意に確定できないため生成不可",
+        }
 
-    # AB-ABC-ABCDEを重複なしの7点へ展開する。
-    row1 = {axis, other_axis}
-    row2 = {axis, other_axis, c}
-    tickets = []
-    ticket_keys = set()
-    for trio_raw in combinations(selected_five, 3):
-        trio_set = set(int(x) for x in trio_raw)
-        if not trio_set.intersection(row1) or not trio_set.intersection(row2):
-            continue
-        # フォーメーションは各列から異なる3車を取る必要がある。
-        valid = any(
-            a != b and b != d and a != d
-            for a in row1
-            for b in row2
-            for d in selected_set
-            if {a, b, d} == trio_set
-        )
-        if not valid:
-            continue
-        key = tuple(sorted(trio_set))
-        if key in ticket_keys:
-            continue
-        ticket_keys.add(key)
-        tickets.append("-".join(str(x) for x in key))
+    original_c_car = int(cde_candidates[0])
+    c_replaced_by_other_line = False
+    axis_line_set = set(int(car) for car in axis_line)
+    if (
+        len(axis_line_set) >= 3
+        and axis in axis_line_set
+        and secondary_axis in axis_line_set
+        and original_c_car in axis_line_set
+    ):
+        external_candidates = [
+            int(car) for car in cde_candidates
+            if int(car) not in axis_line_set
+        ]
+        if external_candidates:
+            replacement_c = int(external_candidates[0])
+            cde_candidates = [replacement_c] + [
+                int(car) for car in cde_candidates if int(car) != replacement_c
+            ]
+            c_replaced_by_other_line = True
+
+    c_car, d_car, e_car = cde_candidates
+    c_flow_rank = int(adopted_rank_map.get(c_car, 0) or 0)
+    # 3列目は元の選出5車順を維持する。C差替えは2列目だけに反映する。
+    formation_five = tuple(int(car) for car in selected_five)
+    third_column_text = "".join(str(int(car)) for car in selected_five)
+    ticket_form = f"{axis}{secondary_axis}-{axis}{secondary_axis}{c_car}-{third_column_text}"
+
+    combo_order = (
+        (axis, secondary_axis, c_car),
+        (axis, secondary_axis, d_car),
+        (axis, secondary_axis, e_car),
+        (axis, c_car, d_car),
+        (axis, c_car, e_car),
+        (secondary_axis, c_car, d_car),
+        (secondary_axis, c_car, e_car),
+    )
+    tickets = [
+        "-".join(str(x) for x in sorted(int(v) for v in combo))
+        for combo in combo_order
+    ]
 
     candidate_text = "・".join(
-        f"{rec['style']}={rec['line_label']}（2車換算={float(rec['strength']):.6f}・1着候補={int(rec['car'])}）"
+        f"{rec['style']}={rec['line_label']}（2車換算={float(rec['strength']):.6f}・"
+        f"長さ補正={float(rec['line_length_adjustment']):+.2f}・比率差減点={float(rec['ratio_gap_penalty']):.2f}・"
+        f"主流決定={float(rec['selection_score']):.6f}・1着候補={int(rec['car'])}）"
         for rec in flow_candidates
     )
     axis_pair_text = "・".join(
@@ -9099,22 +9128,23 @@ def _v281_build_fixed_flow_plan(
     if same_line_himo:
         line_text = "".join(str(x) for x in axis_line)
         same_line_text = "・".join(str(x) for x in same_line_himo)
-        line_reason = f"自ライン{line_text}の軸以外［{same_line_text}］を先に必須確保"
+        line_reason = f"B={secondary_axis}を先に確保し、自ライン{line_text}の軸以外［{same_line_text}］を必須確保"
     else:
-        line_reason = "軸は単騎のため自ライン必須車なし"
+        line_reason = f"B={secondary_axis}を先に確保し、軸は単騎のため自ライン必須車なし"
 
     added_text = "・".join(str(x) for x in flow_added_himo) if flow_added_himo else "なし"
     c_reason = (
-        f"A・B・従来C={original_c}が同一の3車以上ラインに集中するため、"
-        f"選出5車内の他ライン最上位{c}をCへ変更"
-        if c_replaced_for_line_balance
-        else f"選出5車からA・Bを除く{adopted_style}着順最上位{c}をCに選択"
+        f"A・B・原則C={original_c_car}が同じ3車以上ラインのため、別線最上位の{c_car}をCへ繰り上げ、"
+        f"原則C={original_c_car}はD・E側に維持。"
+        if c_replaced_by_other_line else
+        f"選出5車からA・Bを除いた3車のうち、{adopted_style}着順最上位の{c_car}（{c_flow_rank}位）をC。"
     )
     reason = (
-        f"各流れ勢力［{candidate_text}］から2車換算スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
-        f"{adopted_style}着順上位からAI印あり2車［{axis_pair_text}］を抽出し、AI評価が低い{axis}を最終軸に選択。"
-        f"B={other_axis}を先に確保し、{line_reason}し、{adopted_style}着順予想上位から［{added_text}］を補充。"
-        f"{c_reason}し、AB－ABC－ABCDEへ展開"
+        f"各流れ勢力［{candidate_text}］から主流決定スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
+        f"{adopted_style}着順上位からAI印あり2車［{axis_pair_text}］を抽出し、AI評価が低い{axis}を最終軸A、"
+        f"もう一方の{secondary_axis}をBに選択。{line_reason}し、{adopted_style}着順予想上位から［{added_text}］を補充。"
+        f"{c_reason}"
+        f"残る{d_car}・{e_car}をD・EとしてAB－ABC－ABCDEへ展開"
     )
 
     return {
@@ -9123,6 +9153,9 @@ def _v281_build_fixed_flow_plan(
         "axis_pair": tuple(axis_pair),
         "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
         "axis": axis,
+        "secondary_axis": secondary_axis,
+        "secondary_axis_mark": secondary_axis_mark,
+        "secondary_axis_flow_rank": secondary_axis_flow_rank,
         "axis_score": axis_score,
         "axis_mark": axis_mark,
         "axis_flow_rank": axis_flow_rank,
@@ -9130,18 +9163,19 @@ def _v281_build_fixed_flow_plan(
         "same_line_himo": tuple(same_line_himo),
         "flow_added_himo": tuple(flow_added_himo),
         "himo": tuple(himo[:4]),
-        "other_axis": other_axis,
-        "selected_five": tuple(selected_five),
-        "second_row_c": c,
-        "original_second_row_c": original_c,
-        "c_replaced_for_line_balance": bool(c_replaced_for_line_balance),
-        "remaining_two": tuple(remaining_two),
+        "formation_five": tuple(formation_five),
+        "formation_c": c_car,
+        "formation_c_flow_rank": c_flow_rank,
+        "formation_original_c": original_c_car,
+        "formation_c_other_line_replacement": bool(c_replaced_by_other_line),
+        "formation_d": d_car,
+        "formation_e": e_car,
+        "ticket_form": ticket_form,
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
         "ticket_family": "3連複AB－ABC－ABCDE",
         "ticket_reason": reason,
     }
-
 
 def _v281_format_fixed_flow_block(plan):
     if not isinstance(plan, dict) or not plan:
@@ -9154,10 +9188,14 @@ def _v281_format_fixed_flow_block(plan):
             car = int(rec.get("car"))
             score = float(rec.get("score", 0.0) or 0.0)
             strength = float(rec.get("strength", 0.0) or 0.0)
+            line_length_adjustment = float(rec.get("line_length_adjustment", 0.0) or 0.0)
+            ratio_gap_penalty = float(rec.get("ratio_gap_penalty", 0.0) or 0.0)
+            selection_score = float(rec.get("selection_score", strength) or strength)
             line_label = str(rec.get("line_label", "—") or "—")
             mark = str(rec.get("mark", "") or "無印")
             flow_candidate_parts.append(
-                f"{style}={car}（勢力={line_label}:{strength:.6f}・KO={score:.6f}・AI{mark}）"
+                f"{style}={car}（勢力={line_label}:{strength:.6f}・長さ={line_length_adjustment:+.2f}・"
+                f"比率差={-ratio_gap_penalty:+.2f}・主流={selection_score:.6f}・KO={score:.6f}・AI{mark}）"
             )
         except Exception:
             pass
@@ -9165,6 +9203,7 @@ def _v281_format_fixed_flow_block(plan):
     adopted_style = str(plan.get("adopted_style", "") or "未判定")
     flow_selector_car = int(plan.get("flow_selector_car", 0) or 0)
     flow_selector_strength = float(plan.get("flow_selector_strength", 0.0) or 0.0)
+    flow_selector_selection_score = float(plan.get("flow_selector_selection_score", flow_selector_strength) or flow_selector_strength)
     flow_selector_line_label = str(plan.get("flow_selector_line_label", "—") or "—")
 
     axis_pair_parts = []
@@ -9178,18 +9217,20 @@ def _v281_format_fixed_flow_block(plan):
             pass
 
     axis = int(plan.get("axis", 0) or 0)
+    secondary_axis = int(plan.get("secondary_axis", 0) or 0)
     axis_score = float(plan.get("axis_score", 0.0) or 0.0)
     axis_mark = str(plan.get("axis_mark", "") or "無印")
     axis_flow_rank = int(plan.get("axis_flow_rank", 0) or 0)
     axis_line = [int(x) for x in (plan.get("axis_line", tuple()) or tuple())]
     same_line_himo = [int(x) for x in (plan.get("same_line_himo", tuple()) or tuple())]
     himo = [int(x) for x in (plan.get("himo", tuple()) or tuple())]
-    other_axis = int(plan.get("other_axis", 0) or 0)
-    selected_five = [int(x) for x in (plan.get("selected_five", tuple()) or tuple())]
-    second_row_c = int(plan.get("second_row_c", 0) or 0)
-    original_second_row_c = int(plan.get("original_second_row_c", 0) or 0)
-    c_replaced = bool(plan.get("c_replaced_for_line_balance", False))
-    remaining_two = [int(x) for x in (plan.get("remaining_two", tuple()) or tuple())]
+    formation_c = int(plan.get("formation_c", 0) or 0)
+    formation_c_flow_rank = int(plan.get("formation_c_flow_rank", 0) or 0)
+    formation_original_c = int(plan.get("formation_original_c", formation_c) or formation_c)
+    formation_c_other_line_replacement = bool(plan.get("formation_c_other_line_replacement", False))
+    formation_d = int(plan.get("formation_d", 0) or 0)
+    formation_e = int(plan.get("formation_e", 0) or 0)
+    ticket_form = str(plan.get("ticket_form", "") or "")
 
     if axis_line:
         line_label = "".join(str(x) for x in axis_line)
@@ -9202,7 +9243,7 @@ def _v281_format_fixed_flow_block(plan):
         "【流れ選定候補】" + (" ／ ".join(flow_candidate_parts) if flow_candidate_parts else "生成不可"),
         (
             f"【採用流れ】{adopted_style}（勢力={flow_selector_line_label}:"
-            f"{flow_selector_strength:.6f}・1着候補={flow_selector_car}）"
+            f"{flow_selector_strength:.6f}・主流決定={flow_selector_selection_score:.6f}・1着候補={flow_selector_car}）"
         ),
         "【評価軸候補】" + (" ／ ".join(axis_pair_parts) if axis_pair_parts else "生成不可"),
         f"【最終軸】{axis}（{adopted_style}・{axis_flow_rank}位・AI{axis_mark}・KO使用スコア={axis_score:.6f}）",
@@ -9210,45 +9251,32 @@ def _v281_format_fixed_flow_block(plan):
         "【ヒモ4車】" + ("・".join(str(x) for x in himo[:4]) if len(himo) >= 4 else "不足"),
     ]
 
-    if (
-        str(plan.get("status", "")) == "ok"
-        and axis > 0
-        and other_axis > 0
-        and second_row_c > 0
-        and len(selected_five) == 5
-    ):
-        out.append(f"【7点フォメ軸】A={axis}（最終軸）／B={other_axis}（もう一方の評価軸候補）")
-        if c_replaced:
+    if axis > 0 and secondary_axis > 0:
+        out.append(f"【7点フォメ軸】A={axis}（最終軸）／B={secondary_axis}（もう一方の評価軸候補）")
+    if formation_c > 0:
+        if formation_c_other_line_replacement:
             out.append(
-                f"【2列目3番手】C={second_row_c}（別線補強・従来C={original_second_row_c}・"
-                "A・B・従来Cの同一3車以上ライン集中を回避）"
+                f"【2列目3番手】C={formation_c}（{adopted_style}{formation_c_flow_rank}位・別線補強／"
+                f"原則C={formation_original_c}はD・E側へ維持）"
             )
         else:
             out.append(
-                f"【2列目3番手】C={second_row_c}（{adopted_style}着順・"
+                f"【2列目3番手】C={formation_c}（{adopted_style}{formation_c_flow_rank}位・"
                 "選出5車からA・Bを除く採用流れ最上位）"
             )
-        out.append(
-            "【残り2車】" + (
-                f"D={remaining_two[0]}／E={remaining_two[1]}"
-                if len(remaining_two) >= 2 else "不足"
-            )
-        )
-        out.append(
-            f"【フォーメーション】{axis}{other_axis}-"
-            f"{axis}{other_axis}{second_row_c}-"
-            f"{''.join(str(x) for x in selected_five)}"
-        )
+    if formation_d > 0 and formation_e > 0:
+        out.append(f"【残り2車】D={formation_d}／E={formation_e}")
+    if ticket_form:
+        out.append(f"【フォーメーション】{ticket_form}")
 
     out.extend([
         "",
         f"【推奨車券】{plan.get('ticket_family', '3連複AB－ABC－ABCDE')}・{int(plan.get('ticket_count', 0) or 0)}点",
-        f"【選定理由】{plan.get('ticket_reason', '')}",
     ])
     for label, items in (plan.get("ticket_groups", tuple()) or tuple()):
         out.append(f"{label}" + "　".join(str(x) for x in items))
+    out.append(f"【選定理由】{plan.get('ticket_reason', '')}")
     return out
-
 
 def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
     """note貼り付け用の現行v270サマリーを生成する。
@@ -9423,8 +9451,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
         # v193:
         # 買目考察は「推奨戦法1本」ではなく、順流・逆流・渦を全て並列表示する。
-        # 会場判定 good/middle/bad による買目切替は廃止し、各流れごとに
-        # 「総合評価B以上・総合pt上位2点」の2車複購入候補だけを表示する。
+        # 各流れごとに「総合評価B以上・総合pt上位2点」の2車複購入候補だけを表示する。
         style_seq_map = globals().get("STYLE_SEQ_MAP", {}) or {}
         if not isinstance(style_seq_map, dict):
             style_seq_map = {}
@@ -9713,18 +9740,6 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                         _rank_order.get(str(_row.get("myoumi_rank")), 0),
                     )
 
-                # v203: 会場成績を2車複BOX評価の内部ptへ小幅反映する。
-                # 的中率 → 的中期待係数、回収率 → 妙味期待係数。
-                # 買目採用ルールは変えず、総合pt計算前の材料だけを補正する。
-                try:
-                    _venue_hit_coef = float(globals().get("venue_hit_expect_coef", st.session_state.get("venue_hit_expect_coef", 1.00)) or 1.00)
-                except Exception:
-                    _venue_hit_coef = 1.00
-                try:
-                    _venue_myoumi_coef = float(globals().get("venue_myoumi_expect_coef", st.session_state.get("venue_myoumi_expect_coef", 1.00)) or 1.00)
-                except Exception:
-                    _venue_myoumi_coef = 1.00
-
                 _long_span_pairs = []
                 _long_span_keys = set()
                 for _a, _b in combinations(_long_span_all_cars, 2):
@@ -9744,13 +9759,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                         except Exception:
                             _base_sc = 0.0
                         _sc = _scenario_myoumi_bonus_2kei(_key[0], _key[1], _base_sc)
-                        # v203: 回収率が低い開催では妙味期待を少し弱め、回収率が高い開催では少し強める。
-                        _sc = round(max(0.0, min(10.8, float(_sc) * float(_venue_myoumi_coef))), 2)
+                        _sc = round(max(0.0, min(10.8, float(_sc))), 2)
 
                         _disp = f"{_key[0]}-{_key[1]}"
                         _hit_score = _longspan_hit_score_pair(_key[0], _key[1])
-                        # v203: 的中率が低い開催では的中期待を少し弱め、的中率が高い開催では少し強める。
-                        _hit_score = round(max(0.0, min(12.0, float(_hit_score) * float(_venue_hit_coef))), 2)
+                        _hit_score = round(max(0.0, min(12.0, float(_hit_score))), 2)
                         if _hit_score >= 10.0:
                             _hit_rank = "A"
                         elif _hit_score >= 8.0:
@@ -11300,14 +11313,38 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
             # v285：2車換算勢力上位3組だけで三流れを構成し、勢力最上位の流れを採用する。
             # 採用流れ上位からAI印あり2車を抽出して低評価側を軸にし、同ライン必須＋採用流れ着順上位をヒモにする。
             _v281_fixed_plan = _v281_build_fixed_flow_plan(
-                globals().get("STYLE_SEQ_MAP", {}) or {},
+                globals().get("AI_PRESSURE_STYLE_SEQ_MAP", {}) or globals().get("STYLE_SEQ_MAP", {}) or {},
                 _flow_ratio_map_for_trio(),
                 mark_map or {},
                 globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {},
                 globals().get("line_def", {}) or {},
                 globals().get("LINE_TWO_CAR_STRENGTH_MAP", {}) or {},
                 _weighted_car_hit_map or {},
+                globals().get("STYLE_SCENARIO_MAIN_LINE_MAP", {}) or {},
             )
+
+            # 元順位の直後に、三流れの重圧補正順位と採用流れの最終候補を表示する。
+            try:
+                _pressure_map = globals().get("AI_PRESSURE_STYLE_SEQ_MAP", {}) or {}
+                _pressure_lines = []
+                for _style in _V281_STYLES:
+                    _seq = _v281_unique_sequence(_pressure_map.get(_style, []) or [])
+                    _pressure_lines.append(f"【AI重圧補正後・{_style}メイン着順予想】")
+                    _pressure_lines.append(" → ".join(str(x) for x in _seq) if _seq else "該当なし")
+                    _pressure_lines.append("")
+                _adopted = str((_v281_fixed_plan or {}).get("adopted_style", "") or "未判定")
+                _final_seq = _v281_unique_sequence(
+                    (_v281_fixed_plan or {}).get("adopted_sequence", tuple()) or []
+                )
+                globals()["AI_PRESSURE_DISPLAY_BLOCK"] = "\n".join(_pressure_lines).strip()
+                globals()["AI_PRESSURE_FINAL_CANDIDATE_BLOCK"] = "\n".join([
+                    "【最終予想候補】",
+                    f"採用流れ={_adopted}",
+                    " → ".join(str(x) for x in _final_seq) if _final_seq else "該当なし",
+                ]).strip()
+            except Exception:
+                globals()["AI_PRESSURE_DISPLAY_BLOCK"] = ""
+                globals()["AI_PRESSURE_FINAL_CANDIDATE_BLOCK"] = ""
 
             def _fmt_trio_summary_rows(_rows, include_santan_ref=True):
                 _out = []
@@ -11631,11 +11668,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
             _fw_trio_lines = _make_flow_weighted_trio_lines()
 
-            # v281: 旧買い目判定・A～E振り分けの表示は廃止。
-            # 固定の三連複1車軸4車流し・6点だけを上部に表示する。
-            # 旧計算値は互換性のため内部に残すが、note本文へは出力しない。
+            # v289: 上部サマリーは推奨と実買い目までに限定する。
+            # 総合加重単騎評価、加重2車複・3連複評価表は、
+            # 三流れ着順予想の後へ表示するため別ブロックとして保持する。
+            globals()["V289_WEIGHTED_EVAL_BLOCK"] = ""
 
-            # v227: 検証に必要な総合加重単騎評価だけ残す。
             if _fw_trio_lines:
                 _score_lines = [
                     str(x) for x in _fw_trio_lines
@@ -11643,16 +11680,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                     or str(x).startswith("流れ加重妙味単騎評価】")
                 ]
                 if _score_lines:
-                    lines.append("【総合加重単騎評価】")
-                    lines.extend(_score_lines)
-                    lines.append("")
-                    lines.append("【加重2車複評価表】")
-                    lines.extend(_fmt_weighted_pair_table(_overall_sorted_rows, _limit=21))
-                    lines.append("")
-                    lines.append("【加重3連複評価表】")
-                    lines.extend(_fmt_weighted_trio_table(_weighted_trio_rows, _limit=35))
-                    lines.append("")
-                    lines.append("")
+                    _weighted_eval_lines = ["【総合加重単騎評価】"]
+                    _weighted_eval_lines.extend(_score_lines)
+                    _weighted_eval_lines.append("")
+                    _weighted_eval_lines.append("【加重2車複評価表】")
+                    _weighted_eval_lines.extend(_fmt_weighted_pair_table(_overall_sorted_rows, _limit=21))
+                    _weighted_eval_lines.append("")
+                    _weighted_eval_lines.append("【加重3連複評価表】")
+                    _weighted_eval_lines.extend(_fmt_weighted_trio_table(_weighted_trio_rows, _limit=35))
+                    globals()["V289_WEIGHTED_EVAL_BLOCK"] = "\n".join(_weighted_eval_lines).strip()
         else:
             lines.append("【買目考察】")
             lines.append("")
@@ -11665,6 +11701,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
 
 
+# 元の三流れ予想は参考表示として保持し、買い目用には重圧補正後順位を別生成する。
+AI_PRESSURE_STYLE_SEQ_MAP = _build_ai_pressure_style_seq_map(
+    globals().get("STYLE_SEQ_MAP", {}) or {},
+    market_mark_map or {},
+    globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {},
+)
+
 try:
     _rec_style = globals().get("RECOMMENDED_STYLE", "")
     _rec_seq = globals().get("RECOMMENDED_STYLE_SEQ", [])
@@ -11676,14 +11719,27 @@ try:
         market_mark_map,
     )
 
-    # v286：AI印あり2車比較軸・同ライン保護・別線C補強の三連複7点を展開評価の直後へ表示する。
-    _current_summary = f"{_summary_core}\n"
+    # v295：最終予想候補を流れ想定比率の直後へ置き、その後に買い目サマリーを続ける。
+    _final_candidate_block = str(
+        globals().get("AI_PRESSURE_FINAL_CANDIDATE_BLOCK", "") or ""
+    ).strip()
+    _current_summary_parts = [
+        _block for _block in (_final_candidate_block, _summary_core) if str(_block or "").strip()
+    ]
+    _current_summary = "\n\n".join(_current_summary_parts) + "\n"
 
+    _m_flow_ratio = re.search(r"^流れ想定比率】[^\n]*$", note_text, flags=re.MULTILINE)
     _m_tenkai = re.search(r"^展開評価：[^\n]*$", note_text, flags=re.MULTILINE)
-    if _m_tenkai:
+    if _m_flow_ratio:
+        note_text = note_text.replace(
+            _m_flow_ratio.group(0),
+            _m_flow_ratio.group(0) + "\n\n" + _current_summary,
+            1,
+        )
+    elif _m_tenkai:
         note_text = note_text.replace(
             _m_tenkai.group(0),
-            _m_tenkai.group(0) + "\n" + _current_summary,
+            _m_tenkai.group(0) + "\n\n" + _current_summary,
             1,
         )
     else:
@@ -11694,12 +11750,40 @@ except Exception as _e:
     st.caption(f"note上部サマリー生成不可：{_e}")
 
 
+# v295：元の三流れ着順予想の直後へ、AI重圧補正後順位と加重評価表を表示する。
+# 最終予想候補は流れ想定比率の直後へ移動済みのため、ここでは重複表示しない。
+try:
+    _pressure_display_block = str(globals().get("AI_PRESSURE_DISPLAY_BLOCK", "") or "").strip()
+    _weighted_eval_block = str(globals().get("V289_WEIGHTED_EVAL_BLOCK", "") or "").strip()
+    _post_flow_blocks = [
+        _block for _block in (_pressure_display_block, _weighted_eval_block) if _block
+    ]
+    _post_flow_block = "\n\n".join(_post_flow_blocks)
+    if _post_flow_block:
+        _m_reverse_flow = re.search(
+            r"(^【逆流メイン着順予想】\n[^\n]*(?:\n|$))",
+            note_text,
+            flags=re.MULTILINE,
+        )
+        if _m_reverse_flow:
+            _insert_at = _m_reverse_flow.end()
+            _before = note_text[:_insert_at].rstrip("\n")
+            _after = note_text[_insert_at:].lstrip("\n")
+            note_text = _before + "\n\n" + _post_flow_block + "\n\n" + _after
+        elif "＜短評＞" in note_text:
+            note_text = note_text.replace(
+                "＜短評＞",
+                _post_flow_block + "\n\n＜短評＞",
+                1,
+            )
+except Exception as _e:
+    st.caption(f"note重圧補正・加重評価表示順整理不可：{_e}")
+
 
 # -----------------------------------------
 # noteコピー表示整理（表示だけ。計算・順位・買い目生成には触らない）
 # 削除対象：
 # ・ラスト半周補正ブロック
-# ・会場×最終Hライン補正ブロック
 # 残す対象：
 # ・上部サマリー
 # ・ライン評価グループ
@@ -11720,17 +11804,6 @@ def _clean_note_copy_display_only(text: str) -> str:
 
             # 1) ラスト半周補正ブロックを削除
             if s == "【ラスト半周補正】":
-                i += 1
-                # 次の空行まで飛ばす
-                while i < n and lines[i].strip() != "":
-                    i += 1
-                # 空行も1つ飛ばす
-                while i < n and lines[i].strip() == "":
-                    i += 1
-                continue
-
-            # 1-b) 会場×最終Hライン補正ブロックを削除
-            if s == "【会場×最終Hライン補正】":
                 i += 1
                 # 次の空行まで飛ばす
                 while i < n and lines[i].strip() != "":
@@ -11774,18 +11847,18 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         axis = m_axis.group(1).strip() if m_axis else "未判定"
         axis_style = m_axis.group(2).strip() if m_axis else "未判定"
 
-        # 順当度を旧短評から取得
-        m_jundo = re.search(r"・順当度：([^［\n]+)", txt)
-        jundo = m_jundo.group(1).strip() if m_jundo else "未判定"
+        # 上部の展開評価をそのまま取得し、短評と必ず一致させる
+        m_tenkai = re.search(r"^展開評価：([^\n]+)$", txt, flags=re.MULTILINE)
+        tenkai = m_tenkai.group(1).strip() if m_tenkai else "未判定"
 
-        line1 = "・固定型：AI無印を軸比較から除外・AI印あり2車比較軸・同ライン保護・3車以上ライン時の別線C補強・採用流れ着順ヒモの三連複AB-ABC-ABCDE・7点。"
+        line1 = "・固定型：AI無印を軸比較から除外・AI印あり2車比較軸・同ライン保護・採用流れ着順ヒモ・採用流れ最上位C補強の三連複AB-ABC-ABCDE・7点。"
         if axis != "未判定" and axis_style != "未判定":
             line2 = f"・最終軸は{axis}、採用流れは{axis_style}。"
         else:
             line2 = "・最終軸と採用流れは未判定。"
 
-        if jundo and jundo != "未判定":
-            line3 = f"・展開は{jundo}。"
+        if tenkai and tenkai != "未判定":
+            line3 = f"・展開は{tenkai}。"
         else:
             line3 = "・展開は未判定。"
 
