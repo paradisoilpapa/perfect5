@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v298（note表示整理版）:
+# ・冒頭を展開評価、ヴェロビ想定隊列、最終予想候補、流れ比率、採用流れ、評価軸候補、推奨7点へ整理する。
+# ・流れ選定候補、最終軸、自ライン優先、ヒモ4車、A～E内訳、個別フォーメーション行、選定理由はnote表示から外す。
+# ・ナイター等の開催区分、H主導、ライン評価、KO、三流れ着順、AI重圧補正後順位、加重評価表は維持する。
+# ・計算、順位、選出5車、別線C補強、三連複7点生成は変更しない。
 # v297（別線C補強・ヴェロビ独自想定隊列版）:
 # ・A・B・従来Cが同じ3車以上ラインの場合、選出5車内の別線最上位車をCへ繰り上げ、2列目の同ライン偏重を避ける。
 # ・従来Cは選出5車から除外せずD・Eへ移し、三連複AB－ABC－ABCDEの7点を維持する。
@@ -1969,7 +1974,7 @@ globals()["eff_laps"]  = int(eff_laps)
 st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き：統合版）⭐")
 st.caption(f"風補正モード: {WIND_MODE}固定（屋外は風速＋ホーム基準風向を常時反映／前橋・小倉はドーム無風固定）")
 
-st.subheader("v297・2026/08/05更新")
+st.subheader("v298・2026/08/05更新")
 if "race_no_main" not in st.session_state:
     st.session_state["race_no_main"] = 1
 c1, c2, c3 = st.columns([6,2,2])
@@ -4871,6 +4876,10 @@ try:
     share_pct = (axis_line_fr / total_fr * 100.0) if (total_fr > 1e-12 and axis_line) else None
 
     note_sections.append(f"展開評価：{infer_eval_with_share(FRv, VTXv, Uv, share_pct)}")
+    try:
+        note_sections.append(f"ヴェロビ想定隊列　{home_line_text}")
+    except Exception:
+        pass
     note_sections.append("")
 
     # ---- 時刻・クラス ----
@@ -4880,15 +4889,10 @@ try:
     if hdr:
         note_sections.append(hdr)
 
-        # ---- ライン表示 ----
+        # ---- H主導ライン表示 ----
     line_inputs = globals().get("line_inputs", [])
     if isinstance(line_inputs, list) and any(str(x).strip() for x in line_inputs):
-        _lines = [str(x).strip() for x in line_inputs if str(x).strip()]
-        note_sections.append("ライン　" + "　".join(_lines))
-
-        # H：最終ホーム想定ライン
         try:
-            note_sections.append(f"ヴェロビ想定隊列　{home_line_text}")
             note_sections.append(f"H主導ライン　{home_top_line}")
         except Exception:
             pass
@@ -9240,42 +9244,16 @@ def _v281_format_fixed_flow_block(plan):
         same_line_display = "単騎／必須ヒモなし"
 
     out = [
-        "【流れ選定候補】" + (" ／ ".join(flow_candidate_parts) if flow_candidate_parts else "生成不可"),
         (
             f"【採用流れ】{adopted_style}（勢力={flow_selector_line_label}:"
             f"{flow_selector_strength:.6f}・主流決定={flow_selector_selection_score:.6f}・1着候補={flow_selector_car}）"
         ),
         "【評価軸候補】" + (" ／ ".join(axis_pair_parts) if axis_pair_parts else "生成不可"),
-        f"【最終軸】{axis}（{adopted_style}・{axis_flow_rank}位・AI{axis_mark}・KO使用スコア={axis_score:.6f}）",
-        f"【自ライン優先】{same_line_display}",
-        "【ヒモ4車】" + ("・".join(str(x) for x in himo[:4]) if len(himo) >= 4 else "不足"),
-    ]
-
-    if axis > 0 and secondary_axis > 0:
-        out.append(f"【7点フォメ軸】A={axis}（最終軸）／B={secondary_axis}（もう一方の評価軸候補）")
-    if formation_c > 0:
-        if formation_c_other_line_replacement:
-            out.append(
-                f"【2列目3番手】C={formation_c}（{adopted_style}{formation_c_flow_rank}位・別線補強／"
-                f"原則C={formation_original_c}はD・E側へ維持）"
-            )
-        else:
-            out.append(
-                f"【2列目3番手】C={formation_c}（{adopted_style}{formation_c_flow_rank}位・"
-                "選出5車からA・Bを除く採用流れ最上位）"
-            )
-    if formation_d > 0 and formation_e > 0:
-        out.append(f"【残り2車】D={formation_d}／E={formation_e}")
-    if ticket_form:
-        out.append(f"【フォーメーション】{ticket_form}")
-
-    out.extend([
         "",
-        f"【推奨車券】{plan.get('ticket_family', '3連複AB－ABC－ABCDE')}・{int(plan.get('ticket_count', 0) or 0)}点",
-    ])
+        f"【推奨車券】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
+    ]
     for label, items in (plan.get("ticket_groups", tuple()) or tuple()):
         out.append(f"{label}" + "　".join(str(x) for x in items))
-    out.append(f"【選定理由】{plan.get('ticket_reason', '')}")
     return out
 
 def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
@@ -11322,6 +11300,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 _weighted_car_hit_map or {},
                 globals().get("STYLE_SCENARIO_MAIN_LINE_MAP", {}) or {},
             )
+            globals()["V298_FIXED_FLOW_PLAN"] = _v281_fixed_plan
 
             # 元順位の直後に、三流れの重圧補正順位と採用流れの最終候補を表示する。
             try:
@@ -11729,8 +11708,15 @@ try:
     _current_summary = "\n\n".join(_current_summary_parts) + "\n"
 
     _m_flow_ratio = re.search(r"^流れ想定比率】[^\n]*$", note_text, flags=re.MULTILINE)
+    _m_queue = re.search(r"^ヴェロビ想定隊列[^\n]*$", note_text, flags=re.MULTILINE)
     _m_tenkai = re.search(r"^展開評価：[^\n]*$", note_text, flags=re.MULTILINE)
-    if _m_flow_ratio:
+    if _m_queue:
+        note_text = note_text.replace(
+            _m_queue.group(0),
+            _m_queue.group(0) + "\n\n" + _current_summary,
+            1,
+        )
+    elif _m_flow_ratio:
         note_text = note_text.replace(
             _m_flow_ratio.group(0),
             _m_flow_ratio.group(0) + "\n\n" + _current_summary,
@@ -11842,16 +11828,21 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
     try:
         txt = str(text)
 
-        # 固定型の最終軸と採用流れを取得
-        m_axis = re.search(r"【最終軸】([1-9])（(順流|渦|逆流)・", txt)
-        axis = m_axis.group(1).strip() if m_axis else "未判定"
-        axis_style = m_axis.group(2).strip() if m_axis else "未判定"
+        # 固定型の最終軸と採用流れは、非表示化した詳細行ではなく計算結果から取得する。
+        _fixed_plan = globals().get("V298_FIXED_FLOW_PLAN", {}) or {}
+        try:
+            axis = str(int(_fixed_plan.get("axis", 0) or 0))
+            if axis == "0":
+                axis = "未判定"
+        except Exception:
+            axis = "未判定"
+        axis_style = str(_fixed_plan.get("adopted_style", "") or "未判定")
 
         # 上部の展開評価をそのまま取得し、短評と必ず一致させる
         m_tenkai = re.search(r"^展開評価：([^\n]+)$", txt, flags=re.MULTILINE)
         tenkai = m_tenkai.group(1).strip() if m_tenkai else "未判定"
 
-        line1 = "・固定型：AI無印を軸比較から除外・AI印あり2車比較軸・同ライン保護・採用流れ着順ヒモ・採用流れ最上位C補強の三連複AB-ABC-ABCDE・7点。"
+        line1 = "・固定型：AI無印を軸比較から除外・AI印あり2車比較軸・同ライン保護・採用流れ着順ヒモ・別線C補強の三連複AB-ABC-ABCDE・7点。"
         if axis != "未判定" and axis_style != "未判定":
             line2 = f"・最終軸は{axis}、採用流れは{axis_style}。"
         else:
