@@ -1,4 +1,14 @@
 # -*- coding: utf-8 -*-
+# v301（Aライン全車保護・残枠個人KO選定版）:
+# ・Aの同ライン車は軸以外の全車を最優先で必須確保する。
+# ・同ライン全車確保後の残枠は、ライン長補正を使わず個人KO使用スコア順で選ぶ。
+# ・Cも個人KO使用スコア順とし、A・B・Cが同じ3車以上ラインの場合は別線の個人KO最上位をCへ繰り上げる。
+# ・採用流れ決定用のライン長補正は従来どおり維持する。
+# v300（選出5車復元・想定隊列位置補正直結版）:
+# ・選出5車はv296方式へ戻し、Aの同ライン車を先に保護して残枠を採用流れ着順順で補充する。
+# ・Bの事前必須予約を廃止し、別線C補強は選出5車を変えず2列目だけに反映する。
+# ・ヴェロビ想定隊列のライン順位を全所属車の基礎スコアへ直接反映し、KO・流れ別順位・軸ヒモ選定へ伝播させる。
+# ・先頭ラインを最有利とし、後方ラインほど段階的に不利にする。単騎先頭除外とS＋内枠による隊列生成は維持する。
 # v299（note短評非表示版）:
 # ・noteコピー表示から＜短評＞以下を外す。
 # ・計算、冒頭表示、後半の各評価表、別線C補強、三連複7点生成は変更しない。
@@ -969,6 +979,29 @@ def make_velobi_queue_order(line_def: dict, S: dict, active_cars: list[int]) -> 
         return ranked
     first_gid = non_single[0]
     return [first_gid] + [gid for gid in ranked if gid != first_gid]
+
+
+def calc_velobi_queue_position_bonus(line_def: dict, queue_order: list, active_cars: list[int]) -> dict:
+    """
+    ヴェロビ想定隊列のライン位置を、全所属車の基礎スコアへ直接反映する。
+
+    先頭ラインを最有利とし、後ろのラインほど不利にする。
+    ライン数が変わっても補正全体の中心が0付近になるよう順位を中央化し、
+    1ライン当たり0.03、絶対値上限0.06の薄い補正に抑える。
+    """
+    order = [gid for gid in (queue_order or []) if gid in (line_def or {})]
+    if not order:
+        return {int(car): 0.0 for car in (active_cars or [])}
+
+    center = (len(order) - 1) / 2.0
+    car_bonus = {int(car): 0.0 for car in (active_cars or [])}
+    for rank_index, gid in enumerate(order):
+        line_bonus = clamp((center - float(rank_index)) * 0.03, -0.06, 0.06)
+        for car in (line_def.get(gid, []) or []):
+            car = int(car)
+            if car in car_bonus:
+                car_bonus[car] = round(float(line_bonus), 3)
+    return car_bonus
 
 
 def format_home_line_order(line_def: dict, order: list) -> str:
@@ -1977,7 +2010,7 @@ globals()["eff_laps"]  = int(eff_laps)
 st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き：統合版）⭐")
 st.caption(f"風補正モード: {WIND_MODE}固定（屋外は風速＋ホーム基準風向を常時反映／前橋・小倉はドーム無風固定）")
 
-st.subheader("v299・2026/08/05更新")
+st.subheader("v300・2026/08/06更新")
 if "race_no_main" not in st.session_state:
     st.session_state["race_no_main"] = 1
 c1, c2, c3 = st.columns([6,2,2])
@@ -2428,6 +2461,8 @@ globals()["race_compact"] = race_compact
 home_line_scores = calc_velobi_queue_scores(line_def, S, active_cars)
 home_line_order = make_velobi_queue_order(line_def, S, active_cars)
 home_line_text = format_home_line_order(line_def, home_line_order)
+velobi_queue_position_bonus = calc_velobi_queue_position_bonus(line_def, home_line_order, active_cars)
+globals()["velobi_queue_position_bonus"] = dict(velobi_queue_position_bonus)
 
 home_top_gid = home_line_order[0] if home_line_order else None
 home_second_gid = home_line_order[1] if len(home_line_order) >= 2 else None
@@ -2962,6 +2997,7 @@ for no in active_cars:
         float(prof_escape[no]), float(prof_sashi[no]), float(prof_oikomi[no]),
         is_wet=st.session_state.get("is_wet", False)
     )
+    queue_pos_bonus = float(velobi_queue_position_bonus.get(int(no), 0.0) or 0.0)
 
     # =====================================================
     # 合計スコア
@@ -2977,6 +3013,7 @@ for no in active_cars:
         + stab
         + h_bonus
         + l200
+        + queue_pos_bonus
         + jiryoku_comment_bonus
         + jizai_comment_bonus
         + single_comment_bonus
@@ -2997,6 +3034,7 @@ for no in active_cars:
         round(stab, 3),
         round(h_bonus, 3),
         round(l200, 3),
+        round(queue_pos_bonus, 3),
         round(jiryoku_comment_bonus, 3),
         round(jizai_comment_bonus, 3),
         round(single_comment_bonus, 3),
@@ -3008,7 +3046,7 @@ for no in active_cars:
 
 df = pd.DataFrame(rows, columns=[
     "車番", "役割", "脚質基準(会場)", "風補正", "得点補正", "バンク補正",
-    "周長補正", "周回補正", "個人補正", "安定度", "H補正", "ラスト200",
+    "周長補正", "周回補正", "個人補正", "安定度", "H補正", "ラスト200", "想定隊列位置補正",
     "自力コメント補正", "自在コメント補正", "単騎コメント補正", "ライン連動補正", "競り補正", "後位信頼補正",
     "合計_SBなし_raw",
 ])
@@ -8710,14 +8748,13 @@ def _v281_build_fixed_flow_plan(
     4) 採用流れの着順上位からAI印あり（◎／〇／△／×）の車を順に2車抽出する。
     5) 抽出した2車のうち、AI評価が低い方を最終軸A、もう一方をBにする。
        AI無印車は軸比較から除外する。
-    6) もう一方の評価軸候補Bをヒモへ必須確保する。
-    7) 最終軸Aの同ライン車を軸以外すべてヒモへ確保する。
-    8) 残枠を、採用流れの着順予想上位から順に補充し、Aを含む選出5車を作る。
-       買い目の基本順位は採用流れの着順予想とし、同ライン保護だけを例外とする。
-    9) 選出5車からA・Bを除き、採用流れ着順最上位を原則Cにする。
-       A・B・原則Cが同じ3車以上ラインなら、選出5車内の別線最上位をCへ繰り上げる。
+    6) 最終軸Aの同ライン車を軸以外すべて先にヒモへ確保する。
+    7) 残枠を、ライン長補正を使わず個人KO使用スコア上位から補充し、Aを含む選出5車を作る。
+       Aの同ライン全車必須確保はこの順位より常に優先する。
+    8) 選出5車からA・Bを除き、個人KO使用スコア最上位を原則Cにする。
+       A・B・原則Cが同じ3車以上ラインなら、選出5車内の別線個人KO最上位をCへ繰り上げる。
        原則Cは選出5車に残してD・Eへ移す。
-    10) 三連複AB－ABC－ABCDEの7点
+    9) 三連複AB－ABC－ABCDEの7点
        （ABC／ABD／ABE／ACD／ACE／BCD／BCE）を生成する。
     """
     ratios = _v281_normalize_ratio_map(flow_ratio_map)
@@ -8929,10 +8966,9 @@ def _v281_build_fixed_flow_plan(
 
     axis_line = _v281_find_axis_line(line_def_obj, axis)
     same_line_himo = [int(car) for car in axis_line if int(car) != axis]
-    mandatory_himo = _v281_unique_sequence([secondary_axis] + same_line_himo)
 
-    # Bと同ライン車は全車必須。ヒモ4枠を超える場合は黙って切らず生成停止する。
-    if len(mandatory_himo) > 4:
+    # v296方式：Aの同ライン車は全車必須。ヒモ4枠を超える場合は黙って切らず生成停止する。
+    if len(same_line_himo) > 4:
         return {
             **base_result,
             "status": "too_many_same_line_himo",
@@ -8956,30 +8992,42 @@ def _v281_build_fixed_flow_plan(
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複AB－ABC－ABCDE",
-            "ticket_reason": (
-                f"もう一方の評価軸候補{secondary_axis}と軸{axis}の同ライン必須車を合わせると"
-                "ヒモ4枠を超えるため、必須保護を維持したまま7点生成できない"
-            ),
+            "ticket_reason": f"軸{axis}の同ライン車が4車を超えるため、必須保護を維持したまま7点生成できない",
         }
 
-    # 7点フォメの第1列に必要なBを、選出5車から漏れないよう最初に予約する。
-    himo = [secondary_axis]
+    # v296方式：Bを事前予約せず、Aの同ライン車を先に保護する。
+    himo = []
     for car in same_line_himo:
         if car != axis and car not in himo:
             himo.append(int(car))
 
-    # 買い目の基本順位は採用流れの着順予想へ一本化する。
-    # Bと同ライン車を先に必須保護し、残枠は採用流れの上位から順に補充する。
-    # 流れ加重的中単騎評価は参考表示に残すが、ヒモ順位を上書きしない。
-    flow_added_himo = []
-    for car in adopted_sequence:
+    # Aの同ライン全車を必須保護した後の残枠だけを、個人KO使用スコア順で補充する。
+    # この個人順位にライン長補正は使わない。同点時のみ採用流れ着順→車番で確定する。
+    adopted_rank_map = {int(car): idx for idx, car in enumerate(adopted_sequence, start=1)}
+    all_candidate_cars = _v281_unique_sequence([
+        int(car)
+        for style in _V281_STYLES
+        for car in (seq_map.get(style, []) or [])
+    ])
+    individual_ranked_cars = sorted(
+        all_candidate_cars,
+        key=lambda car: (
+            -float(_v281_map_float(ko_map, int(car), 0.0)),
+            int(adopted_rank_map.get(int(car), 999)),
+            int(car),
+        ),
+    )
+    individual_added_himo = []
+    for car in individual_ranked_cars:
         car = int(car)
         if car == axis or car in himo:
             continue
         himo.append(car)
-        flow_added_himo.append(car)
+        individual_added_himo.append(car)
         if len(himo) >= 4:
             break
+    # 旧キーは後方互換のため残す。内容は個人KO選定の残枠車。
+    flow_added_himo = list(individual_added_himo)
 
     if len(himo) < 4:
         return {
@@ -9006,7 +9054,7 @@ def _v281_build_fixed_flow_plan(
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複AB－ABC－ABCDE",
-            "ticket_reason": "同ライン必須車と採用流れの着順予想上位を合わせてもヒモが4車未満のため生成不可",
+            "ticket_reason": "Aの同ライン必須車と個人KO使用スコア上位を合わせてもヒモが4車未満のため生成不可",
         }
 
     selected_five = [axis] + [int(car) for car in himo[:4]]
@@ -9041,17 +9089,20 @@ def _v281_build_fixed_flow_plan(
             ),
         }
 
-    # 原則Cは、選出5車からA・Bを除いた3車のうち、採用流れ着順最上位。
-    # v297：A・B・原則Cが同じ3車以上ラインなら、選出5車内の別線最上位をCへ繰り上げる。
+    # 原則Cは、選出5車からA・Bを除いた3車のうち、個人KO使用スコア最上位。
+    # A・B・原則Cが同じ3車以上ラインなら、選出5車内の別線個人KO最上位をCへ繰り上げる。
     # 原則Cは落とさずD・Eへ移し、選出5車と7点は維持する。
-    adopted_rank_map = {int(car): idx for idx, car in enumerate(adopted_sequence, start=1)}
     cde_candidates = [
         int(car) for car in selected_five
         if int(car) not in {axis, secondary_axis}
     ]
     cde_candidates = sorted(
         cde_candidates,
-        key=lambda car: (int(adopted_rank_map.get(int(car), 999)), int(car)),
+        key=lambda car: (
+            -float(_v281_map_float(ko_map, int(car), 0.0)),
+            int(adopted_rank_map.get(int(car), 999)),
+            int(car),
+        ),
     )
     if len(cde_candidates) != 3 or len(set(cde_candidates)) != 3:
         return {
@@ -9135,21 +9186,22 @@ def _v281_build_fixed_flow_plan(
     if same_line_himo:
         line_text = "".join(str(x) for x in axis_line)
         same_line_text = "・".join(str(x) for x in same_line_himo)
-        line_reason = f"B={secondary_axis}を先に確保し、自ライン{line_text}の軸以外［{same_line_text}］を必須確保"
+        line_reason = f"自ライン{line_text}の軸以外［{same_line_text}］を先に必須確保"
     else:
-        line_reason = f"B={secondary_axis}を先に確保し、軸は単騎のため自ライン必須車なし"
+        line_reason = "軸は単騎のため自ライン必須車なし"
 
     added_text = "・".join(str(x) for x in flow_added_himo) if flow_added_himo else "なし"
     c_reason = (
-        f"A・B・原則C={original_c_car}が同じ3車以上ラインのため、別線最上位の{c_car}をCへ繰り上げ、"
+        f"A・B・原則C={original_c_car}が同じ3車以上ラインのため、別線の個人KO最上位{c_car}をCへ繰り上げ、"
         f"原則C={original_c_car}はD・E側に維持。"
         if c_replaced_by_other_line else
-        f"選出5車からA・Bを除いた3車のうち、{adopted_style}着順最上位の{c_car}（{c_flow_rank}位）をC。"
+        f"選出5車からA・Bを除いた3車のうち、個人KO使用スコア最上位の{c_car}をC。"
     )
     reason = (
         f"各流れ勢力［{candidate_text}］から主流決定スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
         f"{adopted_style}着順上位からAI印あり2車［{axis_pair_text}］を抽出し、AI評価が低い{axis}を最終軸A、"
-        f"もう一方の{secondary_axis}をBに選択。{line_reason}し、{adopted_style}着順予想上位から［{added_text}］を補充。"
+        f"もう一方の{secondary_axis}をBに選択。{line_reason}し、残枠はライン長補正を使わず"
+        f"個人KO使用スコア上位から［{added_text}］を補充。"
         f"{c_reason}"
         f"残る{d_car}・{e_car}をD・EとしてAB－ABC－ABCDEへ展開"
     )
@@ -9169,6 +9221,7 @@ def _v281_build_fixed_flow_plan(
         "axis_line": tuple(axis_line),
         "same_line_himo": tuple(same_line_himo),
         "flow_added_himo": tuple(flow_added_himo),
+        "individual_added_himo": tuple(individual_added_himo),
         "himo": tuple(himo[:4]),
         "formation_five": tuple(formation_five),
         "formation_c": c_car,
