@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v310（全クラス競走得点・着順縮約・KO母集団補正版）:
+# ・S級、A級、チャレンジ、ガールズの全クラスで競走得点を連続Zスコア化し、KO母集団へ直接反映する。
+# ・1～3着・着外は合計1.0のクラス別事前分布を使うディリクレ縮約へ統一する。
+# ・少サンプルの不確実性と能力評価を分離し、競走得点1位だけ補正ゼロになる旧順位補正を廃止する。
+# ・会場補正、想定隊列、ライン保護、フォーメーション、基本7点、消去候補、公開表示は変更しない。
 # v309（全会場特性補正版）:
 # ・全会場の周長、みなし直線、直線比率、バンク角を中立基準で連続評価する。
 # ・長い333mと短い333mを分離し、500mの最終200m・マーク減点・KO追越し判定を修正する。
@@ -1078,16 +1083,34 @@ def pos_coeff(role, line_factor):
     return base * line_factor
 
 
+# 競走得点は順位別の例外処理を使わず、全車を同じ連続式でKO母集団へ反映する。
+# 目標SDは本体スコアに対する寄与幅。極端値だけ±2.5SDで制限する。
+KO_RATING_TARGET_SD = float(globals().get("KO_RATING_TARGET_SD", 0.14))
+KO_RATING_Z_CAP = float(globals().get("KO_RATING_Z_CAP", 2.50))
+
 def tenscore_correction(tenscores):
-    n = len(tenscores)
-    if n<=2: return [0.0]*n
-    df = pd.DataFrame({"得点":tenscores})
-    df["順位"] = df["得点"].rank(ascending=False, method="min").astype(int)
-    hi = min(n,8)
-    baseline = df[df["順位"].between(2,hi)]["得点"].mean()
-    def corr(row):
-        return round(abs(baseline-row["得点"])*0.03, 3) if row["順位"] in [2,3,4] else 0.0
-    return df.apply(corr, axis=1).tolist()
+    vals = np.asarray(list(tenscores or []), dtype=float)
+    n = int(vals.size)
+    if n <= 1:
+        return [0.0] * n
+
+    finite = np.isfinite(vals)
+    if int(finite.sum()) <= 1:
+        return [0.0] * n
+
+    mu = float(np.mean(vals[finite]))
+    sd = float(np.std(vals[finite]))
+    if sd <= 1e-9:
+        return [0.0] * n
+
+    out = []
+    for value in vals:
+        if not np.isfinite(value):
+            out.append(0.0)
+            continue
+        z = clamp((float(value) - mu) / sd, -KO_RATING_Z_CAP, KO_RATING_Z_CAP)
+        out.append(round(float(KO_RATING_TARGET_SD) * float(z), 6))
+    return out
 
 def track_effective_ratio(track_name: str,
                            alpha_goal: float = 0.50,
@@ -2542,55 +2565,80 @@ else:
 
 
 
-# 1着・2着の縮約（級別×会場の事前分布を混ぜる）
+# 1～3着・着外を一つの確率分布として扱うクラス別事前分布。
+# 各行は必ず合計1.0。styleは1着と着外の間だけを同量移動させ、総和を維持する。
+FORM_CLASS_PRIOR = globals().get("FORM_CLASS_PRIOR", {
+    "GIRLS":     (0.18, 0.24, 0.10, 0.48),
+    "S":         (0.22, 0.26, 0.12, 0.40),
+    "CHALLENGE": (0.18, 0.22, 0.12, 0.48),
+    "A":         (0.20, 0.25, 0.12, 0.43),
+})
+
+# 事前分布の仮想走数。実走数によって段階的に変えず、同一クラスは同じ強さで縮約する。
+FORM_PRIOR_STRENGTH = globals().get("FORM_PRIOR_STRENGTH", {
+    "GIRLS": 6.0, "S": 8.0, "CHALLENGE": 8.0, "A": 8.0,
+})
+
+def _form_class_key(cls: str) -> str:
+    s = str(cls or "")
+    if "ガール" in s: return "GIRLS"
+    if "Ｓ級" in s or "S級" in s: return "S"
+    if "チャレンジ" in s: return "CHALLENGE"
+    return "A"
+
 def prior_by_class(cls, style_adj):
-    if "ガール" in cls: p1,p2 = 0.18,0.24
-    elif "Ｓ級" in cls: p1,p2 = 0.22,0.26
-    elif "チャレンジ" in cls: p1,p2 = 0.18,0.22
-    else: p1,p2 = 0.20,0.25
-    p1 += 0.010*style_adj; p2 -= 0.005*style_adj
-    return clamp(p1,0.05,0.60), clamp(p2,0.05,0.60)
+    key = _form_class_key(cls)
+    raw = list(FORM_CLASS_PRIOR.get(key, FORM_CLASS_PRIOR["A"]))
+    raw = [max(0.0, float(x)) for x in raw[:4]]
+    while len(raw) < 4:
+        raw.append(0.0)
+    total = float(sum(raw))
+    if total <= 1e-12:
+        raw = [0.20, 0.25, 0.12, 0.43]
+        total = 1.0
+    p1, p2, p3, pout = [x / total for x in raw]
 
-def n0_by_n(n):
-    if n<=6: return 12
-    if n<=14: return 8
-    if n<=29: return 5
-    return 3
+    shift = clamp(0.010 * float(style_adj), -0.03, 0.03)
+    shift = clamp(shift, -p1 + 1e-9, pout - 1e-9)
+    p1 += shift
+    pout -= shift
 
-# === 1〜3着＋着外を “ちゃんと” Form に反映する版（ここだけ置換） ===
+    probs = np.asarray([p1, p2, p3, pout], dtype=float)
+    probs = np.maximum(probs, 0.0)
+    probs /= float(np.sum(probs))
+    return tuple(float(x) for x in probs)
+
+def form_prior_strength(cls: str) -> float:
+    key = _form_class_key(cls)
+    return max(0.0, float(FORM_PRIOR_STRENGTH.get(key, 8.0)))
+
+# === 1～3着＋着外をディリクレ縮約し、合計1.0のFormへ反映 ===
 p1_eff, p2_eff, p3_eff, pout_eff = {}, {}, {}, {}
+form_sample_confidence = {}
+
+_form_prior = prior_by_class(race_class, style)
+_form_n0 = form_prior_strength(race_class)
 
 for no in active_cars:
     n = x1[no] + x2[no] + x3[no] + x_out[no]
-
-    # 既存：クラス×脚質の prior（あなたの関数をそのまま使う）
-    p1_prior, p2_prior = prior_by_class(race_class, style)
-
-    # 追加：3着＆着外の prior（まずは固定で安全運用）
-    p3_prior   = 0.10
-    pout_prior = 0.55
-
-    n0 = n0_by_n(n)
-
-    if n == 0:
-        p1_eff[no], p2_eff[no] = p1_prior, p2_prior
-        p3_eff[no]             = p3_prior
-        pout_eff[no]           = pout_prior
+    denom = float(n) + float(_form_n0)
+    if denom <= 1e-12:
+        probs = np.asarray(_form_prior, dtype=float)
     else:
-        p1_eff[no]  = clamp((x1[no]    + n0*p1_prior ) / (n + n0), 0.0, 0.40)
-        p2_eff[no]  = clamp((x2[no]    + n0*p2_prior ) / (n + n0), 0.0, 0.50)
-        p3_eff[no]  = clamp((x3[no]    + n0*p3_prior ) / (n + n0), 0.0, 0.55)
-        pout_eff[no]= clamp((x_out[no] + n0*pout_prior) / (n + n0), 0.0, 0.95)
+        observed = np.asarray([x1[no], x2[no], x3[no], x_out[no]], dtype=float)
+        probs = (observed + float(_form_n0) * np.asarray(_form_prior, dtype=float)) / denom
 
-    # 合計が暴れない安全弁（1-3着を優先して整える）
-    s123 = p1_eff[no] + p2_eff[no] + p3_eff[no]
-    if s123 > 0.95:
-        scale = 0.95 / s123
-        p1_eff[no] *= scale
-        p2_eff[no] *= scale
-        p3_eff[no] *= scale
+    probs = np.maximum(probs, 0.0)
+    probs /= float(np.sum(probs))
+    p1_eff[no], p2_eff[no], p3_eff[no], pout_eff[no] = [float(x) for x in probs]
 
-    pout_eff[no] = clamp(1.0 - (p1_eff[no] + p2_eff[no] + p3_eff[no]), 0.0, 0.95)
+    # 不確実性は能力減点へ混ぜず、観測用の信頼度として分離する。
+    form_sample_confidence[no] = (
+        float(n) / (float(n) + float(_form_n0))
+        if (float(n) + float(_form_n0)) > 1e-12 else 0.0
+    )
+
+globals()["FORM_SAMPLE_CONFIDENCE"] = dict(form_sample_confidence)
 
 # ★Form：1〜3着を評価、着外は減点（ここが効く）
 Form = {
@@ -2689,40 +2737,24 @@ def bank_length_adjust(bank_length, prof_oikomi):
 
 
 
-# --- 安定度（着順分布）をT本体に入れるための重み（強化版） ---
+# --- 安定度（上で一度だけ縮約した着順分布を使用） ---
 STAB_W_IN3  = 0.18   # 3着内の寄与
 STAB_W_OUT  = 0.22   # 着外のペナルティ
-STAB_W_LOWN = 0.06   # サンプル不足ペナルティ
-STAB_PRIOR_IN3 = 0.33
+STAB_PRIOR_IN3 = 0.55
 STAB_PRIOR_OUT = 0.45
 
 def stability_score(no: int) -> float:
-    n1 = x1.get(no, 0); n2 = x2.get(no, 0); n3 = x3.get(no, 0); nOut = x_out.get(no, 0)
-    n  = n1 + n2 + n3 + nOut
-    if n <= 0:
-        return 0.0
-    # 少サンプル縮約（この関数内で完結）
-    if n <= 6:    n0 = 12
-    elif n <= 14: n0 = 8
-    elif n <= 29: n0 = 5
-    else:         n0 = 3
-
-    in3  = (n1 + n2 + n3 + n0*STAB_PRIOR_IN3) / (n + n0)
-    out_ = (nOut          + n0*STAB_PRIOR_OUT) / (n + n0)
+    in3 = (
+        float(p1_eff.get(no, 0.0))
+        + float(p2_eff.get(no, 0.0))
+        + float(p3_eff.get(no, 0.0))
+    )
+    out_ = float(pout_eff.get(no, 1.0 - in3))
 
     bonus = 0.0
     bonus += STAB_W_IN3 * (in3 - STAB_PRIOR_IN3) * 2.0
     bonus -= STAB_W_OUT * (out_ - STAB_PRIOR_OUT) * 2.0
-
-    if n < 10:
-        bonus -= STAB_W_LOWN * (10 - n) / 10.0
-
-    # キャップ：nに応じて段階的に広げる（±0.35〜±0.45）
-    cap = 0.35
-    if n >= 15: cap = 0.45
-    elif n >= 10: cap = 0.40
-
-    return clamp(bonus, -cap, +cap)
+    return clamp(bonus, -0.45, +0.45)
 
 # ===== SBなし合計（環境補正 + 得点微補正 + 個人補正 + 周回疲労 + 安定度） =====
 tens_list = [ratings_val[no] for no in active_cars]
@@ -5198,6 +5230,45 @@ try:
     )
     globals()["KO_SCORE_ORDER_FOR_TIE"] = [int(n) for n, _sc in _sc_pairs]
     globals()["KO_SCORE_MAP_FOR_SANTEN"] = {int(n): float(_sc) for n, _sc in _sc_pairs}
+
+    # 全クラス共通の内部異常検査。順位を強制変更せず、検証用フラグだけを保存する。
+    _ko_inversion_flags = []
+    try:
+        _ko_order_now = [int(n) for n, _sc in _sc_pairs]
+        _rating_order_now = sorted(
+            [int(n) for n in active_cars],
+            key=lambda n: (-float(ratings_val.get(int(n), 0.0)), int(n))
+        )
+        if _ko_order_now and _rating_order_now:
+            _rating_top = int(_rating_order_now[0])
+            _ko_rank_map_now = {int(n): i + 1 for i, n in enumerate(_ko_order_now)}
+            _top_ko_rank = int(_ko_rank_map_now.get(_rating_top, len(_ko_order_now)))
+
+            if _top_ko_rank == len(_ko_order_now):
+                _ko_inversion_flags.append({
+                    "type": "rating_top_is_ko_last",
+                    "car": _rating_top,
+                    "rating": float(ratings_val.get(_rating_top, 0.0)),
+                    "ko_rank": _top_ko_rank,
+                })
+
+            _runs = int(
+                x1.get(_rating_top, 0) + x2.get(_rating_top, 0)
+                + x3.get(_rating_top, 0) + x_out.get(_rating_top, 0)
+            )
+            _in3_runs = int(
+                x1.get(_rating_top, 0) + x2.get(_rating_top, 0) + x3.get(_rating_top, 0)
+            )
+            if _runs > 0 and _in3_runs == _runs and _top_ko_rank >= max(1, len(_ko_order_now) - 1):
+                _ko_inversion_flags.append({
+                    "type": "rating_top_perfect_in3_is_ko_bottom2",
+                    "car": _rating_top,
+                    "runs": _runs,
+                    "ko_rank": _top_ko_rank,
+                })
+    except Exception:
+        _ko_inversion_flags = []
+    globals()["KO_INVERSION_FLAGS"] = list(_ko_inversion_flags)
 
     note_sections.append("【KO使用スコア（降順）】")
 
