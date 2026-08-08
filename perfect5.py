@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v309（全会場特性補正版）:
+# ・全会場の周長、みなし直線、直線比率、バンク角を中立基準で連続評価する。
+# ・長い333mと短い333mを分離し、500mの最終200m・マーク減点・KO追越し判定を修正する。
+# ・フォーメーション選別、ライン保護、基本7点、消去候補、公開表示は変更しない。
 # v308（公開表示整理・消去候補表示版）:
 # ・基本7点の生成、軸、ライン保護、フォーメーション選別、各評価計算は変更しない。
 # ・公開表示から展開評価、評価軸候補、推奨絞り三連複、個別3連複一覧を外す。
@@ -1093,11 +1097,15 @@ def track_effective_ratio(track_name: str,
         return 0.50
     lap  = float(d.get("bank_length", 400))
     home = float(d.get("straight_length", 52.0))
-    back = 2.0 * home  # ゴール前は半分の仮定
-    corner_total = max(lap - home - back, 0.0)
-    L_eff = back + alpha_goal * home + beta_corner * corner_total
-    ratio = (L_eff / lap) if lap > 0 else 0.50
-    return clamp(ratio, 0.20, 0.90)
+    if lap <= 0:
+        return 0.50
+
+    # バック直線を「みなし直線×2」と仮定すると、周長別の風補正が
+    # 実在しない距離に左右される。マスターに存在する実測2項目だけで、
+    # 標準400m（みなし直線52m）を0.50として緩やかに補正する。
+    straight_ratio = home / lap
+    ratio = 0.50 + 1.50 * (straight_ratio - (52.0 / 400.0))
+    return clamp(ratio, 0.35, 0.65)
 
 
 def wind_adjust(wind_dir, wind_speed, role, prof_escape):
@@ -1156,8 +1164,7 @@ def wind_adjust(wind_dir, wind_speed, role, prof_escape):
     return round(clamp(val, -float(WIND_CAP), float(WIND_CAP)), 3)
 
 
-# === 直線ラスト200m（残脚）補正｜33バンク対応版 ==============================
-# 33（<=340m）は「先行ペナ弱め／差し・追込ボーナス控えめ」へ最適化
+# === 直線ラスト200m（残脚）補正｜周長×みなし直線対応版 ======================
 L200_ESC_PENALTY = float(globals().get("L200_ESC_PENALTY", -0.06))  # 先行は垂れやすい（基本）
 L200_SASHI_BONUS = float(globals().get("L200_SASHI_BONUS", +0.03))  # 差しは伸びやすい
 L200_MARK_BONUS  = float(globals().get("L200_MARK_BONUS",  +0.02))  # 追込は少し上げ
@@ -1166,10 +1173,10 @@ L200_GRADE_GAIN  = globals().get("L200_GRADE_GAIN", {
     "F2": 1.18, "F1": 1.10, "G": 1.05, "GIRLS": 0.95, "TOTAL": 1.00
 })
 
-# 短走路増幅：旧1.15 → 33はむしろ緩和（0.85）
+# 33の短い直線だけを緩和し、伊東型（長い直線）は一律緩和から外す
 L200_SHORT_GAIN_33   = float(globals().get("L200_SHORT_GAIN_33", 0.85))
 L200_SHORT_GAIN_OTH  = float(globals().get("L200_SHORT_GAIN_OTH", 1.00))
-L200_LONG_RELAX      = float(globals().get("L200_LONG_RELAX", 0.90))
+L200_LONG_GAIN_MAX   = float(globals().get("L200_LONG_GAIN_MAX", 1.20))
 L200_CAP             = float(globals().get("L200_CAP", 0.08))
 L200_WET_GAIN        = float(globals().get("L200_WET_GAIN", 1.15))
 
@@ -1201,21 +1208,30 @@ def l200_adjust(role: str,
     sashi_term = L200_SASHI_BONUS * float(prof_sashi)
     mark_term  = L200_MARK_BONUS  * float(prof_oikomi)
 
-    is_33 = float(bank_length) <= 340.0
+    bank_m = float(bank_length)
+    straight_m = float(straight_length)
+    is_33 = bank_m <= 340.0
     if is_33:
-        esc_term   *= L200_33_ESC_MULT
-        sashi_term *= L200_33_SASHI_MULT
-        mark_term  *= L200_33_MARK_MULT
+        # 40m以下は従来の短走路補正、45m以上は通常補正。
+        # これにより伊東（46.6m）を奈良・小田原型と同一処理しない。
+        long33 = clamp((straight_m - 40.0) / 5.0, 0.0, 1.0)
+        esc_term   *= L200_33_ESC_MULT   + (1.0 - L200_33_ESC_MULT)   * long33
+        sashi_term *= L200_33_SASHI_MULT + (1.0 - L200_33_SASHI_MULT) * long33
+        mark_term  *= L200_33_MARK_MULT  + (1.0 - L200_33_MARK_MULT)  * long33
 
     base = esc_term + sashi_term + mark_term
 
     if is_33:
-        base *= L200_SHORT_GAIN_33
+        long33 = clamp((straight_m - 40.0) / 5.0, 0.0, 1.0)
+        base *= L200_SHORT_GAIN_33 + (1.0 - L200_SHORT_GAIN_33) * long33
     else:
         base *= L200_SHORT_GAIN_OTH
 
-    if float(straight_length) >= 60.0:
-        base *= L200_LONG_RELAX
+    # 500mの長い直線では残脚差を弱めず、最大20%まで連続的に強める。
+    # 逃げのマイナスと差し・マークのプラスを同時に拡大する。
+    if bank_m >= 480.0:
+        long_gain = 1.0 + 0.015 * max(0.0, straight_m - 50.0)
+        base *= clamp(long_gain, 1.0, L200_LONG_GAIN_MAX)
 
     base *= float(L200_GRADE_GAIN.get(_grade_key_from_class(race_class), 1.0))
 
@@ -1590,33 +1606,37 @@ def fetch_openmeteo_hour(lat, lon, target_dt_naive):
 # サイドバー：開催情報 / バンク・風・頭数
 # ==============================
 
-# --- 会場差分（得意会場平均を標準）ヘルパー（このブロック内に自己完結）
-FAVORABLE_VENUES = ["名古屋","いわき平","前橋","立川","宇都宮","岸和田","高知"]
-
-def _std_from_venues(names):
-    Ls = [KEIRIN_DATA[v]["straight_length"] for v in names if v in KEIRIN_DATA]
-    Th = [KEIRIN_DATA[v]["bank_angle"]      for v in names if v in KEIRIN_DATA]
-    Cs = [KEIRIN_DATA[v]["bank_length"]     for v in names if v in KEIRIN_DATA]
-    return (float(np.mean(Th)), float(np.mean(Ls)), float(np.mean(Cs)))
-
-TH_STD, L_STD, C_STD = _std_from_venues(FAVORABLE_VENUES)
+# --- 会場差分（全会場の中央値を中立基準）ヘルパー（このブロック内に自己完結）
 
 _ALL_L  = np.array([KEIRIN_DATA[k]["straight_length"] for k in KEIRIN_DATA], float)
 _ALL_TH = np.array([KEIRIN_DATA[k]["bank_angle"]      for k in KEIRIN_DATA], float)
+_ALL_C  = np.array([KEIRIN_DATA[k]["bank_length"]     for k in KEIRIN_DATA], float)
+_ALL_R  = _ALL_L / np.maximum(_ALL_C, 1.0)
+
+TH_STD = float(np.median(_ALL_TH))
+L_STD  = float(np.median(_ALL_L))
+C_STD  = float(np.median(_ALL_C))
+R_STD  = float(np.median(_ALL_R))
+
 SIG_L  = float(np.std(_ALL_L))  if np.std(_ALL_L)  > 1e-9 else 1.0
 SIG_TH = float(np.std(_ALL_TH)) if np.std(_ALL_TH) > 1e-9 else 1.0
+SIG_R  = float(np.std(_ALL_R))  if np.std(_ALL_R)  > 1e-9 else 1.0
 
 def venue_z_terms(straight_length: float, bank_angle: float, bank_length: float):
-    zL  = (float(straight_length) - L_STD)  / SIG_L
+    bl = max(float(bank_length), 1.0)
+    zL_abs = (float(straight_length) - L_STD) / SIG_L
+    zL_rel = ((float(straight_length) / bl) - R_STD) / SIG_R
+    # 絶対長と周長に対する直線比率を併用。伊東型333と短直線333を分離する。
+    zL  = 0.55 * zL_abs + 0.45 * zL_rel
     zTH = (float(bank_angle)      - TH_STD) / SIG_TH
-    if bank_length >= 480: dC = +0.4
-    elif bank_length >= 380: dC = 0.0
-    else: dC = -0.4
+    # 333/400/500の三値化をやめ、400mからの距離差を連続値で扱う。
+    dC = clamp((bl - 400.0) / 100.0, -0.70, 1.00)
     return zL, zTH, dC
 
 def venue_mix(zL, zTH, dC):
-    # 直線長↑＝差し/捲り寄り(−)、カント↑＝先行/スピード勝負(+)、333短周長＝ライン寄り(−)
-    return float(clamp(0.50*zTH - 0.35*zL - 0.30*dC, -1.0, +1.0))
+    # 早期の±1張り付きを避け、会場差を滑らかに残す。
+    raw = 0.50*zTH - 0.35*zL - 0.30*dC
+    return float(np.tanh(raw / 1.50))
 
 
 # ==============================
@@ -2650,7 +2670,9 @@ def bank_character_bonus(bank_angle, straight_length, prof_escape, prof_sashi, b
 
     zL, zTH, dC = venue_z_terms(straight_length, bank_angle, bl)
 
-    base = clamp(0.06*zTH - 0.05*zL - 0.03*dC, -0.08, +0.08)
+    raw = 0.06*zTH - 0.05*zL - 0.03*dC
+    # ±0.08への張り付きを避けつつ、従来の最大補正幅は超えない。
+    base = 0.08 * float(np.tanh(raw / 0.08))
     out  = base * pe - 0.5 * base * ps
     return round(out, 3)
 
@@ -2660,7 +2682,9 @@ def bank_length_adjust(bank_length, prof_oikomi):
     L  = float(bank_length or 0.0)
     dC = (+0.4 if L >= 480 else 0.0 if L >= 380 else -0.4)
 
-    out = 0.03 * (-dC) * po
+    # 500mで後位・マーク型を機械的に減点していた処理を解除する。
+    # 333m側の既存加点は、今回の修正範囲外として維持する。
+    out = 0.0 if L >= 480 else 0.03 * (-dC) * po
     return round(out, 3)
 
 
@@ -5363,12 +5387,14 @@ try:
             
             # ====== PATCH: venue-aware pass_m / available_m + speed-based MAX_PASSES ======
             pass_m = 14.0 + 0.35 * straight_m
-            pass_m *= (1.0 + 0.25 * max(0.0, style))
+            # 前残り補正は短い直線に限る。伊東型の長い333mで追越しを抑制しない。
+            short_straight = clamp((44.0 - straight_m) / 12.0, 0.0, 1.0)
+            pass_m *= (1.0 + 0.25 * max(0.0, style) * short_straight)
             pass_m *= (1.0 + 0.03 * max(0.0, wind_ms - 3))
 
-            # 会場カント（薄く：外回しロス増）
+            # 高カントによる外回しロスも短い直線だけに限定する。
             bank_angle = float(globals().get("bank_angle", 30.0) or 30.0)
-            pass_m *= (1.0 + 0.10 * max(0.0, (bank_angle - 30.0) / 10.0))  # 36°で+6%程度
+            pass_m *= (1.0 + 0.10 * max(0.0, (bank_angle - 30.0) / 10.0) * short_straight)
 
             # クリップ
             if pass_m < 18.0:
