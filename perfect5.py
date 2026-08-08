@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+# v308（公開表示整理・消去候補表示版）:
+# ・基本7点の生成、軸、ライン保護、フォーメーション選別、各評価計算は変更しない。
+# ・公開表示から展開評価、評価軸候補、推奨絞り三連複、個別3連複一覧を外す。
+# ・基本7点内にある◎〇△の3車買い目を第1消去候補、◎〇×の3車買い目を第2消去候補として表示する。
+# ・消去候補の直後に、オッズによるトリガミ回避の注意書きを表示する。
+#
 # v307（推奨絞り三連複・条件A/B同時通過修正版）:
 # ・基本三連複7点は維持し、その7点だけを配当加重3連複評価表で判定する。
 # ・表示値（小数1桁）で、A＝妙味点－的中点3.3以上かつ総合点6.8以下、
@@ -9690,7 +9696,48 @@ def _v306_select_recommended_trio_tickets(basic_tickets, weighted_trio_rows):
         return tuple()
 
 
-def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None):
+def _v308_delete_candidate_tickets(basic_tickets, mark_map):
+    """基本7点から◎〇△、◎〇×の各3車組だけを表示用消去候補として返す。"""
+    try:
+        def _norm_mark(value):
+            mark = str(value or "").strip()
+            if mark in {"○", "〇", "◯"}:
+                return "〇"
+            return mark
+
+        normalized_marks = {}
+        for car, mark in ((mark_map or {}).items() if isinstance(mark_map, dict) else []):
+            try:
+                normalized_marks[int(car)] = _norm_mark(mark)
+            except Exception:
+                pass
+
+        basic = []
+        for ticket in (basic_tickets or []):
+            try:
+                cars = tuple(sorted(int(x) for x in str(ticket).split("-") if str(x).isdigit()))
+                if len(cars) == 3 and cars not in basic:
+                    basic.append(cars)
+            except Exception:
+                pass
+
+        def _find_candidate(required_marks):
+            required = set(required_marks)
+            for cars in basic:
+                marks = {_norm_mark(normalized_marks.get(int(car), "")) for car in cars}
+                if marks == required and len(marks) == 3:
+                    return "".join(str(car) for car in cars)
+            return "なし"
+
+        return (
+            _find_candidate({"◎", "〇", "△"}),
+            _find_candidate({"◎", "〇", "×"}),
+        )
+    except Exception:
+        return ("なし", "なし")
+
+
+def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     if not isinstance(plan, dict) or not plan:
         return []
 
@@ -9755,25 +9802,19 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None):
     basic_tickets = []
     for _, items in (plan.get("ticket_groups", tuple()) or tuple()):
         basic_tickets.extend(str(x) for x in (items or tuple()))
-    recommended_tickets = _v306_select_recommended_trio_tickets(
+    delete_candidate_1, delete_candidate_2 = _v308_delete_candidate_tickets(
         basic_tickets,
-        weighted_trio_rows,
+        mark_map,
     )
 
     out = [
         f"【採用流れ】{adopted_style}",
-        "【評価軸候補】" + (" ／ ".join(axis_pair_parts) if axis_pair_parts else "生成不可"),
-        "",
-        (
-            "【推奨絞り三連複】"
-            + ("　".join(recommended_tickets) if recommended_tickets else "生成不可")
-            + (f"・計{len(recommended_tickets)}点" if recommended_tickets else "")
-        ),
         "",
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
+        f"【消去候補】第1候補{delete_candidate_1}　第2候補{delete_candidate_2}",
+        "",
+        "※トリガミにならないオッズなら購入推奨。残した買い目でもトリガミになるオッズならカット推奨。",
     ]
-    for label, items in (plan.get("ticket_groups", tuple()) or tuple()):
-        out.append(f"{label}" + "　".join(str(x) for x in items))
     return out
 
 def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
@@ -12060,7 +12101,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 except Exception:
                     return []
 
-            _v281_fixed_lines = _v281_format_fixed_flow_block(_v281_fixed_plan, _weighted_trio_rows)
+            _v281_fixed_lines = _v281_format_fixed_flow_block(
+                _v281_fixed_plan,
+                _weighted_trio_rows,
+                market_mark_map,
+            )
 
             lines.append(_fmt_flow_ratio_line(_flow_ratio_map_for_trio()))
             lines.append("")
@@ -12311,6 +12356,11 @@ def _clean_note_copy_display_only(text: str) -> str:
             # 1) 短評は冒頭情報と重複し、条件付き補正を固定説明できないため表示しない。
             if s == "＜短評＞":
                 break
+
+            # 公開表示では展開評価を出さない。計算値と内部処理はそのまま維持する。
+            if s.startswith("展開評価："):
+                i += 1
+                continue
 
             # 2) ラスト半周補正ブロックを削除
             if s == "【ラスト半周補正】":
