@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v312（採用流れライン長補正廃止版）:
+# ・採用流れ決定から、単騎-0.55／2車0.00／3車+0.55の固定ライン長補正を廃止する。
+# ・採用流れは2車換算勢力－流れ比率差ペナルティで比較し、3車ラインという理由だけで逆転させない。
+# ・採用後の核ライン全車保護、Aライン全車保護、3列目必須確保、基本7点、消去候補は変更しない。
 # v311（路面状態独立入力版）:
 # ・風速・風向・API降水量とは別に、路面状態を「自動判定／乾燥／濡れ」から選択できるようにする。
 # ・自動判定はAPI降水量0.3mm/h以上、乾燥・濡れは目視状態を優先し、is_wetだけを切り替える。
@@ -56,7 +60,7 @@
 # ・Aの同ライン車は軸以外の全車を最優先で必須確保する。
 # ・同ライン全車確保後の残枠は、ライン長補正を使わず個人KO使用スコア順で選ぶ。
 # ・Cも個人KO使用スコア順とし、A・B・Cが同じ3車以上ラインの場合は別線の個人KO最上位をCへ繰り上げる。
-# ・採用流れ決定用のライン長補正は従来どおり維持する。
+# ・v312で採用流れ決定用の固定ライン長補正を廃止する。
 # v300（選出5車復元・想定隊列位置補正直結版）:
 # ・選出5車はv296方式へ戻し、Aの同ライン車を先に保護して残枠を採用流れ着順順で補充する。
 # ・Bの事前必須予約を廃止し、別線C補強は選出5車を変えず2列目だけに反映する。
@@ -8908,9 +8912,9 @@ def _v281_build_fixed_flow_plan(
     2) 各候補が属するライン／単騎を2車換算する。
        ・2車以上のライン＝ライン内KO使用スコア上位2車の合計
        ・単騎＝本人のKO使用スコア×2
-    3) 2車換算勢力へライン長補正と流れ比率差ペナルティを加え、
+    3) 2車換算勢力から流れ比率差ペナルティを引き、
        主流決定スコアが最上位の流れを採用する。
-       ・単騎=-0.55／2車=0.00／3車=+0.55
+       ・ライン人数による固定加減点は行わない
        ・流れ比率首位との差1ポイントにつき-0.02
     4) 採用流れの着順上位からAI印あり（◎／〇／△／×）の車を順に2車抽出する。
     5) 抽出した2車のうち、AI評価が低い方を最終軸A、もう一方をBにする。
@@ -8960,10 +8964,8 @@ def _v281_build_fixed_flow_plan(
             default_score=0.0,
         )
 
-    # 主流決定用の初期係数。
-    # 2車ラインを基準に、3連複でライン3車を残せる構造価値を3車へ加点する。
-    # 4車以上の例外構成でも1車増えるごとに同じ幅を加える。
-    line_length_unit = 0.55
+    # 主流決定は予想能力だけで比較する。3連複で残しやすいという車券構造上の価値は、
+    # 採用後の核ライン全車保護で扱い、ここでは二重加点しない。
     ratio_gap_unit = 2.00  # 比率は0～1なので、0.01（1ポイント）差で0.02減点。
     max_ratio = max((float(ratios.get(style, 0.0) or 0.0) for style in _V281_STYLES), default=0.0)
 
@@ -8982,10 +8984,10 @@ def _v281_build_fixed_flow_plan(
         strength = float(_candidate_strength(candidate_line))
         ratio = float(ratios.get(style, 0.0) or 0.0)
         line_count = len(candidate_line)
-        line_length_adjustment = line_length_unit * float(line_count - 2)
+        line_length_adjustment = 0.0
         ratio_gap = max(0.0, float(max_ratio) - ratio)
         ratio_gap_penalty = ratio_gap_unit * ratio_gap
-        selection_score = strength + line_length_adjustment - ratio_gap_penalty
+        selection_score = strength - ratio_gap_penalty
         rec = {
             "style": style,
             "car": car,
@@ -9007,7 +9009,7 @@ def _v281_build_fixed_flow_plan(
     if not flow_candidates:
         return None
 
-    # 採用流れは、2車換算勢力＋ライン長補正－流れ比率差ペナルティで決める。
+    # 採用流れは、2車換算勢力－流れ比率差ペナルティで決める。
     # 完全同値時だけ、2車換算勢力→流れ想定比率→固定順→車番で決める。
     candidate_rows = sorted(
         flow_candidates,
