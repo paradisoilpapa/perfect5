@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v311（路面状態独立入力版）:
+# ・風速・風向・API降水量とは別に、路面状態を「自動判定／乾燥／濡れ」から選択できるようにする。
+# ・自動判定はAPI降水量0.3mm/h以上、乾燥・濡れは目視状態を優先し、is_wetだけを切り替える。
+# ・手動の濡れ指定では降水量や会場styleを変更せず、既存の濡れ路面L200補正だけを適用する。
+# ・会場補正、KO、想定隊列、ライン保護、フォーメーション、基本7点、消去候補、公開表示は変更しない。
 # v310（全クラス競走得点・着順縮約・KO母集団補正版）:
 # ・S級、A級、チャレンジ、ガールズの全クラスで競走得点を連続Zスコア化し、KO母集団へ直接反映する。
 # ・1～3着・着外は合計1.0のクラス別事前分布を使うディリクレ縮約へ統一する。
@@ -1823,6 +1828,32 @@ wind_speed = st.sidebar.number_input(
 )
 st.session_state["wind_speed"] = float(wind_speed)
 
+# 風・現在降水量と、実際の路面乾湿を分離する。
+# 「濡れ」を手動指定してもAPI降水量は書き換えないため、雨が止んだ後の濡れ路面を
+# 降雨中として会場styleへ二重反映しない。
+ROAD_SURFACE_OPTIONS = ["自動判定", "乾燥", "濡れ"]
+road_surface_mode = st.sidebar.selectbox(
+    "路面状態",
+    ROAD_SURFACE_OPTIONS,
+    key="road_surface_mode",
+    help="自動判定はAPI降水量0.3mm/h以上で濡れ。雨上がり等は実際の路面に合わせて選択してください。",
+)
+_surface_precip = float(st.session_state.get("precipitation", 0.0) or 0.0)
+_api_wet = bool(_surface_precip >= 0.3)
+if road_surface_mode == "濡れ":
+    _effective_wet = True
+elif road_surface_mode == "乾燥":
+    _effective_wet = False
+else:
+    _effective_wet = _api_wet
+
+st.session_state["api_is_wet"] = bool(_api_wet)
+st.session_state["is_wet"] = bool(_effective_wet)
+st.sidebar.caption(
+    f"路面判定：{'濡れ' if _effective_wet else '乾燥'}"
+    f"（選択={road_surface_mode}／API降水={_surface_precip:.1f}mm/h）"
+)
+
 with st.sidebar.expander("🌀 風速＋風向をAPIで自動取得（Open-Meteo）", expanded=False):
     flash = st.session_state.pop("_wind_api_flash", None)
     if flash:
@@ -1876,7 +1907,7 @@ with st.sidebar.expander("🌀 風速＋風向をAPIで自動取得（Open-Meteo
 
                 st.session_state["precipitation"] = precip
                 st.session_state["weather_code"] = weather_code
-                st.session_state["is_wet"] = bool(precip >= 0.3)
+                st.session_state["api_is_wet"] = bool(precip >= 0.3)
                 st.session_state["_wind_api_pending"] = {
                     "speed_ms": speed_ms,
                     "relative_dir": relative_dir,
@@ -2782,7 +2813,7 @@ for no in active_cars:
         prof_escape=float(prof_escape[no]),
         prof_sashi=float(prof_sashi[no]),
         prof_oikomi=float(prof_oikomi[no]),
-        is_wet=st.session_state.get("is_wet", False)  # 雨トグル未実装なら False のまま
+        is_wet=st.session_state.get("is_wet", False)
     )
     L200_RAW[int(no)] = float(l200)
 
