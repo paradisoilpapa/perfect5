@@ -1,4 +1,13 @@
 # -*- coding: utf-8 -*-
+# v317（実績着内率・列優先版）:
+# ・A/BのAI印選出、Aライン全車・採用核ライン全車の必須保護、選出5車、
+#   CD－ACD－ABCDEの7点構造は変更しない。
+# ・確定済みのC/D/Eを実券列へ置く段階だけで、1列目C/Dは実績2着内率
+#   （1着＋2着）上位3車、2列目A/C/Dは実績3着内率上位4車を優先する。
+# ・核ライン成立など既存の必須C条件を壊さず、上位枠が選出5車内で不足する場合は、
+#   該当車数→実率→採用流れ着順の順に最大化する。停止・ライン削除はしない。
+# ・実績率は入力済みx1/x2/x3/x_outのみから算出し、実績なしは0.0として後順位に置く。
+# ・流れ選別、5車選出、採点、消去候補、評価表、公開表示は変更しない。
 # v316（全ライン比較5車選出版）:
 # ・男子通常戦は、Aライン全車・採用流れ主軸ライン全車・Bを必須固定した後、
 #   残る5車候補を全探索する。未採用の各ライン／単騎が少なくとも1車入る候補だけを比較し、
@@ -9775,9 +9784,88 @@ def _v281_build_fixed_flow_plan(
             ]
             c_replaced_by_other_line = True
 
-    # v313：ここまでは従来どおりAB－ABC－ABCDEを完成させる処理。
-    # A～Eの役割配置を変えず、後段の実券だけCD－ACD－ABCDEへ置き換える。
-    c_car, d_car, e_car = cde_candidates
+    # v317：選出5車と既存のライン必須条件を固定したまま、実券の列だけを並べ替える。
+    # 1列目CDは2着内率上位3車、2列目ACDは3着内率上位4車を優先する。
+    # 実績率は表示入力と同じ x1/x2/x3/x_out から計算し、同率時だけ採用流れ順位を使う。
+    # 既存の「Cを核ライン相方／別線へ置く」必須条件は最優先で保持する。
+    def _v317_empirical_rate_map():
+        _x1 = globals().get("x1", {})
+        _x2 = globals().get("x2", {})
+        _x3 = globals().get("x3", {})
+        _xo = globals().get("x_out", {})
+        _rates = {}
+        for _car in all_candidate_cars:
+            _car = int(_car)
+            _n1 = float(_x1.get(_car, _x1.get(str(_car), 0)) or 0)
+            _n2 = float(_x2.get(_car, _x2.get(str(_car), 0)) or 0)
+            _n3 = float(_x3.get(_car, _x3.get(str(_car), 0)) or 0)
+            _no = float(_xo.get(_car, _xo.get(str(_car), 0)) or 0)
+            _total = _n1 + _n2 + _n3 + _no
+            _rates[_car] = {
+                "in2": ((_n1 + _n2) / _total) if _total > 0.0 else 0.0,
+                "in3": ((_n1 + _n2 + _n3) / _total) if _total > 0.0 else 0.0,
+                "starts": _total,
+            }
+        return _rates
+
+    _v317_rates = _v317_empirical_rate_map()
+
+    def _v317_top_cars(_field, _limit):
+        return set(
+            int(_car) for _car in sorted(
+                all_candidate_cars,
+                key=lambda _car: (
+                    -float(_v317_rates.get(int(_car), {}).get(_field, 0.0)),
+                    int(adopted_rank_map.get(int(_car), 999)),
+                    int(_car),
+                ),
+            )[:int(_limit)]
+        )
+
+    _v317_in2_top3 = _v317_top_cars("in2", 3)
+    _v317_in3_top4 = _v317_top_cars("in3", 4)
+
+    # v313のABC成立条件のため、明示予約CはC位置に固定する。
+    # ABが核ラインである場合は、従来どおりCを別線から選ぶ。
+    _v317_forced_c = None
+    if forced_external_c is not None:
+        _v317_forced_c = int(forced_external_c)
+    elif forced_single_core_c is not None:
+        _v317_forced_c = int(forced_single_core_c)
+    elif required_core_support is not None:
+        _v317_forced_c = int(required_core_support)
+
+    _v317_role_candidates = []
+    for _perm in permutations(cde_candidates):
+        _c_try, _d_try, _e_try = (int(_perm[0]), int(_perm[1]), int(_perm[2]))
+        if _v317_forced_c is not None and _c_try != _v317_forced_c:
+            continue
+        if _v317_forced_c is None and len(set(ab_core_members)) >= 2 and _c_try in core_line_set:
+            continue
+        _first = (_c_try, _d_try)
+        _second = (int(axis), _c_try, _d_try)
+        _first_top2_count = sum(int(_car in _v317_in2_top3) for _car in _first)
+        _second_top3_count = sum(int(_car in _v317_in3_top4) for _car in _second)
+        _first_rate_sum = sum(float(_v317_rates.get(_car, {}).get("in2", 0.0)) for _car in _first)
+        _second_rate_sum = sum(float(_v317_rates.get(_car, {}).get("in3", 0.0)) for _car in _second)
+        _flow_order = tuple(int(adopted_rank_map.get(_car, 999)) for _car in (_c_try, _d_try, _e_try))
+        _v317_role_candidates.append((
+            (
+                -int(_first_top2_count),
+                -int(_second_top3_count),
+                -float(_first_rate_sum),
+                -float(_second_rate_sum),
+                _flow_order,
+                (_c_try, _d_try, _e_try),
+            ),
+            (_c_try, _d_try, _e_try),
+        ))
+
+    # 必須Cの都合で候補が空になる場合だけ、従来配置をそのまま使用する。
+    if _v317_role_candidates:
+        _, (c_car, d_car, e_car) = min(_v317_role_candidates, key=lambda row: row[0])
+    else:
+        c_car, d_car, e_car = (int(cde_candidates[0]), int(cde_candidates[1]), int(cde_candidates[2]))
     c_flow_rank = int(adopted_rank_map.get(c_car, 0) or 0)
     # 通常は元の選出5車順を維持する。
     # 4車核ライン再編時だけ、指定どおりABCを車番昇順に表示して36-136-13657型にする。
