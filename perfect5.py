@@ -1,4 +1,14 @@
 # -*- coding: utf-8 -*-
+# v316（全ライン比較5車選出版）:
+# ・男子通常戦は、Aライン全車・採用流れ主軸ライン全車・Bを必須固定した後、
+#   残る5車候補を全探索する。未採用の各ライン／単騎が少なくとも1車入る候補だけを比較し、
+#   順流・渦・逆流の比率で加重した実券7点の着順支持合計が最大の候補を採用する。
+# ・残枠を採用流れの個人着順で順取りして、対抗ラインを丸ごと落とす処理を廃止する。
+# ・主軸必須車との両立上、全ライン／単騎を5車内で代表できない構成は、代表できる
+#   ライン／単騎数を最大化してから実券7点支持を比較する。主軸を削ってまで満たさない。
+# ・ガールズ／アドバンスはライン比較を行わず、従来どおり採用流れ着順で残枠を補充する。
+# ・A・BのAI印による選出、Aライン・採用核ライン保護、CDEの採用流れ順配置、
+#   CD－ACD－ABCDEの実券展開、採点、消去候補、評価表、公開表示は変更しない。
 # v315（ライン保持後・採用流れ順CDE版）:
 # ・Aライン・採用核ラインなどの必須車を先に確保した後、残枠は採用流れの最終予想候補順で補充する。
 # ・確定済みの選出5車からA・Bを除いたC・D・Eも、採用流れの最終予想候補順で配置する。
@@ -9389,8 +9399,10 @@ def _v281_build_fixed_flow_plan(
             "ticket_reason": "Aライン全車・B・採用核ライン全車が5車枠に収まらないため、必須条件を維持して生成不可",
         }
 
-    # Aの同ライン全車と採用核ライン全車を必須保護した後の残枠だけを、
-    # 採用流れの最終予想候補順で補充する。KOで並べ替えて着順予想を後から崩さない。
+    # Aの同ライン全車と採用核ライン全車を必須保護した後の残枠選出。
+    # v316：男子通常戦は、未採用ライン／単騎を必ず代表させた5車候補を全探索する。
+    # その候補から現行と同じCDE配置・CD－ACD－ABCDEの7点を作り、三流れ加重支持合計で比較する。
+    # ガールズ／アドバンスはライン戦ではないため、従来の採用流れ着順補充を維持する。
     adopted_rank_map = {int(car): idx for idx, car in enumerate(adopted_sequence, start=1)}
     all_candidate_cars = _v281_unique_sequence([
         int(car)
@@ -9404,16 +9416,173 @@ def _v281_build_fixed_flow_plan(
             int(car),
         ),
     )
+    mandatory_himo = [int(car) for car in himo]
+    remaining_slots = 4 - len(mandatory_himo)
     individual_added_himo = []
-    for car in individual_ranked_cars:
-        car = int(car)
-        if car == axis or car in himo:
-            continue
-        himo.append(car)
-        individual_added_himo.append(car)
-        if len(himo) >= 4:
-            break
-    # 旧キーは後方互換のため残す。内容は採用流れ順で補充した残枠車。
+    selection_mode = "採用流れ着順補充"
+    line_coverage_groups = tuple()
+
+    def _v316_roles_for_selected_five(_selected_five):
+        """現行のCDE例外規則を候補比較でも同一に再現する。"""
+        _selected_set = set(int(car) for car in (_selected_five or []))
+        _cde = sorted(
+            [int(car) for car in _selected_set if int(car) not in {axis, secondary_axis}],
+            key=lambda car: (int(adopted_rank_map.get(int(car), 999)), int(car)),
+        )
+        if len(_cde) != 3:
+            return None
+
+        _replaced = False
+        if forced_external_c is not None:
+            if int(forced_external_c) not in _cde:
+                return None
+            _cde = [int(forced_external_c)] + [
+                int(car) for car in _cde if int(car) != int(forced_external_c)
+            ]
+        elif forced_single_core_c is not None:
+            if int(forced_single_core_c) not in _cde:
+                return None
+            _cde = [int(forced_single_core_c)] + [
+                int(car) for car in _cde if int(car) != int(forced_single_core_c)
+            ]
+        elif required_core_support is not None:
+            if int(required_core_support) not in _cde:
+                return None
+            _cde = [int(required_core_support)] + [
+                int(car) for car in _cde if int(car) != int(required_core_support)
+            ]
+        elif len(set(ab_core_members)) >= 2:
+            _external = [int(car) for car in _cde if int(car) not in core_line_set]
+            if _external:
+                _replacement = int(_external[0])
+                _cde = [_replacement] + [int(car) for car in _cde if int(car) != _replacement]
+                _replaced = True
+        return tuple(int(car) for car in _cde), bool(_replaced)
+
+    def _v316_ticket_support(_selected_five):
+        """三流れの着順支持だけで、実際に出る基本7点の合計支持を返す。"""
+        _roles = _v316_roles_for_selected_five(_selected_five)
+        if _roles is None:
+            return None
+        (_c, _d, _e), _unused_replaced = _roles
+        _combos = (
+            (axis, secondary_axis, _c),
+            (axis, _c, _d),
+            (axis, _c, _e),
+            (secondary_axis, _c, _d),
+            (_c, _d, _e),
+            (axis, secondary_axis, _d),
+            (axis, _d, _e),
+        )
+        _score = 0.0
+        for _style in _V281_STYLES:
+            _ratio = float(ratios.get(_style, 0.0) or 0.0)
+            _seq = [int(car) for car in (seq_map.get(_style, []) or [])]
+            _n = len(_seq)
+            if _ratio <= 0.0 or _n <= 0:
+                continue
+            _rank = {int(car): idx for idx, car in enumerate(_seq, start=1)}
+            for _combo in _combos:
+                _support = 1.0
+                for _car in _combo:
+                    _pos = int(_rank.get(int(_car), _n + 1))
+                    _support *= max(0.0, float(_n - _pos + 1) / float(_n))
+                _score += _ratio * _support
+        return float(_score)
+
+    _race_class_for_v316 = str(globals().get("race_class", "") or "")
+    _use_line_coverage = _race_class_for_v316 not in {"ガールズ", "アドバンス"}
+    if _use_line_coverage:
+        # 入力ラインをそのままグループ化し、ライン定義から漏れた車だけを単騎として補う。
+        _groups = []
+        _grouped_cars = set()
+        _line_values = list(line_def_obj.values()) if isinstance(line_def_obj, dict) else list(line_def_obj or [])
+        for _members in _line_values:
+            _group = tuple(int(car) for car in _v281_unique_sequence(_members) if int(car) in all_candidate_cars)
+            if not _group or any(int(car) in _grouped_cars for car in _group):
+                continue
+            _groups.append(_group)
+            _grouped_cars.update(_group)
+        for _car in all_candidate_cars:
+            if int(_car) not in _grouped_cars:
+                _groups.append((int(_car),))
+                _grouped_cars.add(int(_car))
+
+        _mandatory_set = {int(axis)} | set(mandatory_himo)
+        _uncovered_groups = [
+            tuple(int(car) for car in _group)
+            for _group in _groups
+            if not (set(int(car) for car in _group) & _mandatory_set)
+        ]
+        line_coverage_groups = tuple(_uncovered_groups)
+        _free_cars = [
+            int(car) for car in all_candidate_cars
+            if int(car) != axis and int(car) not in mandatory_himo
+        ]
+        _best_candidate = None
+        for _extras in combinations(_free_cars, remaining_slots):
+            _trial_five = [int(axis)] + list(mandatory_himo) + [int(car) for car in _extras]
+            _trial_set = set(_trial_five)
+            _support = _v316_ticket_support(_trial_five)
+            if _support is None:
+                continue
+            _coverage_count = sum(
+                1 for _group in _uncovered_groups
+                if _trial_set & set(_group)
+            )
+            _rank_sum = sum(int(adopted_rank_map.get(int(car), 999)) for car in _extras)
+            _rank_tuple = tuple(int(adopted_rank_map.get(int(car), 999)) for car in _extras)
+            _candidate_key = (
+                -int(_coverage_count),
+                -float(_support),
+                int(_rank_sum),
+                _rank_tuple,
+                tuple(sorted(int(car) for car in _extras)),
+            )
+            if _best_candidate is None or _candidate_key < _best_candidate[0]:
+                _best_candidate = (
+                    _candidate_key,
+                    tuple(int(car) for car in _extras),
+                    float(_support),
+                    int(_coverage_count),
+                )
+
+        if _best_candidate is None:
+            return {
+                **base_result,
+                "status": "no_valid_all_line_coverage_candidate",
+                "axis_pair": tuple(axis_pair),
+                "axis": axis,
+                "secondary_axis": secondary_axis,
+                "axis_line": tuple(axis_line),
+                "same_line_himo": tuple(same_line_himo),
+                "core_line": tuple(core_line),
+                "required_core_support": int(required_core_support or 0),
+                "himo": tuple(mandatory_himo),
+                "formation_five": tuple(),
+                "formation_c": 0,
+                "formation_d": 0,
+                "formation_e": 0,
+                "ticket_form": "",
+                "ticket_groups": tuple(),
+                "ticket_count": 0,
+                "ticket_family": "3連複CD－ACD－ABCDE",
+                "ticket_reason": "全ライン・単騎を代表させ、既存の主軸必須条件も満たす5車候補を確定できないため生成不可",
+            }
+
+        individual_added_himo = list(_best_candidate[1])
+        himo = list(mandatory_himo) + list(individual_added_himo)
+        selection_mode = "全ライン比較5車選出"
+    else:
+        for car in individual_ranked_cars:
+            car = int(car)
+            if car == axis or car in himo:
+                continue
+            himo.append(car)
+            individual_added_himo.append(car)
+            if len(himo) >= 4:
+                break
+    # 旧キーは後方互換のため残す。v316男子通常戦では全ライン比較で補充した残枠車。
     flow_added_himo = list(individual_added_himo)
 
     if len(himo) < 4:
@@ -9701,6 +9870,14 @@ def _v281_build_fixed_flow_plan(
         line_reason = "軸は単騎のため自ライン必須車なし"
 
     added_text = "・".join(str(x) for x in flow_added_himo) if flow_added_himo else "なし"
+    if selection_mode == "全ライン比較5車選出":
+        _coverage_text = "／".join("".join(str(int(car)) for car in group) for group in line_coverage_groups) or "なし"
+        residual_reason = (
+            f"未採用ライン・単騎［{_coverage_text}］の採用数を最大化した5車候補を全比較し、"
+            f"三流れ加重の実券7点支持合計が最大となる残枠［{added_text}］を採用。"
+        )
+    else:
+        residual_reason = f"残枠は採用流れ着順上位から［{added_text}］を補充。"
     c_reason = (
         f"A・B・原則C={original_c_car}が同じ3車以上ラインのため、別線の採用流れ上位{c_car}をCへ繰り上げ、"
         f"原則C={original_c_car}はD・E側に維持。"
@@ -9710,8 +9887,7 @@ def _v281_build_fixed_flow_plan(
     reason = (
         f"各流れ勢力［{candidate_text}］から主流決定スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
         f"{adopted_style}着順上位からAI印あり2車［{axis_pair_text}］を抽出し、AI評価が低い{axis}を最終軸A、"
-        f"もう一方の{secondary_axis}をBに選択。{line_reason}し、残枠はライン長補正を使わず"
-        f"採用流れ着順上位から［{added_text}］を補充。"
+        f"もう一方の{secondary_axis}をBに選択。{line_reason}し、{residual_reason}"
         f"{c_reason}"
         f"C・Dを{c_car}・{d_car}、残る{e_car}をEとしてCD－ACD－ABCDEへ展開"
     )
@@ -9732,6 +9908,8 @@ def _v281_build_fixed_flow_plan(
         "same_line_himo": tuple(same_line_himo),
         "flow_added_himo": tuple(flow_added_himo),
         "individual_added_himo": tuple(individual_added_himo),
+        "selection_mode": selection_mode,
+        "line_coverage_groups": tuple(line_coverage_groups),
         "himo": tuple(himo[:4]),
         "formation_five": tuple(formation_five),
         "formation_c": c_car,
