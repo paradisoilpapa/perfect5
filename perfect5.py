@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
-# v314（CD－ACD－ABCDE実券置換版）:
-# ・基本三連複だけを、AB－ABC－ABCDEからCD－ACD－ABCDEの7点へ切り替える。
-# ・A～Eの選出、AB－ABC－ABCDE成立判定、採用流れ、採点、消去候補、評価表は変更しない。
-# ・先に従来どおりAB－ABC－ABCDEを完成させ、その確定済みA～EだけをCD－ACD－ABCDEへ展開する。
+# v315（ライン保持後・採用流れ順CDE版）:
+# ・Aライン・採用核ラインなどの必須車を先に確保した後、残枠は採用流れの最終予想候補順で補充する。
+# ・確定済みの選出5車からA・Bを除いたC・D・Eも、採用流れの最終予想候補順で配置する。
+# ・ライン成立のためCへ明示予約した車、またはABCの別線成立のためCへ移す車だけは従来どおり優先する。
+# ・A・BのAI印による選出、Aライン・採用核ライン保護、AB－ABC－ABCDE成立判定、
+#   CD－ACD－ABCDEの実券展開、採点、消去候補、評価表は変更しない。
 # v312（採用流れライン長補正廃止版）:
 # ・採用流れ決定から、単騎-0.55／2車0.00／3車+0.55の固定ライン長補正を廃止する。
 # ・採用流れは2車換算勢力－流れ比率差ペナルティで比較し、3車ラインという理由だけで逆転させない。
@@ -8927,9 +8929,9 @@ def _v281_build_fixed_flow_plan(
     7) Aの同ライン全車を最優先で確保した後、Bと採用流れの核ライン全車を必須予約する。
        A・Bだけで核ラインが成立しない場合は、核ライン内の個人KO最上位車をCにする。
        必須車が5車枠に収まらなければ生成を停止する。
-    8) 残枠を、ライン長補正を使わず個人KO使用スコア上位から補充し、Aを含む選出5車を作る。
+    8) 残枠を、ライン長補正を使わず採用流れの最終予想候補順から補充し、Aを含む選出5車を作る。
        核ライン相方を予約した場合はその車をCにする。A・Bがともに核ラインの場合は、
-       選出5車内の別線個人KO最上位をCにする。それ以外は個人KO最上位をCにする。
+       選出5車内の別線上位車をCにする。それ以外は採用流れ上位順にC・D・Eを置く。
     9) 三連複CD－ACD－ABCDEの7点
        （ABC／ACD／ACE／BCD／CDE／ABD／ADE）を生成する。
     """
@@ -9387,8 +9389,8 @@ def _v281_build_fixed_flow_plan(
             "ticket_reason": "Aライン全車・B・採用核ライン全車が5車枠に収まらないため、必須条件を維持して生成不可",
         }
 
-    # Aの同ライン全車を必須保護した後の残枠だけを、個人KO使用スコア順で補充する。
-    # この個人順位にライン長補正は使わない。同点時のみ採用流れ着順→車番で確定する。
+    # Aの同ライン全車と採用核ライン全車を必須保護した後の残枠だけを、
+    # 採用流れの最終予想候補順で補充する。KOで並べ替えて着順予想を後から崩さない。
     adopted_rank_map = {int(car): idx for idx, car in enumerate(adopted_sequence, start=1)}
     all_candidate_cars = _v281_unique_sequence([
         int(car)
@@ -9398,7 +9400,6 @@ def _v281_build_fixed_flow_plan(
     individual_ranked_cars = sorted(
         all_candidate_cars,
         key=lambda car: (
-            -float(_v281_map_float(ko_map, int(car), 0.0)),
             int(adopted_rank_map.get(int(car), 999)),
             int(car),
         ),
@@ -9412,7 +9413,7 @@ def _v281_build_fixed_flow_plan(
         individual_added_himo.append(car)
         if len(himo) >= 4:
             break
-    # 旧キーは後方互換のため残す。内容は個人KO選定の残枠車。
+    # 旧キーは後方互換のため残す。内容は採用流れ順で補充した残枠車。
     flow_added_himo = list(individual_added_himo)
 
     if len(himo) < 4:
@@ -9440,7 +9441,7 @@ def _v281_build_fixed_flow_plan(
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複CD－ACD－ABCDE",
-            "ticket_reason": "Aの同ライン必須車と個人KO使用スコア上位を合わせてもヒモが4車未満のため生成不可",
+            "ticket_reason": "Aの同ライン必須車と採用流れ着順上位を合わせてもヒモが4車未満のため生成不可",
         }
 
     selected_five = [axis] + [int(car) for car in himo[:4]]
@@ -9477,7 +9478,7 @@ def _v281_build_fixed_flow_plan(
 
     # Cは核ライン成立を最優先する。
     # ABだけで核ラインが成立しない場合は、予約した核ライン相方をCにする。
-    # ABがともに核ラインの場合は、別線の個人KO最上位をCにする。
+    # ABがともに核ラインの場合は、別線の採用流れ上位車をCにする。
     cde_candidates = [
         int(car) for car in selected_five
         if int(car) not in {axis, secondary_axis}
@@ -9485,7 +9486,6 @@ def _v281_build_fixed_flow_plan(
     cde_candidates = sorted(
         cde_candidates,
         key=lambda car: (
-            -float(_v281_map_float(ko_map, int(car), 0.0)),
             int(adopted_rank_map.get(int(car), 999)),
             int(car),
         ),
@@ -9702,16 +9702,16 @@ def _v281_build_fixed_flow_plan(
 
     added_text = "・".join(str(x) for x in flow_added_himo) if flow_added_himo else "なし"
     c_reason = (
-        f"A・B・原則C={original_c_car}が同じ3車以上ラインのため、別線の個人KO最上位{c_car}をCへ繰り上げ、"
+        f"A・B・原則C={original_c_car}が同じ3車以上ラインのため、別線の採用流れ上位{c_car}をCへ繰り上げ、"
         f"原則C={original_c_car}はD・E側に維持。"
         if c_replaced_by_other_line else
-        f"選出5車からA・Bを除いた3車のうち、個人KO使用スコア最上位の{c_car}をC。"
+        f"選出5車からA・Bを除いた3車を採用流れ着順順にC・D・Eへ配置。"
     )
     reason = (
         f"各流れ勢力［{candidate_text}］から主流決定スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
         f"{adopted_style}着順上位からAI印あり2車［{axis_pair_text}］を抽出し、AI評価が低い{axis}を最終軸A、"
         f"もう一方の{secondary_axis}をBに選択。{line_reason}し、残枠はライン長補正を使わず"
-        f"個人KO使用スコア上位から［{added_text}］を補充。"
+        f"採用流れ着順上位から［{added_text}］を補充。"
         f"{c_reason}"
         f"C・Dを{c_car}・{d_car}、残る{e_car}をEとしてCD－ACD－ABCDEへ展開"
     )
