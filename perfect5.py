@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+# v313（CD－ACD－ABCDEフォーメーション切替版）:
+# ・基本三連複だけを、AB－ABC－ABCDEからCD－ACD－ABCDEの7点へ切り替える。
+# ・A～Eの選出、採用流れ、採点、消去候補、評価表は変更しない。
+# ・Aライン全車と採用核ライン全車の5車内保護は維持し、新1・2列目のC・D／A・C・Dに
+#   採用核ライン2車以上とAライン外1車以上を必須化する。
+# ・この必須条件を満たすためのC・D・Eの役割配置だけを、確定済みの選出5車内で行う。
 # v312（採用流れライン長補正廃止版）:
 # ・採用流れ決定から、単騎-0.55／2車0.00／3車+0.55の固定ライン長補正を廃止する。
 # ・採用流れは2車換算勢力－流れ比率差ペナルティで比較し、3車ラインという理由だけで逆転させない。
@@ -8921,13 +8927,13 @@ def _v281_build_fixed_flow_plan(
        AI無印車は軸比較から除外する。
     6) 最終軸Aの同ライン車を軸以外すべて先にヒモへ確保する。
     7) Aの同ライン全車を最優先で確保した後、Bと採用流れの核ライン全車を必須予約する。
-       A・Bだけで核ラインが成立しない場合は、核ライン内の個人KO最上位車をCにする。
+       A・C・Dで核ラインが成立するよう、核ライン内の個人KO上位車をC・D側に置く。
        必須車が5車枠に収まらなければ生成を停止する。
     8) 残枠を、ライン長補正を使わず個人KO使用スコア上位から補充し、Aを含む選出5車を作る。
-       核ライン相方を予約した場合はその車をCにする。A・Bがともに核ラインの場合は、
-       選出5車内の別線個人KO最上位をCにする。それ以外は個人KO最上位をCにする。
-    9) 三連複AB－ABC－ABCDEの7点
-       （ABC／ABD／ABE／ACD／ACE／BCD／BCE）を生成する。
+       核ライン相方を予約した場合はC・D側に置く。A・Bがともに核ラインの場合は、
+       選出5車内の別線個人KO上位をC・D側に置く。それ以外は個人KO上位順に配置する。
+    9) 三連複CD－ACD－ABCDEの7点
+       （ABC／ACD／ACE／BCD／CDE／ABD／ADE）を生成する。
     """
     ratios = _v281_normalize_ratio_map(flow_ratio_map)
     seq_map = {
@@ -9070,7 +9076,7 @@ def _v281_build_fixed_flow_plan(
             "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複AB－ABC－ABCDE",
+            "ticket_family": "3連複CD－ACD－ABCDE",
             "ticket_reason": f"{adopted_style}着順予想から軸候補を取得できないため生成不可",
         }
 
@@ -9115,7 +9121,7 @@ def _v281_build_fixed_flow_plan(
             "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複AB－ABC－ABCDE",
+            "ticket_family": "3連複CD－ACD－ABCDE",
             "ticket_reason": f"{adopted_style}着順予想からAI印ありの軸候補を2車取得できないため生成不可",
         }
 
@@ -9293,7 +9299,7 @@ def _v281_build_fixed_flow_plan(
             "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複AB－ABC－ABCDE",
+            "ticket_family": "3連複CD－ACD－ABCDE",
             "ticket_reason": f"軸{axis}の同ライン車が4車を超えるため、必須保護を維持したまま7点生成できない",
         }
 
@@ -9349,7 +9355,7 @@ def _v281_build_fixed_flow_plan(
                 "ticket_form": "",
                 "ticket_groups": tuple(),
                 "ticket_count": 0,
-                "ticket_family": "3連複AB－ABC－ABCDE",
+                "ticket_family": "3連複CD－ACD－ABCDE",
                 "ticket_reason": "評価軸候補A・Bに採用流れの核ライン車がなく、ABまたはABCに核ラインを成立できないため生成不可",
             }
         required_core_support = int(core_support_candidates[0])
@@ -9379,7 +9385,7 @@ def _v281_build_fixed_flow_plan(
             "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複AB－ABC－ABCDE",
+            "ticket_family": "3連複CD－ACD－ABCDE",
             "ticket_reason": "Aライン全車・B・採用核ライン全車が5車枠に収まらないため、必須条件を維持して生成不可",
         }
 
@@ -9435,7 +9441,7 @@ def _v281_build_fixed_flow_plan(
             "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複AB－ABC－ABCDE",
+            "ticket_family": "3連複CD－ACD－ABCDE",
             "ticket_reason": "Aの同ライン必須車と個人KO使用スコア上位を合わせてもヒモが4車未満のため生成不可",
         }
 
@@ -9464,7 +9470,7 @@ def _v281_build_fixed_flow_plan(
             "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複AB－ABC－ABCDE",
+            "ticket_family": "3連複CD－ACD－ABCDE",
             "ticket_reason": (
                 f"もう一方の評価軸候補{secondary_axis}が、同ライン必須保護を維持した選出5車に入らないため、"
                 "評価軸候補2車を第1列に置く7点フォメを生成できない"
@@ -9510,7 +9516,7 @@ def _v281_build_fixed_flow_plan(
             "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複AB－ABC－ABCDE",
+            "ticket_family": "3連複CD－ACD－ABCDE",
             "ticket_reason": "選出5車からA・Bを除いたC・D・Eを一意に確定できないため生成不可",
         }
 
@@ -9534,7 +9540,7 @@ def _v281_build_fixed_flow_plan(
                 "ticket_form": "",
                 "ticket_groups": tuple(),
                 "ticket_count": 0,
-                "ticket_family": "3連複AB－ABC－ABCDE",
+                "ticket_family": "3連複CD－ACD－ABCDE",
                 "ticket_reason": "4車核ライン再編でCへ移した外側評価軸候補が選出5車に残っていないため生成不可",
             }
         cde_candidates = [int(forced_external_c)] + [
@@ -9558,7 +9564,7 @@ def _v281_build_fixed_flow_plan(
                 "ticket_form": "",
                 "ticket_groups": tuple(),
                 "ticket_count": 0,
-                "ticket_family": "3連複AB－ABC－ABCDE",
+                "ticket_family": "3連複CD－ACD－ABCDE",
                 "ticket_reason": "核単騎をCへ置く再編で、核単騎が選出5車に残っていないため生成不可",
             }
         cde_candidates = [int(forced_single_core_c)] + [
@@ -9583,7 +9589,7 @@ def _v281_build_fixed_flow_plan(
                 "ticket_form": "",
                 "ticket_groups": tuple(),
                 "ticket_count": 0,
-                "ticket_family": "3連複AB－ABC－ABCDE",
+                "ticket_family": "3連複CD－ACD－ABCDE",
                 "ticket_reason": "必須予約した核ライン相方が選出5車に残っていないため生成不可",
             }
         cde_candidates = [int(required_core_support)] + [
@@ -9602,28 +9608,93 @@ def _v281_build_fixed_flow_plan(
             ]
             c_replaced_by_other_line = True
 
-    c_car, d_car, e_car = cde_candidates
+    # v313：新フォーメーションはCD－ACD－ABCDE。
+    # C・Dは1・2列目に共通するため、確定済みの選出5車を変えず、
+    # C・Dの2枠だけで採用核ライン成立とAライン外車の両方を満たす組を選ぶ。
+    # 旧Cへ強制した車は、同じ優先順位で新Cへ残す。
+    required_cd_cars = {
+        int(car)
+        for car in (forced_external_c, forced_single_core_c, required_core_support)
+        if car is not None
+    }
+    cd_pair_candidates = []
+    for left_idx, left_car in enumerate(cde_candidates):
+        for right_idx in range(left_idx + 1, len(cde_candidates)):
+            right_car = int(cde_candidates[right_idx])
+            pair = (int(left_car), right_car)
+            pair_set = set(pair)
+            acd_set = {int(axis)} | pair_set
+            pair_has_other_line = (
+                not axis_line_set
+                or any(int(car) not in axis_line_set for car in pair)
+            )
+            if not required_cd_cars.issubset(pair_set):
+                continue
+            if len(core_line_set) >= 2 and len(acd_set & core_line_set) < 2:
+                continue
+            if not pair_has_other_line:
+                continue
+            cd_pair_candidates.append((left_idx, right_idx, pair))
+
+    if not cd_pair_candidates:
+        return {
+            **base_result,
+            "status": "cd_acd_core_or_other_line_not_available",
+            "axis_pair": tuple(axis_pair),
+            "axis": axis,
+            "secondary_axis": secondary_axis,
+            "axis_line": tuple(axis_line),
+            "same_line_himo": tuple(same_line_himo),
+            "core_line": tuple(core_line),
+            "required_core_support": int(required_core_support or 0),
+            "himo": tuple(himo[:4]),
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複CD－ACD－ABCDE",
+            "ticket_reason": "確定済みの選出5車内で、CD－ACDの核ライン成立とAライン外車を両立できないため生成不可",
+        }
+
+    _, _, selected_cd_pair = cd_pair_candidates[0]
+    c_car, d_car = selected_cd_pair
+    # 旧Cに明示配置した必須車は、役割変更後もCへ優先して置く。
+    preferred_cars = [
+        int(car)
+        for car in (forced_external_c, forced_single_core_c, required_core_support)
+        if car is not None and int(car) in selected_cd_pair
+    ]
+    if preferred_cars:
+        c_car = int(preferred_cars[0])
+        d_car = next(int(car) for car in selected_cd_pair if int(car) != c_car)
+    remaining_e = [
+        int(car) for car in cde_candidates
+        if int(car) not in {int(c_car), int(d_car)}
+    ]
+    e_car = int(remaining_e[0])
     c_flow_rank = int(adopted_rank_map.get(c_car, 0) or 0)
     # 通常は元の選出5車順を維持する。
-    # 4車核ライン再編時だけ、指定どおりABCを車番昇順に表示して36-136-13657型にする。
+    # 4車核ライン再編時だけ、指定どおり選出5車を車番昇順で表示する。
     formation_five = (
-        tuple(sorted(int(car) for car in (axis, secondary_axis, c_car)))
-        + (int(d_car), int(e_car))
+        tuple(sorted(int(car) for car in selected_five))
         if forced_external_c is not None
         else tuple(int(car) for car in selected_five)
     )
 
-    # v302最終ガード：個別処理が将来変更されても、確定済みの絶対条件を破る7点は出さない。
-    abc_set = {int(axis), int(secondary_axis), int(c_car)}
+    # v313最終ガード：新CD－ACDの1・2列目で絶対条件を再検査する。
+    acd_set = {int(axis), int(c_car), int(d_car)}
     five_set = set(int(car) for car in formation_five)
     axis_required_set = {int(axis)} | set(int(car) for car in same_line_himo)
     core_required_ok = (
         len(core_line_set) < 2
-        or len(abc_set & core_line_set) >= 2
+        or len(acd_set & core_line_set) >= 2
     )
     second_has_other_line = (
         not axis_line_set
-        or any(int(car) not in axis_line_set for car in (secondary_axis, c_car))
+        or any(int(car) not in axis_line_set for car in (c_car, d_car))
     )
     final_invariants_ok = all((
         len(formation_five) == 5,
@@ -9654,26 +9725,23 @@ def _v281_build_fixed_flow_plan(
             "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複AB－ABC－ABCDE",
-            "ticket_reason": "最終検査でA・B、Aライン全車、採用核ライン全車、核ライン成立、2列目別線、5車一意のいずれかを満たさないため生成不可",
+            "ticket_family": "3連複CD－ACD－ABCDE",
+            "ticket_reason": "最終検査でA・B、Aライン全車、採用核ライン全車、ACD核ライン成立、CD別線、5車一意のいずれかを満たさないため生成不可",
         }
 
     third_column_text = "".join(str(int(car)) for car in formation_five)
-    second_column_text = (
-        "".join(str(int(car)) for car in sorted((axis, secondary_axis, c_car)))
-        if forced_external_c is not None
-        else f"{axis}{secondary_axis}{c_car}"
-    )
-    ticket_form = f"{axis}{secondary_axis}-{second_column_text}-{third_column_text}"
+    first_column_text = f"{c_car}{d_car}"
+    second_column_text = f"{axis}{c_car}{d_car}"
+    ticket_form = f"{first_column_text}-{second_column_text}-{third_column_text}"
 
     combo_order = (
         (axis, secondary_axis, c_car),
-        (axis, secondary_axis, d_car),
-        (axis, secondary_axis, e_car),
         (axis, c_car, d_car),
         (axis, c_car, e_car),
         (secondary_axis, c_car, d_car),
-        (secondary_axis, c_car, e_car),
+        (c_car, d_car, e_car),
+        (axis, secondary_axis, d_car),
+        (axis, d_car, e_car),
     )
     tickets = [
         "-".join(str(x) for x in sorted(int(v) for v in combo))
@@ -9710,7 +9778,7 @@ def _v281_build_fixed_flow_plan(
         f"もう一方の{secondary_axis}をBに選択。{line_reason}し、残枠はライン長補正を使わず"
         f"個人KO使用スコア上位から［{added_text}］を補充。"
         f"{c_reason}"
-        f"残る{d_car}・{e_car}をD・EとしてAB－ABC－ABCDEへ展開"
+        f"C・Dを{c_car}・{d_car}、残る{e_car}をEとしてCD－ACD－ABCDEへ展開"
     )
 
     return {
@@ -9740,7 +9808,7 @@ def _v281_build_fixed_flow_plan(
         "ticket_form": ticket_form,
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
-        "ticket_family": "3連複AB－ABC－ABCDE",
+        "ticket_family": "3連複CD－ACD－ABCDE",
         "ticket_reason": reason,
     }
 
