@@ -1,4 +1,12 @@
 # -*- coding: utf-8 -*-
+# v326（重圧補正抑制・5車境界保護版）:
+# ・AI重圧補正による移動を最大1順位に制限する。
+# ・採用流れの補正前5位と6位が重圧補正で逆転した場合、流れ加重的中単騎評価を比較し、
+#   補正前5位の評価が高ければ5車内に維持する。6位側が同等以上なら逆転を認める。
+# ・重圧係数と上限をv325の半分に抑え、補正は元順位が近い車同士の微調整に限定する。
+# ・重圧5車境界の判定結果をフォーメーション役割へ表示する。
+# ・A/B選出、C=2着内率、D=3着内率、E=残り、F=C/D/Eの着内数最多、
+#   CD－ACD－ABCDEの7点構造、消去候補、評価表、既存表示は変更しない。
 # v325（C2着内率・D3着内率・F着内数版）:
 # ・A/BのAI印選出とCD－ACD－ABCDEの7点構造は変更しない。
 # ・A/B以外の選出3車から、Cは2着内率、Dは残り2車の3着内率、Eは残る1車で決める。
@@ -8834,8 +8842,8 @@ def _v281_ai_rank(mark):
     return int(_V281_AI_MARK_RANK.get(_v281_normalize_mark(mark), 4))
 
 
-_AI_PRESSURE_COEFFICIENT = {"◎": 0.30, "〇": 0.18, "△": 0.10, "×": 0.04, "": 0.0}
-_AI_PRESSURE_CAP = {"◎": 0.080, "〇": 0.050, "△": 0.030, "×": 0.015, "": 0.0}
+_AI_PRESSURE_COEFFICIENT = {"◎": 0.15, "〇": 0.09, "△": 0.05, "×": 0.02, "": 0.0}
+_AI_PRESSURE_CAP = {"◎": 0.040, "〇": 0.025, "△": 0.015, "×": 0.008, "": 0.0}
 
 
 def _build_ai_pressure_style_seq_map(style_seq_map, mark_map, ko_map):
@@ -8865,8 +8873,8 @@ def _build_ai_pressure_style_seq_map(style_seq_map, mark_map, ko_map):
 
     # 極端に横並びのレースでも補正が消えず、荒いレースでも過大化しない範囲。
     sigma_used = min(max(float(sigma), 0.12), 0.30)
-    # ◎は基礎差が小さければ約2順位、〇は約1順位動き得る初期感度。
-    # KOが抜けた◎には下のko_supportが働くため、機械的な降格にはしない。
+    # v326：重圧感度はv325の半分。さらに後段の隣接交換だけで反映し、
+    # どの車も元順位から最大1順位までしか動かさない。
     rank_step = max(0.015, sigma_used * 0.15)
 
     penalty_map = {}
@@ -8891,8 +8899,28 @@ def _build_ai_pressure_style_seq_map(style_seq_map, mark_map, ko_map):
             pressure = float(penalty_map.get(int(car), 0.0) or 0.0)
             final_score = base_order_score + ko_support - pressure
             scored.append((int(car), final_score, rank_index, ko_value, pressure))
-        scored.sort(key=lambda row: (-float(row[1]), int(row[2]), int(row[0])))
-        adjusted_map[style] = [int(row[0]) for row in scored]
+        # 無制限の全体ソートは行わない。隣接する2車で下位車の補正後スコアが上回った場合だけ、
+        # 逆転幅の大きい組から重複しない隣接交換を採用する。
+        # これにより、各車の移動は上下一方へ最大1順位に限定される。
+        _score_by_car = {int(row[0]): float(row[1]) for row in scored}
+        _swap_candidates = []
+        for _idx in range(max(0, n - 1)):
+            _upper = int(seq[_idx])
+            _lower = int(seq[_idx + 1])
+            _gain = float(_score_by_car.get(_lower, 0.0)) - float(_score_by_car.get(_upper, 0.0))
+            if _gain > 1e-12:
+                _swap_candidates.append((_gain, _idx))
+        _used_positions = set()
+        _accepted_swaps = []
+        for _gain, _idx in sorted(_swap_candidates, key=lambda row: (-float(row[0]), int(row[1]))):
+            if _idx in _used_positions or (_idx + 1) in _used_positions:
+                continue
+            _used_positions.update((_idx, _idx + 1))
+            _accepted_swaps.append(int(_idx))
+        _adjusted_seq = list(seq)
+        for _idx in sorted(_accepted_swaps):
+            _adjusted_seq[_idx], _adjusted_seq[_idx + 1] = _adjusted_seq[_idx + 1], _adjusted_seq[_idx]
+        adjusted_map[style] = [int(car) for car in _adjusted_seq]
         detail_map[style] = tuple(scored)
 
     globals()["AI_PRESSURE_SIGMA"] = float(sigma_used)
@@ -9060,6 +9088,46 @@ def _v281_build_fixed_flow_plan(
     adopted_styles = (adopted_style,)
     adopted_sequence = list(seq_map.get(adopted_style, []) or [])
 
+    # v326：重圧補正だけで補正前5位が5車外へ落ちる場合の境界保護。
+    # 比較には、すでに表示・評価へ使っている流れ加重的中単騎評価をそのまま使う。
+    _original_adopted_sequence = _v281_unique_sequence(
+        (globals().get("STYLE_SEQ_MAP", {}) or {}).get(adopted_style, []) or []
+    )
+    pressure_boundary = {
+        "evaluated": False,
+        "crossed": False,
+        "protected": False,
+        "original_fifth": 0,
+        "challenger": 0,
+        "original_fifth_hit": 0.0,
+        "challenger_hit": 0.0,
+    }
+    if len(_original_adopted_sequence) >= 6 and len(adopted_sequence) >= 6:
+        _original_fifth = int(_original_adopted_sequence[4])
+        _original_sixth = int(_original_adopted_sequence[5])
+        _adjusted_top5 = set(int(car) for car in adopted_sequence[:5])
+        _crossed = bool(
+            _original_fifth not in _adjusted_top5
+            and _original_sixth in _adjusted_top5
+        )
+        _fifth_hit = _v281_map_float(weighted_hit_map, _original_fifth, 0.0)
+        _sixth_hit = _v281_map_float(weighted_hit_map, _original_sixth, 0.0)
+        pressure_boundary.update({
+            "evaluated": True,
+            "crossed": bool(_crossed),
+            "original_fifth": int(_original_fifth),
+            "challenger": int(_original_sixth),
+            "original_fifth_hit": float(_fifth_hit),
+            "challenger_hit": float(_sixth_hit),
+        })
+        if _crossed and float(_fifth_hit) > float(_sixth_hit):
+            _fifth_pos = adopted_sequence.index(_original_fifth)
+            _sixth_pos = adopted_sequence.index(_original_sixth)
+            adopted_sequence[_fifth_pos], adopted_sequence[_sixth_pos] = (
+                adopted_sequence[_sixth_pos], adopted_sequence[_fifth_pos]
+            )
+            pressure_boundary["protected"] = True
+
     base_result = {
         "flow_candidates": tuple(flow_candidates),
         "flow_selector_candidates": tuple(candidate_rows),
@@ -9074,6 +9142,7 @@ def _v281_build_fixed_flow_plan(
         "adopted_style": adopted_style,
         "adopted_styles": adopted_styles,
         "adopted_sequence": tuple(adopted_sequence),
+        "pressure_boundary": dict(pressure_boundary),
     }
 
     if len(adopted_sequence) < 2:
@@ -10248,6 +10317,7 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     fight_e_before_count = float(plan.get("fight_e_before_count", 0.0) or 0.0)
     fight_c_count = float(plan.get("fight_c_count", 0.0) or 0.0)
     fight_count = float(plan.get("fight_count", 0.0) or 0.0)
+    pressure_boundary = dict(plan.get("pressure_boundary", {}) or {})
     ticket_form = str(plan.get("ticket_form", "") or "")
 
     if axis_line:
@@ -10264,6 +10334,27 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         basic_tickets,
         mark_map,
     )
+
+    if bool(pressure_boundary.get("evaluated", False)):
+        _pb_fifth = int(pressure_boundary.get("original_fifth", 0) or 0)
+        _pb_challenger = int(pressure_boundary.get("challenger", 0) or 0)
+        _pb_fifth_hit = float(pressure_boundary.get("original_fifth_hit", 0.0) or 0.0)
+        _pb_challenger_hit = float(pressure_boundary.get("challenger_hit", 0.0) or 0.0)
+        if bool(pressure_boundary.get("crossed", False)):
+            if bool(pressure_boundary.get("protected", False)):
+                pressure_boundary_text = (
+                    f"重圧5車境界：{_pb_fifth}（的中評価{_pb_fifth_hit:.1f}） vs "
+                    f"{_pb_challenger}（{_pb_challenger_hit:.1f}） → {_pb_fifth}を維持"
+                )
+            else:
+                pressure_boundary_text = (
+                    f"重圧5車境界：{_pb_fifth}（的中評価{_pb_fifth_hit:.1f}） vs "
+                    f"{_pb_challenger}（{_pb_challenger_hit:.1f}） → {_pb_challenger}を採用"
+                )
+        else:
+            pressure_boundary_text = "重圧5車境界：補正による5位・6位の逆転なし"
+    else:
+        pressure_boundary_text = "重圧5車境界：比較対象なし"
 
     out = [
         f"【採用流れ】{adopted_style}",
@@ -10289,6 +10380,7 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
             f"E={fight_e_before}（{int(fight_e_before_count)}）"
             f" → F={fight_car}"
         ),
+        pressure_boundary_text,
         "",
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
         f"【消去候補】第1候補{delete_candidate_1}　第2候補{delete_candidate_2}",
@@ -12347,15 +12439,19 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
             try:
                 _pressure_map = globals().get("AI_PRESSURE_STYLE_SEQ_MAP", {}) or {}
                 _pressure_lines = []
-                for _style in _V281_STYLES:
-                    _seq = _v281_unique_sequence(_pressure_map.get(_style, []) or [])
-                    _pressure_lines.append(f"【AI重圧補正後・{_style}メイン着順予想】")
-                    _pressure_lines.append(" → ".join(str(x) for x in _seq) if _seq else "該当なし")
-                    _pressure_lines.append("")
                 _adopted = str((_v281_fixed_plan or {}).get("adopted_style", "") or "未判定")
                 _final_seq = _v281_unique_sequence(
                     (_v281_fixed_plan or {}).get("adopted_sequence", tuple()) or []
                 )
+                for _style in _V281_STYLES:
+                    _seq = (
+                        list(_final_seq)
+                        if str(_style) == str(_adopted) and _final_seq
+                        else _v281_unique_sequence(_pressure_map.get(_style, []) or [])
+                    )
+                    _pressure_lines.append(f"【AI重圧補正後・{_style}メイン着順予想】")
+                    _pressure_lines.append(" → ".join(str(x) for x in _seq) if _seq else "該当なし")
+                    _pressure_lines.append("")
                 globals()["AI_PRESSURE_DISPLAY_BLOCK"] = "\n".join(_pressure_lines).strip()
                 globals()["AI_PRESSURE_FINAL_CANDIDATE_BLOCK"] = "\n".join([
                     "【最終予想候補】",
