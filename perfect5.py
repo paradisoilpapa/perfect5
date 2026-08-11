@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-# v318（FIGHT枠・D比較版）:
+# v321（F枠確定仕様版）:
 # ・A/BのAI印選出、Aライン全車・採用核ライン全車の必須保護、選出5車、
 #   CD－ACD－ABCDEの7点構造は変更しない。
-# ・A/Bと核ライン保護を確定した後、暫定C/Dを除く全車から実績3着内率最上位を
-#   FIGHT枠（F）として抽出する。Fは選出前に全車を対象とし、単騎も除外しない。
-# ・Fは暫定Eと入れ替えて選出5車へ残す。ただしAライン全車・採用核ライン全車など
-#   必須保護車は入れ替えない。FとDは実績3着内率で比較し、上位をD位置へ置く。
-#   実券はD優位ならCD-ACD-ABCDE、F優位ならCF-ACF-ABCDEの7点構造を維持する。
+# ・A/Bと既存の必須C・仮Dを確定した後、A/B/C/Dに被らない全車から実績3着内率
+#   最上位をFIGHT枠（F）として抽出する。単騎かどうかはFの選定条件に使わない。
+# ・Fは最終5車の3列目専用枠として扱う。ライン4番手以降と競合した場合は実績3着内率で
+#   比較して上位だけを採用する。既存のAライン全車・採用核ライン全車は比較対象にしない。
+# ・Fが5車に残ったときだけDと実績3着内率を比較し、上位をD位置、下位をE位置に置く。
+#   実券はCD－ACD－ABCDEの7点構造を維持する。
 # ・核ライン成立など既存の必須C条件を壊さず、上位枠が選出5車内で不足する場合は、
 #   該当車数→実率→採用流れ着順の順に最大化する。停止・ライン削除はしない。
 # ・実績率は入力済みx1/x2/x3/x_outのみから算出し、実績なしは0.0として後順位に置く。
@@ -9870,10 +9871,9 @@ def _v281_build_fixed_flow_plan(
     else:
         c_car, d_car, e_car = (int(cde_candidates[0]), int(cde_candidates[1]), int(cde_candidates[2]))
 
-    # v318：根性値＝実績3着内率として、FIGHT枠（F）を選出前の全車から作る。
-    # A/Bと、既存の1・2列目を構成するC/Dは保護し、残りで3着内率最上位をFにする。
-    # したがって、まだ選出5車に入っていない単騎もF候補から除外しない。
-    _v318_f_candidates = sorted(
+    # v321：FはA/B/C/Dに被らない全車から、3着内率で選ぶ根性枠。
+    # 仮Eは3列目専用枠であり、Fを最終5車に入れる入口とする。
+    _v321_f_candidates = sorted(
         [
             int(_car) for _car in all_candidate_cars
             if int(_car) not in {int(axis), int(secondary_axis), int(c_car), int(d_car)}
@@ -9884,19 +9884,33 @@ def _v281_build_fixed_flow_plan(
             int(_car),
         ),
     )
-    f_car = int(_v318_f_candidates[0]) if _v318_f_candidates else 0
-    f_selected = False
+    f_car = int(_v321_f_candidates[0]) if _v321_f_candidates else 0
+    f_selected = bool(f_car and int(f_car) == int(e_car))
     f_blocked_by_required_protection = False
+    f_lost_to_line_tail = False
+
+    def _v321_line_position(_car):
+        _line_values = list(line_def_obj.values()) if isinstance(line_def_obj, dict) else list(line_def_obj or [])
+        for _members in _line_values:
+            _line = _v281_unique_sequence(_members)
+            if int(_car) in _line:
+                return int(_line.index(int(_car)) + 1)
+        return 1
 
     if f_car and int(f_car) != int(e_car):
-        # Eは「3列目専用の1枠」。ただし必須保護車なら、Fのために切らない。
         _e_is_required = int(e_car) in (
             {int(axis), int(secondary_axis)}
             | set(int(car) for car in same_line_himo)
             | set(int(car) for car in core_line)
         )
+        _e_line_position = _v321_line_position(int(e_car))
+        _f_in3 = float(_v317_rates.get(int(f_car), {}).get("in3", 0.0))
+        _e_in3 = float(_v317_rates.get(int(e_car), {}).get("in3", 0.0))
         if _e_is_required:
             f_blocked_by_required_protection = True
+        elif _e_line_position >= 4 and _f_in3 <= _e_in3:
+            # ライン4番手以降とFが競合し、Fが上回れない場合だけ既存車を残す。
+            f_lost_to_line_tail = True
         else:
             selected_five = [
                 int(f_car) if int(car) == int(e_car) else int(car)
@@ -9909,16 +9923,15 @@ def _v281_build_fixed_flow_plan(
             e_car = int(f_car)
             f_selected = True
 
-    # Fが選出5車に残った場合だけDと比較する。Fが上ならFをD位置へ昇格させ、
-    # 従来Dは3列目専用へ下げる。CとAの位置は一切動かさない。
-    d_fight_replaced_d = False
+    # Fが最終5車に残った場合だけDと比較する。Fが上ならFをD位置へ上げ、
+    # 従来DをEへ下げる。A/B/Cの役割・必須ライン保護は動かさない。
+    f_replaced_d = False
     if f_car and int(f_car) == int(e_car):
         _d_in3 = float(_v317_rates.get(int(d_car), {}).get("in3", 0.0))
         _f_in3 = float(_v317_rates.get(int(f_car), {}).get("in3", 0.0))
         if _f_in3 > _d_in3:
             d_car, e_car = int(f_car), int(d_car)
-            d_fight_replaced_d = True
-
+            f_replaced_d = True
     c_flow_rank = int(adopted_rank_map.get(c_car, 0) or 0)
     # 通常は元の選出5車順を維持する。
     # 4車核ライン再編時だけ、指定どおりABCを車番昇順に表示して36-136-13657型にする。
@@ -10028,15 +10041,19 @@ def _v281_build_fixed_flow_plan(
     f_reason = (
         "F候補なし。"
         if not f_car else
-        f"根性枠F={f_car}（3着内率{float(_v317_rates.get(int(f_car), {}).get('in3', 0.0)) * 100:.1f}%）を全車から抽出。"
+        f"F={f_car}（3着内率{float(_v317_rates.get(int(f_car), {}).get('in3', 0.0)) * 100:.1f}%）を抽出。"
         + (
-            f"必須保護のE={e_car}は入れ替えずFは不採用。"
+            "必須保護車とは入れ替えずFは不採用。"
             if f_blocked_by_required_protection else
-            f"Fを選出5車へ採用。" if f_selected else "Fは既に選出5車内。"
+            "ライン4番手以降との比較でFは不採用。"
+            if f_lost_to_line_tail else
+            "Fを最終5車に採用。"
+            if f_selected else
+            "Fは既に最終5車内。"
         )
         + (
-            f"D={e_car}との比較でFをD位置へ昇格。"
-            if d_fight_replaced_d else
+            f"Dとの比較でFをD位置へ昇格。"
+            if f_replaced_d else
             f"D={d_car}との比較ではDを優先。"
         )
     )
@@ -10076,8 +10093,9 @@ def _v281_build_fixed_flow_plan(
         "formation_e": e_car,
         "fight_car": int(f_car or 0),
         "fight_car_selected": bool(f_car and int(f_car) in set(int(car) for car in formation_five)),
-        "fight_replaced_d": bool(d_fight_replaced_d),
+        "fight_replaced_d": bool(f_replaced_d),
         "fight_blocked_by_required_protection": bool(f_blocked_by_required_protection),
+        "fight_lost_to_line_tail": bool(f_lost_to_line_tail),
         "ticket_form": ticket_form,
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
@@ -10261,6 +10279,11 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     formation_c_other_line_replacement = bool(plan.get("formation_c_other_line_replacement", False))
     formation_d = int(plan.get("formation_d", 0) or 0)
     formation_e = int(plan.get("formation_e", 0) or 0)
+    fight_car = int(plan.get("fight_car", 0) or 0)
+    fight_selected = bool(plan.get("fight_car_selected", False))
+    fight_replaced_d = bool(plan.get("fight_replaced_d", False))
+    fight_blocked = bool(plan.get("fight_blocked_by_required_protection", False))
+    fight_lost_to_line_tail = bool(plan.get("fight_lost_to_line_tail", False))
     ticket_form = str(plan.get("ticket_form", "") or "")
 
     if axis_line:
@@ -10280,6 +10303,24 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
 
     out = [
         f"【採用流れ】{adopted_style}",
+        "",
+        "【フォーメーション役割】",
+        f"A（第一軸）：{axis}",
+        f"B（第二軸）：{secondary_axis}",
+        f"C：{formation_c}",
+        f"D：{formation_d}",
+        (
+            f"F（FIGHT枠）：{fight_car}"
+            + (
+                "（Dへ昇格）" if fight_replaced_d else
+                "（3列目）" if fight_selected else
+                "（必須保護のため不採用）" if fight_blocked else
+                "（ライン4番手以降との比較で不採用）" if fight_lost_to_line_tail else
+                "（不採用）"
+            )
+            if fight_car else "F（FIGHT枠）：なし"
+        ),
+        f"E：{formation_e}",
         "",
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
         f"【消去候補】第1候補{delete_candidate_1}　第2候補{delete_candidate_2}",
