@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
-# v317（実績着内率・列優先版）:
+# v318（FIGHT枠・D比較版）:
 # ・A/BのAI印選出、Aライン全車・採用核ライン全車の必須保護、選出5車、
 #   CD－ACD－ABCDEの7点構造は変更しない。
-# ・確定済みのC/D/Eを実券列へ置く段階だけで、1列目C/Dは実績2着内率
-#   （1着＋2着）上位3車、2列目A/C/Dは実績3着内率上位4車を優先する。
+# ・A/Bと核ライン保護を確定した後、暫定C/Dを除く全車から実績3着内率最上位を
+#   FIGHT枠（F）として抽出する。Fは選出前に全車を対象とし、単騎も除外しない。
+# ・Fは暫定Eと入れ替えて選出5車へ残す。ただしAライン全車・採用核ライン全車など
+#   必須保護車は入れ替えない。FとDは実績3着内率で比較し、上位をD位置へ置く。
+#   実券はD優位ならCD-ACD-ABCDE、F優位ならCF-ACF-ABCDEの7点構造を維持する。
 # ・核ライン成立など既存の必須C条件を壊さず、上位枠が選出5車内で不足する場合は、
 #   該当車数→実率→採用流れ着順の順に最大化する。停止・ライン削除はしない。
 # ・実績率は入力済みx1/x2/x3/x_outのみから算出し、実績なしは0.0として後順位に置く。
@@ -9866,6 +9869,56 @@ def _v281_build_fixed_flow_plan(
         _, (c_car, d_car, e_car) = min(_v317_role_candidates, key=lambda row: row[0])
     else:
         c_car, d_car, e_car = (int(cde_candidates[0]), int(cde_candidates[1]), int(cde_candidates[2]))
+
+    # v318：根性値＝実績3着内率として、FIGHT枠（F）を選出前の全車から作る。
+    # A/Bと、既存の1・2列目を構成するC/Dは保護し、残りで3着内率最上位をFにする。
+    # したがって、まだ選出5車に入っていない単騎もF候補から除外しない。
+    _v318_f_candidates = sorted(
+        [
+            int(_car) for _car in all_candidate_cars
+            if int(_car) not in {int(axis), int(secondary_axis), int(c_car), int(d_car)}
+        ],
+        key=lambda _car: (
+            -float(_v317_rates.get(int(_car), {}).get("in3", 0.0)),
+            int(adopted_rank_map.get(int(_car), 999)),
+            int(_car),
+        ),
+    )
+    f_car = int(_v318_f_candidates[0]) if _v318_f_candidates else 0
+    f_selected = False
+    f_blocked_by_required_protection = False
+
+    if f_car and int(f_car) != int(e_car):
+        # Eは「3列目専用の1枠」。ただし必須保護車なら、Fのために切らない。
+        _e_is_required = int(e_car) in (
+            {int(axis), int(secondary_axis)}
+            | set(int(car) for car in same_line_himo)
+            | set(int(car) for car in core_line)
+        )
+        if _e_is_required:
+            f_blocked_by_required_protection = True
+        else:
+            selected_five = [
+                int(f_car) if int(car) == int(e_car) else int(car)
+                for car in selected_five
+            ]
+            himo = [
+                int(f_car) if int(car) == int(e_car) else int(car)
+                for car in himo
+            ]
+            e_car = int(f_car)
+            f_selected = True
+
+    # Fが選出5車に残った場合だけDと比較する。Fが上ならFをD位置へ昇格させ、
+    # 従来Dは3列目専用へ下げる。CとAの位置は一切動かさない。
+    d_fight_replaced_d = False
+    if f_car and int(f_car) == int(e_car):
+        _d_in3 = float(_v317_rates.get(int(d_car), {}).get("in3", 0.0))
+        _f_in3 = float(_v317_rates.get(int(f_car), {}).get("in3", 0.0))
+        if _f_in3 > _d_in3:
+            d_car, e_car = int(f_car), int(d_car)
+            d_fight_replaced_d = True
+
     c_flow_rank = int(adopted_rank_map.get(c_car, 0) or 0)
     # 通常は元の選出5車順を維持する。
     # 4車核ライン再編時だけ、指定どおりABCを車番昇順に表示して36-136-13657型にする。
@@ -9972,11 +10025,26 @@ def _v281_build_fixed_flow_plan(
         if c_replaced_by_other_line else
         f"選出5車からA・Bを除いた3車を採用流れ着順順にC・D・Eへ配置。"
     )
+    f_reason = (
+        "F候補なし。"
+        if not f_car else
+        f"根性枠F={f_car}（3着内率{float(_v317_rates.get(int(f_car), {}).get('in3', 0.0)) * 100:.1f}%）を全車から抽出。"
+        + (
+            f"必須保護のE={e_car}は入れ替えずFは不採用。"
+            if f_blocked_by_required_protection else
+            f"Fを選出5車へ採用。" if f_selected else "Fは既に選出5車内。"
+        )
+        + (
+            f"D={e_car}との比較でFをD位置へ昇格。"
+            if d_fight_replaced_d else
+            f"D={d_car}との比較ではDを優先。"
+        )
+    )
     reason = (
         f"各流れ勢力［{candidate_text}］から主流決定スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
         f"{adopted_style}着順上位からAI印あり2車［{axis_pair_text}］を抽出し、AI評価が低い{axis}を最終軸A、"
         f"もう一方の{secondary_axis}をBに選択。{line_reason}し、{residual_reason}"
-        f"{c_reason}"
+        f"{c_reason}{f_reason}"
         f"C・Dを{c_car}・{d_car}、残る{e_car}をEとしてCD－ACD－ABCDEへ展開"
     )
 
@@ -10006,6 +10074,10 @@ def _v281_build_fixed_flow_plan(
         "formation_c_other_line_replacement": bool(c_replaced_by_other_line),
         "formation_d": d_car,
         "formation_e": e_car,
+        "fight_car": int(f_car or 0),
+        "fight_car_selected": bool(f_car and int(f_car) in set(int(car) for car in formation_five)),
+        "fight_replaced_d": bool(d_fight_replaced_d),
+        "fight_blocked_by_required_protection": bool(f_blocked_by_required_protection),
         "ticket_form": ticket_form,
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
