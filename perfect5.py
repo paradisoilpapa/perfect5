@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# v323（F枠維持・ライン保護なし検証版）:
+# v324（F枠D比較表示・ライン保護なし検証版）:
 # ・A/BのAI印選出、Aライン全車・採用核ライン全車の必須保護、選出5車、
 #   CD－ACD－ABCDEの7点構造は変更しない。
 # ・A/Bと既存の必須C・仮Dを確定した後、A/B/C/Dに被らない全車から実績3着内率
@@ -9924,10 +9924,12 @@ def _v281_build_fixed_flow_plan(
     # Fが最終5車に残った場合だけDと比較する。Fが上ならFをD位置へ上げ、
     # 従来DをEへ下げる。A/B/Cの役割・必須ライン保護は動かさない。
     f_replaced_d = False
-    if f_car and int(f_car) == int(e_car):
-        _d_in3 = float(_v317_rates.get(int(d_car), {}).get("in3", 0.0))
-        _f_in3 = float(_v317_rates.get(int(f_car), {}).get("in3", 0.0))
-        if _f_in3 > _d_in3:
+    d_before_fight = int(d_car)
+    d_before_fight_in3 = float(_v317_rates.get(int(d_before_fight), {}).get("in3", 0.0))
+    fight_in3 = float(_v317_rates.get(int(f_car), {}).get("in3", 0.0)) if f_car else 0.0
+    fight_compared_with_d = bool(f_car and int(f_car) == int(e_car))
+    if fight_compared_with_d:
+        if fight_in3 > d_before_fight_in3:
             d_car, e_car = int(f_car), int(d_car)
             f_replaced_d = True
     c_flow_rank = int(adopted_rank_map.get(c_car, 0) or 0)
@@ -10091,6 +10093,10 @@ def _v281_build_fixed_flow_plan(
         "fight_replaced_d": bool(f_replaced_d),
         "fight_blocked_by_required_protection": bool(f_blocked_by_required_protection),
         "fight_lost_to_line_tail": bool(f_lost_to_line_tail),
+        "fight_compared_with_d": bool(fight_compared_with_d),
+        "fight_d_before": int(d_before_fight),
+        "fight_d_before_in3": float(d_before_fight_in3),
+        "fight_in3": float(fight_in3),
         "ticket_form": ticket_form,
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
@@ -10279,6 +10285,10 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     fight_replaced_d = bool(plan.get("fight_replaced_d", False))
     fight_blocked = bool(plan.get("fight_blocked_by_required_protection", False))
     fight_lost_to_line_tail = bool(plan.get("fight_lost_to_line_tail", False))
+    fight_compared_with_d = bool(plan.get("fight_compared_with_d", False))
+    fight_d_before = int(plan.get("fight_d_before", 0) or 0)
+    fight_d_before_in3 = float(plan.get("fight_d_before_in3", 0.0) or 0.0)
+    fight_in3 = float(plan.get("fight_in3", 0.0) or 0.0)
     ticket_form = str(plan.get("ticket_form", "") or "")
 
     if axis_line:
@@ -10316,6 +10326,13 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
             if fight_car else "F（FIGHT枠）：なし"
         ),
         f"E：{formation_e}",
+        (
+            f"D/F判定：D={fight_d_before}（3着内率{fight_d_before_in3 * 100:.1f}%）"
+            f" vs F={fight_car}（3着内率{fight_in3 * 100:.1f}%）"
+            f" → {'FをDへ昇格' if fight_replaced_d else 'D維持'}"
+            if fight_compared_with_d else
+            "D/F判定：Fが最終5車に残らないため比較なし"
+        ),
         "",
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
         f"【消去候補】第1候補{delete_candidate_1}　第2候補{delete_candidate_2}",
