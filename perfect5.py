@@ -1,18 +1,12 @@
 # -*- coding: utf-8 -*-
-# v324（F枠D比較表示・ライン保護なし検証版）:
-# ・A/BのAI印選出、Aライン全車・採用核ライン全車の必須保護、選出5車、
-#   CD－ACD－ABCDEの7点構造は変更しない。
-# ・A/Bと既存の必須C・仮Dを確定した後、A/B/C/Dに被らない全車から実績3着内率
-#   最上位をFIGHT枠（F）として抽出する。単騎かどうかはFの選定条件に使わない。
-# ・Fは最終5車の3列目専用枠として扱う。ライン4番手以降と競合した場合は実績3着内率で
-#   比較して上位だけを採用する。既存のAライン全車・採用核ライン全車は比較対象にしない。
-# ・Fが5車に残ったときだけDと実績3着内率を比較し、上位をD位置、下位をE位置に置く。
-#   実券はCD－ACD－ABCDEの7点構造を維持する。
+# v325（C2着内率・D3着内率・F着内数版）:
+# ・A/BのAI印選出とCD－ACD－ABCDEの7点構造は変更しない。
+# ・A/B以外の選出3車から、Cは2着内率、Dは残り2車の3着内率、Eは残る1車で決める。
+# ・FIGHT枠（F）はC/D/Eの着内数（1着数＋2着数＋3着数）最多車。同数時は採用流れ順位、
+#   さらに同順位なら車番で決める。FがEならDへ昇格し、元DをEへ下げる。
 # ・この検証版だけは、フォーメーション作成時のAライン全車保護、採用核ライン全車保護、
 #   核ライン成立のためのC固定、別線C補強、全ライン代表最大化を使わない。
-#   F枠の抽出・5車反映・Dとの比較・役割表示は残す。
-# ・核ライン成立など既存の必須C条件を壊さず、上位枠が選出5車内で不足する場合は、
-#   該当車数→実率→採用流れ着順の順に最大化する。停止・ライン削除はしない。
+#   A/B決定後の残り3車は採用流れ順位から選ぶ。
 # ・実績率は入力済みx1/x2/x3/x_outのみから算出し、実績なしは0.0として後順位に置く。
 # ・流れ選別、5車選出、採点、消去候補、評価表、公開表示は変更しない。
 # v316（全ライン比較5車選出版）:
@@ -9806,6 +9800,7 @@ def _v281_build_fixed_flow_plan(
             _rates[_car] = {
                 "in2": ((_n1 + _n2) / _total) if _total > 0.0 else 0.0,
                 "in3": ((_n1 + _n2 + _n3) / _total) if _total > 0.0 else 0.0,
+                "in3_count": (_n1 + _n2 + _n3),
                 "starts": _total,
             }
         return _rates
@@ -9863,75 +9858,50 @@ def _v281_build_fixed_flow_plan(
             (_c_try, _d_try, _e_try),
         ))
 
-    # 必須Cの都合で候補が空になる場合だけ、従来配置をそのまま使用する。
-    if _v317_role_candidates:
-        _, (c_car, d_car, e_car) = min(_v317_role_candidates, key=lambda row: row[0])
-    else:
-        c_car, d_car, e_car = (int(cde_candidates[0]), int(cde_candidates[1]), int(cde_candidates[2]))
-
-    # v321：FはA/B/C/Dに被らない全車から、3着内率で選ぶ根性枠。
-    # 仮Eは3列目専用枠であり、Fを最終5車に入れる入口とする。
-    _v321_f_candidates = sorted(
-        [
-            int(_car) for _car in all_candidate_cars
-            if int(_car) not in {int(axis), int(secondary_axis), int(c_car), int(d_car)}
-        ],
-        key=lambda _car: (
-            -float(_v317_rates.get(int(_car), {}).get("in3", 0.0)),
-            int(adopted_rank_map.get(int(_car), 999)),
-            int(_car),
+    # v325：Cは2着内率、DはCを除いた3着内率、Eは残り1車で確定する。
+    # 同率時は採用流れ順位、さらに同順位なら車番で固定する。
+    c_car = min(
+        (int(car) for car in cde_candidates),
+        key=lambda car: (
+            -float(_v317_rates.get(int(car), {}).get("in2", 0.0)),
+            int(adopted_rank_map.get(int(car), 999)),
+            int(car),
         ),
     )
-    f_car = int(_v321_f_candidates[0]) if _v321_f_candidates else 0
-    f_selected = bool(f_car and int(f_car) == int(e_car))
+    _d_e_candidates = [int(car) for car in cde_candidates if int(car) != int(c_car)]
+    d_car = min(
+        _d_e_candidates,
+        key=lambda car: (
+            -float(_v317_rates.get(int(car), {}).get("in3", 0.0)),
+            int(adopted_rank_map.get(int(car), 999)),
+            int(car),
+        ),
+    )
+    e_car = next(int(car) for car in _d_e_candidates if int(car) != int(d_car))
+
+    # FはC/D/E内の着内数（1着＋2着＋3着）最多車。FがEならDへ昇格させる。
+    _fight_candidates = [int(c_car), int(d_car), int(e_car)]
+    f_car = min(
+        _fight_candidates,
+        key=lambda car: (
+            -float(_v317_rates.get(int(car), {}).get("in3_count", 0.0)),
+            int(adopted_rank_map.get(int(car), 999)),
+            int(car),
+        ),
+    )
+    fight_count = float(_v317_rates.get(int(f_car), {}).get("in3_count", 0.0))
+    c_fight_count = float(_v317_rates.get(int(c_car), {}).get("in3_count", 0.0))
+    d_before_fight = int(d_car)
+    d_before_fight_count = float(_v317_rates.get(int(d_before_fight), {}).get("in3_count", 0.0))
+    e_before_fight = int(e_car)
+    e_before_fight_count = float(_v317_rates.get(int(e_before_fight), {}).get("in3_count", 0.0))
+    f_replaced_d = bool(int(f_car) == int(e_car))
+    if f_replaced_d:
+        d_car, e_car = int(f_car), int(d_car)
+    f_selected = True
     f_blocked_by_required_protection = False
     f_lost_to_line_tail = False
-
-    def _v321_line_position(_car):
-        _line_values = list(line_def_obj.values()) if isinstance(line_def_obj, dict) else list(line_def_obj or [])
-        for _members in _line_values:
-            _line = _v281_unique_sequence(_members)
-            if int(_car) in _line:
-                return int(_line.index(int(_car)) + 1)
-        return 1
-
-    if f_car and int(f_car) != int(e_car):
-        _e_is_required = int(e_car) in (
-            {int(axis), int(secondary_axis)}
-            | set(int(car) for car in same_line_himo)
-            | set(int(car) for car in core_line)
-        )
-        _e_line_position = _v321_line_position(int(e_car))
-        _f_in3 = float(_v317_rates.get(int(f_car), {}).get("in3", 0.0))
-        _e_in3 = float(_v317_rates.get(int(e_car), {}).get("in3", 0.0))
-        if _e_is_required:
-            f_blocked_by_required_protection = True
-        elif _e_line_position >= 4 and _f_in3 <= _e_in3:
-            # ライン4番手以降とFが競合し、Fが上回れない場合だけ既存車を残す。
-            f_lost_to_line_tail = True
-        else:
-            selected_five = [
-                int(f_car) if int(car) == int(e_car) else int(car)
-                for car in selected_five
-            ]
-            himo = [
-                int(f_car) if int(car) == int(e_car) else int(car)
-                for car in himo
-            ]
-            e_car = int(f_car)
-            f_selected = True
-
-    # Fが最終5車に残った場合だけDと比較する。Fが上ならFをD位置へ上げ、
-    # 従来DをEへ下げる。A/B/Cの役割・必須ライン保護は動かさない。
-    f_replaced_d = False
-    d_before_fight = int(d_car)
-    d_before_fight_in3 = float(_v317_rates.get(int(d_before_fight), {}).get("in3", 0.0))
-    fight_in3 = float(_v317_rates.get(int(f_car), {}).get("in3", 0.0)) if f_car else 0.0
-    fight_compared_with_d = bool(f_car and int(f_car) == int(e_car))
-    if fight_compared_with_d:
-        if fight_in3 > d_before_fight_in3:
-            d_car, e_car = int(f_car), int(d_car)
-            f_replaced_d = True
+    fight_compared_with_d = True
     c_flow_rank = int(adopted_rank_map.get(c_car, 0) or 0)
     # 通常は元の選出5車順を維持する。
     # 4車核ライン再編時だけ、指定どおりABCを車番昇順に表示して36-136-13657型にする。
@@ -10030,29 +10000,12 @@ def _v281_build_fixed_flow_plan(
     else:
         residual_reason = f"残枠は採用流れ着順上位から［{added_text}］を補充。"
     c_reason = (
-        f"A・B・原則C={original_c_car}が同じ3車以上ラインのため、別線の採用流れ上位{c_car}をCへ繰り上げ、"
-        f"原則C={original_c_car}はD・E側に維持。"
-        if c_replaced_by_other_line else
-        f"選出5車からA・Bを除いた3車を採用流れ着順順にC・D・Eへ配置。"
+        f"選出5車からA・Bを除いた3車のうち、2着内率最上位{c_car}をC、"
+        f"残りの3着内率最上位{d_before_fight}を仮D、残る1車を仮Eに配置。"
     )
     f_reason = (
-        "F候補なし。"
-        if not f_car else
-        f"F={f_car}（3着内率{float(_v317_rates.get(int(f_car), {}).get('in3', 0.0)) * 100:.1f}%）を抽出。"
-        + (
-            "必須保護車とは入れ替えずFは不採用。"
-            if f_blocked_by_required_protection else
-            "ライン4番手以降との比較でFは不採用。"
-            if f_lost_to_line_tail else
-            "Fを最終5車に採用。"
-            if f_selected else
-            "Fは既に最終5車内。"
-        )
-        + (
-            f"Dとの比較でFをD位置へ昇格。"
-            if f_replaced_d else
-            f"D={d_car}との比較ではDを優先。"
-        )
+        f"C・D・Eの着内数（1着＋2着＋3着）最多をF={f_car}（着内数{int(fight_count)}）と判定。"
+        + ("Fが仮EのためDへ昇格。" if f_replaced_d else "FはCまたはDのため配置を維持。")
     )
     reason = (
         f"各流れ勢力［{candidate_text}］から主流決定スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
@@ -10085,7 +10038,7 @@ def _v281_build_fixed_flow_plan(
         "formation_c": c_car,
         "formation_c_flow_rank": c_flow_rank,
         "formation_original_c": original_c_car,
-        "formation_c_other_line_replacement": bool(c_replaced_by_other_line),
+        "formation_c_other_line_replacement": False,
         "formation_d": d_car,
         "formation_e": e_car,
         "fight_car": int(f_car or 0),
@@ -10095,8 +10048,11 @@ def _v281_build_fixed_flow_plan(
         "fight_lost_to_line_tail": bool(f_lost_to_line_tail),
         "fight_compared_with_d": bool(fight_compared_with_d),
         "fight_d_before": int(d_before_fight),
-        "fight_d_before_in3": float(d_before_fight_in3),
-        "fight_in3": float(fight_in3),
+        "fight_d_before_count": float(d_before_fight_count),
+        "fight_e_before": int(e_before_fight),
+        "fight_e_before_count": float(e_before_fight_count),
+        "fight_c_count": float(c_fight_count),
+        "fight_count": float(fight_count),
         "ticket_form": ticket_form,
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
@@ -10287,8 +10243,11 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     fight_lost_to_line_tail = bool(plan.get("fight_lost_to_line_tail", False))
     fight_compared_with_d = bool(plan.get("fight_compared_with_d", False))
     fight_d_before = int(plan.get("fight_d_before", 0) or 0)
-    fight_d_before_in3 = float(plan.get("fight_d_before_in3", 0.0) or 0.0)
-    fight_in3 = float(plan.get("fight_in3", 0.0) or 0.0)
+    fight_d_before_count = float(plan.get("fight_d_before_count", 0.0) or 0.0)
+    fight_e_before = int(plan.get("fight_e_before", 0) or 0)
+    fight_e_before_count = float(plan.get("fight_e_before_count", 0.0) or 0.0)
+    fight_c_count = float(plan.get("fight_c_count", 0.0) or 0.0)
+    fight_count = float(plan.get("fight_count", 0.0) or 0.0)
     ticket_form = str(plan.get("ticket_form", "") or "")
 
     if axis_line:
@@ -10317,21 +10276,18 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         (
             f"F（FIGHT枠）：{fight_car}"
             + (
-                "（Dへ昇格）" if fight_replaced_d else
-                "（3列目）" if fight_selected else
-                "（必須保護のため不採用）" if fight_blocked else
-                "（ライン4番手以降との比較で不採用）" if fight_lost_to_line_tail else
-                "（不採用）"
+                "（EからDへ昇格）" if fight_replaced_d else
+                "（C枠）" if fight_car == formation_c else
+                "（D枠）"
             )
             if fight_car else "F（FIGHT枠）：なし"
         ),
         f"E：{formation_e}",
         (
-            f"D/F判定：D={fight_d_before}（3着内率{fight_d_before_in3 * 100:.1f}%）"
-            f" vs F={fight_car}（3着内率{fight_in3 * 100:.1f}%）"
-            f" → {'FをDへ昇格' if fight_replaced_d else 'D維持'}"
-            if fight_compared_with_d else
-            "D/F判定：Fが最終5車に残らないため比較なし"
+            f"F判定（着内数）：C={formation_c}（{int(fight_c_count)}）／"
+            f"D={fight_d_before}（{int(fight_d_before_count)}）／"
+            f"E={fight_e_before}（{int(fight_e_before_count)}）"
+            f" → F={fight_car}"
         ),
         "",
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
