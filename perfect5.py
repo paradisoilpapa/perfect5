@@ -1,4 +1,12 @@
 # -*- coding: utf-8 -*-
+# v327（単騎追走補正＋0.10版）:
+# ・ヴェロビ想定隊列で、直前グループが2車以上の非単騎ラインである単騎に、
+#   隊列位置補正として＋0.10を加える。
+# ・単騎の役割判定、H・風・L200・ラスト半周、ライン強度は変更しない。
+# ・単騎を直前ラインの構成員や3番手にはせず、ライン保護の対象にも加えない。
+# ・連続する単騎の2車目以降、直前に非単騎ラインがない単騎、全員単騎は補正しない。
+# ・適用車がある場合は、想定隊列の直後に「単騎追走補正」を表示する。
+# ・A/B、C/D/E/F、重圧補正、CD－ACD－ABCDEの7点構造、消去候補、評価表、既存表示は変更しない。
 # v326（重圧補正抑制・5車境界保護版）:
 # ・AI重圧補正による移動を最大1順位に制限する。
 # ・採用流れの補正前5位と6位が重圧補正で逆転した場合、流れ加重的中単騎評価を比較し、
@@ -1072,6 +1080,9 @@ def make_velobi_queue_order(line_def: dict, S: dict, active_cars: list[int]) -> 
     return [first_gid] + [gid for gid in ranked if gid != first_gid]
 
 
+SINGLE_FOLLOW_BONUS = float(globals().get("SINGLE_FOLLOW_BONUS", 0.10))
+
+
 def calc_velobi_queue_position_bonus(line_def: dict, queue_order: list, active_cars: list[int]) -> dict:
     """
     ヴェロビ想定隊列のライン位置を、全所属車の基礎スコアへ直接反映する。
@@ -1086,12 +1097,32 @@ def calc_velobi_queue_position_bonus(line_def: dict, queue_order: list, active_c
 
     center = (len(order) - 1) / 2.0
     car_bonus = {int(car): 0.0 for car in (active_cars or [])}
+    single_follow_bonus_map = {}
     for rank_index, gid in enumerate(order):
         line_bonus = clamp((center - float(rank_index)) * 0.03, -0.06, 0.06)
-        for car in (line_def.get(gid, []) or []):
+        members = [int(car) for car in (line_def.get(gid, []) or [])]
+        for car in members:
             car = int(car)
             if car in car_bonus:
                 car_bonus[car] = round(float(line_bonus), 3)
+
+        # v327：単騎の役割は変えず、直前の非単騎ラインへ追走できる展開選択だけを加点する。
+        # 直前グループが単騎の場合は対象外とし、連続単騎へ補正を連鎖させない。
+        if len(members) == 1 and rank_index >= 1:
+            previous_gid = order[rank_index - 1]
+            previous_members = [
+                int(car) for car in (line_def.get(previous_gid, []) or [])
+            ]
+            if len(previous_members) >= 2:
+                single_car = int(members[0])
+                if single_car in car_bonus:
+                    car_bonus[single_car] = round(
+                        float(car_bonus.get(single_car, 0.0)) + float(SINGLE_FOLLOW_BONUS),
+                        3,
+                    )
+                    single_follow_bonus_map[single_car] = float(SINGLE_FOLLOW_BONUS)
+
+    globals()["SINGLE_FOLLOW_BONUS_MAP"] = dict(single_follow_bonus_map)
     return car_bonus
 
 
@@ -5083,6 +5114,13 @@ try:
     note_sections.append(f"展開評価：{infer_eval_with_share(FRv, VTXv, Uv, share_pct)}")
     try:
         note_sections.append(f"ヴェロビ想定隊列　{home_line_text}")
+        _single_follow_map = dict(globals().get("SINGLE_FOLLOW_BONUS_MAP", {}) or {})
+        if _single_follow_map:
+            _single_follow_text = "／".join(
+                f"{int(car)}（+{float(bonus):.2f}）"
+                for car, bonus in sorted(_single_follow_map.items(), key=lambda item: int(item[0]))
+            )
+            note_sections.append(f"単騎追走補正　{_single_follow_text}")
     except Exception:
         pass
     note_sections.append("")
