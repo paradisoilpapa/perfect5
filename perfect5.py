@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+# v330（F採用理由表示明確化版）:
+# ・Eライン3車以上でF枠を使わない場合も、F車が最終5車に残った理由を区別して表示する。
+# ・F車がEライン構成員なら「F枠不採用／Eライン保護で3列目」と表示する。
+# ・F車がEライン外から採用流れ補充で戻った場合は「F枠不採用／採用流れ補充で3列目」と表示する。
+# ・F車が最終5車にいない場合だけ「3車以上のEラインではF枠として不採用」と表示する。
+# ・フォーメーション計算、2－3－5の7点、役割判定、評価表、消去候補は変更しない。
 # v329（採用流れ評価1固定・Eライン内外共通版）:
 # ・相手軸AはEライン所属の内外を問わず、採用流れ最終順位1位を必ず採用する。
 # ・Eと評価1が同一車の場合だけ、2車一意を成立させるため採用流れ次位を相手軸Aにする。
@@ -10486,6 +10492,7 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     formation_c_other_line_replacement = bool(plan.get("formation_c_other_line_replacement", False))
     formation_d = int(plan.get("formation_d", 0) or 0)
     formation_e = int(plan.get("formation_e", 0) or 0)
+    formation_five = [int(x) for x in (plan.get("formation_five", tuple()) or tuple())]
     e_protected_line = [int(x) for x in (plan.get("e_protected_line", tuple()) or tuple())]
     flow_axis_car = int(plan.get("flow_axis_car", 0) or 0)
     flow_support_car = int(plan.get("flow_support_car", 0) or 0)
@@ -10544,6 +10551,20 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     else:
         pressure_boundary_text = "重圧5車境界：比較対象なし"
 
+    if fight_car and len(e_protected_line) >= 3:
+        if fight_car in set(e_protected_line):
+            fight_position_text = "（F枠不採用／Eライン保護で3列目）"
+        elif fight_car in set(formation_five):
+            fight_position_text = "（F枠不採用／採用流れ補充で3列目）"
+        else:
+            fight_position_text = "（3車以上のEラインではF枠として不採用）"
+    elif fight_car and fight_used_in_ticket:
+        fight_position_text = "（3列目に採用）"
+    elif fight_car:
+        fight_position_text = "（不採用）"
+    else:
+        fight_position_text = ""
+
     out = [
         f"【採用流れ】{adopted_style}",
         "",
@@ -10556,14 +10577,7 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         f"Eライン保護：{''.join(str(x) for x in e_protected_line) if e_protected_line else formation_e}",
         f"L（2列目ライン車）：{e_line_second_car if e_line_second_car else 'なし'}",
         (
-            f"F（FIGHT枠）：{fight_car}"
-            + (
-                "（3車以上のEラインではF枠として不採用）"
-                if len(e_protected_line) >= 3 else
-                "（3列目に採用）"
-                if fight_used_in_ticket else
-                "（不採用）"
-            )
+            f"F（FIGHT枠）：{fight_car}{fight_position_text}"
             if fight_car else "F（FIGHT枠）：なし"
         ),
         (
