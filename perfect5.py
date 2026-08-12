@@ -496,7 +496,9 @@ def _calc_venue_kimarite_role_bonus_map(stats, max_abs=0.35):
     thirdplus : 後位マーク残り
     single    : 捲り/単騎一撃
     """
-    if not isinstance(stats, dict) or not stats.get("enabled", False):
+    # v331: 開催場決まり手補正は常時使用する。
+    # UIのチェック状態や過去のsession_stateで無効化しない。
+    if not isinstance(stats, dict):
         return {"head":0.0, "second":0.0, "thirdplus":0.0, "single":0.0}, 0.0, {}
 
     base = VENUE_KIMARITE_BASELINE
@@ -1792,11 +1794,7 @@ st.session_state["track"] = track
 
 st.sidebar.markdown("### 🏟️ 開催場決まり手成績")
 with st.sidebar.expander("数値入力（オッズパーク等の表をそのまま％入力）", expanded=True):
-    venue_kimarite_enabled = st.checkbox(
-        "決まり手補正を使う",
-        value=bool(st.session_state.get("venue_kimarite_enabled", False)),
-        key="venue_kimarite_enabled",
-    )
+    st.caption("開催場決まり手補正：常時適用")
     st.caption("オッズパーク等の表をそのまま％で入力。例：13.9 / 62.4 / 24.2")
 
     c1, c2, c3 = st.columns(3)
@@ -1827,7 +1825,7 @@ with st.sidebar.expander("数値入力（オッズパーク等の表をそのま
     )
 
     VENUE_KIMARITE_STATS = {
-        "enabled": bool(venue_kimarite_enabled),
+        "enabled": True,
         "win_escape": float(vk_win_escape),
         "win_sashi": float(vk_win_sashi),
         "win_makuri": float(vk_win_makuri),
