@@ -1,4 +1,12 @@
 # -*- coding: utf-8 -*-
+# v328（Eライン先行保護フォーメーション版）:
+# ・車番選出後のEを起点とし、Eが所属するライン全車を3列目へ最優先で保護する。
+# ・1列目は「E＋採用流れ最終順位1位」、2列目はそこへEライン残りの採用流れ上位車を加える。
+# ・3列目はEライン全車に、採用流れ上位の相手候補を加えて5車にする。
+# ・Eラインが3車以上なら、ライン3番手以降との競合を避けるためFIGHT枠を不採用にする。
+# ・Eラインが2車ならFIGHT枠を3列目に残す。Eが単騎の場合も空き枠としてFIGHT枠を残す。
+# ・AI印の低評価側を穴軸にする従来の列配置は使わず、採用流れ1位を相手軸にする。
+# ・2－3－5の7点構造、C/D/E/Fの事前判定、消去候補、全評価表、重圧補正、単騎追走補正は維持する。
 # v327（単騎追走補正＋0.10版）:
 # ・ヴェロビ想定隊列で、直前グループが2車以上の非単騎ラインである単騎に、
 #   隊列位置補正として＋0.10を加える。
@@ -8803,13 +8811,12 @@ def _decide_ticket_with_win_ai_confidence(
 
 
 # =========================================================
-# v288：各流れ1位候補で採用流れ選定
-#       → 採用流れ上位からAI印あり2車を抽出
-#       → その2車のAI評価が低い方を最終軸A、もう一方をB
-#       → 最終軸の同ライン車を必須保護
-#       → 採用流れの着順予想順で選出5車を完成
-#       → 選出5車からA・Bを除く採用流れ最上位をC
-# 買い目は三連複AB－ABC－ABCDEの7点。
+# v328：各流れ1位候補で採用流れを選定
+#       → 従来のC/D/E/F事前判定からEを確定
+#       → Eの所属ライン全車を最優先で保護
+#       → 採用流れ最終順位1位を相手軸A、次位をB
+#       → E＋A－E＋A＋ライン上位－Eライン全車＋A・B
+# 買い目は三連複2－3－5の7点。
 # =========================================================
 _V281_STYLES = ("順流", "渦", "逆流")
 _V281_STYLE_ORDER = {style: idx for idx, style in enumerate(_V281_STYLES)}
@@ -9008,18 +9015,12 @@ def _v281_build_fixed_flow_plan(
        主流決定スコアが最上位の流れを採用する。
        ・ライン人数による固定加減点は行わない
        ・流れ比率首位との差1ポイントにつき-0.02
-    4) 採用流れの着順上位からAI印あり（◎／〇／△／×）の車を順に2車抽出する。
-    5) 抽出した2車のうち、AI評価が低い方を最終軸A、もう一方をBにする。
-       AI無印車は軸比較から除外する。
-    6) 最終軸Aの同ライン車を軸以外すべて先にヒモへ確保する。
-    7) Aの同ライン全車を最優先で確保した後、Bと採用流れの核ライン全車を必須予約する。
-       A・Bだけで核ラインが成立しない場合は、核ライン内の個人KO最上位車をCにする。
-       必須車が5車枠に収まらなければ生成を停止する。
-    8) 残枠を、ライン長補正を使わず採用流れの最終予想候補順から補充し、Aを含む選出5車を作る。
-       核ライン相方を予約した場合はその車をCにする。A・Bがともに核ラインの場合は、
-       選出5車内の別線上位車をCにする。それ以外は採用流れ上位順にC・D・Eを置く。
-    9) 三連複CD－ACD－ABCDEの7点
-       （ABC／ACD／ACE／BCD／CDE／ABD／ADE）を生成する。
+    4) 従来のC=2着内率、D=3着内率、E=残り、F=着内数最多の事前判定を行う。
+    5) Eが所属するライン全車を3列目へ最優先で保護する。
+    6) 採用流れ最終順位1位のEライン外車を相手軸A、次位をBにする。
+    7) 1列目をE＋A、2列目をE＋A＋Eライン残り上位車にする。
+    8) Eラインが3車以上ならFを外し、2車以下ならFを3列目に残す。
+    9) 三連複2－3－5の7点を生成する。
     """
     ratios = _v281_normalize_ratio_map(flow_ratio_map)
     seq_map = {
@@ -10010,33 +10011,148 @@ def _v281_build_fixed_flow_plan(
     f_lost_to_line_tail = False
     fight_compared_with_d = True
     c_flow_rank = int(adopted_rank_map.get(c_car, 0) or 0)
-    # 通常は元の選出5車順を維持する。
-    # 4車核ライン再編時だけ、指定どおりABCを車番昇順に表示して36-136-13657型にする。
-    formation_five = (
-        tuple(sorted(int(car) for car in (axis, secondary_axis, c_car)))
-        + (int(d_car), int(e_car))
-        if forced_external_c is not None
-        else tuple(int(car) for car in selected_five)
+    # v328：Eを起点に所属ラインを先に保護し、採用流れ1位を相手軸にする。
+    # C/D/E/Fの事前判定自体は残し、実券の5車と列位置だけをここで組み直す。
+    e_line = _v281_unique_sequence(
+        _v281_find_axis_line(line_def_obj, int(e_car)) or [int(e_car)]
     )
+    e_line = [int(car) for car in e_line]
+    if int(e_car) not in e_line:
+        e_line.insert(0, int(e_car))
+    e_line_set = set(int(car) for car in e_line)
 
-    # v302最終ガード：従来のAB－ABC－ABCDE成立条件をそのまま検査する。
-    abc_set = {int(axis), int(secondary_axis), int(c_car)}
-    five_set = set(int(car) for car in formation_five)
-    axis_required_set = {int(axis)} | set(int(car) for car in same_line_himo)
-    core_required_ok = (
-        len(core_line_set) < 2
-        or len(abc_set & core_line_set) >= 2
+    # 相手軸はAI印ではなく、採用流れ最終順位の最上位車。
+    # Eライン内の車を相手軸へ重複採用しないため、Eライン外の最上位を使う。
+    outside_flow = [
+        int(car) for car in adopted_sequence
+        if int(car) not in e_line_set
+    ]
+    flow_axis_car = int(outside_flow[0]) if outside_flow else 0
+    flow_support_car = int(outside_flow[1]) if len(outside_flow) >= 2 else 0
+
+    # Eライン内の2列目追加車も採用流れ順位で決める。
+    e_line_rest = sorted(
+        [int(car) for car in e_line if int(car) != int(e_car)],
+        key=lambda car: (
+            int(adopted_rank_map.get(int(car), 999)),
+            int(car),
+        ),
     )
-    second_has_other_line = True
+    e_line_second_car = int(e_line_rest[0]) if e_line_rest else 0
+
+    if not flow_axis_car:
+        return {
+            **base_result,
+            "status": "e_line_flow_axis_missing",
+            "axis_pair": tuple(axis_pair),
+            "axis": axis,
+            "secondary_axis": secondary_axis,
+            "formation_c": c_car,
+            "formation_d": d_car,
+            "formation_e": e_car,
+            "fight_car": int(f_car or 0),
+            "e_protected_line": tuple(e_line),
+            "ticket_form": "",
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複Eライン先行保護2－3－5",
+            "ticket_reason": "Eライン外に採用流れ1位の相手軸を確定できないため生成不可",
+        }
+
+    if len(e_line) > 4:
+        return {
+            **base_result,
+            "status": "e_line_exceeds_five_car_limit",
+            "axis_pair": tuple(axis_pair),
+            "axis": axis,
+            "secondary_axis": secondary_axis,
+            "formation_c": c_car,
+            "formation_d": d_car,
+            "formation_e": e_car,
+            "fight_car": int(f_car or 0),
+            "e_protected_line": tuple(e_line),
+            "ticket_form": "",
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複Eライン先行保護2－3－5",
+            "ticket_reason": "Eライン全車と採用流れ1位を5車内で同時保護できないため生成不可",
+        }
+
+    # 1列目はE＋採用流れ1位。
+    first_column = [int(e_car), int(flow_axis_car)]
+
+    # 2列目は1列目＋Eライン残りの最上位。
+    # E単騎だけはライン相手がいないためFを第3車に使い、なければ採用流れ次位を使う。
+    if e_line_second_car:
+        second_add_car = int(e_line_second_car)
+    elif int(f_car or 0) not in set(first_column):
+        second_add_car = int(f_car)
+    else:
+        second_add_car = int(flow_support_car or 0)
+    second_column = _v281_unique_sequence(first_column + [second_add_car])
+
+    # 3列目はEラインを最優先。その後に採用流れ上位を置く。
+    # 2車ライン以下はFを残し、3車以上はFを外してライン3番手以降を守る。
+    third_column = []
+    for car in first_column:
+        if int(car) not in third_column:
+            third_column.append(int(car))
+    if e_line_second_car and int(e_line_second_car) not in third_column:
+        third_column.append(int(e_line_second_car))
+    for car in e_line_rest[1:]:
+        if int(car) not in third_column:
+            third_column.append(int(car))
+
+    fight_used_in_ticket = False
+
+    for car in outside_flow[1:]:
+        if len(third_column) >= 5:
+            break
+        if int(car) not in third_column:
+            third_column.append(int(car))
+
+    if len(e_line) <= 2 and int(f_car or 0) not in third_column:
+        if len(third_column) < 5:
+            third_column.append(int(f_car))
+            fight_used_in_ticket = True
+        else:
+            # Fを残す条件を優先し、末尾の採用流れ補完車と置き換える。
+            protected_set = set(first_column) | set(e_line)
+            replace_index = next(
+                (
+                    idx for idx in range(len(third_column) - 1, -1, -1)
+                    if int(third_column[idx]) not in protected_set
+                    and int(third_column[idx]) != int(second_add_car)
+                ),
+                None,
+            )
+            if replace_index is not None:
+                third_column[replace_index] = int(f_car)
+                third_column = _v281_unique_sequence(third_column)
+                fight_used_in_ticket = True
+    elif len(e_line) <= 2 and int(f_car or 0) in third_column:
+        fight_used_in_ticket = True
+
+    # 不足時だけ採用流れ順位、最後に全候補順位で5車まで補う。
+    for car in list(adopted_sequence) + list(individual_ranked_cars):
+        if len(third_column) >= 5:
+            break
+        if int(car) not in third_column:
+            third_column.append(int(car))
+
+    formation_five = tuple(int(car) for car in third_column[:5])
+    five_set = set(int(car) for car in formation_five)
     final_invariants_ok = all((
+        len(first_column) == 2,
+        len(set(first_column)) == 2,
+        len(second_column) == 3,
+        len(set(second_column)) == 3,
         len(formation_five) == 5,
         len(five_set) == 5,
-        int(axis) in five_set,
-        int(secondary_axis) in five_set,
-        axis_required_set.issubset(five_set),
-        core_line_set.issubset(five_set),
-        core_required_ok,
-        second_has_other_line,
+        set(first_column).issubset(five_set),
+        set(second_column).issubset(five_set),
+        e_line_set.issubset(five_set),
+        (len(e_line) >= 3 or int(f_car or 0) in five_set),
     ))
     if not final_invariants_ok:
         return {
@@ -10057,28 +10173,30 @@ def _v281_build_fixed_flow_plan(
             "ticket_form": "",
             "ticket_groups": tuple(),
             "ticket_count": 0,
-            "ticket_family": "3連複CD－ACD－ABCDE",
-            "ticket_reason": "最終検査でA・B、Aライン全車、採用核ライン全車、ABC核ライン成立、2列目別線、5車一意のいずれかを満たさないため生成不可",
+            "e_protected_line": tuple(e_line),
+            "flow_axis_car": int(flow_axis_car),
+            "flow_support_car": int(flow_support_car),
+            "e_line_second_car": int(e_line_second_car or 0),
+            "ticket_family": "3連複Eライン先行保護2－3－5",
+            "ticket_reason": "最終検査でEライン全車保護、採用流れ1位、2－3－5、5車一意、2車ライン以下のF保護のいずれかを満たさないため生成不可",
         }
 
     third_column_text = "".join(str(int(car)) for car in formation_five)
-    first_column_text = f"{c_car}{d_car}"
-    second_column_text = f"{axis}{c_car}{d_car}"
+    first_column_text = "".join(str(int(car)) for car in first_column)
+    second_column_text = "".join(str(int(car)) for car in second_column)
     ticket_form = f"{first_column_text}-{second_column_text}-{third_column_text}"
 
-    combo_order = (
-        (axis, secondary_axis, c_car),
-        (axis, c_car, d_car),
-        (axis, c_car, e_car),
-        (secondary_axis, c_car, d_car),
-        (c_car, d_car, e_car),
-        (axis, secondary_axis, d_car),
-        (axis, d_car, e_car),
-    )
-    tickets = [
-        "-".join(str(x) for x in sorted(int(v) for v in combo))
-        for combo in combo_order
-    ]
+    # 実際の2－3－5フォーメーションから重複を除いた7点を生成する。
+    tickets = []
+    ticket_keys = set()
+    for car1 in first_column:
+        for car2 in second_column:
+            for car3 in formation_five:
+                combo = tuple(sorted((int(car1), int(car2), int(car3))))
+                if len(set(combo)) != 3 or combo in ticket_keys:
+                    continue
+                ticket_keys.add(combo)
+                tickets.append("-".join(str(x) for x in combo))
 
     candidate_text = "・".join(
         f"{rec['style']}={rec['line_label']}（2車換算={float(rec['strength']):.6f}・"
@@ -10107,19 +10225,23 @@ def _v281_build_fixed_flow_plan(
     else:
         residual_reason = f"残枠は採用流れ着順上位から［{added_text}］を補充。"
     c_reason = (
-        f"選出5車からA・Bを除いた3車のうち、2着内率最上位{c_car}をC、"
-        f"残りの3着内率最上位{d_before_fight}を仮D、残る1車を仮Eに配置。"
+        f"事前判定はC={c_car}、D={d_car}、E={e_car}。E所属ライン"
+        f"{''.join(str(int(car)) for car in e_line)}を実券で先に保護。"
     )
     f_reason = (
-        f"C・D・Eの着内数（1着＋2着＋3着）最多をF={f_car}（着内数{int(fight_count)}）と判定。"
-        + ("Fが仮EのためDへ昇格。" if f_replaced_d else "FはCまたはDのため配置を維持。")
+        f"F={f_car}（着内数{int(fight_count)}）。"
+        + (
+            "Eラインが3車以上のためF枠を使わず、ライン3番手以降を優先。"
+            "F車がEライン構成員なら、F枠ではなくライン保護車として残す。"
+            if len(e_line) >= 3 else
+            "Eラインが2車以下のためFを3列目に維持。"
+        )
     )
     reason = (
         f"各流れ勢力［{candidate_text}］から主流決定スコア最上位の{flow_selector_line_label}で{adopted_style}を採用。"
-        f"{adopted_style}着順上位からAI印あり2車［{axis_pair_text}］を抽出し、AI評価が低い{axis}を最終軸A、"
-        f"もう一方の{secondary_axis}をBに選択。{line_reason}し、{residual_reason}"
-        f"{c_reason}{f_reason}"
-        f"C・Dを{c_car}・{d_car}、残る{e_car}をEとしてCD－ACD－ABCDEへ展開"
+        f"{c_reason}採用流れ最終順位1位の{flow_axis_car}を相手軸A、次位の{flow_support_car}をBにする。"
+        f"Eライン残りの上位{int(e_line_second_car or second_add_car)}を2列目へ配置。{f_reason}"
+        f"E＋A－E＋A＋ライン上位－Eライン全車＋A・Bの2－3－5へ展開"
     )
 
     return {
@@ -10148,8 +10270,13 @@ def _v281_build_fixed_flow_plan(
         "formation_c_other_line_replacement": False,
         "formation_d": d_car,
         "formation_e": e_car,
+        "e_protected_line": tuple(e_line),
+        "flow_axis_car": int(flow_axis_car),
+        "flow_support_car": int(flow_support_car),
+        "e_line_second_car": int(e_line_second_car or 0),
+        "fight_used_in_ticket": bool(fight_used_in_ticket),
         "fight_car": int(f_car or 0),
-        "fight_car_selected": bool(f_car and int(f_car) in set(int(car) for car in formation_five)),
+        "fight_car_selected": bool(fight_used_in_ticket),
         "fight_replaced_d": bool(f_replaced_d),
         "fight_blocked_by_required_protection": bool(f_blocked_by_required_protection),
         "fight_lost_to_line_tail": bool(f_lost_to_line_tail),
@@ -10163,7 +10290,7 @@ def _v281_build_fixed_flow_plan(
         "ticket_form": ticket_form,
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
-        "ticket_family": "3連複CD－ACD－ABCDE",
+        "ticket_family": "3連複Eライン先行保護2－3－5",
         "ticket_reason": reason,
     }
 
@@ -10343,6 +10470,11 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     formation_c_other_line_replacement = bool(plan.get("formation_c_other_line_replacement", False))
     formation_d = int(plan.get("formation_d", 0) or 0)
     formation_e = int(plan.get("formation_e", 0) or 0)
+    e_protected_line = [int(x) for x in (plan.get("e_protected_line", tuple()) or tuple())]
+    flow_axis_car = int(plan.get("flow_axis_car", 0) or 0)
+    flow_support_car = int(plan.get("flow_support_car", 0) or 0)
+    e_line_second_car = int(plan.get("e_line_second_car", 0) or 0)
+    fight_used_in_ticket = bool(plan.get("fight_used_in_ticket", False))
     fight_car = int(plan.get("fight_car", 0) or 0)
     fight_selected = bool(plan.get("fight_car_selected", False))
     fight_replaced_d = bool(plan.get("fight_replaced_d", False))
@@ -10398,20 +10530,24 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         f"【採用流れ】{adopted_style}",
         "",
         "【フォーメーション役割】",
-        f"A（第一軸）：{axis}",
-        f"B（第二軸）：{secondary_axis}",
-        f"C：{formation_c}",
-        f"D：{formation_d}",
+        f"A（相手軸・採用流れ1位）：{flow_axis_car}",
+        f"B（採用流れ次位）：{flow_support_car}",
+        f"C（事前2着内率枠）：{formation_c}",
+        f"D（事前3着内率枠）：{formation_d}",
+        f"E（ライン起点）：{formation_e}",
+        f"Eライン保護：{''.join(str(x) for x in e_protected_line) if e_protected_line else formation_e}",
+        f"L（2列目ライン車）：{e_line_second_car if e_line_second_car else 'なし'}",
         (
             f"F（FIGHT枠）：{fight_car}"
             + (
-                "（EからDへ昇格）" if fight_replaced_d else
-                "（C枠）" if fight_car == formation_c else
-                "（D枠）"
+                "（3車以上のEラインではF枠として不採用）"
+                if len(e_protected_line) >= 3 else
+                "（3列目に採用）"
+                if fight_used_in_ticket else
+                "（不採用）"
             )
             if fight_car else "F（FIGHT枠）：なし"
         ),
-        f"E：{formation_e}",
         (
             f"F判定（着内数）：C={formation_c}（{int(fight_c_count)}）／"
             f"D={fight_d_before}（{int(fight_d_before_count)}）／"
@@ -13030,7 +13166,7 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         m_tenkai = re.search(r"^展開評価：([^\n]+)$", txt, flags=re.MULTILINE)
         tenkai = m_tenkai.group(1).strip() if m_tenkai else "未判定"
 
-        line1 = "・固定型：AI無印を軸比較から除外・AI印あり2車比較軸・同ライン保護・採用流れ着順ヒモ・別線C補強の三連複AB-ABC-ABCDE・7点。"
+        line1 = "・固定型：E所属ラインを先行保護し、採用流れ最終順位1位を相手軸に置く三連複2-3-5・7点。3車以上のEラインではFを外し、2車以下ではFを残す。"
         if axis != "未判定" and axis_style != "未判定":
             line2 = f"・最終軸は{axis}、採用流れは{axis_style}。"
         else:
