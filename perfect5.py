@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v334（全員単騎AI印不足フォールバック版）:
+# ・ガールズ／アドバンスなど、有効な2車以上のラインが1本もない全員単騎戦でも0点停止させない。
+# ・全員単騎戦でAI印あり候補が2車未満の場合、採用流れ1位・2位を旧前処理候補として補完する。
+# ・通常の7車ライン戦と、v333で正常化した9車立てのフォーメーション生成は変更しない。
 # v333（9車AI印不足フォールバック版）:
 # ・9車立てに限り、採用流れからAI印あり候補を2車確保できない場合も0点停止させない。
 # ・旧前処理だけを採用流れ1位・2位で補完し、最終A・Bは現行どおり採用流れ順位から確定する。
@@ -9437,8 +9441,24 @@ def _v281_build_fixed_flow_plan(
     # 「AI印あり候補が2車必要」という停止条件が残っている。
     # 9車立てだけは、AI印が2車未満なら採用流れ1位・2位を前段候補として補完し、
     # Eライン型フォーメーションの生成まで処理を継続する。
-    # 7車立ては従来分岐を一切変えない。
-    if len(axis_pair) < 2 and len(_v281_unique_sequence(adopted_sequence)) == 9:
+    # v334：加えて、ガールズ／アドバンスなど有効な2車以上のラインが
+    # 1本もない全員単騎戦も同じ旧停止条件にかかるため、車数を問わず補完する。
+    # 通常の7車ライン戦は従来分岐を一切変えない。
+    if isinstance(line_def_obj, dict):
+        _v334_line_values = list(line_def_obj.values())
+    elif isinstance(line_def_obj, (list, tuple)):
+        _v334_line_values = list(line_def_obj)
+    else:
+        _v334_line_values = []
+    _v334_all_single_race = bool(_v334_line_values) and all(
+        len(_v281_unique_sequence(members)) == 1
+        for members in _v334_line_values
+    )
+    _v334_fallback_allowed = bool(
+        len(_v281_unique_sequence(adopted_sequence)) == 9
+        or _v334_all_single_race
+    )
+    if len(axis_pair) < 2 and _v334_fallback_allowed:
         axis_pair = []
         for idx, car in enumerate(_v281_unique_sequence(adopted_sequence)[:2], start=1):
             car = int(car)
