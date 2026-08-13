@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v333（9車AI印不足フォールバック版）:
+# ・9車立てに限り、採用流れからAI印あり候補を2車確保できない場合も0点停止させない。
+# ・旧前処理だけを採用流れ1位・2位で補完し、最終A・Bは現行どおり採用流れ順位から確定する。
+# ・7車立てはv332と同じ分岐を通し、フォーメーション、役割、7点、消去候補を変更しない。
 # v332（H主導参照・F実配置表示修正版）:
 # ・想定隊列先頭のhome_top_gidとH主導判定のhome_lead_gidを分離し、H関連処理はhome_lead_gidへ統一する。
 # ・自力系コメント、ライン連動、H主導3番手、ライン評価タグ、推奨流れ・信頼度のH参照を修正する。
@@ -9428,6 +9432,24 @@ def _v281_build_fixed_flow_plan(
         })
         if len(axis_pair) >= 2:
             break
+
+    # v333：現行の最終A・Bは採用流れ順位から決めるが、旧前処理には
+    # 「AI印あり候補が2車必要」という停止条件が残っている。
+    # 9車立てだけは、AI印が2車未満なら採用流れ1位・2位を前段候補として補完し、
+    # Eライン型フォーメーションの生成まで処理を継続する。
+    # 7車立ては従来分岐を一切変えない。
+    if len(axis_pair) < 2 and len(_v281_unique_sequence(adopted_sequence)) == 9:
+        axis_pair = []
+        for idx, car in enumerate(_v281_unique_sequence(adopted_sequence)[:2], start=1):
+            car = int(car)
+            mark = _v281_mark_for_car(mark_map, car)
+            axis_pair.append({
+                "car": car,
+                "rank": idx,
+                "mark": mark,
+                "ai_rank": _v281_ai_rank(mark) if mark else 4,
+                "score": _v281_map_float(ko_map, car, 0.0),
+            })
 
     if len(axis_pair) < 2:
         return {
