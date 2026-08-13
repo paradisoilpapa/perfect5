@@ -1,4 +1,13 @@
 # -*- coding: utf-8 -*-
+# v332（H主導参照・F実配置表示修正版）:
+# ・想定隊列先頭のhome_top_gidとH主導判定のhome_lead_gidを分離し、H関連処理はhome_lead_gidへ統一する。
+# ・自力系コメント、ライン連動、H主導3番手、ライン評価タグ、推奨流れ・信頼度のH参照を修正する。
+# ・F車がA・E・L・L代替・B・3列目のどこへ配置されたかを、実際の列位置に基づいて表示する。
+# ・F=EでD/Eを入れ替えた場合は、入替前のF判定と入替後のD/Eを別行で表示する。
+# ・Eライン保護型2－3－5、7点生成、C/D/E/F判定、消去候補、評価表、既存表示は削除しない。
+# v331（開催場決まり手補正常時適用版）:
+# ・「決まり手補正を使う」チェックボックスを廃止し、入力済みの開催場決まり手補正を常時適用する。
+# ・過去のsession_stateがOFFでも無効化せず、回数0の場合だけ従来どおり信頼係数0・補正量0とする。
 # v330（F採用理由表示明確化版）:
 # ・Eライン3車以上でF枠を使わない場合も、F車が最終5車に残った理由を区別して表示する。
 # ・F車がEライン構成員なら「F枠不採用／Eライン保護で3列目」と表示する。
@@ -2681,7 +2690,10 @@ home_top_score = float(home_lead_scores.get(home_lead_gid, 0.0)) if home_lead_gi
 if home_lead_gid is not None and home_top_score >= 1.0:
     home_top_line = format_home_line_order(line_def, [home_lead_gid])
 else:
+    home_lead_gid = None
     home_top_line = "主導なし"
+
+globals()["home_lead_gid"] = home_lead_gid
 
 
 
@@ -3057,7 +3069,7 @@ for no in active_cars:
         if role == "head":
             jiryoku_comment_bonus += 0.015
         try:
-            h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+            h_line = line_def.get(home_lead_gid, []) if home_lead_gid is not None else []
             if h_line and int(h_line[0]) == int(no):
                 jiryoku_comment_bonus += 0.025
         except Exception:
@@ -3074,7 +3086,7 @@ for no in active_cars:
         if role in ("head", "single"):
             jizai_comment_bonus += 0.005
         try:
-            h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+            h_line = line_def.get(home_lead_gid, []) if home_lead_gid is not None else []
             if h_line and int(h_line[0]) == int(no):
                 jiryoku_comment_bonus += 0.015
         except Exception:
@@ -3139,7 +3151,7 @@ for no in active_cars:
 
                 # H主導ラインの先頭なら、ライン成立度を少し上乗せ
                 try:
-                    h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+                    h_line = line_def.get(home_lead_gid, []) if home_lead_gid is not None else []
                     if h_line and int(h_line[0]) == int(no):
                         line_cushion_bonus += 0.020
                 except Exception:
@@ -4864,8 +4876,8 @@ try:
             _is_h_lead_thirdplus = False
             try:
                 _h_members = []
-                if home_top_gid is not None and isinstance(_line_def, dict):
-                    _h_members = [int(x) for x in _line_def.get(home_top_gid, [])]
+                if home_lead_gid is not None and isinstance(_line_def, dict):
+                    _h_members = [int(x) for x in _line_def.get(home_lead_gid, [])]
 
                 if (
                     len(_h_members) >= 3
@@ -5190,7 +5202,7 @@ try:
         return tuple(int(x) for x in (a or [])) == tuple(int(x) for x in (b or []))
 
     try:
-        h_line_members = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+        h_line_members = line_def.get(home_lead_gid, []) if home_lead_gid is not None else []
     except Exception:
         h_line_members = []
 
@@ -6215,8 +6227,8 @@ try:
             # H主導ラインの3番手以降で、3着内率40%以上の車だけ対象
             _promote_targets = []
 
-            if home_top_gid is not None and isinstance(line_def, dict):
-                _h_members = [int(x) for x in line_def.get(home_top_gid, [])]
+            if home_lead_gid is not None and isinstance(line_def, dict):
+                _h_members = [int(x) for x in line_def.get(home_lead_gid, [])]
 
                 if len(_h_members) >= 3:
                     for _car3 in _h_members[2:]:
@@ -6576,7 +6588,7 @@ try:
             if home_top_line == "主導なし":
                 recommend_reason.append("H主導ラインなし")
             else:
-                h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+                h_line = line_def.get(home_lead_gid, []) if home_lead_gid is not None else []
                 h_zone = _current_zone_for_line(h_line)
 
                 if h_zone in ("順流", "渦", "逆流"):
@@ -6613,7 +6625,7 @@ try:
 
         try:
             if home_top_line != "主導なし":
-                h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+                h_line = line_def.get(home_lead_gid, []) if home_lead_gid is not None else []
                 h_zone = _current_zone_for_line(h_line)
 
                 if h_zone in ("順流", "渦", "逆流"):
@@ -6649,7 +6661,7 @@ try:
         try:
             if not is_girls_like:
                 if home_top_line != "主導なし":
-                    h_line = line_def.get(home_top_gid, []) if home_top_gid is not None else []
+                    h_line = line_def.get(home_lead_gid, []) if home_lead_gid is not None else []
                     h_zone = _current_zone_for_line(h_line)
 
                     h_match = (
@@ -9003,6 +9015,54 @@ def _v329_build_e_line_formation(e_car, e_line, adopted_sequence, f_car, all_can
     }
 
 
+def _v332_fight_position_text(
+    fight_car,
+    formation_e,
+    flow_axis_car,
+    flow_support_car,
+    e_line_second_car,
+    second_add_car,
+    second_column,
+    formation_five,
+    e_protected_line,
+):
+    """F車の実際の列位置と兼任役割を表示する。"""
+    fight_car = int(fight_car or 0)
+    if not fight_car:
+        return ""
+
+    formation_e = int(formation_e or 0)
+    flow_axis_car = int(flow_axis_car or 0)
+    flow_support_car = int(flow_support_car or 0)
+    e_line_second_car = int(e_line_second_car or 0)
+    second_add_car = int(second_add_car or 0)
+    second_set = {int(x) for x in (second_column or [])}
+    third_set = {int(x) for x in (formation_five or [])}
+    e_line_set = {int(x) for x in (e_protected_line or [])}
+
+    if fight_car == flow_axis_car:
+        return "（Aとして1列目に採用）"
+    if fight_car == formation_e:
+        return "（Eとして1列目に採用）"
+    if e_line_second_car and fight_car == e_line_second_car:
+        return "（Lとして2列目に採用）"
+    if not e_line_second_car and second_add_car and fight_car == second_add_car:
+        return "（L代替として2列目に採用）"
+    if fight_car in second_set:
+        return "（2列目に採用）"
+    if fight_car in third_set:
+        if len(e_line_set) >= 3:
+            if fight_car in e_line_set:
+                return "（F枠不採用／Eライン保護で3列目に採用）"
+            return "（F枠不採用／採用流れ補充で3列目に採用）"
+        if fight_car == flow_support_car:
+            return "（B兼Fとして3列目に採用）"
+        return "（F枠として3列目に採用）"
+    if len(e_line_set) >= 3:
+        return "（3車以上のEラインではF枠として不採用）"
+    return "（不採用）"
+
+
 def _v281_map_float(mapping, car, default=0.0):
     for key in (car, str(car)):
         try:
@@ -10294,6 +10354,8 @@ def _v281_build_fixed_flow_plan(
         "flow_axis_rank": int(flow_axis_rank),
         "flow_support_rank": int(flow_support_rank),
         "e_line_second_car": int(e_line_second_car or 0),
+        "second_add_car": int(second_add_car or 0),
+        "second_column": tuple(second_column),
         "fight_used_in_ticket": bool(fight_used_in_ticket),
         "fight_car": int(f_car or 0),
         "fight_car_selected": bool(fight_used_in_ticket),
@@ -10497,6 +10559,8 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     flow_axis_rank = int(plan.get("flow_axis_rank", 0) or 0)
     flow_support_rank = int(plan.get("flow_support_rank", 0) or 0)
     e_line_second_car = int(plan.get("e_line_second_car", 0) or 0)
+    second_add_car = int(plan.get("second_add_car", 0) or 0)
+    second_column = [int(x) for x in (plan.get("second_column", tuple()) or tuple())]
     fight_used_in_ticket = bool(plan.get("fight_used_in_ticket", False))
     fight_car = int(plan.get("fight_car", 0) or 0)
     fight_selected = bool(plan.get("fight_car_selected", False))
@@ -10549,19 +10613,18 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     else:
         pressure_boundary_text = "重圧5車境界：比較対象なし"
 
-    if fight_car and len(e_protected_line) >= 3:
-        if fight_car in set(e_protected_line):
-            fight_position_text = "（F枠不採用／Eライン保護で3列目）"
-        elif fight_car in set(formation_five):
-            fight_position_text = "（F枠不採用／採用流れ補充で3列目）"
-        else:
-            fight_position_text = "（3車以上のEラインではF枠として不採用）"
-    elif fight_car and fight_used_in_ticket:
-        fight_position_text = "（3列目に採用）"
-    elif fight_car:
-        fight_position_text = "（不採用）"
-    else:
-        fight_position_text = ""
+    # v332：Fの採否だけでなく、実際に配置された列と兼任役割を表示する。
+    fight_position_text = _v332_fight_position_text(
+        fight_car=fight_car,
+        formation_e=formation_e,
+        flow_axis_car=flow_axis_car,
+        flow_support_car=flow_support_car,
+        e_line_second_car=e_line_second_car,
+        second_add_car=second_add_car,
+        second_column=second_column,
+        formation_five=formation_five,
+        e_protected_line=e_protected_line,
+    )
 
     out = [
         f"【採用流れ】{adopted_style}",
@@ -10579,10 +10642,14 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
             if fight_car else "F（FIGHT枠）：なし"
         ),
         (
-            f"F判定（着内数）：C={formation_c}（{int(fight_c_count)}）／"
+            f"F判定（{'入替前・' if fight_replaced_d else ''}着内数）：C={formation_c}（{int(fight_c_count)}）／"
             f"D={fight_d_before}（{int(fight_d_before_count)}）／"
             f"E={fight_e_before}（{int(fight_e_before_count)}）"
             f" → F={fight_car}"
+        ),
+        *(
+            [f"F=EのためD/E入替：D={formation_d}／E={formation_e}"]
+            if fight_replaced_d else []
         ),
         pressure_boundary_text,
         "",
