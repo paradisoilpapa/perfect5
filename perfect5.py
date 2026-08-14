@@ -1,4 +1,12 @@
 # -*- coding: utf-8 -*-
+# v334l（両軸和集合後・1位一致1点増額版）:
+# ・E軸・A軸の上位2和集合を作った後、その全買い目を一つの候補群として再順位付けする。
+# ・候補群全体の的中点1位と総合点1位が同じ場合、その1買い目だけ200円とする。
+# ・E軸・A軸ごとの個別増額は行わない。
+# v334k（両評価1位一致時のみ増額版）:
+# ・E軸・A軸ごとに、同じ買い目が的中点1位かつ総合点1位になった場合だけ200円とする。
+# ・異なる軸にまたがる別々の1位は増額条件に合算しない。
+# ・推奨ブロックから妙味点上位2の表示を外し、詳細評価表の妙味点表示は維持する。
 # v334j（的中点・総合点上位2和集合版）:
 # ・E軸・A軸の各6点は、的中点上位2と総合点上位2の和集合だけを推奨購入に採用する。
 # ・妙味点上位2は表示を維持するが、買い目選抜と評価1位重複投資には使用しない。
@@ -10764,7 +10772,7 @@ def _v281_build_fixed_flow_plan(
     }
 
 def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
-    """基本6点から的中・総合上位2点の和集合と、両評価1位数による投資額を返す。"""
+    """基本6点から的中・総合上位2点を選び、両評価1位一致時だけ増額する。"""
     try:
         basic = []
         for ticket in (basic_tickets or []):
@@ -10812,7 +10820,6 @@ def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
                 "key": key,
                 "order": int(basic_order[key]),
                 "hit": _score(row, "hit_score"),
-                "myoumi": _score(row, "myoumi_score"),
                 "total": _score(row, "total_pt"),
             })
         if not records:
@@ -10823,16 +10830,6 @@ def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
             key=lambda rec: (
                 -float(rec["hit"]),
                 -float(rec["total"]),
-                int(rec["order"]),
-                tuple(rec["key"]),
-            ),
-        )
-        myoumi_ranked = sorted(
-            records,
-            key=lambda rec: (
-                -float(rec["myoumi"]),
-                -float(rec["total"]),
-                -float(rec["hit"]),
                 int(rec["order"]),
                 tuple(rec["key"]),
             ),
@@ -10848,32 +10845,25 @@ def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
         )
 
         hit_top = [tuple(rec["key"]) for rec in hit_ranked[:2]]
-        myoumi_top = [tuple(rec["key"]) for rec in myoumi_ranked[:2]]
         total_top = [tuple(rec["key"]) for rec in total_ranked[:2]]
-        # 妙味上位は表示だけに残し、購入選抜には使用しない。
         selected_set = set(hit_top) | set(total_top)
         # 評価順位は上の各topに保持し、購入一覧だけ車番の若い組合せ順にする。
         selected = sorted(selected_set)
 
-        first_place_count = {}
-        # 増額も、購入選抜に使う的中点・総合点の1位獲得数だけで判定する。
-        for ranked in (hit_ranked, total_ranked):
-            if ranked:
-                key = tuple(ranked[0]["key"])
-                first_place_count[key] = int(first_place_count.get(key, 0)) + 1
-
-        stakes = []
-        for key in selected:
-            first_count = int(first_place_count.get(key, 0) or 0)
-            amount = min(200, 100 * max(1, first_count))
-            stakes.append((key, int(amount)))
+        # 軸別段階では増額しない。増額判定はE/A和集合の完成後に一度だけ行う。
+        stakes = [(key, 100) for key in selected]
 
         return {
             "hit_top": tuple(hit_top),
-            "myoumi_top": tuple(myoumi_top),
             "total_top": tuple(total_top),
             "selected": tuple(selected),
-            "first_place_count": dict(first_place_count),
+            "score_map": {
+                tuple(rec["key"]): {
+                    "hit": float(rec["hit"]),
+                    "total": float(rec["total"]),
+                }
+                for rec in records
+            },
             "stakes": tuple(stakes),
             "ticket_count": len(selected),
             "total_amount": sum(int(amount) for _, amount in stakes),
@@ -10883,9 +10873,9 @@ def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
 
 
 def _v334g_merge_axis_purchase_plans(*plans):
-    """E/A推奨の和集合と、両軸合算の評価1位数による上限200円の金額を返す。"""
+    """E/A推奨の和集合を再順位付けし、的中・総合1位一致の1点だけ増額する。"""
     selected = set()
-    first_place_count = {}
+    score_map = {}
     for plan in plans:
         if not isinstance(plan, dict) or not plan:
             continue
@@ -10893,21 +10883,50 @@ def _v334g_merge_axis_purchase_plans(*plans):
             normalized = tuple(sorted(int(x) for x in (key or tuple())))
             if len(normalized) == 3 and len(set(normalized)) == 3:
                 selected.add(normalized)
-        for key, count in (plan.get("first_place_count", {}) or {}).items():
+        for key, scores in (plan.get("score_map", {}) or {}).items():
             normalized = tuple(sorted(int(x) for x in (key or tuple())))
             if len(normalized) == 3 and len(set(normalized)) == 3:
-                first_place_count[normalized] = (
-                    int(first_place_count.get(normalized, 0)) + int(count or 0)
-                )
+                try:
+                    score_map[normalized] = {
+                        "hit": float((scores or {}).get("hit", 0.0) or 0.0),
+                        "total": float((scores or {}).get("total", 0.0) or 0.0),
+                    }
+                except Exception:
+                    pass
 
     selected_sorted = sorted(selected)
+    ranked_records = [
+        {
+            "key": key,
+            "hit": float((score_map.get(key, {}) or {}).get("hit", 0.0) or 0.0),
+            "total": float((score_map.get(key, {}) or {}).get("total", 0.0) or 0.0),
+        }
+        for key in selected_sorted
+    ]
+    hit_ranked = sorted(
+        ranked_records,
+        key=lambda rec: (-float(rec["hit"]), -float(rec["total"]), tuple(rec["key"])),
+    )
+    total_ranked = sorted(
+        ranked_records,
+        key=lambda rec: (-float(rec["total"]), -float(rec["hit"]), tuple(rec["key"])),
+    )
+    overlap_first = None
+    if hit_ranked and total_ranked:
+        hit_first = tuple(hit_ranked[0]["key"])
+        total_first = tuple(total_ranked[0]["key"])
+        if hit_first == total_first:
+            overlap_first = hit_first
+
     stakes = []
     for key in selected_sorted:
-        first_count = int(first_place_count.get(key, 0) or 0)
-        stakes.append((key, min(200, 100 * max(1, first_count))))
+        stakes.append((key, 200 if overlap_first == key else 100))
     return {
         "selected": tuple(selected_sorted),
-        "first_place_count": dict(first_place_count),
+        "score_map": dict(score_map),
+        "hit_first": tuple(hit_ranked[0]["key"]) if hit_ranked else tuple(),
+        "total_first": tuple(total_ranked[0]["key"]) if total_ranked else tuple(),
+        "overlap_first": tuple(overlap_first) if overlap_first else tuple(),
         "stakes": tuple(stakes),
         "ticket_count": len(selected_sorted),
         "total_amount": sum(int(amount) for _, amount in stakes),
@@ -11038,14 +11057,12 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         purchase_lines = [
             "【評価上位2】",
             f"的中点：{_v334b_top2_text(e_purchase_plan.get('hit_top', tuple()))}",
-            f"妙味点：{_v334b_top2_text(e_purchase_plan.get('myoumi_top', tuple()))}",
             f"総合点：{_v334b_top2_text(e_purchase_plan.get('total_top', tuple()))}",
             f"【A軸基本三連複】3連複{a_axis_ticket_form}・計{a_axis_ticket_count}点",
             f"Aライン保護：{''.join(str(x) for x in a_axis_line) if a_axis_line else a_axis_car}",
             f"A軸5車：{''.join(str(x) for x in a_axis_selected_five) if a_axis_selected_five else '算出不可'}",
             "【A軸評価上位2】",
             f"的中点：{_v334b_top2_text(a_purchase_plan.get('hit_top', tuple()))}",
-            f"妙味点：{_v334b_top2_text(a_purchase_plan.get('myoumi_top', tuple()))}",
             f"総合点：{_v334b_top2_text(a_purchase_plan.get('total_top', tuple()))}",
             (
                 f"【推奨購入】3連複{stake_text}・"
@@ -11123,7 +11140,7 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
         *purchase_lines,
         "",
-        "※購入額は、E軸・A軸の各6点を個別に的中点・総合点上位2で絞った和集合と、両軸の両評価1位獲得数で事前確定（妙味点は選抜対象外／1買い目上限200円）。",
+        "※購入額は、E軸・A軸の各6点を個別に的中点・総合点上位2で絞った和集合で事前確定。和集合全体で的中点1位かつ総合点1位の買い目だけ200円（妙味点単独順位は選抜対象外／増額は最大1点）。",
     ]
     return out
 
