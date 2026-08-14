@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+# v334i（A軸ライン保護完全独立版）:
+# ・A軸側もE軸側と同じライン保護5車確定処理をA起点で独立実行する。
+# ・A軸側の残枠をE軸側5車から補充する依存処理は廃止する。
 # v334h（1買い目200円上限版）:
 # ・E軸・A軸を通じた評価1位獲得数が3回以上でも、1買い目の購入額は200円を上限とする。
 # v334g（E軸＋A軸・ライン保護独立6点版）:
@@ -9151,11 +9154,11 @@ def _v329_build_e_line_formation(e_car, e_line, adopted_sequence, f_car, all_can
 def _v334g_build_a_axis_line_formation(
     a_car,
     line_def_obj,
-    e_selected_five,
     adopted_sequence,
+    f_car,
     all_candidate_cars=None,
 ):
-    """A同ライン全車を優先保護し、A軸1－4－4の6点を作る。"""
+    """E軸側と同じ完全なライン保護処理をA起点で独立実行する。"""
     a_car = int(a_car)
     a_line = _v281_unique_sequence(
         _v281_find_axis_line(line_def_obj or {}, a_car) or [a_car]
@@ -9166,15 +9169,16 @@ def _v334g_build_a_axis_line_formation(
     if len(a_line) > 5:
         raise ValueError(f"Aラインが5車を超えるため全車保護できません（{len(a_line)}車）")
 
-    # A本人とA同ラインを最優先。残枠は現行E側5車、採用流れ順の順で補う。
-    candidates = _v281_unique_sequence(
-        [a_car]
-        + list(a_line)
-        + list(e_selected_five or [])
-        + list(adopted_sequence or [])
-        + list(all_candidate_cars or [])
+    # E軸側で実際に使っている関数をそのままA起点で再実行する。
+    # これによりL、F、3車以上のライン末尾優先、採用流れ補充が同条件になる。
+    protected = _v329_build_e_line_formation(
+        e_car=a_car,
+        e_line=a_line,
+        adopted_sequence=adopted_sequence,
+        f_car=int(f_car or 0),
+        all_candidate_cars=all_candidate_cars,
     )
-    selected_five = [int(car) for car in candidates[:5]]
+    selected_five = [int(car) for car in protected["third_column"]]
     if (
         len(selected_five) != 5
         or len(set(selected_five)) != 5
@@ -10620,8 +10624,8 @@ def _v281_build_fixed_flow_plan(
         _v334g_a_axis = _v334g_build_a_axis_line_formation(
             a_car=int(flow_axis_car),
             line_def_obj=line_def_obj,
-            e_selected_five=formation_five,
             adopted_sequence=adopted_sequence,
+            f_car=int(f_car or 0),
             all_candidate_cars=individual_ranked_cars,
         )
     except Exception as _v334g_a_error:
