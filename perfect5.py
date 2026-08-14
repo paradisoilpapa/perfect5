@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v334j（的中点・総合点上位2和集合版）:
+# ・E軸・A軸の各6点は、的中点上位2と総合点上位2の和集合だけを推奨購入に採用する。
+# ・妙味点上位2は表示を維持するが、買い目選抜と評価1位重複投資には使用しない。
+# ・1買い目200円上限、E/Aライン保護、評価表、その他の既存表示は維持する。
 # v334i（A軸ライン保護完全独立版）:
 # ・A軸側もE軸側と同じライン保護5車確定処理をA起点で独立実行する。
 # ・A軸側の残枠をE軸側5車から補充する依存処理は廃止する。
@@ -10760,7 +10764,7 @@ def _v281_build_fixed_flow_plan(
     }
 
 def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
-    """基本6点から三評価上位2点の和集合と、評価1位重複数による投資額を返す。"""
+    """基本6点から的中・総合上位2点の和集合と、両評価1位数による投資額を返す。"""
     try:
         basic = []
         for ticket in (basic_tickets or []):
@@ -10819,7 +10823,6 @@ def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
             key=lambda rec: (
                 -float(rec["hit"]),
                 -float(rec["total"]),
-                -float(rec["myoumi"]),
                 int(rec["order"]),
                 tuple(rec["key"]),
             ),
@@ -10839,7 +10842,6 @@ def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
             key=lambda rec: (
                 -float(rec["total"]),
                 -float(rec["hit"]),
-                -float(rec["myoumi"]),
                 int(rec["order"]),
                 tuple(rec["key"]),
             ),
@@ -10848,12 +10850,14 @@ def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
         hit_top = [tuple(rec["key"]) for rec in hit_ranked[:2]]
         myoumi_top = [tuple(rec["key"]) for rec in myoumi_ranked[:2]]
         total_top = [tuple(rec["key"]) for rec in total_ranked[:2]]
-        selected_set = set(hit_top) | set(myoumi_top) | set(total_top)
+        # 妙味上位は表示だけに残し、購入選抜には使用しない。
+        selected_set = set(hit_top) | set(total_top)
         # 評価順位は上の各topに保持し、購入一覧だけ車番の若い組合せ順にする。
         selected = sorted(selected_set)
 
         first_place_count = {}
-        for ranked in (hit_ranked, myoumi_ranked, total_ranked):
+        # 増額も、購入選抜に使う的中点・総合点の1位獲得数だけで判定する。
+        for ranked in (hit_ranked, total_ranked):
             if ranked:
                 key = tuple(ranked[0]["key"])
                 first_place_count[key] = int(first_place_count.get(key, 0)) + 1
@@ -11119,7 +11123,7 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
         *purchase_lines,
         "",
-        "※購入額は、E軸・A軸の各6点を個別に三評価上位2で絞った和集合と、両軸の評価1位獲得数で事前確定（1買い目上限200円）。",
+        "※購入額は、E軸・A軸の各6点を個別に的中点・総合点上位2で絞った和集合と、両軸の両評価1位獲得数で事前確定（妙味点は選抜対象外／1買い目上限200円）。",
     ]
     return out
 
