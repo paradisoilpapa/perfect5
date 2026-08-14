@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# v334c（推奨購入・車番昇順表示版）:
+# ・推奨購入は、取捨増減しやすいよう三連複の車番組合せを昇順で表示する。
 # v334b（評価上位2和集合・評価1位重複投資版）:
 # ・基本7点内から、的中点・妙味点・総合点の各上位2点を内部未丸め値で選ぶ。
 # ・三部門の上位2点を重複統合し、選出買い目は各100円とする。
@@ -10514,7 +10516,8 @@ def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
         myoumi_top = [tuple(rec["key"]) for rec in myoumi_ranked[:2]]
         total_top = [tuple(rec["key"]) for rec in total_ranked[:2]]
         selected_set = set(hit_top) | set(myoumi_top) | set(total_top)
-        selected = [key for key in basic if key in selected_set]
+        # 評価順位は上の各topに保持し、購入一覧だけ車番の若い組合せ順にする。
+        selected = sorted(selected_set)
 
         first_place_count = {}
         for ranked in (hit_ranked, myoumi_ranked, total_ranked):
