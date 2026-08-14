@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+# v334b（評価上位2和集合・評価1位重複投資版）:
+# ・基本7点内から、的中点・妙味点・総合点の各上位2点を内部未丸め値で選ぶ。
+# ・三部門の上位2点を重複統合し、選出買い目は各100円とする。
+# ・各部門1位が同一買い目に重なった場合、1位獲得数×100円へ増額する。
+# ・消去候補は廃止し、実オッズを使わず事前購入可能な推奨買い目と投資額を表示する。
+# ・加重3連複評価表から3単参考列を削除し、その他の既存表示と内部判定は維持する。
 # v334（全員単騎AI印不足フォールバック版）:
 # ・ガールズ／アドバンスなど、有効な2車以上のラインが1本もない全員単騎戦でも0点停止させない。
 # ・全員単騎戦でAI印あり候補が2車未満の場合、採用流れ1位・2位を旧前処理候補として補完する。
@@ -10418,128 +10424,122 @@ def _v281_build_fixed_flow_plan(
         "ticket_reason": reason,
     }
 
-def _v306_select_recommended_trio_tickets(basic_tickets, weighted_trio_rows):
-    """基本7点を配当加重3連複評価表で判定し、可変3～7点へ絞る。"""
+def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
+    """基本7点から三評価上位2点の和集合と、評価1位重複数による投資額を返す。"""
     try:
         basic = []
         for ticket in (basic_tickets or []):
             try:
-                key = tuple(sorted(int(x) for x in str(ticket).split("-") if str(x).isdigit()))
-                if len(key) == 3 and key not in basic:
+                key = tuple(sorted(
+                    int(x) for x in str(ticket).split("-") if str(x).isdigit()
+                ))
+                if len(key) == 3 and len(set(key)) == 3 and key not in basic:
                     basic.append(key)
             except Exception:
                 pass
         if not basic:
-            return tuple()
+            return {}
 
+        basic_order = {key: idx for idx, key in enumerate(basic)}
         row_map = {}
         for row in (weighted_trio_rows or []):
             try:
-                cars = tuple(sorted(int(x) for x in ((row or {}).get("cars", tuple()) or tuple())))
+                cars = tuple(sorted(
+                    int(x) for x in ((row or {}).get("cars", tuple()) or tuple())
+                ))
                 if len(cars) != 3:
                     disp = str((row or {}).get("disp", "") or "")
-                    cars = tuple(sorted(int(x) for x in disp.split("-") if str(x).isdigit()))
-                if len(cars) == 3:
+                    cars = tuple(sorted(
+                        int(x) for x in disp.split("-") if str(x).isdigit()
+                    ))
+                if len(cars) == 3 and cars in basic_order:
                     row_map[cars] = row
             except Exception:
                 pass
 
-        passed = []
-        scored = []
-        for order, key in enumerate(basic):
+        def _score(row, name):
+            try:
+                value = float((row or {}).get(name, 0.0) or 0.0)
+                return value if math.isfinite(value) else 0.0
+            except Exception:
+                return 0.0
+
+        records = []
+        for key in basic:
             row = row_map.get(key)
             if row is None:
-                scored.append((key, None, order))
                 continue
-            # 画面の評価表と判定を一致させるため、小数1桁へ丸めてから整数化する。
-            hit10 = int(round(float((row or {}).get("hit_score", 0.0) or 0.0) * 10.0))
-            myo10 = int(round(float((row or {}).get("myoumi_score", 0.0) or 0.0) * 10.0))
-            total10 = int(round(float((row or {}).get("total_pt", 0.0) or 0.0) * 10.0))
-            gap10 = myo10 - hit10
-            rule_a = gap10 >= 33 and total10 <= 68
-            rule_b = hit10 >= 48 and myo10 >= 84
-            rec = (key, (total10, myo10, hit10), order)
-            scored.append(rec)
-            if rule_a and rule_b:
-                passed.append(key)
+            records.append({
+                "key": key,
+                "order": int(basic_order[key]),
+                "hit": _score(row, "hit_score"),
+                "myoumi": _score(row, "myoumi_score"),
+                "total": _score(row, "total_pt"),
+            })
+        if not records:
+            return {}
 
-        selected = list(passed)
-        # 点数は先に固定しない。通過が3点未満のときだけ、基本7点の総合点上位で最低3点を確保する。
-        if len(selected) < 3:
-            remaining = [rec for rec in scored if rec[0] not in selected]
-            remaining = sorted(
-                remaining,
-                key=lambda rec: (
-                    -int((rec[1] or (-1, -1, -1))[0]),
-                    -int((rec[1] or (-1, -1, -1))[1]),
-                    -int((rec[1] or (-1, -1, -1))[2]),
-                    int(rec[2]),
-                ),
-            )
-            for key, _, _ in remaining:
-                if key not in selected:
-                    selected.append(key)
-                if len(selected) >= 3:
-                    break
-
-        if len(selected) < 3:
-            for key in basic:
-                if key not in selected:
-                    selected.append(key)
-                if len(selected) >= 3:
-                    break
-
-        selected_set = set(selected[:7])
-        # 表示順は基本7点の並びを維持する。
-        return tuple(
-            "-".join(str(x) for x in key)
-            for key in basic
-            if key in selected_set
+        hit_ranked = sorted(
+            records,
+            key=lambda rec: (
+                -float(rec["hit"]),
+                -float(rec["total"]),
+                -float(rec["myoumi"]),
+                int(rec["order"]),
+                tuple(rec["key"]),
+            ),
         )
-    except Exception:
-        return tuple()
-
-
-def _v308_delete_candidate_tickets(basic_tickets, mark_map):
-    """基本7点から◎〇△、◎〇×の各3車組だけを表示用消去候補として返す。"""
-    try:
-        def _norm_mark(value):
-            mark = str(value or "").strip()
-            if mark in {"○", "〇", "◯"}:
-                return "〇"
-            return mark
-
-        normalized_marks = {}
-        for car, mark in ((mark_map or {}).items() if isinstance(mark_map, dict) else []):
-            try:
-                normalized_marks[int(car)] = _norm_mark(mark)
-            except Exception:
-                pass
-
-        basic = []
-        for ticket in (basic_tickets or []):
-            try:
-                cars = tuple(sorted(int(x) for x in str(ticket).split("-") if str(x).isdigit()))
-                if len(cars) == 3 and cars not in basic:
-                    basic.append(cars)
-            except Exception:
-                pass
-
-        def _find_candidate(required_marks):
-            required = set(required_marks)
-            for cars in basic:
-                marks = {_norm_mark(normalized_marks.get(int(car), "")) for car in cars}
-                if marks == required and len(marks) == 3:
-                    return "".join(str(car) for car in cars)
-            return "なし"
-
-        return (
-            _find_candidate({"◎", "〇", "△"}),
-            _find_candidate({"◎", "〇", "×"}),
+        myoumi_ranked = sorted(
+            records,
+            key=lambda rec: (
+                -float(rec["myoumi"]),
+                -float(rec["total"]),
+                -float(rec["hit"]),
+                int(rec["order"]),
+                tuple(rec["key"]),
+            ),
         )
-    except Exception:
-        return ("なし", "なし")
+        total_ranked = sorted(
+            records,
+            key=lambda rec: (
+                -float(rec["total"]),
+                -float(rec["hit"]),
+                -float(rec["myoumi"]),
+                int(rec["order"]),
+                tuple(rec["key"]),
+            ),
+        )
 
+        hit_top = [tuple(rec["key"]) for rec in hit_ranked[:2]]
+        myoumi_top = [tuple(rec["key"]) for rec in myoumi_ranked[:2]]
+        total_top = [tuple(rec["key"]) for rec in total_ranked[:2]]
+        selected_set = set(hit_top) | set(myoumi_top) | set(total_top)
+        selected = [key for key in basic if key in selected_set]
+
+        first_place_count = {}
+        for ranked in (hit_ranked, myoumi_ranked, total_ranked):
+            if ranked:
+                key = tuple(ranked[0]["key"])
+                first_place_count[key] = int(first_place_count.get(key, 0)) + 1
+
+        stakes = []
+        for key in selected:
+            first_count = int(first_place_count.get(key, 0) or 0)
+            amount = 100 * max(1, first_count)
+            stakes.append((key, int(amount)))
+
+        return {
+            "hit_top": tuple(hit_top),
+            "myoumi_top": tuple(myoumi_top),
+            "total_top": tuple(total_top),
+            "selected": tuple(selected),
+            "first_place_count": dict(first_place_count),
+            "stakes": tuple(stakes),
+            "ticket_count": len(selected),
+            "total_amount": sum(int(amount) for _, amount in stakes),
+        }
+    except Exception:
+        return {}
 
 def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     if not isinstance(plan, dict) or not plan:
@@ -10629,10 +10629,40 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     basic_tickets = []
     for _, items in (plan.get("ticket_groups", tuple()) or tuple()):
         basic_tickets.extend(str(x) for x in (items or tuple()))
-    delete_candidate_1, delete_candidate_2 = _v308_delete_candidate_tickets(
+    purchase_plan = _v334b_build_top2_union_purchase_plan(
         basic_tickets,
-        mark_map,
+        weighted_trio_rows,
     )
+
+    def _v334b_ticket_text(key):
+        return "".join(str(int(x)) for x in (key or tuple()))
+
+    def _v334b_top2_text(keys):
+        text = " ".join(_v334b_ticket_text(key) for key in (keys or tuple()))
+        return text or "算出不可"
+
+    purchase_lines = []
+    if purchase_plan:
+        stake_text = " ".join(
+            f"{_v334b_ticket_text(key)}（{int(amount)}円）"
+            for key, amount in (purchase_plan.get("stakes", tuple()) or tuple())
+        )
+        purchase_lines = [
+            "【評価上位2】",
+            f"的中点：{_v334b_top2_text(purchase_plan.get('hit_top', tuple()))}",
+            f"妙味点：{_v334b_top2_text(purchase_plan.get('myoumi_top', tuple()))}",
+            f"総合点：{_v334b_top2_text(purchase_plan.get('total_top', tuple()))}",
+            (
+                f"【推奨購入】3連複{stake_text}・"
+                f"計{int(purchase_plan.get('ticket_count', 0) or 0)}点／"
+                f"{int(purchase_plan.get('total_amount', 0) or 0)}円"
+            ),
+        ]
+    else:
+        purchase_lines = [
+            "【評価上位2】算出不可",
+            "【推奨購入】評価データ不足のため生成不可",
+        ]
 
     if bool(pressure_boundary.get("evaluated", False)):
         _pb_fifth = int(pressure_boundary.get("original_fifth", 0) or 0)
@@ -10696,9 +10726,9 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         pressure_boundary_text,
         "",
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
-        f"【消去候補】第1候補{delete_candidate_1}　第2候補{delete_candidate_2}",
+        *purchase_lines,
         "",
-        "※トリガミにならないオッズなら購入推奨。残した買い目でもトリガミになるオッズならカット推奨。",
+        "※購入額は、基本7点内の三評価上位2点の和集合と評価1位獲得数だけで事前確定。",
     ]
     return out
 
@@ -13076,19 +13106,17 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                         return ("　" * max(0, int(_chars) - len(_s))) + _s
 
                     _out = []
-                    _out.append("　買い目　　 3単参考　 的中点　 妙味点　 総合点")
+                    _out.append("　買い目　　 的中点　 妙味点　 総合点")
                     for _r in _rows:
                         try:
                             _disp = str((_r or {}).get("disp", "")).strip()
                             if not _disp:
                                 continue
-                            _ref = str((_r or {}).get("santan_ref", "") or "").strip()
                             _hit = _fmt_num((_r or {}).get("hit_score", 0.0))
                             _myo = _fmt_num((_r or {}).get("myoumi_score", 0.0))
                             _tot = _fmt_num((_r or {}).get("total_pt", 0.0))
                             _out.append(
                                 "　" + _cell_left(_disp, 5) + "　　　" +
-                                _cell_left(_ref, 5) + "　　" +
                                 _cell_right(_hit, 3) + "　　　" +
                                 _cell_right(_myo, 3) + "　　　" +
                                 _cell_right(_tot, 3)
