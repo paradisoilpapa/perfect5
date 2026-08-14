@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v334g（E軸＋A軸・ライン保護独立6点版）:
+# ・E軸側は従来のEライン保護5車から作る1－4－4の6点を維持する。
+# ・A軸側はAの同ライン全車を優先保護した独立5車から1－4－4の6点を作る。
+# ・両軸を個別に三評価上位2で絞り、推奨は和集合、金額は両軸の評価1位獲得数を合算する。
 # v334f（E軸4車BOX・基本6点版）:
 # ・最終5車を確定した後、Eを1列目、E以外の4車を2・3列目に置く1－4－4へ変更する。
 # ・基本三連複は必ずEを含む6点とし、Eを含まない買い目は基本候補から除外する。
@@ -9142,6 +9146,64 @@ def _v329_build_e_line_formation(e_car, e_line, adopted_sequence, f_car, all_can
     }
 
 
+def _v334g_build_a_axis_line_formation(
+    a_car,
+    line_def_obj,
+    e_selected_five,
+    adopted_sequence,
+    all_candidate_cars=None,
+):
+    """A同ライン全車を優先保護し、A軸1－4－4の6点を作る。"""
+    a_car = int(a_car)
+    a_line = _v281_unique_sequence(
+        _v281_find_axis_line(line_def_obj or {}, a_car) or [a_car]
+    )
+    a_line = [int(car) for car in a_line]
+    if a_car not in a_line:
+        a_line.insert(0, a_car)
+    if len(a_line) > 5:
+        raise ValueError(f"Aラインが5車を超えるため全車保護できません（{len(a_line)}車）")
+
+    # A本人とA同ラインを最優先。残枠は現行E側5車、採用流れ順の順で補う。
+    candidates = _v281_unique_sequence(
+        [a_car]
+        + list(a_line)
+        + list(e_selected_five or [])
+        + list(adopted_sequence or [])
+        + list(all_candidate_cars or [])
+    )
+    selected_five = [int(car) for car in candidates[:5]]
+    if (
+        len(selected_five) != 5
+        or len(set(selected_five)) != 5
+        or a_car not in selected_five
+        or not set(a_line).issubset(set(selected_five))
+    ):
+        raise ValueError("A同ライン全車を保護した5車を一意に確定できません")
+
+    other_four = [int(car) for car in selected_five if int(car) != a_car]
+    tickets = [
+        "-".join(str(int(car)) for car in (a_car, car1, car2))
+        for car1, car2 in combinations(other_four, 2)
+    ]
+    ticket_keys = {
+        tuple(sorted(int(x) for x in ticket.split("-"))) for ticket in tickets
+    }
+    if len(tickets) != 6 or len(ticket_keys) != 6:
+        raise ValueError(f"A軸4車BOXの実券が6点ではありません（{len(tickets)}点）")
+
+    others_text = "".join(str(int(car)) for car in other_four)
+    return {
+        "a_car": int(a_car),
+        "a_line": tuple(a_line),
+        "selected_five": tuple(selected_five),
+        "other_four": tuple(other_four),
+        "ticket_form": f"{a_car}-{others_text}-{others_text}",
+        "tickets": tuple(tickets),
+        "ticket_count": 6,
+    }
+
+
 def _v332_fight_position_text(
     fight_car,
     formation_e,
@@ -10551,6 +10613,30 @@ def _v281_build_fixed_flow_plan(
             "ticket_reason": f"E軸4車BOXの実券が6点ではありません（{len(tickets)}点）",
         }
 
+    # v334g：A軸側はE軸側と独立してA同ライン全車を保護する。
+    try:
+        _v334g_a_axis = _v334g_build_a_axis_line_formation(
+            a_car=int(flow_axis_car),
+            line_def_obj=line_def_obj,
+            e_selected_five=formation_five,
+            adopted_sequence=adopted_sequence,
+            all_candidate_cars=individual_ranked_cars,
+        )
+    except Exception as _v334g_a_error:
+        return {
+            **base_result,
+            "status": "a_axis_line_formation_generation_failed",
+            "formation_five": tuple(formation_five),
+            "formation_c": int(c_car),
+            "formation_d": int(d_car),
+            "formation_e": int(e_car),
+            "ticket_form": "",
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複E軸＋A軸独立1－4－4",
+            "ticket_reason": f"Aライン保護型1－4－4を確定できないため生成不可：{_v334g_a_error}",
+        }
+
     # 役割表示用のsecond_columnは従来値を維持し、買い目表示だけを1－4－4にする。
     third_column_text = "".join(str(int(car)) for car in _v334f_ticket_others)
     first_column_text = "".join(str(int(car)) for car in _v334f_ticket_first)
@@ -10657,7 +10743,13 @@ def _v281_build_fixed_flow_plan(
         "ticket_form": ticket_form,
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
-        "ticket_family": "3連複E軸1－4－4",
+        "a_axis_car": int(_v334g_a_axis["a_car"]),
+        "a_axis_line": tuple(_v334g_a_axis["a_line"]),
+        "a_axis_selected_five": tuple(_v334g_a_axis["selected_five"]),
+        "a_axis_ticket_form": str(_v334g_a_axis["ticket_form"]),
+        "a_axis_tickets": tuple(_v334g_a_axis["tickets"]),
+        "a_axis_ticket_count": int(_v334g_a_axis["ticket_count"]),
+        "ticket_family": "3連複E軸＋A軸独立1－4－4",
         "ticket_reason": reason,
     }
 
@@ -10779,6 +10871,38 @@ def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
     except Exception:
         return {}
 
+
+def _v334g_merge_axis_purchase_plans(*plans):
+    """E/A各軸の推奨和集合と、両軸合算の評価1位数による金額を返す。"""
+    selected = set()
+    first_place_count = {}
+    for plan in plans:
+        if not isinstance(plan, dict) or not plan:
+            continue
+        for key in (plan.get("selected", tuple()) or tuple()):
+            normalized = tuple(sorted(int(x) for x in (key or tuple())))
+            if len(normalized) == 3 and len(set(normalized)) == 3:
+                selected.add(normalized)
+        for key, count in (plan.get("first_place_count", {}) or {}).items():
+            normalized = tuple(sorted(int(x) for x in (key or tuple())))
+            if len(normalized) == 3 and len(set(normalized)) == 3:
+                first_place_count[normalized] = (
+                    int(first_place_count.get(normalized, 0)) + int(count or 0)
+                )
+
+    selected_sorted = sorted(selected)
+    stakes = []
+    for key in selected_sorted:
+        first_count = int(first_place_count.get(key, 0) or 0)
+        stakes.append((key, 100 * max(1, first_count)))
+    return {
+        "selected": tuple(selected_sorted),
+        "first_place_count": dict(first_place_count),
+        "stakes": tuple(stakes),
+        "ticket_count": len(selected_sorted),
+        "total_amount": sum(int(amount) for _, amount in stakes),
+    }
+
 def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     if not isinstance(plan, dict) or not plan:
         return []
@@ -10856,6 +10980,14 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     fight_count = float(plan.get("fight_count", 0.0) or 0.0)
     pressure_boundary = dict(plan.get("pressure_boundary", {}) or {})
     ticket_form = str(plan.get("ticket_form", "") or "")
+    a_axis_car = int(plan.get("a_axis_car", flow_axis_car) or flow_axis_car)
+    a_axis_line = [int(x) for x in (plan.get("a_axis_line", tuple()) or tuple())]
+    a_axis_selected_five = [
+        int(x) for x in (plan.get("a_axis_selected_five", tuple()) or tuple())
+    ]
+    a_axis_ticket_form = str(plan.get("a_axis_ticket_form", "") or "")
+    a_axis_tickets = [str(x) for x in (plan.get("a_axis_tickets", tuple()) or tuple())]
+    a_axis_ticket_count = int(plan.get("a_axis_ticket_count", 0) or 0)
 
     if axis_line:
         line_label = "".join(str(x) for x in axis_line)
@@ -10867,9 +10999,17 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     basic_tickets = []
     for _, items in (plan.get("ticket_groups", tuple()) or tuple()):
         basic_tickets.extend(str(x) for x in (items or tuple()))
-    purchase_plan = _v334b_build_top2_union_purchase_plan(
+    e_purchase_plan = _v334b_build_top2_union_purchase_plan(
         basic_tickets,
         weighted_trio_rows,
+    )
+    a_purchase_plan = _v334b_build_top2_union_purchase_plan(
+        a_axis_tickets,
+        weighted_trio_rows,
+    )
+    combined_purchase_plan = _v334g_merge_axis_purchase_plans(
+        e_purchase_plan,
+        a_purchase_plan,
     )
 
     def _v334b_ticket_text(key):
@@ -10880,25 +11020,32 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         return text or "算出不可"
 
     purchase_lines = []
-    if purchase_plan:
+    if e_purchase_plan and a_purchase_plan and combined_purchase_plan:
         stake_text = " ".join(
             f"{_v334b_ticket_text(key)}（{int(amount)}円）"
-            for key, amount in (purchase_plan.get("stakes", tuple()) or tuple())
+            for key, amount in (combined_purchase_plan.get("stakes", tuple()) or tuple())
         )
         purchase_lines = [
             "【評価上位2】",
-            f"的中点：{_v334b_top2_text(purchase_plan.get('hit_top', tuple()))}",
-            f"妙味点：{_v334b_top2_text(purchase_plan.get('myoumi_top', tuple()))}",
-            f"総合点：{_v334b_top2_text(purchase_plan.get('total_top', tuple()))}",
+            f"的中点：{_v334b_top2_text(e_purchase_plan.get('hit_top', tuple()))}",
+            f"妙味点：{_v334b_top2_text(e_purchase_plan.get('myoumi_top', tuple()))}",
+            f"総合点：{_v334b_top2_text(e_purchase_plan.get('total_top', tuple()))}",
+            f"【A軸基本三連複】3連複{a_axis_ticket_form}・計{a_axis_ticket_count}点",
+            f"Aライン保護：{''.join(str(x) for x in a_axis_line) if a_axis_line else a_axis_car}",
+            f"A軸5車：{''.join(str(x) for x in a_axis_selected_five) if a_axis_selected_five else '算出不可'}",
+            "【A軸評価上位2】",
+            f"的中点：{_v334b_top2_text(a_purchase_plan.get('hit_top', tuple()))}",
+            f"妙味点：{_v334b_top2_text(a_purchase_plan.get('myoumi_top', tuple()))}",
+            f"総合点：{_v334b_top2_text(a_purchase_plan.get('total_top', tuple()))}",
             (
                 f"【推奨購入】3連複{stake_text}・"
-                f"計{int(purchase_plan.get('ticket_count', 0) or 0)}点／"
-                f"{int(purchase_plan.get('total_amount', 0) or 0)}円"
+                f"計{int(combined_purchase_plan.get('ticket_count', 0) or 0)}点／"
+                f"{int(combined_purchase_plan.get('total_amount', 0) or 0)}円"
             ),
         ]
     else:
         purchase_lines = [
-            "【評価上位2】算出不可",
+            "【評価上位2】E軸またはA軸の評価を算出不可",
             "【推奨購入】評価データ不足のため生成不可",
         ]
 
@@ -10966,7 +11113,7 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
         *purchase_lines,
         "",
-        "※購入額は、基本6点内の三評価上位2点の和集合と評価1位獲得数だけで事前確定。",
+        "※購入額は、E軸・A軸の各6点を個別に三評価上位2で絞った和集合と、両軸の評価1位獲得数だけで事前確定。",
     ]
     return out
 
