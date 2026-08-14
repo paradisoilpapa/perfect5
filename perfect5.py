@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v334e（最終A/B・事前C/D/E役割重複防止版）:
+# ・E確定後の最終A/Bを先読みし、CまたはDがA/Bと重なる場合だけ未使用車へ再選出する。
+# ・Cは事前2着内率、Dは事前3着内率の既存基準を維持し、F判定前に5役を一意化する。
+# ・9車表示は2車複上位21通り・3連複上位35通りのまま変更しない。
 # v334d（noteコピーエリア拡張版）:
 # ・note用コピーエリアを約4行分高くする（620px→720px）。
 # v334c（推奨購入・車番昇順表示版）:
@@ -8904,6 +8908,107 @@ def _v281_unique_sequence(seq):
     return out
 
 
+def _v334e_make_final_roles_unique(
+    c_car,
+    d_car,
+    e_car,
+    adopted_sequence,
+    all_candidate_cars,
+    rate_map,
+    adopted_rank_map,
+):
+    """最終A/Bを先読みし、A/B/C/D/Eを重複なしにする。
+
+    Eは保護ラインを決める既存役割なので変更しない。
+    C/Dが最終A/Bと重なった場合だけ、Cは2着内率、Dは3着内率の
+    既存基準で未使用車から補い直す。
+    """
+    e_car = int(e_car)
+    c_car = int(c_car)
+    d_car = int(d_car)
+    adopted_sequence = _v281_unique_sequence(adopted_sequence)
+    candidate_cars = _v281_unique_sequence(
+        list(all_candidate_cars or []) + list(adopted_sequence or [])
+    )
+
+    final_a = next(
+        (int(car) for car in adopted_sequence if int(car) != e_car),
+        0,
+    )
+    final_b = next(
+        (
+            int(car) for car in adopted_sequence
+            if int(car) not in {e_car, final_a}
+        ),
+        0,
+    )
+    if not final_a or not final_b:
+        raise ValueError("最終A/Bを2車一意で先読みできません")
+
+    fixed = {int(final_a), int(final_b), int(e_car)}
+
+    def _rate(car, field):
+        try:
+            return float((rate_map or {}).get(int(car), {}).get(field, 0.0) or 0.0)
+        except Exception:
+            return 0.0
+
+    def _rank(car):
+        try:
+            return int((adopted_rank_map or {}).get(int(car), 999))
+        except Exception:
+            return 999
+
+    original_c = int(c_car)
+    original_d = int(d_car)
+    c_is_valid = bool(original_c not in fixed)
+    d_is_valid = bool(original_d not in fixed and original_d != original_c)
+
+    # Dが有効ならDを予約したまま、重複したCだけを2着内率で補い直す。
+    if not c_is_valid:
+        c_pool = [
+            int(car) for car in candidate_cars
+            if int(car) not in fixed
+            and (not d_is_valid or int(car) != original_d)
+        ]
+        if not c_pool:
+            raise ValueError("最終A/Bと重ならないC候補を確定できません")
+        c_car = min(
+            c_pool,
+            key=lambda car: (-_rate(car, "in2"), _rank(car), int(car)),
+        )
+    else:
+        c_car = int(original_c)
+
+    # Dが有効ならそのまま保持し、重複した場合だけ3着内率で補い直す。
+    if d_is_valid and int(original_d) != int(c_car):
+        d_car = int(original_d)
+    else:
+        d_pool = [
+            int(car) for car in candidate_cars
+            if int(car) not in fixed and int(car) != int(c_car)
+        ]
+        if not d_pool:
+            raise ValueError("最終A/Bと重ならないD候補を確定できません")
+        d_car = min(
+            d_pool,
+            key=lambda car: (-_rate(car, "in3"), _rank(car), int(car)),
+        )
+
+    roles = (int(final_a), int(final_b), int(c_car), int(d_car), int(e_car))
+    if len(set(roles)) != 5:
+        raise ValueError("最終A/B/C/D/Eを5車一意で確定できません")
+
+    return {
+        "c_car": int(c_car),
+        "d_car": int(d_car),
+        "e_car": int(e_car),
+        "final_a": int(final_a),
+        "final_b": int(final_b),
+        "changed": bool(int(c_car) != original_c or int(d_car) != original_d),
+    }
+
+
 def _v329_build_e_line_formation(e_car, e_line, adopted_sequence, f_car, all_candidate_cars=None):
     """Eライン保護型2－3－5を、車番重複なしで確定する。"""
     e_car = int(e_car)
@@ -10240,25 +10345,89 @@ def _v281_build_fixed_flow_plan(
     )
     e_car = next(int(car) for car in _d_e_candidates if int(car) != int(d_car))
 
-    # FはC/D/E内の着内数（1着＋2着＋3着）最多車。FがEならDへ昇格させる。
-    _fight_candidates = [int(c_car), int(d_car), int(e_car)]
-    f_car = min(
-        _fight_candidates,
-        key=lambda car: (
-            -float(_v317_rates.get(int(car), {}).get("in3_count", 0.0)),
-            int(adopted_rank_map.get(int(car), 999)),
-            int(car),
-        ),
-    )
-    fight_count = float(_v317_rates.get(int(f_car), {}).get("in3_count", 0.0))
-    c_fight_count = float(_v317_rates.get(int(c_car), {}).get("in3_count", 0.0))
+    # v334e：最終A/Bとの重複除去とF=E時のD/E入替を、Eが安定するまで行う。
+    # D/E入替でEが変わると最終A/Bも変わり得るため、一度だけの後処理にはしない。
+    _v334e_role_duplicate_resolved = False
+    _v334e_expected_final_a = 0
+    _v334e_expected_final_b = 0
+    f_replaced_d = False
     d_before_fight = int(d_car)
-    d_before_fight_count = float(_v317_rates.get(int(d_before_fight), {}).get("in3_count", 0.0))
     e_before_fight = int(e_car)
-    e_before_fight_count = float(_v317_rates.get(int(e_before_fight), {}).get("in3_count", 0.0))
-    f_replaced_d = bool(int(f_car) == int(e_car))
-    if f_replaced_d:
-        d_car, e_car = int(f_car), int(d_car)
+    d_before_fight_count = float(_v317_rates.get(int(d_car), {}).get("in3_count", 0.0))
+    e_before_fight_count = float(_v317_rates.get(int(e_car), {}).get("in3_count", 0.0))
+
+    try:
+        for _v334e_role_pass in range(6):
+            _v334e_unique_roles = _v334e_make_final_roles_unique(
+                c_car=c_car,
+                d_car=d_car,
+                e_car=e_car,
+                adopted_sequence=adopted_sequence,
+                all_candidate_cars=all_candidate_cars,
+                rate_map=_v317_rates,
+                adopted_rank_map=adopted_rank_map,
+            )
+            c_car = int(_v334e_unique_roles["c_car"])
+            d_car = int(_v334e_unique_roles["d_car"])
+            e_car = int(_v334e_unique_roles["e_car"])
+            _v334e_expected_final_a = int(_v334e_unique_roles["final_a"])
+            _v334e_expected_final_b = int(_v334e_unique_roles["final_b"])
+            _v334e_role_duplicate_resolved = bool(
+                _v334e_role_duplicate_resolved or _v334e_unique_roles["changed"]
+            )
+
+            _fight_candidates = [int(c_car), int(d_car), int(e_car)]
+            f_car = min(
+                _fight_candidates,
+                key=lambda car: (
+                    -float(_v317_rates.get(int(car), {}).get("in3_count", 0.0)),
+                    int(adopted_rank_map.get(int(car), 999)),
+                    int(car),
+                ),
+            )
+            fight_count = float(_v317_rates.get(int(f_car), {}).get("in3_count", 0.0))
+            c_fight_count = float(_v317_rates.get(int(c_car), {}).get("in3_count", 0.0))
+
+            if int(f_car) == int(e_car):
+                f_replaced_d = True
+                d_before_fight = int(d_car)
+                d_before_fight_count = float(
+                    _v317_rates.get(int(d_before_fight), {}).get("in3_count", 0.0)
+                )
+                e_before_fight = int(e_car)
+                e_before_fight_count = float(
+                    _v317_rates.get(int(e_before_fight), {}).get("in3_count", 0.0)
+                )
+                d_car, e_car = int(f_car), int(d_car)
+                continue
+
+            if not f_replaced_d:
+                d_before_fight = int(d_car)
+                d_before_fight_count = float(
+                    _v317_rates.get(int(d_before_fight), {}).get("in3_count", 0.0)
+                )
+                e_before_fight = int(e_car)
+                e_before_fight_count = float(
+                    _v317_rates.get(int(e_before_fight), {}).get("in3_count", 0.0)
+                )
+            break
+        else:
+            raise ValueError("役割一意化とD/E入替が6回以内に収束しません")
+    except Exception as _v334e_role_error:
+        return {
+            **base_result,
+            "status": "final_role_uniqueness_failed",
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複Eライン先行保護2－3－5",
+            "ticket_reason": f"最終A/B/C/D/Eを重複なしで確定できないため生成不可：{_v334e_role_error}",
+        }
+
     f_selected = True
     f_blocked_by_required_protection = False
     f_lost_to_line_tail = False
@@ -10313,6 +10482,24 @@ def _v281_build_fixed_flow_plan(
     formation_five = tuple(int(car) for car in _v329_columns["third_column"])
     flow_axis_car = int(_v329_columns["flow_axis_car"])
     flow_support_car = int(_v329_columns["flow_support_car"])
+    if (
+        int(flow_axis_car) != int(_v334e_expected_final_a)
+        or int(flow_support_car) != int(_v334e_expected_final_b)
+        or len({int(flow_axis_car), int(flow_support_car), int(c_car), int(d_car), int(e_car)}) != 5
+    ):
+        return {
+            **base_result,
+            "status": "final_role_uniqueness_mismatch",
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複Eライン先行保護2－3－5",
+            "ticket_reason": "最終A/BとC/D/Eの一意性検査が一致しないため生成停止",
+        }
     flow_axis_rank = int(adopted_rank_map.get(flow_axis_car, 0) or 0)
     flow_support_rank = int(adopted_rank_map.get(flow_support_car, 0) or 0)
     e_line_second_car = int(_v329_columns["e_line_second_car"])
@@ -10421,6 +10608,7 @@ def _v281_build_fixed_flow_plan(
         "fight_e_before_count": float(e_before_fight_count),
         "fight_c_count": float(c_fight_count),
         "fight_count": float(fight_count),
+        "role_duplicate_resolved": bool(_v334e_role_duplicate_resolved),
         "ticket_form": ticket_form,
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
