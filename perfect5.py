@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+# v334m（推奨購入E/A/共通3区分表示版）:
+# ・推奨購入をEのみ、Aのみ、E/A共通の3行に分け、二重入力を防ぐ。
+# ・各買い目の金額、合計点数・合計金額、選抜・増額ロジックは変更しない。
 # v334l（両軸和集合後・1位一致1点増額版）:
 # ・E軸・A軸の上位2和集合を作った後、その全買い目を一つの候補群として再順位付けする。
 # ・候補群全体の的中点1位と総合点1位が同じ場合、その1買い目だけ200円とする。
@@ -11050,10 +11053,29 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
 
     purchase_lines = []
     if e_purchase_plan and a_purchase_plan and combined_purchase_plan:
-        stake_text = " ".join(
-            f"{_v334b_ticket_text(key)}（{int(amount)}円）"
+        e_selected = {
+            tuple(sorted(int(x) for x in (key or tuple())))
+            for key in (e_purchase_plan.get("selected", tuple()) or tuple())
+        }
+        a_selected = {
+            tuple(sorted(int(x) for x in (key or tuple())))
+            for key in (a_purchase_plan.get("selected", tuple()) or tuple())
+        }
+        stake_map = {
+            tuple(sorted(int(x) for x in (key or tuple()))): int(amount)
             for key, amount in (combined_purchase_plan.get("stakes", tuple()) or tuple())
-        )
+        }
+        e_only = sorted(e_selected - a_selected)
+        a_only = sorted(a_selected - e_selected)
+        common = sorted(e_selected & a_selected)
+
+        def _v334m_group_text(keys):
+            parts = [
+                f"{_v334b_ticket_text(key)}（{int(stake_map.get(key, 100))}円）"
+                for key in (keys or [])
+            ]
+            return " ".join(parts) if parts else "なし"
+
         purchase_lines = [
             "【評価上位2】",
             f"的中点：{_v334b_top2_text(e_purchase_plan.get('hit_top', tuple()))}",
@@ -11064,8 +11086,11 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
             "【A軸評価上位2】",
             f"的中点：{_v334b_top2_text(a_purchase_plan.get('hit_top', tuple()))}",
             f"総合点：{_v334b_top2_text(a_purchase_plan.get('total_top', tuple()))}",
+            "【推奨購入】3連複",
+            f"【Eのみ】{_v334m_group_text(e_only)}",
+            f"【Aのみ】{_v334m_group_text(a_only)}",
+            f"【E/A共通】{_v334m_group_text(common)}",
             (
-                f"【推奨購入】3連複{stake_text}・"
                 f"計{int(combined_purchase_plan.get('ticket_count', 0) or 0)}点／"
                 f"{int(combined_purchase_plan.get('total_amount', 0) or 0)}円"
             ),
