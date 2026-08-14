@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v334f（E軸4車BOX・基本6点版）:
+# ・最終5車を確定した後、Eを1列目、E以外の4車を2・3列目に置く1－4－4へ変更する。
+# ・基本三連複は必ずEを含む6点とし、Eを含まない買い目は基本候補から除外する。
+# ・評価上位2の和集合、評価1位重複投資、役割判定、評価表、既存表示は維持する。
 # v334e（最終A/B・事前C/D/E役割重複防止版）:
 # ・E確定後の最終A/Bを先読みし、CまたはDがA/Bと重なる場合だけ未使用車へ再選出する。
 # ・Cは事前2着内率、Dは事前3着内率の既存基準を維持し、F判定前に5役を一意化する。
@@ -8,7 +12,7 @@
 # v334c（推奨購入・車番昇順表示版）:
 # ・推奨購入は、取捨増減しやすいよう三連複の車番組合せを昇順で表示する。
 # v334b（評価上位2和集合・評価1位重複投資版）:
-# ・基本7点内から、的中点・妙味点・総合点の各上位2点を内部未丸め値で選ぶ。
+# ・基本買い目内から、的中点・妙味点・総合点の各上位2点を内部未丸め値で選ぶ。
 # ・三部門の上位2点を重複統合し、選出買い目は各100円とする。
 # ・各部門1位が同一買い目に重なった場合、1位獲得数×100円へ増額する。
 # ・消去候補は廃止し、実オッズを使わず事前購入可能な推奨買い目と投資額を表示する。
@@ -10505,14 +10509,55 @@ def _v281_build_fixed_flow_plan(
     e_line_second_car = int(_v329_columns["e_line_second_car"])
     second_add_car = int(_v329_columns["second_add_car"])
     fight_used_in_ticket = bool(_v329_columns["fight_used_in_ticket"])
-    tickets = list(_v329_columns["tickets"])
 
-    third_column_text = "".join(str(int(car)) for car in formation_five)
-    first_column_text = "".join(str(int(car)) for car in first_column)
-    second_column_text = "".join(str(int(car)) for car in second_column)
+    # v334f：最終5車の選出とEライン保護はそのまま使い、実券だけをE軸4車BOXへ組み替える。
+    # Eを必ず含み、残る4車から2車を選ぶため、三連複は常に6点となる。
+    _v334f_other_four = [
+        int(car) for car in formation_five if int(car) != int(e_car)
+    ]
+    if len(_v334f_other_four) != 4 or len(set(_v334f_other_four)) != 4:
+        return {
+            **base_result,
+            "status": "e_axis_four_box_generation_failed",
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複E軸1－4－4",
+            "ticket_reason": "最終5車からE以外の4車を一意に確定できないため生成停止",
+        }
+
+    _v334f_ticket_first = [int(e_car)]
+    _v334f_ticket_others = list(_v334f_other_four)
+    tickets = [
+        "-".join(str(int(car)) for car in (int(e_car), int(a), int(b)))
+        for a, b in combinations(_v334f_other_four, 2)
+    ]
+    if len(tickets) != 6 or len(set(tuple(sorted(int(x) for x in ticket.split("-"))) for ticket in tickets)) != 6:
+        return {
+            **base_result,
+            "status": "e_axis_four_box_ticket_count_failed",
+            "formation_five": tuple(),
+            "formation_c": 0,
+            "formation_d": 0,
+            "formation_e": 0,
+            "ticket_form": "",
+            "ticket_groups": tuple(),
+            "ticket_count": 0,
+            "ticket_family": "3連複E軸1－4－4",
+            "ticket_reason": f"E軸4車BOXの実券が6点ではありません（{len(tickets)}点）",
+        }
+
+    # 役割表示用のsecond_columnは従来値を維持し、買い目表示だけを1－4－4にする。
+    third_column_text = "".join(str(int(car)) for car in _v334f_ticket_others)
+    first_column_text = "".join(str(int(car)) for car in _v334f_ticket_first)
+    second_column_text = "".join(str(int(car)) for car in _v334f_ticket_others)
     ticket_form = f"{first_column_text}-{second_column_text}-{third_column_text}"
 
-    # 実券7点は共通生成関数の最終検査済み結果を使用する。
+    # 実券6点は、最終5車のE以外4車から作る全組合せを使用する。
 
     candidate_text = "・".join(
         f"{rec['style']}={rec['line_label']}（2車換算={float(rec['strength']):.6f}・"
@@ -10558,7 +10603,7 @@ def _v281_build_fixed_flow_plan(
         f"{c_reason}採用流れ最終順位{flow_axis_rank}位の{flow_axis_car}を相手軸A、"
         f"{flow_support_rank}位の{flow_support_car}をBにする。"
         f"Eライン残りの上位{int(e_line_second_car or second_add_car)}を2列目へ配置。{f_reason}"
-        f"E＋A－E＋A＋ライン上位－Eライン全車＋A・Bの2－3－5へ展開"
+        f"E={e_car}を必ず含み、最終5車の残り4車から2車を選ぶ1－4－4の6点へ展開"
     )
 
     return {
@@ -10612,12 +10657,12 @@ def _v281_build_fixed_flow_plan(
         "ticket_form": ticket_form,
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
-        "ticket_family": "3連複Eライン先行保護2－3－5",
+        "ticket_family": "3連複E軸1－4－4",
         "ticket_reason": reason,
     }
 
 def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
-    """基本7点から三評価上位2点の和集合と、評価1位重複数による投資額を返す。"""
+    """基本6点から三評価上位2点の和集合と、評価1位重複数による投資額を返す。"""
     try:
         basic = []
         for ticket in (basic_tickets or []):
@@ -10921,7 +10966,7 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
         *purchase_lines,
         "",
-        "※購入額は、基本7点内の三評価上位2点の和集合と評価1位獲得数だけで事前確定。",
+        "※購入額は、基本6点内の三評価上位2点の和集合と評価1位獲得数だけで事前確定。",
     ]
     return out
 
