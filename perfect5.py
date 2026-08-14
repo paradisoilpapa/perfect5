@@ -8,6 +8,8 @@
 # ・DFが役割重複で3車未満になる場合は、B、保護後5車内のF、保護後5車順の順で補充する。
 # ・FWとMF・DFの重複を禁止し、FW2－MF2－DF3から実券を必ず6点生成する。
 # ・Dが保護後5車から落ちた場合は復活させず、MF・DFと重ならないB等を第2FWへ補充する。
+# ・3車以上のEラインのMFは、Aとの重複を許してE以外の採用流れ最上位車を先に確定する。
+# ・AとラインMFが同じ場合は、ラインDFをMFへ上げず、F等のラインDF外車でMF2車目を補う。
 # ・A～F、L、消去候補、全評価表、Eライン全車保護、全員単騎・9車フォールバックは削除しない。
 # v335（DE型・Eライン保護統合版）:
 # ・基本三連複の列構成を「D+E／A+D+E／Eライン保護後5車」へ変更する。
@@ -9139,6 +9141,7 @@ def _v336_build_fw_mf_df_formation(
     e_car,
     e_line,
     f_car,
+    adopted_sequence,
 ):
     """Eライン保護後5車だけを使い、FW－MF－DFへ再配置する。"""
     a_car = int(a_car)
@@ -9147,6 +9150,10 @@ def _v336_build_fw_mf_df_formation(
     d_car = int(d_car)
     e_car = int(e_car)
     f_car = int(f_car or 0)
+    adopted_sequence = _v281_unique_sequence(adopted_sequence)
+    adopted_rank = {
+        int(car): idx for idx, car in enumerate(adopted_sequence, start=1)
+    }
     e_line = _v281_unique_sequence(e_line or [e_car])
     if e_car not in e_line:
         e_line.insert(0, e_car)
@@ -9168,8 +9175,6 @@ def _v336_build_fw_mf_df_formation(
     protected_second = _v281_unique_sequence(
         (protected_columns or {}).get("second_column", tuple()) or tuple()
     )
-    protected_l = int((protected_columns or {}).get("e_line_second_car", 0) or 0)
-
     # Eラインの役割を、現行保護済み列から分解する。
     # 2車ラインの相方は横のMFではなくDF。
     # 3車以上はLをMF、Lより後ろに残る全ライン車をDFとする。
@@ -9180,13 +9185,12 @@ def _v336_build_fw_mf_df_formation(
     line_mf_car = 0
     line_df_cars = []
     if len(e_line_in_pool) >= 3:
-        if protected_l in e_line_set and protected_l != e_car:
-            line_mf_car = int(protected_l)
-        else:
-            line_mf_car = next(
-                (int(car) for car in e_line_in_pool if int(car) != e_car),
-                0,
-            )
+        # Aだから除外するのではなく、E以外のライン車で採用流れ順位最上位をMFにする。
+        # 京王閣3R型734・E=7・A=3では、3をMF、残る4をDFとする。
+        line_mf_car = min(
+            (int(car) for car in e_line_in_pool if int(car) != e_car),
+            key=lambda car: (int(adopted_rank.get(int(car), 999)), int(car)),
+        )
         line_df_cars = [
             int(car) for car in e_line_in_pool
             if int(car) not in {e_car, line_mf_car}
@@ -9201,14 +9205,24 @@ def _v336_build_fw_mf_df_formation(
         mf_seed = [a_car, b_car]
         formation_pattern = "FW-MF-DF（単騎E補完配置）"
 
+    # AとラインMFの重複時は、ラインDFをMFへ誤昇格させない。
+    # F、B、採用流れ順位、保護後5車順から、E・ラインDF以外を補う。
+    mf_blocked = {int(e_car)} | set(int(car) for car in line_df_cars)
     mf_cars = [
         int(car) for car in _v281_unique_sequence(mf_seed)
-        if int(car) in protected_set
+        if int(car) in protected_set and int(car) not in mf_blocked
     ]
-    for car in protected_second + [a_car, b_car] + protected_five:
+    mf_fill_order = _v281_unique_sequence(
+        [f_car, b_car] + adopted_sequence + protected_second + protected_five
+    )
+    for car in mf_fill_order:
         if len(mf_cars) >= 2:
             break
-        if int(car) in protected_set and int(car) not in mf_cars:
+        if (
+            int(car) in protected_set
+            and int(car) not in mf_blocked
+            and int(car) not in mf_cars
+        ):
             mf_cars.append(int(car))
     if len(mf_cars) != 2:
         raise ValueError("MF2車をライン保護後5車から確定できません")
@@ -9329,6 +9343,11 @@ def _v336_build_fw_mf_df_formation(
         "line_mf_car": int(line_mf_car or 0),
         "line_df_cars": tuple(line_df_cars),
         "line_df_overflow_cars": tuple(line_df_overflow_cars),
+        "e_line_second_car": int(
+            line_mf_car
+            if len(e_line_in_pool) >= 3
+            else (line_df_cars[0] if line_df_cars else 0)
+        ),
         "second_add_car": int(second_column[1]),
         "fight_used_in_ticket": bool(f_car and f_car in ticket_car_set),
         "tickets": tuple(tickets),
@@ -10625,6 +10644,7 @@ def _v281_build_fixed_flow_plan(
             e_car=int(e_car),
             e_line=e_line,
             f_car=int(f_car or 0),
+            adopted_sequence=adopted_sequence,
         )
     except Exception as _v329_error:
         return {
