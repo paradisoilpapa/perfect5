@@ -1,4 +1,14 @@
 # -*- coding: utf-8 -*-
+# v336（ライン保護後FW・MF・DF再配置版）:
+# ・現行のEライン保護型2－3－5を先に完成させ、その保護後5車だけを新フォーメーションの母集団にする。
+# ・ライン保護で5車から落ちたD/C/F等を、元の役割だけを理由に新フォーメーションへ復活させない。
+# ・FWは保護後5車内のD＋Eを基本とし、Dが保護後5車にいない場合は保護済み1列目で補う。
+# ・Eライン2車時は相方をDFとし、MF=A＋B、DF=A＋B＋Eライン相方へ再配置する。
+# ・Eライン3車以上は2列目ライン車をMF、3列目以降の全ライン車をDFとし、MF=A＋L、DF=A＋L＋ライン後位とする。
+# ・DFが役割重複で3車未満になる場合は、B、保護後5車内のF、保護後5車順の順で補充する。
+# ・FWとMF・DFの重複を禁止し、FW2－MF2－DF3から実券を必ず6点生成する。
+# ・Dが保護後5車から落ちた場合は復活させず、MF・DFと重ならないB等を第2FWへ補充する。
+# ・A～F、L、消去候補、全評価表、Eライン全車保護、全員単騎・9車フォールバックは削除しない。
 # v335（DE型・Eライン保護統合版）:
 # ・基本三連複の列構成を「D+E／A+D+E／Eライン保護後5車」へ変更する。
 # ・役割A～Eの5車とEライン保護後5車が一致する通常時は、DE-ADE-ABCDEの7点になる。
@@ -9039,80 +9049,252 @@ def _v335_build_de_e_line_formation(
     e_car,
     e_line,
 ):
-    """Eライン保護後5車を残し、DE－ADEの7点へ組み直す。"""
+    """現行ライン保護済み三連複を、v336へ渡す直前の完成形にする。"""
     a_car = int(a_car)
-    b_car = int(b_car)
-    c_car = int(c_car)
     d_car = int(d_car)
     e_car = int(e_car)
     e_line = _v281_unique_sequence(e_line or [e_car])
     if e_car not in e_line:
         e_line.insert(0, e_car)
-    e_line_set = set(int(car) for car in e_line)
 
-    protected_third = _v281_unique_sequence(
+    # 3車以上のEラインでは、現行ライン保護型をそのまま完成形とする。
+    # F枠不採用で落ちたD等をDE型へ戻すと、ライン補正を逆行するため禁止する。
+    if len(e_line) >= 3:
+        out = dict(protected_columns or {})
+        out["formation_pattern"] = "Eライン3車以上・ライン保護完成形"
+        out["de_conflict"] = False
+        return out
+
+    protected_five = _v281_unique_sequence(
         (protected_columns or {}).get("third_column", tuple()) or tuple()
     )
-    if len(protected_third) != 5 or not e_line_set.issubset(set(protected_third)):
+    protected_set = set(protected_five)
+    e_line_set = set(int(car) for car in e_line)
+    if len(protected_five) != 5 or not e_line_set.issubset(protected_set):
         raise ValueError("Eライン保護後5車が確定していません")
 
-    # 役割重複でDE－ADEの2－3列を作れない場合も、保護済みの従来7点を壊さない。
-    if len({a_car, d_car, e_car}) < 3:
-        fallback = dict(protected_columns or {})
-        fallback["formation_pattern"] = "Eライン保護優先フォールバック"
-        fallback["de_conflict"] = True
-        return fallback
-
-    # DE－ADEに必要なA・D・EとEライン全車を同時に保護する。
+    # 2車以下では現行v335どおりD＋Eを攻撃2車として完成させる。
     mandatory = set(e_line_set) | {a_car, d_car, e_car}
-    if len(mandatory) > 5:
-        fallback = dict(protected_columns or {})
-        fallback["formation_pattern"] = "Eライン保護優先フォールバック"
-        fallback["de_conflict"] = True
-        return fallback
+    if len({a_car, d_car, e_car}) < 3 or len(mandatory) > 5:
+        out = dict(protected_columns or {})
+        out["formation_pattern"] = "Eライン保護優先フォールバック"
+        out["de_conflict"] = True
+        return out
 
-    third_set = set(protected_third)
-    if d_car not in third_set:
+    if d_car not in protected_set:
         removable = [
-            int(car) for car in reversed(protected_third)
+            int(car) for car in reversed(protected_five)
             if int(car) not in mandatory
         ]
         if not removable:
-            fallback = dict(protected_columns or {})
-            fallback["formation_pattern"] = "Eライン保護優先フォールバック"
-            fallback["de_conflict"] = True
-            return fallback
+            out = dict(protected_columns or {})
+            out["formation_pattern"] = "Eライン保護優先フォールバック"
+            out["de_conflict"] = True
+            return out
         drop_car = int(removable[0])
-        protected_third = [int(car) for car in protected_third if int(car) != drop_car]
-        protected_third.append(int(d_car))
-        third_set = set(protected_third)
+        protected_five = [
+            int(car) for car in protected_five if int(car) != drop_car
+        ] + [int(d_car)]
+        protected_set = set(protected_five)
 
-    if not {a_car, d_car, e_car}.issubset(third_set):
-        fallback = dict(protected_columns or {})
-        fallback["formation_pattern"] = "Eライン保護優先フォールバック"
-        fallback["de_conflict"] = True
-        return fallback
-
-    # 3列目は既存のEライン保護後5車の並びを維持する。
-    # 車券の集合としてA～Eと一致する場合が、比較表のABCDEに相当する。
-    third_column = [int(car) for car in protected_third]
-    if len(third_column) != 5:
-        raise ValueError("DE型の3列目を5車一意で確定できません")
+    if not {a_car, d_car, e_car}.issubset(protected_set):
+        out = dict(protected_columns or {})
+        out["formation_pattern"] = "Eライン保護優先フォールバック"
+        out["de_conflict"] = True
+        return out
 
     first_column = [d_car, e_car]
     second_column = [a_car, d_car, e_car]
+    tickets = []
+    ticket_keys = set()
+    for car1 in first_column:
+        for car2 in second_column:
+            for car3 in protected_five:
+                combo = tuple(sorted((int(car1), int(car2), int(car3))))
+                if len(set(combo)) != 3 or combo in ticket_keys:
+                    continue
+                ticket_keys.add(combo)
+                tickets.append("-".join(str(car) for car in combo))
+    if len(tickets) != 7:
+        raise ValueError(f"現行ライン保護済み三連複が7点ではありません（{len(tickets)}点）")
+
+    out = dict(protected_columns or {})
+    out.update({
+        "first_column": tuple(first_column),
+        "second_column": tuple(second_column),
+        "third_column": tuple(protected_five),
+        "tickets": tuple(tickets),
+        "formation_pattern": "DE-ADE-Eライン保護後5車",
+        "de_conflict": False,
+    })
+    return out
+
+
+def _v336_build_fw_mf_df_formation(
+    protected_columns,
+    a_car,
+    b_car,
+    c_car,
+    d_car,
+    e_car,
+    e_line,
+    f_car,
+):
+    """Eライン保護後5車だけを使い、FW－MF－DFへ再配置する。"""
+    a_car = int(a_car)
+    b_car = int(b_car)
+    c_car = int(c_car)
+    d_car = int(d_car)
+    e_car = int(e_car)
+    f_car = int(f_car or 0)
+    e_line = _v281_unique_sequence(e_line or [e_car])
+    if e_car not in e_line:
+        e_line.insert(0, e_car)
+    e_line_set = set(int(car) for car in e_line)
+
+    # v329の完成形を権威ある中間結果とする。ここから落ちた車は復活させない。
+    protected_five = _v281_unique_sequence(
+        (protected_columns or {}).get("third_column", tuple()) or tuple()
+    )
+    protected_set = set(protected_five)
+    if len(protected_five) != 5 or not e_line_set.issubset(protected_set):
+        raise ValueError("Eライン保護後5車が確定していません")
+    if e_car not in protected_set:
+        raise ValueError("EがEライン保護後5車にありません")
+
+    protected_first = _v281_unique_sequence(
+        (protected_columns or {}).get("first_column", tuple()) or tuple()
+    )
+    protected_second = _v281_unique_sequence(
+        (protected_columns or {}).get("second_column", tuple()) or tuple()
+    )
+    protected_l = int((protected_columns or {}).get("e_line_second_car", 0) or 0)
+
+    # Eラインの役割を、現行保護済み列から分解する。
+    # 2車ラインの相方は横のMFではなくDF。
+    # 3車以上はLをMF、Lより後ろに残る全ライン車をDFとする。
+    e_line_in_pool = [int(car) for car in e_line if int(car) in protected_set]
+    if len(e_line_in_pool) != len(e_line):
+        raise ValueError("Eライン保護後5車からEライン車が欠落しています")
+
+    line_mf_car = 0
+    line_df_cars = []
+    if len(e_line_in_pool) >= 3:
+        if protected_l in e_line_set and protected_l != e_car:
+            line_mf_car = int(protected_l)
+        else:
+            line_mf_car = next(
+                (int(car) for car in e_line_in_pool if int(car) != e_car),
+                0,
+            )
+        line_df_cars = [
+            int(car) for car in e_line_in_pool
+            if int(car) not in {e_car, line_mf_car}
+        ]
+        mf_seed = [a_car, line_mf_car]
+        formation_pattern = "FW-MF-DF（3車以上Eライン縦配置）"
+    elif len(e_line_in_pool) == 2:
+        line_df_cars = [int(car) for car in e_line_in_pool if int(car) != e_car]
+        mf_seed = [a_car, b_car]
+        formation_pattern = "FW-MF-DF（2車Eライン相方DF配置）"
+    else:
+        mf_seed = [a_car, b_car]
+        formation_pattern = "FW-MF-DF（単騎E補完配置）"
+
+    mf_cars = [
+        int(car) for car in _v281_unique_sequence(mf_seed)
+        if int(car) in protected_set
+    ]
+    for car in protected_second + [a_car, b_car] + protected_five:
+        if len(mf_cars) >= 2:
+            break
+        if int(car) in protected_set and int(car) not in mf_cars:
+            mf_cars.append(int(car))
+    if len(mf_cars) != 2:
+        raise ValueError("MF2車をライン保護後5車から確定できません")
+
+    # DFはMF2車を下げた2枚＋ライン由来DF1車の計3車で固定する。
+    # 4車ライン等でラインDFが複数いる場合、先頭1車をDFへ置き、残りは
+    # 6点を崩さず全ライン車を残すためFW補充候補へ回す。
+    line_df_anchor = next(
+        (int(car) for car in line_df_cars if int(car) not in set(mf_cars)),
+        0,
+    )
+    line_df_overflow_cars = [
+        int(car) for car in line_df_cars
+        if int(car) != int(line_df_anchor or 0)
+        and int(car) not in set(mf_cars)
+    ]
+    df_cars = _v281_unique_sequence(
+        mf_cars + ([line_df_anchor] if line_df_anchor else [])
+    )
+    df_fill_order = _v281_unique_sequence(
+        [b_car, f_car] + protected_five + protected_second + protected_first
+    )
+    for car in df_fill_order:
+        if len(df_cars) >= 3:
+            break
+        if (
+            int(car) in protected_set
+            and int(car) != e_car
+            and int(car) not in df_cars
+        ):
+            df_cars.append(int(car))
+    if len(df_cars) != 3:
+        raise ValueError("DF3車をライン保護後5車から確定できません")
+
+    # FWはD＋Eを基本とする。ただしMF・DFとの重複は禁止する。
+    # Dがライン補正で落ちた場合は復活させず、B、F、保護後5車から補う。
+    # これによりFW2・MF2・DF3（MF2を含む）の実券を必ず6点にする。
+    blocked_fw = set(mf_cars) | set(df_cars)
+    fw_cars = []
+    for car in [d_car, e_car]:
+        if (
+            int(car) in protected_set
+            and int(car) not in blocked_fw
+            and int(car) not in fw_cars
+        ):
+            fw_cars.append(int(car))
+    fw_fill_order = _v281_unique_sequence(
+        line_df_overflow_cars
+        + [b_car, f_car]
+        + protected_first
+        + protected_second
+        + protected_five
+    )
+    for car in fw_fill_order:
+        if len(fw_cars) >= 2:
+            break
+        if (
+            int(car) in protected_set
+            and int(car) not in blocked_fw
+            and int(car) not in fw_cars
+        ):
+            fw_cars.append(int(car))
+    if len(fw_cars) != 2 or e_car not in fw_cars:
+        raise ValueError("Eを含むFW2車をMF・DFと重複せず確定できません")
+
+    first_column = [int(car) for car in fw_cars]
+    second_column = [int(car) for car in mf_cars]
+    third_column = [int(car) for car in df_cars]
     first_set = set(first_column)
     second_set = set(second_column)
     third_set = set(third_column)
     if not all((
         len(first_set) == 2,
-        len(second_set) == 3,
-        len(third_set) == 5,
-        first_set.issubset(second_set),
+        len(second_set) == 2,
+        len(third_set) == 3,
+        first_set.issubset(protected_set),
+        second_set.issubset(protected_set),
+        third_set.issubset(protected_set),
+        first_set.isdisjoint(second_set),
+        first_set.isdisjoint(third_set),
         second_set.issubset(third_set),
-        e_line_set.issubset(third_set),
+        first_set | third_set == protected_set,
+        e_line_set.issubset(first_set | second_set | third_set),
+        e_car in first_set,
     )):
-        raise ValueError("DE－ADEとEライン保護の最終条件を満たしません")
+        raise ValueError("FW－MF－DFとEライン保護後5車の最終条件を満たしません")
 
     tickets = []
     ticket_keys = set()
@@ -9124,20 +9306,33 @@ def _v335_build_de_e_line_formation(
                     continue
                 ticket_keys.add(combo)
                 tickets.append("-".join(str(car) for car in combo))
-    if len(tickets) != 7:
-        raise ValueError(f"DE－ADEの実券が7点ではありません（{len(tickets)}点）")
+    if len(tickets) != 6:
+        raise ValueError(f"FW－MF－DFの実券が6点ではありません（{len(tickets)}点）")
+
+    ticket_car_set = {
+        int(car)
+        for ticket in ticket_keys
+        for car in ticket
+    }
+    if not ticket_car_set.issubset(protected_set):
+        raise ValueError("ライン保護後5車以外が実券へ混入しました")
 
     out = dict(protected_columns or {})
     out.update({
         "first_column": tuple(first_column),
         "second_column": tuple(second_column),
         "third_column": tuple(third_column),
-        "second_add_car": int(a_car),
-        "fight_used_in_ticket": bool(
-            (protected_columns or {}).get("fight_used_in_ticket", False)
-        ),
+        "protected_five": tuple(protected_five),
+        "fw_cars": tuple(first_column),
+        "mf_cars": tuple(second_column),
+        "df_cars": tuple(third_column),
+        "line_mf_car": int(line_mf_car or 0),
+        "line_df_cars": tuple(line_df_cars),
+        "line_df_overflow_cars": tuple(line_df_overflow_cars),
+        "second_add_car": int(second_column[1]),
+        "fight_used_in_ticket": bool(f_car and f_car in ticket_car_set),
         "tickets": tuple(tickets),
-        "formation_pattern": "DE-ADE-Eライン保護後5車",
+        "formation_pattern": formation_pattern,
         "de_conflict": False,
     })
     return out
@@ -10410,6 +10605,7 @@ def _v281_build_fixed_flow_plan(
             f_car=int(f_car or 0),
             all_candidate_cars=individual_ranked_cars,
         )
+        # 現行のライン保護済み三連複を先に完成させる。
         _v329_columns = _v335_build_de_e_line_formation(
             protected_columns=_v329_columns,
             a_car=int(_v329_columns["flow_axis_car"]),
@@ -10418,6 +10614,17 @@ def _v281_build_fixed_flow_plan(
             d_car=int(d_car),
             e_car=int(e_car),
             e_line=e_line,
+        )
+        # 完成形を分解するワンクッション後、FW－MF－DFへ再配置する。
+        _v329_columns = _v336_build_fw_mf_df_formation(
+            protected_columns=_v329_columns,
+            a_car=int(_v329_columns["flow_axis_car"]),
+            b_car=int(_v329_columns["flow_support_car"]),
+            c_car=int(c_car),
+            d_car=int(d_car),
+            e_car=int(e_car),
+            e_line=e_line,
+            f_car=int(f_car or 0),
         )
     except Exception as _v329_error:
         return {
@@ -10448,7 +10655,25 @@ def _v281_build_fixed_flow_plan(
 
     first_column = [int(car) for car in _v329_columns["first_column"]]
     second_column = [int(car) for car in _v329_columns["second_column"]]
-    formation_five = tuple(int(car) for car in _v329_columns["third_column"])
+    formation_five = tuple(
+        int(car)
+        for car in (
+            _v329_columns.get("protected_five", tuple())
+            or _v329_columns["third_column"]
+        )
+    )
+    third_column = [int(car) for car in _v329_columns["third_column"]]
+    fw_cars = tuple(int(car) for car in (_v329_columns.get("fw_cars", tuple()) or tuple()))
+    mf_cars = tuple(int(car) for car in (_v329_columns.get("mf_cars", tuple()) or tuple()))
+    df_cars = tuple(int(car) for car in (_v329_columns.get("df_cars", tuple()) or tuple()))
+    line_mf_car = int(_v329_columns.get("line_mf_car", 0) or 0)
+    line_df_cars = tuple(
+        int(car) for car in (_v329_columns.get("line_df_cars", tuple()) or tuple())
+    )
+    line_df_overflow_cars = tuple(
+        int(car)
+        for car in (_v329_columns.get("line_df_overflow_cars", tuple()) or tuple())
+    )
     flow_axis_car = int(_v329_columns["flow_axis_car"])
     flow_support_car = int(_v329_columns["flow_support_car"])
     flow_axis_rank = int(adopted_rank_map.get(flow_axis_car, 0) or 0)
@@ -10460,12 +10685,12 @@ def _v281_build_fixed_flow_plan(
     formation_pattern = str(_v329_columns.get("formation_pattern", "") or "")
     de_conflict = bool(_v329_columns.get("de_conflict", False))
 
-    third_column_text = "".join(str(int(car)) for car in formation_five)
+    third_column_text = "".join(str(int(car)) for car in third_column)
     first_column_text = "".join(str(int(car)) for car in first_column)
     second_column_text = "".join(str(int(car)) for car in second_column)
     ticket_form = f"{first_column_text}-{second_column_text}-{third_column_text}"
 
-    # 実券7点は共通生成関数の最終検査済み結果を使用する。
+    # 実券はFW－MF－DF生成関数の重複除去・保護後5車混入検査済み結果を使用する。
 
     candidate_text = "・".join(
         f"{rec['style']}={rec['line_label']}（2車換算={float(rec['strength']):.6f}・"
@@ -10489,7 +10714,7 @@ def _v281_build_fixed_flow_plan(
         _coverage_text = "／".join("".join(str(int(car)) for car in group) for group in line_coverage_groups) or "なし"
         residual_reason = (
             f"未採用ライン・単騎［{_coverage_text}］の採用数を最大化した5車候補を全比較し、"
-            f"三流れ加重の実券7点支持合計が最大となる残枠［{added_text}］を採用。"
+            f"三流れ加重の実券支持合計が最大となる残枠［{added_text}］を採用。"
         )
     else:
         residual_reason = f"残枠は採用流れ着順上位から［{added_text}］を補充。"
@@ -10512,7 +10737,7 @@ def _v281_build_fixed_flow_plan(
         f"{flow_support_rank}位の{flow_support_car}をBにする。"
         f"Eライン残りの上位{int(e_line_second_car or 0)}をLとして保護。{f_reason}"
         + (
-            "D＋E－A＋D＋E－Eライン保護後5車の2－3－5へ展開"
+            "Eライン保護後5車を分解し、FW－MF－DFへ再配置"
             if not de_conflict else
             "A＋D＋EとEライン全車の同時5車化が不可のため、Eライン全車保護を優先"
         )
@@ -10553,6 +10778,13 @@ def _v281_build_fixed_flow_plan(
         "second_add_car": int(second_add_car or 0),
         "first_column": tuple(first_column),
         "second_column": tuple(second_column),
+        "third_column": tuple(third_column),
+        "fw_cars": tuple(fw_cars),
+        "mf_cars": tuple(mf_cars),
+        "df_cars": tuple(df_cars),
+        "line_mf_car": int(line_mf_car or 0),
+        "line_df_cars": tuple(line_df_cars),
+        "line_df_overflow_cars": tuple(line_df_overflow_cars),
         "formation_pattern": formation_pattern,
         "de_conflict": bool(de_conflict),
         "fight_used_in_ticket": bool(fight_used_in_ticket),
@@ -10571,7 +10803,7 @@ def _v281_build_fixed_flow_plan(
         "ticket_form": ticket_form,
         "ticket_groups": (("【3連複】", tuple(tickets)),),
         "ticket_count": len(tickets),
-        "ticket_family": "3連複DE型＋Eライン先行保護2－3－5",
+        "ticket_family": "3連複FW－MF－DF型＋Eライン先行保護",
         "ticket_reason": reason,
     }
 
@@ -10761,6 +10993,15 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     second_add_car = int(plan.get("second_add_car", 0) or 0)
     first_column = [int(x) for x in (plan.get("first_column", tuple()) or tuple())]
     second_column = [int(x) for x in (plan.get("second_column", tuple()) or tuple())]
+    third_column = [int(x) for x in (plan.get("third_column", tuple()) or tuple())]
+    fw_cars = [int(x) for x in (plan.get("fw_cars", tuple()) or tuple())]
+    mf_cars = [int(x) for x in (plan.get("mf_cars", tuple()) or tuple())]
+    df_cars = [int(x) for x in (plan.get("df_cars", tuple()) or tuple())]
+    line_mf_car = int(plan.get("line_mf_car", 0) or 0)
+    line_df_cars = [int(x) for x in (plan.get("line_df_cars", tuple()) or tuple())]
+    line_df_overflow_cars = [
+        int(x) for x in (plan.get("line_df_overflow_cars", tuple()) or tuple())
+    ]
     formation_pattern = str(plan.get("formation_pattern", "") or "")
     de_conflict = bool(plan.get("de_conflict", False))
     fight_used_in_ticket = bool(plan.get("fight_used_in_ticket", False))
@@ -10826,15 +11067,15 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         second_add_car=second_add_car,
         first_column=first_column,
         second_column=second_column,
-        formation_five=formation_five,
+        formation_five=third_column,
         e_protected_line=e_protected_line,
     )
 
     if e_line_second_car:
         if e_line_second_car in second_column:
-            e_line_second_position = "2列目"
-        elif e_line_second_car in formation_five:
-            e_line_second_position = "3列目で保護"
+            e_line_second_position = "MF・2列目"
+        elif e_line_second_car in third_column:
+            e_line_second_position = "DF・3列目で保護"
         else:
             e_line_second_position = "列外"
         e_line_second_display = f"{e_line_second_car}（{e_line_second_position}）"
@@ -10867,7 +11108,16 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
             if fight_replaced_d else []
         ),
         pressure_boundary_text,
-        f"フォーメーション型：{formation_pattern or 'DE-ADE-Eライン保護後5車'}",
+        f"ライン保護後5車：{''.join(str(x) for x in formation_five)}",
+        f"FW（1列目）：{''.join(str(x) for x in fw_cars) if fw_cars else '—'}",
+        f"MF（2列目）：{''.join(str(x) for x in mf_cars) if mf_cars else '—'}",
+        f"DF（3列目）：{''.join(str(x) for x in df_cars) if df_cars else '—'}",
+        f"Eライン役割：MF={line_mf_car if line_mf_car else 'なし'}／DF={''.join(str(x) for x in line_df_cars) if line_df_cars else 'なし'}",
+        *(
+            [f"EラインDF退避（6点維持）：{''.join(str(x) for x in line_df_overflow_cars)}をFW列で保護"]
+            if line_df_overflow_cars else []
+        ),
+        f"フォーメーション型：{formation_pattern or 'FW-MF-DF（ライン保護後再配置）'}",
         *(
             ["※A・D・EとEライン全車が5車に収まらないため、Eライン保護を優先した列へフォールバック"]
             if de_conflict else []
