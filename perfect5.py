@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# v334d（noteコピーエリア拡張版）:
+# ・note用コピーエリアを約4行分高くする（620px→720px）。
 # v334c（推奨購入・車番昇順表示版）:
 # ・推奨購入は、取捨増減しやすいよう三連複の車番組合せを昇順で表示する。
 # v334b（評価上位2和集合・評価1位重複投資版）:
@@ -13363,7 +13365,7 @@ note_text = _clean_note_copy_display_only(note_text)
 note_text = re.sub(r"^全体妙味：[^\n]*\n?", "", note_text, flags=re.MULTILINE)
 note_text = re.sub(r"^【全体分類】[^\n]*\n?", "", note_text, flags=re.MULTILINE)
 
-st.text_area("ここを選択してコピー", note_text, height=620)
+st.text_area("ここを選択してコピー", note_text, height=720)
 # =========================
 
 
