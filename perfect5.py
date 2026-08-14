@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# v334h（1買い目200円上限版）:
+# ・E軸・A軸を通じた評価1位獲得数が3回以上でも、1買い目の購入額は200円を上限とする。
 # v334g（E軸＋A軸・ライン保護独立6点版）:
 # ・E軸側は従来のEライン保護5車から作る1－4－4の6点を維持する。
 # ・A軸側はAの同ライン全車を優先保護した独立5車から1－4－4の6点を作る。
@@ -10855,7 +10857,7 @@ def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
         stakes = []
         for key in selected:
             first_count = int(first_place_count.get(key, 0) or 0)
-            amount = 100 * max(1, first_count)
+            amount = min(200, 100 * max(1, first_count))
             stakes.append((key, int(amount)))
 
         return {
@@ -10873,7 +10875,7 @@ def _v334b_build_top2_union_purchase_plan(basic_tickets, weighted_trio_rows):
 
 
 def _v334g_merge_axis_purchase_plans(*plans):
-    """E/A各軸の推奨和集合と、両軸合算の評価1位数による金額を返す。"""
+    """E/A推奨の和集合と、両軸合算の評価1位数による上限200円の金額を返す。"""
     selected = set()
     first_place_count = {}
     for plan in plans:
@@ -10894,7 +10896,7 @@ def _v334g_merge_axis_purchase_plans(*plans):
     stakes = []
     for key in selected_sorted:
         first_count = int(first_place_count.get(key, 0) or 0)
-        stakes.append((key, 100 * max(1, first_count)))
+        stakes.append((key, min(200, 100 * max(1, first_count))))
     return {
         "selected": tuple(selected_sorted),
         "first_place_count": dict(first_place_count),
@@ -11113,7 +11115,7 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
         *purchase_lines,
         "",
-        "※購入額は、E軸・A軸の各6点を個別に三評価上位2で絞った和集合と、両軸の評価1位獲得数だけで事前確定。",
+        "※購入額は、E軸・A軸の各6点を個別に三評価上位2で絞った和集合と、両軸の評価1位獲得数で事前確定（1買い目上限200円）。",
     ]
     return out
 
