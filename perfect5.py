@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+# v335a（三流れ1位単騎ライン選出修正版）:
+# ・単騎ラインは、採用流れ1位だけでなく順流・逆流・渦のいずれかで1位なら対象にする。
+# ・各流れ1位ではない単騎を除外する条件は維持する。
 # v335（全ラインフォーメーション合流・的中点下位4選抜版）:
 # ・実在する各ラインから、三連複1－4－4（軸1車＋相手4車）の6点を1組ずつ作る。
 # ・既存A/Eライン以外は、ライン内の採用着順予想最上位車を軸にし、軸ラインとEを保護する。
@@ -9351,6 +9354,19 @@ def _v335_build_all_line_formations(plan):
     if not sequence:
         return tuple()
     first_predicted = int(sequence[0])
+    style_sequence_map = dict(plan.get("style_sequence_map", {}) or {})
+    flow_first_cars = set()
+    for style_sequence in style_sequence_map.values():
+        try:
+            normalized = [
+                int(car) for car in _v281_unique_sequence(style_sequence or [])
+            ]
+            if normalized:
+                flow_first_cars.add(int(normalized[0]))
+        except Exception:
+            pass
+    if not flow_first_cars:
+        flow_first_cars.add(first_predicted)
     e_car = int(plan.get("formation_e", 0) or 0)
     a_car = int(plan.get("a_axis_car", plan.get("flow_axis_car", 0)) or 0)
     line_groups = [
@@ -9371,8 +9387,8 @@ def _v335_build_all_line_formations(plan):
         if not line_key or line_key in seen_lines:
             continue
         seen_lines.add(line_key)
-        # 単騎は着順予想1位のラインだけを対象にする。
-        if len(line) == 1 and int(line[0]) != first_predicted:
+        # 単騎は順流・逆流・渦のいずれかで1位になった場合だけ対象にする。
+        if len(line) == 1 and int(line[0]) not in flow_first_cars:
             continue
 
         if line_key == e_line_key and (len(line) >= 2 or e_car == first_predicted):
@@ -10966,6 +10982,10 @@ def _v281_build_fixed_flow_plan(
         "a_axis_tickets": tuple(_v334g_a_axis["tickets"]),
         "a_axis_ticket_count": int(_v334g_a_axis["ticket_count"]),
         "line_groups": _v335_normalize_line_groups(line_def_obj, adopted_sequence),
+        "style_sequence_map": {
+            str(style): tuple(int(car) for car in (seq_map.get(style, []) or []))
+            for style in _V281_STYLES
+        },
         "ticket_family": "3連複E軸＋A軸独立1－4－4",
         "ticket_reason": reason,
     }
