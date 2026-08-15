@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v335b（2ライン・4車追加ライン確定修正版）:
+# ・A/Eが同一ラインになる2ライン戦で、残る4車ラインとEにより必須5車が
+#   既に揃っている場合、補充処理が6車目を加えて失敗する不具合を修正する。
+# ・実在2ラインなら2組の全ライン基本フォーメーションを正常に確定する。
 # v335a（三流れ1位単騎ライン選出修正版）:
 # ・単騎ラインは、採用流れ1位だけでなく順流・逆流・渦のいずれかで1位なら対象にする。
 # ・各流れ1位ではない単騎を除外する条件は維持する。
@@ -9316,12 +9320,12 @@ def _v335_build_additional_line_formation(
 
     selected = list(required)
     for car in sequence:
+        if len(selected) >= 5:
+            break
         car = int(car)
         if car == first_predicted or car in selected:
             continue
         selected.append(car)
-        if len(selected) >= 5:
-            break
     if len(selected) != 5 or len(set(selected)) != 5:
         raise ValueError("追加ラインの5車を確定できません")
     selected = [axis] + sorted(
