@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v334p（note想定6点表示版）:
+# ・note簡易版に想定A・想定Bの基本三連複6点を追加する。
+# ・推奨購入表記を想定A／想定B／共通に統一する。
+# ・詳細出力・選抜・増額ロジックは変更しない。
 # v334o（note簡易購入データ受渡修正版）:
 # ・詳細出力で確定したE/A/共通・金額を保存し、note簡易出力は同じ確定データを直接参照する。
 # ・詳細生成関数内の評価行を外側から再取得できず「購入評価未確定」になる不具合を修正する。
@@ -11048,14 +11052,21 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             if adopted_sequence else "未判定"
         )
 
+        a_axis_ticket_form = str(plan.get("a_axis_ticket_form", "") or "")
+        a_axis_ticket_count = int(plan.get("a_axis_ticket_count", 0) or 0)
+        e_axis_ticket_form = str(plan.get("ticket_form", "") or "")
+        e_axis_ticket_count = int(plan.get("ticket_count", 0) or 0)
+
         return "\n".join([
             race_title,
             "",
             f"想定隊列　{queue_text}",
             f"着順予想　{order_text}",
+            f"【想定A】3連複{a_axis_ticket_form}・計{a_axis_ticket_count}点",
+            f"【想定B】3連複{e_axis_ticket_form}・計{e_axis_ticket_count}点",
             "【推奨購入】",
-            f"想定Aのみ：{_group_text(a_only)}",
-            f"想定Bのみ：{_group_text(e_only)}",
+            f"想定A：{_group_text(a_only)}",
+            f"想定B：{_group_text(e_only)}",
             f"共通：{_group_text(common)}",
             "",
             f"計{ticket_count}点／{total_amount}円",
