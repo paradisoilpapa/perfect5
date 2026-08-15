@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v334r（2車複1位選抜・note表示順修正版）:
+# ・2車複は想定A/Bごとに的中点1位・総合点1位の和集合へ絞る。
+# ・三連複は従来どおり的中点上位2・総合点上位2の和集合を維持する。
+# ・note簡易版は想定A/Bの後に空白を置き、3連複推奨→2車複推奨の順で表示する。
 # v334q（2車複・想定A/B上位2和集合版）:
 # ・2車複も三連複と同じく、想定A・想定Bを別々に的中点上位2・総合点上位2で選抜する。
 # ・妙味点単独順位は選抜に使わず、想定A／想定B／共通へ分類する。
@@ -10975,8 +10979,8 @@ def _v334q_build_axis_pair_tickets(axis_car, selected_five):
         return tuple()
 
 
-def _v334q_build_pair_top2_union_purchase_plan(basic_pairs, weighted_pair_rows):
-    """2車複基本4点から、的中点上位2と総合点上位2の和集合を選ぶ。"""
+def _v334r_build_pair_top1_union_purchase_plan(basic_pairs, weighted_pair_rows):
+    """2車複基本4点から、的中点1位と総合点1位の和集合を選ぶ。"""
     try:
         basic = []
         for pair in (basic_pairs or []):
@@ -11051,8 +11055,8 @@ def _v334q_build_pair_top2_union_purchase_plan(basic_pairs, weighted_pair_rows):
                 tuple(rec["key"]),
             ),
         )
-        hit_top = [tuple(rec["key"]) for rec in hit_ranked[:2]]
-        total_top = [tuple(rec["key"]) for rec in total_ranked[:2]]
+        hit_top = [tuple(rec["key"]) for rec in hit_ranked[:1]]
+        total_top = [tuple(rec["key"]) for rec in total_ranked[:1]]
         selected = sorted(set(hit_top) | set(total_top))
         return {
             "hit_top": tuple(hit_top),
@@ -11279,11 +11283,8 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"着順予想　{order_text}",
             f"【想定A】3連複{a_axis_ticket_form}・計{a_axis_ticket_count}点",
             f"【想定B】3連複{e_axis_ticket_form}・計{e_axis_ticket_count}点",
-            "【推奨購入・2車複】",
-            f"想定A：{_pair_group_text(pair_a_only)}",
-            f"想定B：{_pair_group_text(pair_e_only)}",
-            f"共通：{_pair_group_text(pair_common)}",
-            f"計{pair_ticket_count}点／{pair_total_amount}円",
+            "",
+            "",
             "",
             "【推奨購入・3連複】",
             f"想定A：{_group_text(a_only)}",
@@ -11291,10 +11292,11 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"共通：{_group_text(common)}",
             f"計{ticket_count}点／{total_amount}円",
             "",
-            (
-                f"総計{pair_ticket_count + ticket_count}点／"
-                f"{pair_total_amount + total_amount}円"
-            ),
+            "【推奨購入・2車複】",
+            f"想定A：{_pair_group_text(pair_a_only)}",
+            f"想定B：{_pair_group_text(pair_e_only)}",
+            f"共通：{_pair_group_text(pair_common)}",
+            f"計{pair_ticket_count}点／{pair_total_amount}円",
         ]).strip() + "\n"
     except Exception as error:
         return f"note用簡易出力生成不可：{error}"
@@ -11413,11 +11415,11 @@ def _v281_format_fixed_flow_block(
         a_axis_car,
         a_axis_selected_five,
     )
-    e_pair_purchase_plan = _v334q_build_pair_top2_union_purchase_plan(
+    e_pair_purchase_plan = _v334r_build_pair_top1_union_purchase_plan(
         e_pair_tickets,
         weighted_pair_rows,
     )
-    a_pair_purchase_plan = _v334q_build_pair_top2_union_purchase_plan(
+    a_pair_purchase_plan = _v334r_build_pair_top1_union_purchase_plan(
         a_pair_tickets,
         weighted_pair_rows,
     )
@@ -11566,11 +11568,11 @@ def _v281_format_fixed_flow_block(
             )
             purchase_lines.extend([
                 f"【基本2車複】2車複{formation_e}-{e_pair_partner_text}・計4点",
-                "【2車複評価上位2】",
+                "【2車複評価1位】",
                 f"的中点：{_v334q_pair_top2_text(e_pair_purchase_plan.get('hit_top', tuple()))}",
                 f"総合点：{_v334q_pair_top2_text(e_pair_purchase_plan.get('total_top', tuple()))}",
                 f"【A軸基本2車複】2車複{a_axis_car}-{a_pair_partner_text}・計4点",
-                "【A軸2車複評価上位2】",
+                "【A軸2車複評価1位】",
                 f"的中点：{_v334q_pair_top2_text(a_pair_purchase_plan.get('hit_top', tuple()))}",
                 f"総合点：{_v334q_pair_top2_text(a_pair_purchase_plan.get('total_top', tuple()))}",
                 "【推奨購入】2車複",
@@ -11673,7 +11675,7 @@ def _v281_format_fixed_flow_block(
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
         *purchase_lines,
         "",
-        "※2車複はE軸・A軸の各4点、3連複はE軸・A軸の各6点を、それぞれ個別に的中点・総合点上位2で絞った和集合で事前確定。券種ごとの和集合全体で的中点1位かつ総合点1位の買い目だけ200円（妙味点単独順位は選抜対象外／各券種の増額は最大1点）。",
+        "※2車複はE軸・A軸の各4点から的中点1位・総合点1位、3連複はE軸・A軸の各6点から的中点上位2・総合点上位2を個別に選び、それぞれの和集合で事前確定。券種ごとの和集合全体で的中点1位かつ総合点1位の買い目だけ200円（妙味点単独順位は選抜対象外／各券種の増額は最大1点）。",
     ]
     return out
 
