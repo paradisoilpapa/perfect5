@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+# v334o（note簡易購入データ受渡修正版）:
+# ・詳細出力で確定したE/A/共通・金額を保存し、note簡易出力は同じ確定データを直接参照する。
+# ・詳細生成関数内の評価行を外側から再取得できず「購入評価未確定」になる不具合を修正する。
 # v334n（note用簡易コピー・詳細確認併存版）:
 # ・note用は、レース名、想定隊列、着順予想、想定Aのみ、想定Bのみ、共通、合計だけを表示する。
 # ・想定Aは内部A軸のみ、想定Bは内部E軸のみとし、推奨購入は必ず想定Aから表示する。
@@ -10946,44 +10949,69 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         if not isinstance(plan, dict) or not plan:
             return "note用簡易出力生成不可：フォーメーション未確定"
 
-        basic_tickets = []
-        for _, items in (plan.get("ticket_groups", tuple()) or tuple()):
-            basic_tickets.extend(str(x) for x in (items or tuple()))
-        a_axis_tickets = [
-            str(x) for x in (plan.get("a_axis_tickets", tuple()) or tuple())
-        ]
-
-        e_purchase_plan = _v334b_build_top2_union_purchase_plan(
-            basic_tickets,
-            weighted_trio_rows,
+        purchase_snapshot = dict(
+            globals().get("V334N_COMPACT_PURCHASE_SNAPSHOT", {}) or {}
         )
-        a_purchase_plan = _v334b_build_top2_union_purchase_plan(
-            a_axis_tickets,
-            weighted_trio_rows,
-        )
-        combined_purchase_plan = _v334g_merge_axis_purchase_plans(
-            e_purchase_plan,
-            a_purchase_plan,
-        )
-        if not e_purchase_plan or not a_purchase_plan or not combined_purchase_plan:
-            return "note用簡易出力生成不可：購入評価未確定"
+        if purchase_snapshot:
+            a_only = [
+                tuple(sorted(int(x) for x in (key or tuple())))
+                for key in (purchase_snapshot.get("a_only", tuple()) or tuple())
+            ]
+            e_only = [
+                tuple(sorted(int(x) for x in (key or tuple())))
+                for key in (purchase_snapshot.get("e_only", tuple()) or tuple())
+            ]
+            common = [
+                tuple(sorted(int(x) for x in (key or tuple())))
+                for key in (purchase_snapshot.get("common", tuple()) or tuple())
+            ]
+            stake_map = {
+                tuple(sorted(int(x) for x in (key or tuple()))): int(amount)
+                for key, amount in (purchase_snapshot.get("stakes", tuple()) or tuple())
+            }
+            ticket_count = int(purchase_snapshot.get("ticket_count", 0) or 0)
+            total_amount = int(purchase_snapshot.get("total_amount", 0) or 0)
+        else:
+            basic_tickets = []
+            for _, items in (plan.get("ticket_groups", tuple()) or tuple()):
+                basic_tickets.extend(str(x) for x in (items or tuple()))
+            a_axis_tickets = [
+                str(x) for x in (plan.get("a_axis_tickets", tuple()) or tuple())
+            ]
 
-        e_selected = {
-            tuple(sorted(int(x) for x in (key or tuple())))
-            for key in (e_purchase_plan.get("selected", tuple()) or tuple())
-        }
-        a_selected = {
-            tuple(sorted(int(x) for x in (key or tuple())))
-            for key in (a_purchase_plan.get("selected", tuple()) or tuple())
-        }
-        stake_map = {
-            tuple(sorted(int(x) for x in (key or tuple()))): int(amount)
-            for key, amount in (combined_purchase_plan.get("stakes", tuple()) or tuple())
-        }
+            e_purchase_plan = _v334b_build_top2_union_purchase_plan(
+                basic_tickets,
+                weighted_trio_rows,
+            )
+            a_purchase_plan = _v334b_build_top2_union_purchase_plan(
+                a_axis_tickets,
+                weighted_trio_rows,
+            )
+            combined_purchase_plan = _v334g_merge_axis_purchase_plans(
+                e_purchase_plan,
+                a_purchase_plan,
+            )
+            if not e_purchase_plan or not a_purchase_plan or not combined_purchase_plan:
+                return "note用簡易出力生成不可：購入評価未確定"
 
-        a_only = sorted(a_selected - e_selected)
-        e_only = sorted(e_selected - a_selected)
-        common = sorted(a_selected & e_selected)
+            e_selected = {
+                tuple(sorted(int(x) for x in (key or tuple())))
+                for key in (e_purchase_plan.get("selected", tuple()) or tuple())
+            }
+            a_selected = {
+                tuple(sorted(int(x) for x in (key or tuple())))
+                for key in (a_purchase_plan.get("selected", tuple()) or tuple())
+            }
+            stake_map = {
+                tuple(sorted(int(x) for x in (key or tuple()))): int(amount)
+                for key, amount in (combined_purchase_plan.get("stakes", tuple()) or tuple())
+            }
+
+            a_only = sorted(a_selected - e_selected)
+            e_only = sorted(e_selected - a_selected)
+            common = sorted(a_selected & e_selected)
+            ticket_count = int(combined_purchase_plan.get("ticket_count", 0) or 0)
+            total_amount = int(combined_purchase_plan.get("total_amount", 0) or 0)
 
         def _ticket_text(key):
             return "".join(str(int(x)) for x in (key or tuple()))
@@ -11030,10 +11058,7 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"想定Bのみ：{_group_text(e_only)}",
             f"共通：{_group_text(common)}",
             "",
-            (
-                f"計{int(combined_purchase_plan.get('ticket_count', 0) or 0)}点／"
-                f"{int(combined_purchase_plan.get('total_amount', 0) or 0)}円"
-            ),
+            f"計{ticket_count}点／{total_amount}円",
         ]).strip() + "\n"
     except Exception as error:
         return f"note用簡易出力生成不可：{error}"
@@ -11041,6 +11066,9 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
 def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     if not isinstance(plan, dict) or not plan:
         return []
+
+    # レース再計算時に前レースの簡易購入結果を使わないよう、先に初期化する。
+    globals()["V334N_COMPACT_PURCHASE_SNAPSHOT"] = {}
 
     flow_candidate_parts = []
     for rec in (plan.get("flow_candidates", tuple()) or tuple()):
@@ -11171,6 +11199,19 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         e_only = sorted(e_selected - a_selected)
         a_only = sorted(a_selected - e_selected)
         common = sorted(e_selected & a_selected)
+
+        # note簡易版は、この詳細版で確定した同一データを参照する。
+        globals()["V334N_COMPACT_PURCHASE_SNAPSHOT"] = {
+            "a_only": tuple(a_only),
+            "e_only": tuple(e_only),
+            "common": tuple(common),
+            "stakes": tuple(
+                (tuple(key), int(amount))
+                for key, amount in (combined_purchase_plan.get("stakes", tuple()) or tuple())
+            ),
+            "ticket_count": int(combined_purchase_plan.get("ticket_count", 0) or 0),
+            "total_amount": int(combined_purchase_plan.get("total_amount", 0) or 0),
+        }
 
         def _v334m_group_text(keys):
             parts = [
