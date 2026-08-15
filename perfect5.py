@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v334n（note用簡易コピー・詳細確認併存版）:
+# ・note用は、レース名、想定隊列、着順予想、想定Aのみ、想定Bのみ、共通、合計だけを表示する。
+# ・想定Aは内部A軸のみ、想定Bは内部E軸のみとし、推奨購入は必ず想定Aから表示する。
+# ・従来の全詳細出力はバグチェック用コピー欄としてそのまま残す。
 # v334m（推奨購入E/A/共通3区分表示版）:
 # ・推奨購入をEのみ、Aのみ、E/A共通の3行に分け、二重入力を防ぐ。
 # ・各買い目の金額、合計点数・合計金額、選抜・増額ロジックは変更しない。
@@ -6904,7 +6908,7 @@ except Exception as _e:
 
 note_text = "\n".join(note_sections)
 
-st.markdown("### 📋 note用（コピーエリア）")
+st.markdown("### 📋 note用（簡易コピーエリア）")
 
 # -----------------------------------------
 # 全体妙味判定用：◎〇△× 車番入力
@@ -10935,6 +10939,105 @@ def _v334g_merge_axis_purchase_plans(*plans):
         "total_amount": sum(int(amount) for _, amount in stakes),
     }
 
+
+def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
+    """確定済みE/A購入ロジックからnote公開用の簡易本文だけを生成する。"""
+    try:
+        if not isinstance(plan, dict) or not plan:
+            return "note用簡易出力生成不可：フォーメーション未確定"
+
+        basic_tickets = []
+        for _, items in (plan.get("ticket_groups", tuple()) or tuple()):
+            basic_tickets.extend(str(x) for x in (items or tuple()))
+        a_axis_tickets = [
+            str(x) for x in (plan.get("a_axis_tickets", tuple()) or tuple())
+        ]
+
+        e_purchase_plan = _v334b_build_top2_union_purchase_plan(
+            basic_tickets,
+            weighted_trio_rows,
+        )
+        a_purchase_plan = _v334b_build_top2_union_purchase_plan(
+            a_axis_tickets,
+            weighted_trio_rows,
+        )
+        combined_purchase_plan = _v334g_merge_axis_purchase_plans(
+            e_purchase_plan,
+            a_purchase_plan,
+        )
+        if not e_purchase_plan or not a_purchase_plan or not combined_purchase_plan:
+            return "note用簡易出力生成不可：購入評価未確定"
+
+        e_selected = {
+            tuple(sorted(int(x) for x in (key or tuple())))
+            for key in (e_purchase_plan.get("selected", tuple()) or tuple())
+        }
+        a_selected = {
+            tuple(sorted(int(x) for x in (key or tuple())))
+            for key in (a_purchase_plan.get("selected", tuple()) or tuple())
+        }
+        stake_map = {
+            tuple(sorted(int(x) for x in (key or tuple()))): int(amount)
+            for key, amount in (combined_purchase_plan.get("stakes", tuple()) or tuple())
+        }
+
+        a_only = sorted(a_selected - e_selected)
+        e_only = sorted(e_selected - a_selected)
+        common = sorted(a_selected & e_selected)
+
+        def _ticket_text(key):
+            return "".join(str(int(x)) for x in (key or tuple()))
+
+        def _group_text(keys):
+            parts = [
+                f"{_ticket_text(key)}（{int(stake_map.get(key, 100))}円）"
+                for key in (keys or [])
+            ]
+            return " ".join(parts) if parts else "なし"
+
+        venue = str(globals().get("track") or globals().get("place") or "").strip()
+        race_no_raw = str(globals().get("race_no") or "").strip()
+        race_no_text = (
+            race_no_raw
+            if not race_no_raw or race_no_raw.endswith("R")
+            else f"{race_no_raw}R"
+        )
+        race_title = f"{venue}{race_no_text}" or "レース名未設定"
+
+        queue_groups = re.findall(r"[1-9]+", str(queue_source or ""))
+        queue_text = "　".join(queue_groups) if queue_groups else "未設定"
+
+        adopted_sequence = []
+        for car in (plan.get("adopted_sequence", tuple()) or tuple()):
+            try:
+                car_int = int(car)
+                if car_int not in adopted_sequence:
+                    adopted_sequence.append(car_int)
+            except Exception:
+                pass
+        order_text = (
+            " → ".join(str(car) for car in adopted_sequence)
+            if adopted_sequence else "未判定"
+        )
+
+        return "\n".join([
+            race_title,
+            "",
+            f"想定隊列　{queue_text}",
+            f"着順予想　{order_text}",
+            "【推奨購入】",
+            f"想定Aのみ：{_group_text(a_only)}",
+            f"想定Bのみ：{_group_text(e_only)}",
+            f"共通：{_group_text(common)}",
+            "",
+            (
+                f"計{int(combined_purchase_plan.get('ticket_count', 0) or 0)}点／"
+                f"{int(combined_purchase_plan.get('total_amount', 0) or 0)}円"
+            ),
+        ]).strip() + "\n"
+    except Exception as error:
+        return f"note用簡易出力生成不可：{error}"
+
 def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     if not isinstance(plan, dict) or not plan:
         return []
@@ -13797,7 +13900,27 @@ note_text = _clean_note_copy_display_only(note_text)
 note_text = re.sub(r"^全体妙味：[^\n]*\n?", "", note_text, flags=re.MULTILINE)
 note_text = re.sub(r"^【全体分類】[^\n]*\n?", "", note_text, flags=re.MULTILINE)
 
-st.text_area("ここを選択してコピー", note_text, height=720)
+_compact_queue_source = ""
+_compact_queue_match = re.search(
+    r"^ヴェロビ想定隊列\s*([^\n]*)$",
+    note_text,
+    flags=re.MULTILINE,
+)
+if _compact_queue_match:
+    _compact_queue_source = _compact_queue_match.group(1)
+else:
+    _compact_queue_source = str(globals().get("lines_str", "") or "")
+
+compact_note_text = _v334n_build_compact_note_text(
+    globals().get("V298_FIXED_FLOW_PLAN", {}) or {},
+    globals().get("_weighted_trio_rows", []) or [],
+    _compact_queue_source,
+)
+
+st.text_area("ここを選択してコピー", compact_note_text, height=300)
+
+st.markdown("### 🔍 詳細出力（バグチェック用）")
+st.text_area("詳細を選択してコピー", note_text, height=720)
 # =========================
 
 
