@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v334q（2車複・想定A/B上位2和集合版）:
+# ・2車複も三連複と同じく、想定A・想定Bを別々に的中点上位2・総合点上位2で選抜する。
+# ・妙味点単独順位は選抜に使わず、想定A／想定B／共通へ分類する。
+# ・両想定の和集合全体で的中点1位と総合点1位が一致した1点だけ200円とする。
+# ・既存の三連複ロジック、詳細評価表、note簡易版を残したまま2車複推奨を追加する。
 # v334p（note想定6点表示版）:
 # ・note簡易版に想定A・想定Bの基本三連複6点を追加する。
 # ・推奨購入表記を想定A／想定B／共通に統一する。
@@ -10947,6 +10952,189 @@ def _v334g_merge_axis_purchase_plans(*plans):
     }
 
 
+def _v334q_build_axis_pair_tickets(axis_car, selected_five):
+    """軸1車と同じ想定の残り4車から、2車複の基本4点を作る。"""
+    try:
+        axis = int(axis_car)
+        partners = []
+        for car in (selected_five or []):
+            try:
+                car_int = int(car)
+            except Exception:
+                continue
+            if car_int == axis or car_int in partners:
+                continue
+            partners.append(car_int)
+        if axis <= 0 or len(partners) != 4:
+            return tuple()
+        return tuple(
+            tuple(sorted((axis, int(partner))))
+            for partner in partners
+        )
+    except Exception:
+        return tuple()
+
+
+def _v334q_build_pair_top2_union_purchase_plan(basic_pairs, weighted_pair_rows):
+    """2車複基本4点から、的中点上位2と総合点上位2の和集合を選ぶ。"""
+    try:
+        basic = []
+        for pair in (basic_pairs or []):
+            try:
+                if isinstance(pair, (tuple, list)):
+                    key = tuple(sorted(int(x) for x in pair))
+                else:
+                    key = tuple(sorted(
+                        int(x) for x in re.findall(r"[1-9]", str(pair))
+                    ))
+                if len(key) == 2 and len(set(key)) == 2 and key not in basic:
+                    basic.append(key)
+            except Exception:
+                pass
+        if len(basic) != 4:
+            return {}
+
+        basic_order = {key: idx for idx, key in enumerate(basic)}
+        row_map = {}
+        for row in (weighted_pair_rows or []):
+            try:
+                a = int((row or {}).get("a", 0) or 0)
+                b = int((row or {}).get("b", 0) or 0)
+                key = tuple(sorted((a, b))) if a and b and a != b else tuple()
+                if len(key) != 2:
+                    key = tuple(sorted(
+                        int(x) for x in re.findall(
+                            r"[1-9]", str((row or {}).get("disp", "") or "")
+                        )
+                    ))
+                if len(key) == 2 and key in basic_order:
+                    row_map[key] = row
+            except Exception:
+                pass
+
+        def _score(row, name):
+            try:
+                value = float((row or {}).get(name, 0.0) or 0.0)
+                return value if math.isfinite(value) else 0.0
+            except Exception:
+                return 0.0
+
+        records = []
+        for key in basic:
+            row = row_map.get(key)
+            if row is None:
+                continue
+            records.append({
+                "key": key,
+                "order": int(basic_order[key]),
+                "hit": _score(row, "hit_score"),
+                "total": _score(row, "total_pt"),
+            })
+        if len(records) != 4:
+            return {}
+
+        hit_ranked = sorted(
+            records,
+            key=lambda rec: (
+                -float(rec["hit"]),
+                -float(rec["total"]),
+                int(rec["order"]),
+                tuple(rec["key"]),
+            ),
+        )
+        total_ranked = sorted(
+            records,
+            key=lambda rec: (
+                -float(rec["total"]),
+                -float(rec["hit"]),
+                int(rec["order"]),
+                tuple(rec["key"]),
+            ),
+        )
+        hit_top = [tuple(rec["key"]) for rec in hit_ranked[:2]]
+        total_top = [tuple(rec["key"]) for rec in total_ranked[:2]]
+        selected = sorted(set(hit_top) | set(total_top))
+        return {
+            "hit_top": tuple(hit_top),
+            "total_top": tuple(total_top),
+            "selected": tuple(selected),
+            "score_map": {
+                tuple(rec["key"]): {
+                    "hit": float(rec["hit"]),
+                    "total": float(rec["total"]),
+                }
+                for rec in records
+            },
+            "stakes": tuple((key, 100) for key in selected),
+            "ticket_count": len(selected),
+            "total_amount": len(selected) * 100,
+        }
+    except Exception:
+        return {}
+
+
+def _v334q_merge_pair_axis_purchase_plans(*plans):
+    """想定A/Bの2車複を統合し、的中・総合1位一致の最大1点だけ200円にする。"""
+    selected = set()
+    score_map = {}
+    for plan in plans:
+        if not isinstance(plan, dict) or not plan:
+            continue
+        for key in (plan.get("selected", tuple()) or tuple()):
+            normalized = tuple(sorted(int(x) for x in (key or tuple())))
+            if len(normalized) == 2 and len(set(normalized)) == 2:
+                selected.add(normalized)
+        for key, scores in (plan.get("score_map", {}) or {}).items():
+            normalized = tuple(sorted(int(x) for x in (key or tuple())))
+            if len(normalized) == 2 and len(set(normalized)) == 2:
+                try:
+                    score_map[normalized] = {
+                        "hit": float((scores or {}).get("hit", 0.0) or 0.0),
+                        "total": float((scores or {}).get("total", 0.0) or 0.0),
+                    }
+                except Exception:
+                    pass
+
+    selected_sorted = sorted(selected)
+    ranked_records = [
+        {
+            "key": key,
+            "hit": float((score_map.get(key, {}) or {}).get("hit", 0.0) or 0.0),
+            "total": float((score_map.get(key, {}) or {}).get("total", 0.0) or 0.0),
+        }
+        for key in selected_sorted
+    ]
+    hit_ranked = sorted(
+        ranked_records,
+        key=lambda rec: (-float(rec["hit"]), -float(rec["total"]), tuple(rec["key"])),
+    )
+    total_ranked = sorted(
+        ranked_records,
+        key=lambda rec: (-float(rec["total"]), -float(rec["hit"]), tuple(rec["key"])),
+    )
+    overlap_first = tuple()
+    if hit_ranked and total_ranked:
+        hit_first = tuple(hit_ranked[0]["key"])
+        total_first = tuple(total_ranked[0]["key"])
+        if hit_first == total_first:
+            overlap_first = hit_first
+
+    stakes = tuple(
+        (key, 200 if overlap_first == key else 100)
+        for key in selected_sorted
+    )
+    return {
+        "selected": tuple(selected_sorted),
+        "score_map": dict(score_map),
+        "hit_first": tuple(hit_ranked[0]["key"]) if hit_ranked else tuple(),
+        "total_first": tuple(total_ranked[0]["key"]) if total_ranked else tuple(),
+        "overlap_first": tuple(overlap_first),
+        "stakes": stakes,
+        "ticket_count": len(selected_sorted),
+        "total_amount": sum(int(amount) for _, amount in stakes),
+    }
+
+
 def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
     """確定済みE/A購入ロジックからnote公開用の簡易本文だけを生成する。"""
     try:
@@ -11017,12 +11205,39 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             ticket_count = int(combined_purchase_plan.get("ticket_count", 0) or 0)
             total_amount = int(combined_purchase_plan.get("total_amount", 0) or 0)
 
+        pair_snapshot = dict((purchase_snapshot.get("pair", {}) or {}))
+        pair_a_only = [
+            tuple(sorted(int(x) for x in (key or tuple())))
+            for key in (pair_snapshot.get("a_only", tuple()) or tuple())
+        ]
+        pair_e_only = [
+            tuple(sorted(int(x) for x in (key or tuple())))
+            for key in (pair_snapshot.get("e_only", tuple()) or tuple())
+        ]
+        pair_common = [
+            tuple(sorted(int(x) for x in (key or tuple())))
+            for key in (pair_snapshot.get("common", tuple()) or tuple())
+        ]
+        pair_stake_map = {
+            tuple(sorted(int(x) for x in (key or tuple()))): int(amount)
+            for key, amount in (pair_snapshot.get("stakes", tuple()) or tuple())
+        }
+        pair_ticket_count = int(pair_snapshot.get("ticket_count", 0) or 0)
+        pair_total_amount = int(pair_snapshot.get("total_amount", 0) or 0)
+
         def _ticket_text(key):
             return "".join(str(int(x)) for x in (key or tuple()))
 
         def _group_text(keys):
             parts = [
                 f"{_ticket_text(key)}（{int(stake_map.get(key, 100))}円）"
+                for key in (keys or [])
+            ]
+            return " ".join(parts) if parts else "なし"
+
+        def _pair_group_text(keys):
+            parts = [
+                f"{'-'.join(str(int(x)) for x in key)}（{int(pair_stake_map.get(key, 100))}円）"
                 for key in (keys or [])
             ]
             return " ".join(parts) if parts else "なし"
@@ -11064,17 +11279,32 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"着順予想　{order_text}",
             f"【想定A】3連複{a_axis_ticket_form}・計{a_axis_ticket_count}点",
             f"【想定B】3連複{e_axis_ticket_form}・計{e_axis_ticket_count}点",
-            "【推奨購入】",
+            "【推奨購入・2車複】",
+            f"想定A：{_pair_group_text(pair_a_only)}",
+            f"想定B：{_pair_group_text(pair_e_only)}",
+            f"共通：{_pair_group_text(pair_common)}",
+            f"計{pair_ticket_count}点／{pair_total_amount}円",
+            "",
+            "【推奨購入・3連複】",
             f"想定A：{_group_text(a_only)}",
             f"想定B：{_group_text(e_only)}",
             f"共通：{_group_text(common)}",
-            "",
             f"計{ticket_count}点／{total_amount}円",
+            "",
+            (
+                f"総計{pair_ticket_count + ticket_count}点／"
+                f"{pair_total_amount + total_amount}円"
+            ),
         ]).strip() + "\n"
     except Exception as error:
         return f"note用簡易出力生成不可：{error}"
 
-def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
+def _v281_format_fixed_flow_block(
+    plan,
+    weighted_trio_rows=None,
+    weighted_pair_rows=None,
+    mark_map=None,
+):
     if not isinstance(plan, dict) or not plan:
         return []
 
@@ -11173,6 +11403,29 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
     basic_tickets = []
     for _, items in (plan.get("ticket_groups", tuple()) or tuple()):
         basic_tickets.extend(str(x) for x in (items or tuple()))
+
+    # v334q：三連複と同じ想定A/Bの5車を使い、各軸－残り4車の2車複基本4点を作る。
+    e_pair_tickets = _v334q_build_axis_pair_tickets(
+        formation_e,
+        formation_five,
+    )
+    a_pair_tickets = _v334q_build_axis_pair_tickets(
+        a_axis_car,
+        a_axis_selected_five,
+    )
+    e_pair_purchase_plan = _v334q_build_pair_top2_union_purchase_plan(
+        e_pair_tickets,
+        weighted_pair_rows,
+    )
+    a_pair_purchase_plan = _v334q_build_pair_top2_union_purchase_plan(
+        a_pair_tickets,
+        weighted_pair_rows,
+    )
+    combined_pair_purchase_plan = _v334q_merge_pair_axis_purchase_plans(
+        e_pair_purchase_plan,
+        a_pair_purchase_plan,
+    )
+
     e_purchase_plan = _v334b_build_top2_union_purchase_plan(
         basic_tickets,
         weighted_trio_rows,
@@ -11191,6 +11444,13 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
 
     def _v334b_top2_text(keys):
         text = " ".join(_v334b_ticket_text(key) for key in (keys or tuple()))
+        return text or "算出不可"
+
+    def _v334q_pair_top2_text(keys):
+        text = " ".join(
+            "-".join(str(int(x)) for x in (key or tuple()))
+            for key in (keys or tuple())
+        )
         return text or "算出不可"
 
     purchase_lines = []
@@ -11224,6 +11484,37 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
             "total_amount": int(combined_purchase_plan.get("total_amount", 0) or 0),
         }
 
+        if (
+            e_pair_purchase_plan
+            and a_pair_purchase_plan
+            and combined_pair_purchase_plan
+        ):
+            e_pair_selected = {
+                tuple(sorted(int(x) for x in (key or tuple())))
+                for key in (e_pair_purchase_plan.get("selected", tuple()) or tuple())
+            }
+            a_pair_selected = {
+                tuple(sorted(int(x) for x in (key or tuple())))
+                for key in (a_pair_purchase_plan.get("selected", tuple()) or tuple())
+            }
+            globals()["V334N_COMPACT_PURCHASE_SNAPSHOT"]["pair"] = {
+                "a_only": tuple(sorted(a_pair_selected - e_pair_selected)),
+                "e_only": tuple(sorted(e_pair_selected - a_pair_selected)),
+                "common": tuple(sorted(a_pair_selected & e_pair_selected)),
+                "stakes": tuple(
+                    (tuple(key), int(amount))
+                    for key, amount in (
+                        combined_pair_purchase_plan.get("stakes", tuple()) or tuple()
+                    )
+                ),
+                "ticket_count": int(
+                    combined_pair_purchase_plan.get("ticket_count", 0) or 0
+                ),
+                "total_amount": int(
+                    combined_pair_purchase_plan.get("total_amount", 0) or 0
+                ),
+            }
+
         def _v334m_group_text(keys):
             parts = [
                 f"{_v334b_ticket_text(key)}（{int(stake_map.get(key, 100))}円）"
@@ -11231,7 +11522,69 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
             ]
             return " ".join(parts) if parts else "なし"
 
-        purchase_lines = [
+        purchase_lines = []
+        if (
+            e_pair_purchase_plan
+            and a_pair_purchase_plan
+            and combined_pair_purchase_plan
+        ):
+            e_pair_selected = {
+                tuple(sorted(int(x) for x in (key or tuple())))
+                for key in (e_pair_purchase_plan.get("selected", tuple()) or tuple())
+            }
+            a_pair_selected = {
+                tuple(sorted(int(x) for x in (key or tuple())))
+                for key in (a_pair_purchase_plan.get("selected", tuple()) or tuple())
+            }
+            pair_stake_map = {
+                tuple(sorted(int(x) for x in (key or tuple()))): int(amount)
+                for key, amount in (
+                    combined_pair_purchase_plan.get("stakes", tuple()) or tuple()
+                )
+            }
+
+            def _v334q_pair_text(key):
+                return "-".join(str(int(x)) for x in (key or tuple()))
+
+            def _v334q_pair_group_text(keys):
+                parts = [
+                    f"{_v334q_pair_text(key)}（{int(pair_stake_map.get(key, 100))}円）"
+                    for key in (keys or [])
+                ]
+                return " ".join(parts) if parts else "なし"
+
+            e_pair_only = sorted(e_pair_selected - a_pair_selected)
+            a_pair_only = sorted(a_pair_selected - e_pair_selected)
+            pair_common = sorted(e_pair_selected & a_pair_selected)
+            e_pair_partner_text = "".join(
+                str(key[1] if int(key[0]) == formation_e else key[0])
+                for key in e_pair_tickets
+            )
+            a_pair_partner_text = "".join(
+                str(key[1] if int(key[0]) == a_axis_car else key[0])
+                for key in a_pair_tickets
+            )
+            purchase_lines.extend([
+                f"【基本2車複】2車複{formation_e}-{e_pair_partner_text}・計4点",
+                "【2車複評価上位2】",
+                f"的中点：{_v334q_pair_top2_text(e_pair_purchase_plan.get('hit_top', tuple()))}",
+                f"総合点：{_v334q_pair_top2_text(e_pair_purchase_plan.get('total_top', tuple()))}",
+                f"【A軸基本2車複】2車複{a_axis_car}-{a_pair_partner_text}・計4点",
+                "【A軸2車複評価上位2】",
+                f"的中点：{_v334q_pair_top2_text(a_pair_purchase_plan.get('hit_top', tuple()))}",
+                f"総合点：{_v334q_pair_top2_text(a_pair_purchase_plan.get('total_top', tuple()))}",
+                "【推奨購入】2車複",
+                f"【Eのみ】{_v334q_pair_group_text(e_pair_only)}",
+                f"【Aのみ】{_v334q_pair_group_text(a_pair_only)}",
+                f"【E/A共通】{_v334q_pair_group_text(pair_common)}",
+                (
+                    f"計{int(combined_pair_purchase_plan.get('ticket_count', 0) or 0)}点／"
+                    f"{int(combined_pair_purchase_plan.get('total_amount', 0) or 0)}円"
+                ),
+                "",
+            ])
+
+        purchase_lines.extend([
             "【評価上位2】",
             f"的中点：{_v334b_top2_text(e_purchase_plan.get('hit_top', tuple()))}",
             f"総合点：{_v334b_top2_text(e_purchase_plan.get('total_top', tuple()))}",
@@ -11249,7 +11602,7 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
                 f"計{int(combined_purchase_plan.get('ticket_count', 0) or 0)}点／"
                 f"{int(combined_purchase_plan.get('total_amount', 0) or 0)}円"
             ),
-        ]
+        ])
     else:
         purchase_lines = [
             "【評価上位2】E軸またはA軸の評価を算出不可",
@@ -11320,7 +11673,7 @@ def _v281_format_fixed_flow_block(plan, weighted_trio_rows=None, mark_map=None):
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
         *purchase_lines,
         "",
-        "※購入額は、E軸・A軸の各6点を個別に的中点・総合点上位2で絞った和集合で事前確定。和集合全体で的中点1位かつ総合点1位の買い目だけ200円（妙味点単独順位は選抜対象外／増額は最大1点）。",
+        "※2車複はE軸・A軸の各4点、3連複はE軸・A軸の各6点を、それぞれ個別に的中点・総合点上位2で絞った和集合で事前確定。券種ごとの和集合全体で的中点1位かつ総合点1位の買い目だけ200円（妙味点単独順位は選抜対象外／各券種の増額は最大1点）。",
     ]
     return out
 
@@ -13615,6 +13968,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
             _v281_fixed_lines = _v281_format_fixed_flow_block(
                 _v281_fixed_plan,
                 _weighted_trio_rows,
+                _overall_sorted_rows,
                 market_mark_map,
             )
 
@@ -13969,7 +14323,7 @@ compact_note_text = _v334n_build_compact_note_text(
     _compact_queue_source,
 )
 
-st.text_area("ここを選択してコピー", compact_note_text, height=300)
+st.text_area("ここを選択してコピー", compact_note_text, height=460)
 
 st.markdown("### 🔍 詳細出力（バグチェック用）")
 st.text_area("詳細を選択してコピー", note_text, height=720)
