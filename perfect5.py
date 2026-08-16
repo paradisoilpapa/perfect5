@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v335e（note用・推奨5点＋的中点順位表示版）:
+# ・note用簡易出力から三流れ代表フォーメーションを外す。
+# ・推奨三連複は金額を付けず5点だけを表示し、合計も点数だけにする。
+# ・フォーメーションの代わりに、全候補の三連複的中点順位想定を表示する。
+# ・詳細出力の三流れ代表フォーメーションと各評価表は維持する。
 # v335d（三流れ代表・的中点2～6位選抜版）:
 # ・順流域・渦域・逆流域の代表フォーメーションを合流し、三連複の
 #   的中点順位2～6位を各100円で推奨する（1位は購入対象外）。
@@ -6948,7 +6953,7 @@ except Exception as _e:
 
 note_text = "\n".join(note_sections)
 
-st.markdown("### 📋 note用（簡易コピーエリア）")
+st.markdown("### note用（簡易コピーエリア）")
 
 # -----------------------------------------
 # 全体妙味判定用：◎〇△× 車番入力
@@ -11468,7 +11473,7 @@ def _v335_build_all_line_purchase_snapshot(plan, weighted_trio_rows, weighted_pa
 
 
 def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
-    """確定済み三流れ代表購入ロジックからnote公開用の簡易本文を生成する。"""
+    """確定済み購入5点と三連複的中点順位をnote公開用に整形する。"""
     try:
         if not isinstance(plan, dict) or not plan:
             return "note用簡易出力生成不可：フォーメーション未確定"
@@ -11479,9 +11484,8 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         if not purchase_snapshot:
             return "note用簡易出力生成不可：購入評価未確定"
 
-        formations = tuple(purchase_snapshot.get("formations", tuple()) or tuple())
         trio_plan = dict(purchase_snapshot.get("trio", {}) or {})
-        if not formations or not trio_plan:
+        if not trio_plan:
             return "note用簡易出力生成不可：三流れ代表購入評価未確定"
 
         venue = str(globals().get("track") or globals().get("place") or "").strip()
@@ -11501,23 +11505,27 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"想定隊列　{queue_text}",
             f"着順予想　{order_text}",
         ]
-        for idx, formation in enumerate(formations, start=1):
-            line_text = "".join(str(int(x)) for x in (formation.get("line", tuple()) or tuple()))
-            lines.append(
-                f"【想定{idx}・ライン{line_text}】3連複{formation.get('ticket_form', '')}・計6点"
-            )
 
         trio_text = " ".join(
-            f"{''.join(str(int(x)) for x in key)}（100円）"
+            "".join(str(int(x)) for x in key)
             for key in (trio_plan.get("selected", tuple()) or tuple())
         ) or "なし"
+        trio_rank_text = " ".join(
+            f"{idx}位:{''.join(str(int(x)) for x in key)}"
+            f"（{float((trio_plan.get('score_map', {}) or {}).get(key, 0.0)):.3f}）"
+            for idx, key in enumerate(
+                (trio_plan.get("ranked_high_to_low", tuple()) or tuple()),
+                start=1,
+            )
+        ) or "算出不可"
         lines.extend([
-            "",
-            "",
             "",
             "【推奨購入・3連複】",
             trio_text,
-            f"計{int(trio_plan.get('ticket_count', 0) or 0)}点／{int(trio_plan.get('total_amount', 0) or 0)}円",
+            f"計{int(trio_plan.get('ticket_count', 0) or 0)}点",
+            "",
+            "三連複的中点順位想定（高→低）：",
+            trio_rank_text,
         ])
         return "\n".join(lines).strip() + "\n"
 
