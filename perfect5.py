@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v335c（その他ライン候補生成除外版）:
+# ・全ライン基本フォーメーションは、ライン評価グループの順流域・渦域・
+#   逆流域に採用された代表ラインだけから生成する。
+# ・「その他（3列目候補）」のラインおよび単騎は候補生成・重複除去・
+#   的中点順位付けへ一切混入させない。
 # v335b（2ライン・4車追加ライン確定修正版）:
 # ・A/Eが同一ラインになる2ライン戦で、残る4車ラインとEにより必須5車が
 #   既に揃っている場合、補充処理が6車目を加えて失敗する不具合を修正する。
@@ -9259,8 +9264,20 @@ def _v334g_build_a_axis_line_formation(
     }
 
 
-def _v335_normalize_line_groups(line_def_obj, adopted_sequence):
-    """入力順を保った実在ライン一覧を作る。未収録車は単騎として末尾へ補う。"""
+def _v335_normalize_line_groups(
+    line_def_obj,
+    adopted_sequence,
+    line_zone_map=None,
+):
+    """順流域・渦域・逆流域の代表ラインだけを入力順で返す。"""
+    zone_map = dict(line_zone_map or {})
+    allowed_zones = {"順流", "渦", "逆流"}
+
+    def _zone_for_group(group):
+        key = "".join(str(int(car)) for car in (group or []))
+        reverse_key = "".join(reversed(key))
+        return str(zone_map.get(key, zone_map.get(reverse_key, "")) or "")
+
     groups = []
     seen = set()
     if isinstance(line_def_obj, dict):
@@ -9278,12 +9295,18 @@ def _v335_normalize_line_groups(line_def_obj, adopted_sequence):
                 continue
             if car > 0 and car not in group and car not in seen:
                 group.append(car)
-                seen.add(car)
-        if group:
+        if group and _zone_for_group(group) in allowed_zones:
             groups.append(tuple(group))
+            seen.update(group)
+
+    # line_def側に存在しない単騎でも、三流れ代表に採用された車だけを補う。
     for car in _v281_unique_sequence(adopted_sequence or []):
         car = int(car)
-        if car > 0 and car not in seen:
+        if (
+            car > 0
+            and car not in seen
+            and _zone_for_group((car,)) in allowed_zones
+        ):
             groups.append((car,))
             seen.add(car)
     return tuple(groups)
@@ -10985,7 +11008,11 @@ def _v281_build_fixed_flow_plan(
         "a_axis_ticket_form": str(_v334g_a_axis["ticket_form"]),
         "a_axis_tickets": tuple(_v334g_a_axis["tickets"]),
         "a_axis_ticket_count": int(_v334g_a_axis["ticket_count"]),
-        "line_groups": _v335_normalize_line_groups(line_def_obj, adopted_sequence),
+        "line_groups": _v335_normalize_line_groups(
+            line_def_obj,
+            adopted_sequence,
+            line_zone_map=globals().get("LINE_ZONE_MAP", {}) or {},
+        ),
         "style_sequence_map": {
             str(style): tuple(int(car) for car in (seq_map.get(style, []) or []))
             for style in _V281_STYLES
