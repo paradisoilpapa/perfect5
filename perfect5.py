@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v335g（5車立て追加ライン生成修正版）:
+# ・5車立てでは軸以外の4車が全相手になるため、追加ライン生成時に限り、
+#   通常は除外する着順予想1位を最後の不足枠へ戻して1－4－4を確定する。
+# ・7車・9車の着順予想1位除外、三流れ代表限定、的中点2～6位選抜は変更しない。
 # v335f（note用推奨買い目・中黒区切り版）:
 # ・note用の推奨三連複5点は、買い目間を「・」で区切って表示する。
 # ・詳細出力および三連複的中点順位想定の表示は変更しない。
@@ -2323,7 +2327,7 @@ globals()["eff_laps"]  = int(eff_laps)
 st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き：統合版）⭐")
 st.caption(f"風補正モード: {WIND_MODE}固定（屋外は風速＋ホーム基準風向を常時反映／前橋・小倉はドーム無風固定）")
 
-st.subheader("2026/08/16更新")
+st.subheader("v300・2026/08/06更新")
 if "race_no_main" not in st.session_state:
     st.session_state["race_no_main"] = 1
 c1, c2, c3 = st.columns([6,2,2])
@@ -9362,6 +9366,17 @@ def _v335_build_additional_line_formation(
         if car == first_predicted or car in selected:
             continue
         selected.append(car)
+
+    # 5車立ては軸＋相手4車で出走全5車を使うため、着順予想1位を
+    # 除外したままでは必ず4車までしか確定できない。出走車が5車の
+    # 場合だけ、通常除外する1位車を最後の不足枠へ戻す。
+    field_cars = [int(car) for car in _v281_unique_sequence(sequence)]
+    if (
+        len(selected) < 5
+        and len(field_cars) == 5
+        and first_predicted not in selected
+    ):
+        selected.append(int(first_predicted))
     if len(selected) != 5 or len(set(selected)) != 5:
         raise ValueError("追加ラインの5車を確定できません")
     selected = [axis] + sorted(
