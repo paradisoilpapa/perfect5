@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v335d（三流れ代表・的中点2～6位選抜版）:
+# ・順流域・渦域・逆流域の代表フォーメーションを合流し、三連複の
+#   的中点順位2～6位を各100円で推奨する（1位は購入対象外）。
+# ・推奨購入の2車複は廃止する。加重2車複評価表はバグ確認用に維持する。
+# ・「全ライン」表記を、実際の対象範囲に合わせて「三流れ代表」へ改める。
 # v335c（その他ライン候補生成除外版）:
 # ・全ライン基本フォーメーションは、ライン評価グループの順流域・渦域・
 #   逆流域に採用された代表ラインだけから生成する。
@@ -11366,8 +11371,14 @@ def _v334q_merge_pair_axis_purchase_plans(*plans):
     }
 
 
-def _v335_build_global_low_hit_plan(candidates, weighted_rows, ticket_size=3, limit=4):
-    """全フォーメーション候補を合流し、的中点の低い順から指定点数を選ぶ。"""
+def _v335_build_global_hit_rank_plan(
+    candidates,
+    weighted_rows,
+    ticket_size=3,
+    rank_start=2,
+    rank_end=6,
+):
+    """代表フォーメーション候補を合流し、的中点の指定順位帯を選ぶ。"""
     try:
         ticket_size = int(ticket_size)
         unique = []
@@ -11412,7 +11423,11 @@ def _v335_build_global_low_hit_plan(candidates, weighted_rows, ticket_size=3, li
         if any(key not in row_map for key in unique):
             return {}
         ranked = sorted(unique, key=lambda key: (-float(row_map[key]), tuple(key)))
-        selected = tuple(sorted(ranked[-min(int(limit), len(ranked)):]))
+        start_index = max(0, int(rank_start) - 1)
+        end_index = max(start_index, int(rank_end))
+        selected = tuple(sorted(ranked[start_index:end_index]))
+        if not selected:
+            return {}
         stakes = tuple((key, 100) for key in selected)
         return {
             "all_candidates": tuple(unique),
@@ -11422,41 +11437,38 @@ def _v335_build_global_low_hit_plan(candidates, weighted_rows, ticket_size=3, li
             "stakes": stakes,
             "ticket_count": len(selected),
             "total_amount": len(selected) * 100,
+            "rank_start": int(rank_start),
+            "rank_end": int(rank_end),
         }
     except Exception:
         return {}
 
 
 def _v335_build_all_line_purchase_snapshot(plan, weighted_trio_rows, weighted_pair_rows):
-    """各ラインで三連複6点・軸相手2車複4点を作り、各券種を全体選抜する。"""
+    """三流れの代表ラインで三連複6点を作り、的中点2～6位を選抜する。"""
     formations = _v335_build_all_line_formations(plan)
     if not formations:
         return {}
     trio_candidates = []
-    pair_candidates = []
     for formation in formations:
         trio_candidates.extend(formation.get("tickets", tuple()) or tuple())
-        pair_candidates.extend(_v334q_build_axis_pair_tickets(
-            formation.get("axis", 0),
-            formation.get("selected_five", tuple()),
-        ))
-    trio_plan = _v335_build_global_low_hit_plan(
-        trio_candidates, weighted_trio_rows, ticket_size=3, limit=4
+    trio_plan = _v335_build_global_hit_rank_plan(
+        trio_candidates,
+        weighted_trio_rows,
+        ticket_size=3,
+        rank_start=2,
+        rank_end=6,
     )
-    pair_plan = _v335_build_global_low_hit_plan(
-        pair_candidates, weighted_pair_rows, ticket_size=2, limit=4
-    )
-    if not trio_plan or not pair_plan:
+    if not trio_plan:
         return {}
     return {
         "formations": formations,
         "trio": trio_plan,
-        "pair": pair_plan,
     }
 
 
 def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
-    """確定済み全ライン購入ロジックからnote公開用の簡易本文を生成する。"""
+    """確定済み三流れ代表購入ロジックからnote公開用の簡易本文を生成する。"""
     try:
         if not isinstance(plan, dict) or not plan:
             return "note用簡易出力生成不可：フォーメーション未確定"
@@ -11469,9 +11481,8 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
 
         formations = tuple(purchase_snapshot.get("formations", tuple()) or tuple())
         trio_plan = dict(purchase_snapshot.get("trio", {}) or {})
-        pair_plan = dict(purchase_snapshot.get("pair", {}) or {})
-        if not formations or not trio_plan or not pair_plan:
-            return "note用簡易出力生成不可：全ライン購入評価未確定"
+        if not formations or not trio_plan:
+            return "note用簡易出力生成不可：三流れ代表購入評価未確定"
 
         venue = str(globals().get("track") or globals().get("place") or "").strip()
         race_no_raw = str(globals().get("race_no") or "").strip()
@@ -11500,10 +11511,6 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"{''.join(str(int(x)) for x in key)}（100円）"
             for key in (trio_plan.get("selected", tuple()) or tuple())
         ) or "なし"
-        pair_text = " ".join(
-            f"{'-'.join(str(int(x)) for x in key)}（100円）"
-            for key in (pair_plan.get("selected", tuple()) or tuple())
-        ) or "なし"
         lines.extend([
             "",
             "",
@@ -11511,10 +11518,6 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             "【推奨購入・3連複】",
             trio_text,
             f"計{int(trio_plan.get('ticket_count', 0) or 0)}点／{int(trio_plan.get('total_amount', 0) or 0)}円",
-            "",
-            "【推奨購入・2車複】",
-            pair_text,
-            f"計{int(pair_plan.get('ticket_count', 0) or 0)}点／{int(pair_plan.get('total_amount', 0) or 0)}円",
         ])
         return "\n".join(lines).strip() + "\n"
 
@@ -11789,9 +11792,7 @@ def _v281_format_fixed_flow_block(
         globals()["V334N_COMPACT_PURCHASE_SNAPSHOT"] = all_line_snapshot
         formations = tuple(all_line_snapshot.get("formations", tuple()) or tuple())
         trio_plan = dict(all_line_snapshot.get("trio", {}) or {})
-        pair_plan = dict(all_line_snapshot.get("pair", {}) or {})
-
-        purchase_lines.append("【全ライン基本フォーメーション】")
+        purchase_lines.append("【三流れ代表基本フォーメーション】")
         for idx, formation in enumerate(formations, start=1):
             line_text = "".join(str(int(x)) for x in (formation.get("line", tuple()) or tuple()))
             purchase_lines.append(
@@ -11801,38 +11802,22 @@ def _v281_format_fixed_flow_block(
             f"{_v334b_ticket_text(key)}（100円）"
             for key in (trio_plan.get("selected", tuple()) or tuple())
         ) or "なし"
-        pair_text = " ".join(
-            f"{'-'.join(str(int(x)) for x in key)}（100円）"
-            for key in (pair_plan.get("selected", tuple()) or tuple())
-        ) or "なし"
         trio_rank_text = " ".join(
             f"{idx}位:{_v334b_ticket_text(key)}（{float((trio_plan.get('score_map', {}) or {}).get(key, 0.0)):.3f}）"
             for idx, key in enumerate(
                 (trio_plan.get("ranked_high_to_low", tuple()) or tuple()), start=1
             )
         ) or "算出不可"
-        pair_rank_text = " ".join(
-            f"{idx}位:{'-'.join(str(int(x)) for x in key)}（{float((pair_plan.get('score_map', {}) or {}).get(key, 0.0)):.3f}）"
-            for idx, key in enumerate(
-                (pair_plan.get("ranked_high_to_low", tuple()) or tuple()), start=1
-            )
-        ) or "算出不可"
         purchase_lines.extend([
             f"全候補（三連複・重複除去後）：{len(trio_plan.get('all_candidates', tuple()) or tuple())}点",
             f"三連複的中点順位（高→低）：{trio_rank_text}",
-            "【推奨購入・3連複／的中点下位4】",
+            "【推奨購入・3連複／的中点2～6位】",
             trio_text,
             f"計{int(trio_plan.get('ticket_count', 0) or 0)}点／{int(trio_plan.get('total_amount', 0) or 0)}円",
-            "",
-            f"全候補（2車複・軸－相手のみ・重複除去後）：{len(pair_plan.get('all_candidates', tuple()) or tuple())}点",
-            f"2車複的中点順位（高→低）：{pair_rank_text}",
-            "【推奨購入・2車複／的中点下位4】",
-            pair_text,
-            f"計{int(pair_plan.get('ticket_count', 0) or 0)}点／{int(pair_plan.get('total_amount', 0) or 0)}円",
         ])
     else:
         purchase_lines = [
-            "【全ライン購入候補】評価データ不足のため生成不可",
+            "【三流れ代表購入候補】評価データ不足のため生成不可",
         ]
 
     if bool(pressure_boundary.get("evaluated", False)):
@@ -11899,7 +11884,7 @@ def _v281_format_fixed_flow_block(
         f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
         *purchase_lines,
         "",
-        "※実在する各ラインで軸1車＋相手4車を確定。三連複は各1－4－4の6点、2車複は同じ軸から相手4車への4点だけを合流・重複除去し、券種ごとに的中点下位4点を各100円で購入（総合点・妙味点は選抜対象外）。",
+        "※順流域・渦域・逆流域の各代表ラインで軸1車＋相手4車を確定。各1－4－4の三連複6点を合流・重複除去し、的中点順位2～6位の5点を各100円で購入（1位・総合点・妙味点は選抜対象外）。",
     ]
     return out
 
@@ -14505,7 +14490,7 @@ def _replace_tanpyou_with_simple_comment(text: str) -> str:
         m_tenkai = re.search(r"^展開評価：([^\n]+)$", txt, flags=re.MULTILINE)
         tenkai = m_tenkai.group(1).strip() if m_tenkai else "未判定"
 
-        line1 = "・全ライン型：各ラインで軸1車と相手4車を確定し、合流後の的中点下位4点を購入候補にする。"
+        line1 = "・三流れ代表型：順流域・渦域・逆流域の各代表ラインで候補を作り、合流後の的中点2～6位を購入候補にする。"
         if axis != "未判定" and axis_style != "未判定":
             line2 = f"・最終軸は{axis}、採用流れは{axis_style}。"
         else:
