@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+# v335f（note用推奨買い目・中黒区切り版）:
+# ・note用の推奨三連複5点は、買い目間を「・」で区切って表示する。
+# ・詳細出力および三連複的中点順位想定の表示は変更しない。
 # v335e（note用・推奨5点＋的中点順位表示版）:
 # ・note用簡易出力から三流れ代表フォーメーションを外す。
 # ・推奨三連複は金額を付けず5点だけを表示し、合計も点数だけにする。
@@ -2320,7 +2323,7 @@ globals()["eff_laps"]  = int(eff_laps)
 st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き：統合版）⭐")
 st.caption(f"風補正モード: {WIND_MODE}固定（屋外は風速＋ホーム基準風向を常時反映／前橋・小倉はドーム無風固定）")
 
-st.subheader("v300・2026/08/06更新")
+st.subheader("2026/08/16更新")
 if "race_no_main" not in st.session_state:
     st.session_state["race_no_main"] = 1
 c1, c2, c3 = st.columns([6,2,2])
@@ -11506,7 +11509,7 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"着順予想　{order_text}",
         ]
 
-        trio_text = " ".join(
+        trio_text = "・".join(
             "".join(str(int(x)) for x in key)
             for key in (trio_plan.get("selected", tuple()) or tuple())
         ) or "なし"
