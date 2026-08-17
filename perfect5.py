@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+# v335i（note用・2位コア絞り着順修正版）:
+# ・note用簡易出力の推奨三連複5点は従来どおり維持する。
+# ・【絞り】の三連複は、三連複的中点順位2位の3車をそのまま使用する。
+# ・【絞り】の三連単は、その3車だけを採用流れのAI重圧補正後・最終着順予想順に並べる。
+# ・【絞り】の2車単は、並べ直した三連単の1着→2着を使用する。2車複は追加しない。
+# ・三連複的中点順位想定、詳細出力、既存の計算・選抜ロジックは変更しない。
 # v335h（note用・2位コア絞り表示追加版）:
 # ・note用簡易出力の推奨三連複5点は従来どおり維持する。
 # ・三連複的中点順位2位の3車を【絞り】として、三連単＆三連複の共通買い目で表示する。
@@ -11540,15 +11546,22 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             for idx, key in enumerate(ranked_trios, start=1)
         ) or "算出不可"
 
-        # v335h: 三連複的中点順位2位を絞りのコアとして表示する。
-        # 例：2位が145なら、三連単＆三連複=145、2車単=14。
+        # v335i: 三連複的中点順位2位を絞りの3車コアとし、
+        # 三連単・2車単だけは採用流れの最終着順予想順へ並べ替える。
+        # 例：2位が234、着順予想が3→1→4→2→...なら、
+        # 三連複=234、三連単=342、2車単=34。
         squeeze_trio_text = "算出不可"
-        squeeze_pair_text = "算出不可"
+        squeeze_trifecta_text = "算出不可"
+        squeeze_exacta_text = "算出不可"
         if len(ranked_trios) >= 2:
             rank2_key = tuple(int(x) for x in ranked_trios[1])
-            if len(rank2_key) >= 3:
-                squeeze_trio_text = "".join(str(x) for x in rank2_key[:3])
-                squeeze_pair_text = "".join(str(x) for x in rank2_key[:2])
+            if len(rank2_key) == 3:
+                squeeze_trio_text = "".join(str(x) for x in rank2_key)
+                rank2_set = set(rank2_key)
+                ordered_rank2 = [car for car in adopted_sequence if car in rank2_set]
+                if len(ordered_rank2) == 3 and set(ordered_rank2) == rank2_set:
+                    squeeze_trifecta_text = "".join(str(x) for x in ordered_rank2)
+                    squeeze_exacta_text = "".join(str(x) for x in ordered_rank2[:2])
 
         lines.extend([
             "",
@@ -11557,8 +11570,9 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"計{int(trio_plan.get('ticket_count', 0) or 0)}点",
             "",
             "【絞り】",
-            f"三連単＆三連複　{squeeze_trio_text}",
-            f"２車単　{squeeze_pair_text}",
+            f"三連複　{squeeze_trio_text}",
+            f"三連単　{squeeze_trifecta_text}",
+            f"２車単　{squeeze_exacta_text}",
             "",
             "三連複的中点順位想定（高→低）：",
             trio_rank_text,
