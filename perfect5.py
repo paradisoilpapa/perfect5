@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v335h（note用・2位コア絞り表示追加版）:
+# ・note用簡易出力の推奨三連複5点は従来どおり維持する。
+# ・三連複的中点順位2位の3車を【絞り】として、三連単＆三連複の共通買い目で表示する。
+# ・同じ2位3車の先頭2車を、2車単の買い目として続けて表示する。
+# ・三連複的中点順位想定、詳細出力、既存の計算・選抜ロジックは変更しない。
 # v335g（5車立て追加ライン生成修正版）:
 # ・5車立てでは軸以外の4車が全相手になるため、追加ライン生成時に限り、
 #   通常は除外する着順予想1位を最後の不足枠へ戻して1－4－4を確定する。
@@ -11528,19 +11533,32 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             "".join(str(int(x)) for x in key)
             for key in (trio_plan.get("selected", tuple()) or tuple())
         ) or "なし"
+        ranked_trios = tuple(trio_plan.get("ranked_high_to_low", tuple()) or tuple())
         trio_rank_text = " ".join(
             f"{idx}位:{''.join(str(int(x)) for x in key)}"
             f"（{float((trio_plan.get('score_map', {}) or {}).get(key, 0.0)):.3f}）"
-            for idx, key in enumerate(
-                (trio_plan.get("ranked_high_to_low", tuple()) or tuple()),
-                start=1,
-            )
+            for idx, key in enumerate(ranked_trios, start=1)
         ) or "算出不可"
+
+        # v335h: 三連複的中点順位2位を絞りのコアとして表示する。
+        # 例：2位が145なら、三連単＆三連複=145、2車単=14。
+        squeeze_trio_text = "算出不可"
+        squeeze_pair_text = "算出不可"
+        if len(ranked_trios) >= 2:
+            rank2_key = tuple(int(x) for x in ranked_trios[1])
+            if len(rank2_key) >= 3:
+                squeeze_trio_text = "".join(str(x) for x in rank2_key[:3])
+                squeeze_pair_text = "".join(str(x) for x in rank2_key[:2])
+
         lines.extend([
             "",
             "【推奨購入・3連複】",
             trio_text,
             f"計{int(trio_plan.get('ticket_count', 0) or 0)}点",
+            "",
+            "【絞り】",
+            f"三連単＆三連複　{squeeze_trio_text}",
+            f"２車単　{squeeze_pair_text}",
             "",
             "三連複的中点順位想定（高→低）：",
             trio_rank_text,
