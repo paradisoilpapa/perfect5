@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v335j（note用・2位3連単／3位絞り分離版）:
+# ・三連複的中点順位2位は【推奨購入・3連単】へ移し、採用流れのAI重圧補正後・最終着順予想順で表示する。
+# ・【推奨購入・3連複】から順位2位の三連複を外し、従来選抜5点の残り4点を表示する。
+# ・【絞り】は三連複的中点順位3位の3車へ変更し、三連単・2車単は2位時と同様に最終着順予想順へ並べ替える。
+# ・三連複的中点順位想定、詳細出力、既存の計算・選抜ロジックは変更しない。
 # v335i（note用・2位コア絞り着順修正版）:
 # ・note用簡易出力の推奨三連複5点は従来どおり維持する。
 # ・【絞り】の三連複は、三連複的中点順位2位の3車をそのまま使用する。
@@ -11535,10 +11540,6 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"着順予想　{order_text}",
         ]
 
-        trio_text = "・".join(
-            "".join(str(int(x)) for x in key)
-            for key in (trio_plan.get("selected", tuple()) or tuple())
-        ) or "なし"
         ranked_trios = tuple(trio_plan.get("ranked_high_to_low", tuple()) or tuple())
         trio_rank_text = " ".join(
             f"{idx}位:{''.join(str(int(x)) for x in key)}"
@@ -11546,28 +11547,50 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             for idx, key in enumerate(ranked_trios, start=1)
         ) or "算出不可"
 
-        # v335i: 三連複的中点順位2位を絞りの3車コアとし、
-        # 三連単・2車単だけは採用流れの最終着順予想順へ並べ替える。
-        # 例：2位が234、着順予想が3→1→4→2→...なら、
-        # 三連複=234、三連単=342、2車単=34。
-        squeeze_trio_text = "算出不可"
-        squeeze_trifecta_text = "算出不可"
-        squeeze_exacta_text = "算出不可"
+        # v335j:
+        # ・順位2位は三連複から外し、最終着順予想順の三連単として推奨する。
+        # ・【絞り】は順位3位へ移し、三連単・2車単は同じ最終着順予想順で作る。
+        rank2_key = tuple()
+        rank2_trifecta_text = "算出不可"
         if len(ranked_trios) >= 2:
             rank2_key = tuple(int(x) for x in ranked_trios[1])
             if len(rank2_key) == 3:
-                squeeze_trio_text = "".join(str(x) for x in rank2_key)
                 rank2_set = set(rank2_key)
                 ordered_rank2 = [car for car in adopted_sequence if car in rank2_set]
                 if len(ordered_rank2) == 3 and set(ordered_rank2) == rank2_set:
-                    squeeze_trifecta_text = "".join(str(x) for x in ordered_rank2)
-                    squeeze_exacta_text = "".join(str(x) for x in ordered_rank2[:2])
+                    rank2_trifecta_text = "".join(str(x) for x in ordered_rank2)
+
+        trio_selected_without_rank2 = [
+            tuple(int(x) for x in key)
+            for key in (trio_plan.get("selected", tuple()) or tuple())
+            if tuple(int(x) for x in key) != rank2_key
+        ]
+        trio_text = "・".join(
+            "".join(str(int(x)) for x in key)
+            for key in trio_selected_without_rank2
+        ) or "なし"
+
+        squeeze_trio_text = "算出不可"
+        squeeze_trifecta_text = "算出不可"
+        squeeze_exacta_text = "算出不可"
+        if len(ranked_trios) >= 3:
+            rank3_key = tuple(int(x) for x in ranked_trios[2])
+            if len(rank3_key) == 3:
+                squeeze_trio_text = "".join(str(x) for x in rank3_key)
+                rank3_set = set(rank3_key)
+                ordered_rank3 = [car for car in adopted_sequence if car in rank3_set]
+                if len(ordered_rank3) == 3 and set(ordered_rank3) == rank3_set:
+                    squeeze_trifecta_text = "".join(str(x) for x in ordered_rank3)
+                    squeeze_exacta_text = "".join(str(x) for x in ordered_rank3[:2])
 
         lines.extend([
             "",
+            "【推奨購入・3連単】",
+            rank2_trifecta_text,
+            "",
             "【推奨購入・3連複】",
             trio_text,
-            f"計{int(trio_plan.get('ticket_count', 0) or 0)}点",
+            f"計{len(trio_selected_without_rank2)}点",
             "",
             "【絞り】",
             f"三連複　{squeeze_trio_text}",
