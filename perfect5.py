@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-# v335m（三連単・地区まとめ3番手以降の核除外版）:
-# ・変更対象は最後の【推奨購入・3連単】生成だけ。AI重圧補正・着順予想そのものは変更しない。
-# ・三連単の1・2着核は採用流れ着順予想の上位から選ぶが、3番手以降（thirdplus）で「地区まとめ」の車は核候補から除外する。
-# ・3番手以降でも「明確追走」は三連単核候補に残し、番手（second）は従来どおり核候補に残す。
-# ・地区まとめ車を核から外した場合は、採用流れ着順予想の次位車を繰り上げて2車核を作る。
-# ・三連単3着は、繰り上げ後の三連単核2車を除いて、的中点1～5位の出現回数をv335kと同じ基準で再集計する。
-# ・三連複3点はv335kのまま、着順予想1位・2位の共通核と上位3ヒモを維持する。
+# v335n（5点共通核・地区まとめ3番手以降の核除外版）:
+# ・AI重圧補正・着順予想そのものは変更しない。最後の5点生成時に三連単・三連複で共通の核2車を確定する。
+# ・共通核は採用流れ着順予想の上位から選ぶが、3番手以降（thirdplus）で「地区まとめ」の車は核候補から除外する。
+# ・3番手以降でも「明確追走」は共通核候補に残し、番手（second）は従来どおり共通核候補に残す。
+# ・地区まとめ車を核から外した場合は、採用流れ着順予想の次位車を繰り上げて2車共通核を作る。
+# ・三連単3着と三連複ヒモ3車は、繰り上げ後の共通核2車を除いて、的中点1～5位の出現回数を同じ基準で集計する。
+# ・三連単はAB-BA-C、三連複はA-B-XYZとし、5点すべてで同じA・B核を使う。
 # v335k（着順予想1・2位核／3連単2点＋3連複3点版）:
 # ・着順予想1位・2位を1・2着の共通核とし、3連単は表裏2点で固定する。
 # ・3着候補は三連複的中点順位想定1～5位に登場する、着順予想1・2位以外の車を出現回数で集計する。
@@ -11522,19 +11522,18 @@ def _v335_build_all_line_purchase_snapshot(plan, weighted_trio_rows, weighted_pa
 
 def _v335k_build_top12_five_point_plan(plan, trio_plan):
     """
-    着順予想1・2位を共通核にした5点を作る。
+    v335n：最後の5点生成時に、三連単・三連複で共通の核2車を確定する。
 
-    三連複（v335k維持）：
-    ・着順予想1・2位を共通核にする。
-    ・三連複的中点順位1～5位に出た車を、核2車を除いて出現回数集計。
-    ・集計上位3車を三連複ヒモへ採用する。
+    共通核：
+    ・採用流れ着順予想の上位から2車を選ぶ。
+    ・3番手以降（thirdplus）の「地区まとめ」車だけは共通核候補から外す。
+    ・番手（second）と「明確追走」の3番手以降は従来どおり共通核候補に残す。
+    ・除外後は採用流れ着順予想の次位車を繰り上げる。
 
-    三連単（v335m）：
-    ・最後の三連単生成時だけ、3番手以降（thirdplus）の「地区まとめ」車を
-      1・2着核候補から外す。
-    ・番手（second）と「明確追走」の3番手以降は従来どおり核候補に残す。
-    ・除外後は採用流れ着順予想の次位車を繰り上げ、同じ1～5位出現回数で
-      三連単3着を再集計する。
+    3着・ヒモ：
+    ・三連複的中点順位1～5位に出た車を、確定した共通核2車を除いて出現回数集計する。
+    ・最多出現車を三連単3着へ、集計上位3車を三連複ヒモへ採用する。
+    ・同数なら着順予想上位、さらに同順位なら車番順で決める。
     """
     try:
         adopted_sequence = [
@@ -11547,47 +11546,13 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         eval_pos = {int(car): idx for idx, car in enumerate(adopted_sequence)}
 
         # -------------------------------------------------
-        # 三連複はv335kのまま：着順予想1位・2位を共通核にする。
-        # -------------------------------------------------
-        axis_a = int(adopted_sequence[0])
-        axis_b = int(adopted_sequence[1])
-        axis_set = {axis_a, axis_b}
-
-        counts = {}
-        for key in ranked_trios[:5]:
-            for raw_car in (key or tuple()):
-                car = int(raw_car)
-                if car in axis_set:
-                    continue
-                counts[car] = int(counts.get(car, 0)) + 1
-
-        # 上位5組が互いに異なる3車組なら、核2車を除いた候補は通常3車以上になる。
-        # 不足時は無理に順位6位以下から補充せず、生成不可として止める。
-        if len(counts) < 3:
-            return {}
-
-        candidate_order = sorted(
-            counts,
-            key=lambda car: (
-                -int(counts.get(car, 0)),
-                int(eval_pos.get(car, 999)),
-                int(car),
-            ),
-        )
-        himo = tuple(int(car) for car in candidate_order[:3])
-
-        trio_tickets = tuple(
-            tuple(sorted((axis_a, axis_b, int(car)))) for car in himo
-        )
-
-        # -------------------------------------------------
-        # v335m：三連単の1・2着核だけを最終生成時に再判定する。
-        # 「地区まとめ」の3番手以降は核にしない。
+        # v335n：5点すべてで使う共通核を先に確定する。
+        # 「地区まとめ」の3番手以降だけを核から外す。
         # -------------------------------------------------
         line_def_obj = globals().get("line_def", {}) or {}
         trust_map = globals().get("line_follow_trust", {}) or {}
 
-        def _trifecta_axis_eligible(_car):
+        def _common_axis_eligible(_car):
             try:
                 _c = int(_car)
                 _role = str(role_in_line(_c, line_def_obj))
@@ -11601,79 +11566,84 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             except Exception:
                 return True
 
-        trifecta_axes = []
+        common_axes = []
         excluded_district_thirdplus = []
         for car in adopted_sequence:
             c = int(car)
-            if not _trifecta_axis_eligible(c):
+            if not _common_axis_eligible(c):
                 excluded_district_thirdplus.append(c)
                 continue
-            if c not in trifecta_axes:
-                trifecta_axes.append(c)
-            if len(trifecta_axes) >= 2:
+            if c not in common_axes:
+                common_axes.append(c)
+            if len(common_axes) >= 2:
                 break
 
-        # 地区まとめ車を戻してまで三連単核は作らない。
-        if len(trifecta_axes) < 2:
+        # 地区まとめ車を戻してまで共通核は作らない。
+        if len(common_axes) < 2:
             return {}
 
-        trifecta_axis_a = int(trifecta_axes[0])
-        trifecta_axis_b = int(trifecta_axes[1])
-        trifecta_axis_set = {trifecta_axis_a, trifecta_axis_b}
+        axis_a = int(common_axes[0])
+        axis_b = int(common_axes[1])
+        axis_set = {axis_a, axis_b}
 
-        trifecta_counts = {}
+        # -------------------------------------------------
+        # 確定した共通核を除いて、的中点1～5位の出現回数を一度だけ集計。
+        # この同じ集計を三連単3着と三連複ヒモの両方に使う。
+        # -------------------------------------------------
+        counts = {}
         for key in ranked_trios[:5]:
             for raw_car in (key or tuple()):
                 car = int(raw_car)
-                if car in trifecta_axis_set:
+                if car in axis_set:
                     continue
-                trifecta_counts[car] = int(trifecta_counts.get(car, 0)) + 1
+                counts[car] = int(counts.get(car, 0)) + 1
 
-        if not trifecta_counts:
+        # 三連複はヒモ3車が必要。不足時は順位6位以下から補わず生成停止。
+        if len(counts) < 3:
             return {}
 
-        trifecta_candidate_order = sorted(
-            trifecta_counts,
+        candidate_order = sorted(
+            counts,
             key=lambda car: (
-                -int(trifecta_counts.get(car, 0)),
+                -int(counts.get(car, 0)),
                 int(eval_pos.get(car, 999)),
                 int(car),
             ),
         )
-        third = int(trifecta_candidate_order[0])
+        himo = tuple(int(car) for car in candidate_order[:3])
+        third = int(himo[0])
 
         trifecta_tickets = (
-            (trifecta_axis_a, trifecta_axis_b, third),
-            (trifecta_axis_b, trifecta_axis_a, third),
+            (axis_a, axis_b, third),
+            (axis_b, axis_a, third),
+        )
+        trio_tickets = tuple(
+            tuple(sorted((axis_a, axis_b, int(car)))) for car in himo
         )
 
         return {
-            # 三連複側（v335k維持）
+            # v335n：三連単・三連複で完全共通の核
             "axis_a": axis_a,
             "axis_b": axis_b,
-            "himo": himo,
-            "counts": {int(car): int(counts[car]) for car in counts},
-            "trio_tickets": trio_tickets,
-            "trio_text": f"{axis_a}-{axis_b}-{''.join(str(x) for x in sorted(himo))}",
+            "trifecta_axis_a": axis_a,
+            "trifecta_axis_b": axis_b,
+            "common_axis_a": axis_a,
+            "common_axis_b": axis_b,
 
-            # 三連単側（v335m）
-            "trifecta_axis_a": trifecta_axis_a,
-            "trifecta_axis_b": trifecta_axis_b,
+            "himo": himo,
             "third": third,
-            "trifecta_counts": {
-                int(car): int(trifecta_counts[car]) for car in trifecta_counts
-            },
-            "trifecta_candidate_order": tuple(
-                int(car) for car in trifecta_candidate_order
-            ),
+            "counts": {int(car): int(counts[car]) for car in counts},
+            # 旧表示側との互換用。内容は共通集計と同じ。
+            "trifecta_counts": {int(car): int(counts[car]) for car in counts},
+            "trifecta_candidate_order": tuple(int(car) for car in candidate_order),
             "excluded_district_thirdplus": tuple(
                 int(car) for car in excluded_district_thirdplus
             ),
+
             "trifecta_tickets": trifecta_tickets,
-            "trifecta_text": (
-                f"{trifecta_axis_a}{trifecta_axis_b}-"
-                f"{trifecta_axis_b}{trifecta_axis_a}-{third}"
-            ),
+            "trio_tickets": trio_tickets,
+            "trifecta_text": f"{axis_a}{axis_b}-{axis_b}{axis_a}-{third}",
+            "trio_text": f"{axis_a}-{axis_b}-{''.join(str(x) for x in sorted(himo))}",
 
             "top5": tuple(tuple(int(x) for x in key) for key in ranked_trios[:5]),
             "ticket_count": 2 + len(trio_tickets),
@@ -11723,8 +11693,9 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             for idx, key in enumerate(ranked_trios, start=1)
         ) or "算出不可"
 
-        # v335k:
-        # ・着順予想1・2位を1・2着の核にする。
+        # v335n:
+        # ・最後の5点生成時に共通核2車を確定する。
+        # ・地区まとめ3番手以降は共通核から外し、同じ核で3連単2点・3連複3点を作る。
         # ・三連複的中点順位1～5位の出現回数から3着本命と三連複ヒモ3車を決める。
         five_point_plan = _v335k_build_top12_five_point_plan(plan, trio_plan)
         if five_point_plan:
@@ -12059,11 +12030,11 @@ def _v281_format_fixed_flow_block(
                 five_point_plan.get("excluded_district_thirdplus", tuple()) or tuple()
             )
             _excluded_text = (
-                f"／三連単核から地区3列目除外={''.join(str(int(x)) for x in _excluded)}"
+                f"／5点共通核から地区3列目除外={''.join(str(int(x)) for x in _excluded)}"
                 if _excluded else ""
             )
             purchase_lines.extend([
-                f"3着候補集計：{count_text}／三連単核={_ta}{_tb}／3連単3着={int(five_point_plan.get('third', 0) or 0)}{_excluded_text}",
+                f"3着候補集計：{count_text}／5点共通核={_ta}{_tb}／3連単3着={int(five_point_plan.get('third', 0) or 0)}{_excluded_text}",
                 "【推奨購入・3連単】",
                 f"{five_point_plan.get('trifecta_text', '算出不可')}（各100円）",
                 "【推奨購入・3連複】",
