@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+# v335p（5車ライン代表・旧2-3-5競合フォールバック修正版）:
+# ・AI印、AI重圧補正、採用流れ、着順予想、v335nの共通核5点ロジックは変更しない。
+# ・7車戦で代表ラインが5車となり、旧Eライン保護2-3-5が「5車ライン全保護＋別線A」を同時要求して生成停止する場合だけ、
+#   v335の最終購入候補生成を旧A～Fから切り離し、各代表ラインを直接1-4-4（6点）へ変換する。
+# ・5車ラインはその5車だけで1-4-4を作り、他の代表ラインはライン全車を守って採用流れ順位から5車まで補完する。
+# ・このフォールバック時も三連複的中点1～5位を作り、v335nと同じ共通核AB／3連単AB-BA-C／3連複A-B-XYZへ接続する。
 # v335n（5点共通核・地区まとめ3番手以降の核除外版）:
 # ・AI重圧補正・着順予想そのものは変更しない。最後の5点生成時に三連単・三連複で共通の核2車を確定する。
 # ・共通核は採用流れ着順予想の上位から選ぶが、3番手以降（thirdplus）で「地区まとめ」の車は核候補から除外する。
@@ -11497,9 +11503,102 @@ def _v335_build_global_hit_rank_plan(
         return {}
 
 
+def _v335p_build_five_car_line_fallback_formations(plan):
+    """
+    v335p：旧Eライン2-3-5が、5車ライン全保護と別線Aの同時要求で停止した場合だけ、
+    現行v335購入候補用の代表1-4-4を直接作る。
+
+    予想順位・AI印・採用流れは一切変更しない。
+    ここで作るのは三連複的中点1～5位の母集団だけ。
+    """
+    try:
+        if not isinstance(plan, dict):
+            return tuple()
+        if str(plan.get("status", "") or "") != "e_line_formation_generation_failed":
+            return tuple()
+
+        sequence = [int(car) for car in _v281_unique_sequence(plan.get("adopted_sequence", tuple()) or tuple())]
+        if len(sequence) < 5:
+            return tuple()
+        rank = {int(car): idx for idx, car in enumerate(sequence)}
+
+        line_groups = _v335_normalize_line_groups(
+            globals().get("line_def", {}) or {},
+            sequence,
+            line_zone_map=globals().get("LINE_ZONE_MAP", {}) or {},
+        )
+        if not line_groups or not any(len(tuple(group or tuple())) == 5 for group in line_groups):
+            return tuple()
+
+        # 単騎は従来どおり、いずれかの流れで1着候補になったものだけ対象。
+        style_map = globals().get("AI_PRESSURE_STYLE_SEQ_MAP", {}) or globals().get("STYLE_SEQ_MAP", {}) or {}
+        flow_first_cars = set()
+        for style_sequence in (style_map or {}).values():
+            normalized = [int(car) for car in _v281_unique_sequence(style_sequence or [])]
+            if normalized:
+                flow_first_cars.add(int(normalized[0]))
+
+        formations = []
+        seen = set()
+        for raw_line in line_groups:
+            line = [int(car) for car in _v281_unique_sequence(raw_line or [])]
+            if not line:
+                continue
+            line_key = frozenset(line)
+            if line_key in seen:
+                continue
+            seen.add(line_key)
+            if len(line) == 1 and int(line[0]) not in flow_first_cars:
+                continue
+
+            line = sorted(line, key=lambda car: (int(rank.get(int(car), 999)), int(car)))
+            axis = int(line[0])
+
+            # ライン全車を先に保護。5車ラインならここで5車が確定する。
+            selected = list(line)
+            for car in sequence:
+                if len(selected) >= 5:
+                    break
+                car = int(car)
+                if car not in selected:
+                    selected.append(car)
+            if len(selected) != 5 or len(set(selected)) != 5:
+                continue
+
+            selected = [axis] + sorted(
+                [int(car) for car in selected if int(car) != axis],
+                key=lambda car: (int(rank.get(int(car), 999)), int(car)),
+            )
+            other_four = tuple(int(car) for car in selected[1:])
+            tickets = tuple(
+                "-".join(str(int(car)) for car in (axis, car1, car2))
+                for car1, car2 in combinations(other_four, 2)
+            )
+            if len(tickets) != 6:
+                continue
+            formations.append({
+                "axis": axis,
+                "line": tuple(line),
+                "selected_five": tuple(selected),
+                "other_four": other_four,
+                "ticket_form": f"{axis}-{''.join(str(x) for x in other_four)}-{''.join(str(x) for x in other_four)}",
+                "tickets": tickets,
+                "ticket_count": 6,
+                "source": "v335p・5車ライン競合フォールバック",
+            })
+
+        return tuple(formations)
+    except Exception:
+        return tuple()
+
+
 def _v335_build_all_line_purchase_snapshot(plan, weighted_trio_rows, weighted_pair_rows):
     """三流れの代表ライン候補を合流し、3着候補抽出用に的中点1～5位を保持する。"""
     formations = _v335_build_all_line_formations(plan)
+    fallback_used = False
+    if not formations:
+        formations = _v335p_build_five_car_line_fallback_formations(plan)
+        fallback_used = bool(formations)
     if not formations:
         return {}
     trio_candidates = []
@@ -11517,6 +11616,7 @@ def _v335_build_all_line_purchase_snapshot(plan, weighted_trio_rows, weighted_pa
     return {
         "formations": formations,
         "trio": trio_plan,
+        "five_car_line_fallback": bool(fallback_used),
     }
 
 
@@ -11988,11 +12088,16 @@ def _v281_format_fixed_flow_block(
         weighted_pair_rows,
     )
     purchase_lines = []
+    _v335p_fallback_used = False
     if all_line_snapshot:
         globals()["V334N_COMPACT_PURCHASE_SNAPSHOT"] = all_line_snapshot
+        _v335p_fallback_used = bool(all_line_snapshot.get("five_car_line_fallback", False))
         formations = tuple(all_line_snapshot.get("formations", tuple()) or tuple())
         trio_plan = dict(all_line_snapshot.get("trio", {}) or {})
-        purchase_lines.append("【三流れ代表基本フォーメーション】")
+        purchase_lines.append(
+            "【三流れ代表基本フォーメーション／5車ライン競合フォールバック】"
+            if _v335p_fallback_used else "【三流れ代表基本フォーメーション】"
+        )
         for idx, formation in enumerate(formations, start=1):
             line_text = "".join(str(int(x)) for x in (formation.get("line", tuple()) or tuple()))
             purchase_lines.append(
@@ -12082,37 +12187,48 @@ def _v281_format_fixed_flow_block(
         e_protected_line=e_protected_line,
     )
 
+    if _v335p_fallback_used:
+        _role_lines = [
+            "【フォーメーション役割】",
+            "旧A～F：5車ライン全保護＋別線Aが5車枠を超えるため、現行5点生成では非使用",
+            f"5車ライン保護：{''.join(str(x) for x in e_protected_line) if e_protected_line else '該当'}",
+            pressure_boundary_text,
+        ]
+        _basic_line = "【基本三連複】旧Eライン2－3－5は非使用／代表ライン1－4－4を直接生成"
+    else:
+        _role_lines = [
+            "【フォーメーション役割】",
+            f"A（相手軸・採用流れ{flow_axis_rank}位）：{flow_axis_car}",
+            f"B（採用流れ{flow_support_rank}位）：{flow_support_car}",
+            f"C（事前2着内率枠）：{formation_c}",
+            f"D（事前3着内率枠）：{formation_d}",
+            f"E（ライン起点）：{formation_e}",
+            f"Eライン保護：{''.join(str(x) for x in e_protected_line) if e_protected_line else formation_e}",
+            f"L（2列目ライン車）：{e_line_second_car if e_line_second_car else 'なし'}",
+            (f"F（FIGHT枠）：{fight_car}{fight_position_text}" if fight_car else "F（FIGHT枠）：なし"),
+            (
+                f"F判定（{'入替前・' if fight_replaced_d else ''}着内数）：C={formation_c}（{int(fight_c_count)}）／"
+                f"D={fight_d_before}（{int(fight_d_before_count)}）／"
+                f"E={fight_e_before}（{int(fight_e_before_count)}）"
+                f" → F={fight_car}"
+            ),
+            *(
+                [f"F=EのためD/E入替：D={formation_d}／E={formation_e}"]
+                if fight_replaced_d else []
+            ),
+            pressure_boundary_text,
+        ]
+        _basic_line = f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点"
+
     out = [
         f"【採用流れ】{adopted_style}",
         "",
-        "【フォーメーション役割】",
-        f"A（相手軸・採用流れ{flow_axis_rank}位）：{flow_axis_car}",
-        f"B（採用流れ{flow_support_rank}位）：{flow_support_car}",
-        f"C（事前2着内率枠）：{formation_c}",
-        f"D（事前3着内率枠）：{formation_d}",
-        f"E（ライン起点）：{formation_e}",
-        f"Eライン保護：{''.join(str(x) for x in e_protected_line) if e_protected_line else formation_e}",
-        f"L（2列目ライン車）：{e_line_second_car if e_line_second_car else 'なし'}",
-        (
-            f"F（FIGHT枠）：{fight_car}{fight_position_text}"
-            if fight_car else "F（FIGHT枠）：なし"
-        ),
-        (
-            f"F判定（{'入替前・' if fight_replaced_d else ''}着内数）：C={formation_c}（{int(fight_c_count)}）／"
-            f"D={fight_d_before}（{int(fight_d_before_count)}）／"
-            f"E={fight_e_before}（{int(fight_e_before_count)}）"
-            f" → F={fight_car}"
-        ),
-        *(
-            [f"F=EのためD/E入替：D={formation_d}／E={formation_e}"]
-            if fight_replaced_d else []
-        ),
-        pressure_boundary_text,
+        *_role_lines,
         "",
-        f"【基本三連複】3連複{ticket_form}・計{int(plan.get('ticket_count', 0) or 0)}点",
+        _basic_line,
         *purchase_lines,
         "",
-        "※順流域・渦域・逆流域の各代表ラインで軸1車＋相手4車を確定。各1－4－4の三連複6点を合流・重複除去し、的中点順位2～6位の5点を各100円で購入（1位・総合点・妙味点は選抜対象外）。",
+        "※順流域・渦域・逆流域の各代表ラインで軸1車＋相手4車を確定。各1－4－4の三連複6点を合流・重複除去し、的中点順位1～5位を3着候補集計に使用。",
     ]
     return out
 
