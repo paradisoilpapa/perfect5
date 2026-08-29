@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v335q（推奨5点・3券種混合版）:
+# ・AI重圧補正、採用流れ、着順予想、共通核A/B、第3候補Cの選出ロジックは変更しない。
+# ・最終推奨は3連単 A→BC→BC（2点）、2車単 BC→A（2点）、2車複 B＝C（1点）の計5点・各100円とする。
+# ・従来の三連複的中点順位1～5位は第3候補Cを決める内部材料として維持する。
+# ・note用簡易表示から「三連複的中点順位想定」は外し、推奨5点だけを表示する。
 # v335p（5車ライン代表・旧2-3-5競合フォールバック修正版）:
 # ・AI印、AI重圧補正、採用流れ、着順予想、v335nの共通核5点ロジックは変更しない。
 # ・7車戦で代表ラインが5車となり、旧Eライン保護2-3-5が「5車ライン全保護＋別線A」を同時要求して生成停止する場合だけ、
@@ -11622,7 +11627,7 @@ def _v335_build_all_line_purchase_snapshot(plan, weighted_trio_rows, weighted_pa
 
 def _v335k_build_top12_five_point_plan(plan, trio_plan):
     """
-    v335n：最後の5点生成時に、三連単・三連複で共通の核2車を確定する。
+    v335q：最終推奨5点用に、共通核A/Bと第3候補Cを確定する。
 
     共通核：
     ・採用流れ着順予想の上位から2車を選ぶ。
@@ -11630,10 +11635,14 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
     ・番手（second）と「明確追走」の3番手以降は従来どおり共通核候補に残す。
     ・除外後は採用流れ着順予想の次位車を繰り上げる。
 
-    3着・ヒモ：
+    第3候補C：
     ・三連複的中点順位1～5位に出た車を、確定した共通核2車を除いて出現回数集計する。
-    ・最多出現車を三連単3着へ、集計上位3車を三連複ヒモへ採用する。
-    ・同数なら着順予想上位、さらに同順位なら車番順で決める。
+    ・最多出現車をCへ採用する。同数なら着順予想上位、さらに同順位なら車番順で決める。
+
+    推奨5点：
+    ・3連単 A→BC→BC（2点）
+    ・2車単 BC→A（2点）
+    ・2車複 B＝C（1点）
     """
     try:
         adopted_sequence = [
@@ -11713,10 +11722,19 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         himo = tuple(int(car) for car in candidate_order[:3])
         third = int(himo[0])
 
+        # v335q：Aが頭ならB/Cの折返しを3連単で取り、
+        # Aが負けた場合はB/C→Aを2車単、B/C同士は2車複で補完する。
         trifecta_tickets = (
             (axis_a, axis_b, third),
-            (axis_b, axis_a, third),
+            (axis_a, third, axis_b),
         )
+        exacta_tickets = (
+            (axis_b, axis_a),
+            (third, axis_a),
+        )
+        quinella_ticket = tuple(sorted((axis_b, third)))
+
+        # 旧三連複3点は購入しない。himoは第3候補Cの内部選定・デバッグ互換用に保持する。
         trio_tickets = tuple(
             tuple(sorted((axis_a, axis_b, int(car)))) for car in himo
         )
@@ -11741,19 +11759,24 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             ),
 
             "trifecta_tickets": trifecta_tickets,
+            "exacta_tickets": exacta_tickets,
+            "quinella_ticket": quinella_ticket,
+            # 旧三連複候補は内部参照・検証用に残すが、推奨購入には使用しない。
             "trio_tickets": trio_tickets,
-            "trifecta_text": f"{axis_a}{axis_b}-{axis_b}{axis_a}-{third}",
+            "trifecta_text": f"{axis_a}→{axis_b}{third}→{axis_b}{third}",
+            "exacta_text": f"{axis_b}{third}→{axis_a}",
+            "quinella_text": f"{axis_b}＝{third}",
             "trio_text": f"{axis_a}-{axis_b}-{''.join(str(x) for x in sorted(himo))}",
 
             "top5": tuple(tuple(int(x) for x in key) for key in ranked_trios[:5]),
-            "ticket_count": 2 + len(trio_tickets),
-            "total_amount": (2 + len(trio_tickets)) * 100,
+            "ticket_count": 5,
+            "total_amount": 500,
         }
     except Exception:
         return {}
 
 def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
-    """確定済み購入5点と三連複的中点順位をnote公開用に整形する。"""
+    """確定済み混合5点をnote公開用に整形する。三連複的中点順位は内部計算だけに使う。"""
     try:
         if not isinstance(plan, dict) or not plan:
             return "note用簡易出力生成不可：フォーメーション未確定"
@@ -11786,38 +11809,31 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"着順予想　{order_text}",
         ]
 
-        ranked_trios = tuple(trio_plan.get("ranked_high_to_low", tuple()) or tuple())
-        trio_rank_text = " ".join(
-            f"{idx}位:{''.join(str(int(x)) for x in key)}"
-            f"（{float((trio_plan.get('score_map', {}) or {}).get(key, 0.0)):.3f}）"
-            for idx, key in enumerate(ranked_trios, start=1)
-        ) or "算出不可"
-
-        # v335n:
-        # ・最後の5点生成時に共通核2車を確定する。
-        # ・地区まとめ3番手以降は共通核から外し、同じ核で3連単2点・3連複3点を作る。
-        # ・三連複的中点順位1～5位の出現回数から3着本命と三連複ヒモ3車を決める。
+        # v335q:
+        # ・三連複的中点順位1～5位は第3候補Cの内部選定にだけ使う。
+        # ・note公開側には順位想定を出さず、混合5点だけを表示する。
         five_point_plan = _v335k_build_top12_five_point_plan(plan, trio_plan)
         if five_point_plan:
             trifecta_text = str(five_point_plan.get("trifecta_text", "算出不可") or "算出不可")
-            trio_text = str(five_point_plan.get("trio_text", "算出不可") or "算出不可")
+            exacta_text = str(five_point_plan.get("exacta_text", "算出不可") or "算出不可")
+            quinella_text = str(five_point_plan.get("quinella_text", "算出不可") or "算出不可")
             ticket_count = int(five_point_plan.get("ticket_count", 0) or 0)
         else:
             trifecta_text = "算出不可"
-            trio_text = "算出不可"
+            exacta_text = "算出不可"
+            quinella_text = "算出不可"
             ticket_count = 0
 
         lines.extend([
             "",
-            "【推奨購入・3連単】",
+            "【推奨購入】",
+            "３連単",
             trifecta_text,
-            "",
-            "【推奨購入・3連複】",
-            trio_text,
+            "２車単",
+            exacta_text,
+            "２車複",
+            quinella_text,
             f"計{ticket_count}点",
-            "",
-            "三連複的中点順位想定（高→低）：",
-            trio_rank_text,
         ])
         return "\n".join(lines).strip() + "\n"
 
@@ -12117,7 +12133,7 @@ def _v281_format_fixed_flow_block(
         purchase_lines.extend([
             f"全候補（三連複・重複除去後）：{len(trio_plan.get('all_candidates', tuple()) or tuple())}点",
             f"三連複的中点順位（高→低）：{trio_rank_text}",
-            "【3着候補抽出元／的中点1～5位】",
+            "【第3候補抽出元／的中点1～5位】",
             source_top5_text,
         ])
         if five_point_plan:
@@ -12139,11 +12155,14 @@ def _v281_format_fixed_flow_block(
                 if _excluded else ""
             )
             purchase_lines.extend([
-                f"3着候補集計：{count_text}／5点共通核={_ta}{_tb}／3連単3着={int(five_point_plan.get('third', 0) or 0)}{_excluded_text}",
-                "【推奨購入・3連単】",
+                f"第3候補集計：{count_text}／共通核={_ta}{_tb}／第3候補={int(five_point_plan.get('third', 0) or 0)}{_excluded_text}",
+                "【推奨購入】",
+                "３連単",
                 f"{five_point_plan.get('trifecta_text', '算出不可')}（各100円）",
-                "【推奨購入・3連複】",
-                f"{five_point_plan.get('trio_text', '算出不可')}（各100円）",
+                "２車単",
+                f"{five_point_plan.get('exacta_text', '算出不可')}（各100円）",
+                "２車複",
+                f"{five_point_plan.get('quinella_text', '算出不可')}（100円）",
                 f"計{int(five_point_plan.get('ticket_count', 0) or 0)}点／{int(five_point_plan.get('total_amount', 0) or 0)}円",
             ])
         else:
