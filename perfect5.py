@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v335r（note第3候補・選出根拠再表示版）:
+# ・推奨5点の券種・買い目ロジックはv335qから変更しない。
+# ・note用簡易表示に、第3候補の選出根拠として三連複的中点順位想定1～5位だけを再表示する。
+# ・第3候補は、上位5点から共通核2車を除いた車の出現回数で選出する旨を明記する。
+# ・6位以下の三連複的中点順位想定はnoteには表示せず、詳細確認側には従来どおり残す。
 # v335q（推奨5点・3券種混合版）:
 # ・AI重圧補正、採用流れ、着順予想、共通核A/B、第3候補Cの選出ロジックは変更しない。
 # ・最終推奨は3連単 A→BC→BC（2点）、2車単 BC→A（2点）、2車複 B＝C（1点）の計5点・各100円とする。
@@ -11809,9 +11814,17 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"着順予想　{order_text}",
         ]
 
-        # v335q:
-        # ・三連複的中点順位1～5位は第3候補Cの内部選定にだけ使う。
-        # ・note公開側には順位想定を出さず、混合5点だけを表示する。
+        # v335r:
+        # ・三連複的中点順位1～5位は第3候補Cの選定に使用する。
+        # ・note公開側には選出根拠として上位5点だけを再表示する。
+        # ・6位以下はnoteには出さず、詳細確認側だけに残す。
+        ranked_trios = tuple(trio_plan.get("ranked_high_to_low", tuple()) or tuple())
+        score_map = dict(trio_plan.get("score_map", {}) or {})
+        trio_rank_top5_text = " ".join(
+            f"{idx}位:{''.join(str(int(x)) for x in key)}（{float(score_map.get(key, 0.0)):.3f}）"
+            for idx, key in enumerate(ranked_trios[:5], start=1)
+        ) or "算出不可"
+
         five_point_plan = _v335k_build_top12_five_point_plan(plan, trio_plan)
         if five_point_plan:
             trifecta_text = str(five_point_plan.get("trifecta_text", "算出不可") or "算出不可")
@@ -11834,6 +11847,9 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             "２車複",
             quinella_text,
             f"計{ticket_count}点",
+            "",
+            "※第3候補は三連複的中点順位想定1～5位から、軸2車を除いた車の出現回数で選出",
+            trio_rank_top5_text,
         ])
         return "\n".join(lines).strip() + "\n"
 
