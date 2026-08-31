@@ -3,7 +3,7 @@
 # ・AI重圧補正、採用流れ、着順予想、共通核A/B、第3候補Cの選出ロジックは変更しない。
 # ・3連単は評価順位1/2/3を使い、23-13-123（2-1-3／2-3-1／3-1-2）の3点とする。
 # ・三連複は三連複的中点順位想定1～5位を候補とし、次のいずれかに該当する組合せを購入候補から除外する。
-#   ①3車すべてが同一ライン、②AI印◎〇▲の3車そのもの、③競走得点上位3車そのもの。
+#   ①3車すべてが同一ライン、②市場近畿印◎〇△の3車そのもの、③競走得点上位3車そのもの。
 # ・除外後に残った三連複だけを購入し、点数は3連単3点＋残存三連複点数の可変とする。
 # ・note用簡易表示は【推奨購入】→3連単→3連複→計X点→第3候補選出根拠→的中点1～5位の順とする。
 # v335r（note第3候補・選出根拠再表示版）:
@@ -11655,7 +11655,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
     ・3連単 23-13-123（2-1-3／2-3-1／3-1-2）の3点。
     ・三連複は的中点順位1～5位から、次の組合せを除外した残りだけを購入する。
       1) 3車すべてが同一ライン
-      2) AI印◎〇▲の3車そのもの
+      2) 市場近畿印◎〇△の3車そのもの
       3) 競走得点上位3車そのもの
     """
     try:
@@ -11750,23 +11750,27 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         # -------------------------------------------------
         # v335s：三連複1～5位から安目候補を除外する。
         # ①3車同一ライン
-        # ②AI◎〇▲そのもの
+        # ②市場近畿印◎〇△そのもの
         # ③競走得点上位3車そのもの
         # -------------------------------------------------
-        ai_marks = globals().get("result_marks", {}) or {}
-        ai_top3 = set()
+        # 市場近畿印（◎〇△）の3車そのものを除外する。
+        # result_marks（ヴェロビ側の計算印）はここでは一切使わない。
+        market_marks = globals().get("market_mark_map", {}) or {}
+        market_top3 = set()
         try:
-            _ai_vals = [
-                ai_marks.get("◎"),
-                ai_marks.get("〇", ai_marks.get("○")),
-                ai_marks.get("▲"),
-            ]
-            if all(v is not None and str(v).isdigit() for v in _ai_vals):
-                ai_top3 = {int(v) for v in _ai_vals}
-                if len(ai_top3) != 3:
-                    ai_top3 = set()
+            _market_vals = []
+            for _target_mark in ("◎", "〇", "△"):
+                _car = next((
+                    int(_c) for _c, _mk in market_marks.items()
+                    if str(_mk).strip() in ({"◎"} if _target_mark == "◎" else ({"〇", "○"} if _target_mark == "〇" else {"△", "▲"}))
+                ), None)
+                _market_vals.append(_car)
+            if all(v is not None for v in _market_vals):
+                market_top3 = {int(v) for v in _market_vals}
+                if len(market_top3) != 3:
+                    market_top3 = set()
         except Exception:
-            ai_top3 = set()
+            market_top3 = set()
 
         rating_map = globals().get("ratings_val", {}) or {}
         if not isinstance(rating_map, dict) or not rating_map:
@@ -11811,8 +11815,8 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             if any(combo_set.issubset(_line_set) for _line_set in line_sets):
                 reasons.append("3車同一ライン")
 
-            if len(ai_top3) == 3 and combo_set == ai_top3:
-                reasons.append("AI◎〇▲")
+            if len(market_top3) == 3 and combo_set == market_top3:
+                reasons.append("市場近畿印◎〇△")
 
             if len(score_top3) == 3 and combo_set == score_top3:
                 reasons.append("競走得点上位3車")
@@ -11869,7 +11873,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "trio_tickets": trio_tickets,
             "trio_text": trio_text,
             "trio_excluded": tuple(trio_excluded),
-            "ai_top3": tuple(sorted(ai_top3)) if len(ai_top3) == 3 else tuple(),
+            "market_top3": tuple(sorted(market_top3)) if len(market_top3) == 3 else tuple(),
             "score_top3": tuple(sorted(score_top3)) if len(score_top3) == 3 else tuple(),
 
             # 旧表示・旧参照との互換用。v335sでは購入には使用しない。
