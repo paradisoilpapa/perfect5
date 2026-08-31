@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+# v335s（高配当寄せ・3連単3点＋三連複除外フィルター版）:
+# ・AI重圧補正、採用流れ、着順予想、共通核A/B、第3候補Cの選出ロジックは変更しない。
+# ・3連単は評価順位1/2/3を使い、23-13-123（2-1-3／2-3-1／3-1-2）の3点とする。
+# ・三連複は三連複的中点順位想定1～5位を候補とし、次のいずれかに該当する組合せを購入候補から除外する。
+#   ①3車すべてが同一ライン、②AI印◎〇▲の3車そのもの、③競走得点上位3車そのもの。
+# ・除外後に残った三連複だけを購入し、点数は3連単3点＋残存三連複点数の可変とする。
+# ・note用簡易表示は【推奨購入】→3連単→3連複→計X点→第3候補選出根拠→的中点1～5位の順とする。
 # v335r（note第3候補・選出根拠再表示版）:
 # ・推奨5点の券種・買い目ロジックはv335qから変更しない。
 # ・note用簡易表示に、第3候補の選出根拠として三連複的中点順位想定1～5位だけを再表示する。
@@ -11632,9 +11639,9 @@ def _v335_build_all_line_purchase_snapshot(plan, weighted_trio_rows, weighted_pa
 
 def _v335k_build_top12_five_point_plan(plan, trio_plan):
     """
-    v335q：最終推奨5点用に、共通核A/Bと第3候補Cを確定する。
+    v335s：高配当寄せの最終推奨を作る。
 
-    共通核：
+    共通核A/B：
     ・採用流れ着順予想の上位から2車を選ぶ。
     ・3番手以降（thirdplus）の「地区まとめ」車だけは共通核候補から外す。
     ・番手（second）と「明確追走」の3番手以降は従来どおり共通核候補に残す。
@@ -11644,23 +11651,25 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
     ・三連複的中点順位1～5位に出た車を、確定した共通核2車を除いて出現回数集計する。
     ・最多出現車をCへ採用する。同数なら着順予想上位、さらに同順位なら車番順で決める。
 
-    推奨5点：
-    ・3連単 A→BC→BC（2点）
-    ・2車単 BC→A（2点）
-    ・2車複 B＝C（1点）
+    推奨：
+    ・3連単 23-13-123（2-1-3／2-3-1／3-1-2）の3点。
+    ・三連複は的中点順位1～5位から、次の組合せを除外した残りだけを購入する。
+      1) 3車すべてが同一ライン
+      2) AI印◎〇▲の3車そのもの
+      3) 競走得点上位3車そのもの
     """
     try:
         adopted_sequence = [
             int(car) for car in (plan.get("adopted_sequence", tuple()) or tuple())
         ]
         ranked_trios = tuple(trio_plan.get("ranked_high_to_low", tuple()) or tuple())
-        if len(adopted_sequence) < 2 or len(ranked_trios) < 5:
+        if len(adopted_sequence) < 3 or len(ranked_trios) < 5:
             return {}
 
         eval_pos = {int(car): idx for idx, car in enumerate(adopted_sequence)}
 
         # -------------------------------------------------
-        # v335n：5点すべてで使う共通核を先に確定する。
+        # v335n：共通核を先に確定する。
         # 「地区まとめ」の3番手以降だけを核から外す。
         # -------------------------------------------------
         line_def_obj = globals().get("line_def", {}) or {}
@@ -11675,7 +11684,6 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
                 _label = str(
                     trust_map.get(_c, trust_map.get(str(_c), "通常")) or "通常"
                 )
-                # 名指しの「明確追走」は残す。地区だけで付く3番手以降だけを核から外す。
                 return _label != "地区まとめ"
             except Exception:
                 return True
@@ -11692,7 +11700,6 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             if len(common_axes) >= 2:
                 break
 
-        # 地区まとめ車を戻してまで共通核は作らない。
         if len(common_axes) < 2:
             return {}
 
@@ -11701,8 +11708,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         axis_set = {axis_a, axis_b}
 
         # -------------------------------------------------
-        # 確定した共通核を除いて、的中点1～5位の出現回数を一度だけ集計。
-        # この同じ集計を三連単3着と三連複ヒモの両方に使う。
+        # 第3候補C：的中点1～5位の出現回数。
         # -------------------------------------------------
         counts = {}
         for key in ranked_trios[:5]:
@@ -11712,8 +11718,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
                     continue
                 counts[car] = int(counts.get(car, 0)) + 1
 
-        # 三連複はヒモ3車が必要。不足時は順位6位以下から補わず生成停止。
-        if len(counts) < 3:
+        if not counts:
             return {}
 
         candidate_order = sorted(
@@ -11724,28 +11729,123 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
                 int(car),
             ),
         )
+        third = int(candidate_order[0])
+
+        # 旧デバッグ互換用の上位3候補。3車未満でも第3候補Cさえ確定すれば新推奨は生成できる。
         himo = tuple(int(car) for car in candidate_order[:3])
-        third = int(himo[0])
 
-        # v335q：Aが頭ならB/Cの折返しを3連単で取り、
-        # Aが負けた場合はB/C→Aを2車単、B/C同士は2車複で補完する。
+        # -------------------------------------------------
+        # v335s：3連単は 23-13-123 の3点。
+        # A=評価1位、B=評価2位、C=第3候補。
+        # 例 A=1/B=2/C=4 → 24-14-124
+        # 実券は 2-1-4 / 2-4-1 / 4-1-2。
+        # -------------------------------------------------
         trifecta_tickets = (
-            (axis_a, axis_b, third),
-            (axis_a, third, axis_b),
+            (axis_b, axis_a, third),
+            (axis_b, third, axis_a),
+            (third, axis_a, axis_b),
         )
-        exacta_tickets = (
-            (axis_b, axis_a),
-            (third, axis_a),
-        )
-        quinella_ticket = tuple(sorted((axis_b, third)))
+        trifecta_text = f"{axis_b}{third}-{axis_a}{third}-{axis_a}{axis_b}{third}"
 
-        # 旧三連複3点は購入しない。himoは第3候補Cの内部選定・デバッグ互換用に保持する。
-        trio_tickets = tuple(
-            tuple(sorted((axis_a, axis_b, int(car)))) for car in himo
+        # -------------------------------------------------
+        # v335s：三連複1～5位から安目候補を除外する。
+        # ①3車同一ライン
+        # ②AI◎〇▲そのもの
+        # ③競走得点上位3車そのもの
+        # -------------------------------------------------
+        ai_marks = globals().get("result_marks", {}) or {}
+        ai_top3 = set()
+        try:
+            _ai_vals = [
+                ai_marks.get("◎"),
+                ai_marks.get("〇", ai_marks.get("○")),
+                ai_marks.get("▲"),
+            ]
+            if all(v is not None and str(v).isdigit() for v in _ai_vals):
+                ai_top3 = {int(v) for v in _ai_vals}
+                if len(ai_top3) != 3:
+                    ai_top3 = set()
+        except Exception:
+            ai_top3 = set()
+
+        rating_map = globals().get("ratings_val", {}) or {}
+        if not isinstance(rating_map, dict) or not rating_map:
+            rating_map = globals().get("tenscore", globals().get("tenscores", {})) or {}
+
+        score_pairs = []
+        for car in adopted_sequence:
+            try:
+                raw = rating_map.get(int(car), rating_map.get(str(car), None))
+                if raw is None:
+                    continue
+                val = float(raw)
+                if np.isfinite(val):
+                    score_pairs.append((int(car), val))
+            except Exception:
+                continue
+        score_pairs.sort(key=lambda x: (-float(x[1]), int(x[0])))
+        score_top3 = (
+            {int(car) for car, _ in score_pairs[:3]}
+            if len(score_pairs) >= 3 else set()
         )
+
+        line_sets = []
+        if isinstance(line_def_obj, dict):
+            for _members in line_def_obj.values():
+                try:
+                    _s = {int(x) for x in (_members or [])}
+                except Exception:
+                    _s = set()
+                if len(_s) >= 3:
+                    line_sets.append(_s)
+
+        def _trio_exclusion_reasons(_key):
+            combo = tuple(sorted(int(x) for x in (_key or tuple())))
+            combo_set = set(combo)
+            reasons = []
+
+            if len(combo_set) != 3:
+                reasons.append("重複車")
+                return reasons
+
+            if any(combo_set.issubset(_line_set) for _line_set in line_sets):
+                reasons.append("3車同一ライン")
+
+            if len(ai_top3) == 3 and combo_set == ai_top3:
+                reasons.append("AI◎〇▲")
+
+            if len(score_top3) == 3 and combo_set == score_top3:
+                reasons.append("競走得点上位3車")
+
+            return reasons
+
+        trio_tickets = []
+        trio_excluded = []
+        seen_trios = set()
+        for rank_idx, key in enumerate(ranked_trios[:5], start=1):
+            combo = tuple(sorted(int(x) for x in (key or tuple())))
+            if len(combo) != 3 or combo in seen_trios:
+                continue
+            seen_trios.add(combo)
+
+            reasons = _trio_exclusion_reasons(combo)
+            if reasons:
+                trio_excluded.append({
+                    "rank": int(rank_idx),
+                    "ticket": combo,
+                    "reasons": tuple(str(x) for x in reasons),
+                })
+            else:
+                trio_tickets.append(combo)
+
+        trio_tickets = tuple(trio_tickets)
+        trio_text = "・".join(
+            "".join(str(int(x)) for x in combo) for combo in trio_tickets
+        ) if trio_tickets else "なし"
+
+        ticket_count = int(len(trifecta_tickets) + len(trio_tickets))
 
         return {
-            # v335n：三連単・三連複で完全共通の核
             "axis_a": axis_a,
             "axis_b": axis_b,
             "trifecta_axis_a": axis_a,
@@ -11756,7 +11856,6 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "himo": himo,
             "third": third,
             "counts": {int(car): int(counts[car]) for car in counts},
-            # 旧表示側との互換用。内容は共通集計と同じ。
             "trifecta_counts": {int(car): int(counts[car]) for car in counts},
             "trifecta_candidate_order": tuple(int(car) for car in candidate_order),
             "excluded_district_thirdplus": tuple(
@@ -11764,24 +11863,30 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             ),
 
             "trifecta_tickets": trifecta_tickets,
-            "exacta_tickets": exacta_tickets,
-            "quinella_ticket": quinella_ticket,
-            # 旧三連複候補は内部参照・検証用に残すが、推奨購入には使用しない。
+            "trifecta_text": trifecta_text,
+
+            # v335s：購入対象となる三連複と除外根拠。
             "trio_tickets": trio_tickets,
-            "trifecta_text": f"{axis_a}→{axis_b}{third}→{axis_b}{third}",
-            "exacta_text": f"{axis_b}{third}→{axis_a}",
-            "quinella_text": f"{axis_b}＝{third}",
-            "trio_text": f"{axis_a}-{axis_b}-{''.join(str(x) for x in sorted(himo))}",
+            "trio_text": trio_text,
+            "trio_excluded": tuple(trio_excluded),
+            "ai_top3": tuple(sorted(ai_top3)) if len(ai_top3) == 3 else tuple(),
+            "score_top3": tuple(sorted(score_top3)) if len(score_top3) == 3 else tuple(),
+
+            # 旧表示・旧参照との互換用。v335sでは購入には使用しない。
+            "exacta_tickets": tuple(),
+            "quinella_ticket": tuple(),
+            "exacta_text": "",
+            "quinella_text": "",
 
             "top5": tuple(tuple(int(x) for x in key) for key in ranked_trios[:5]),
-            "ticket_count": 5,
-            "total_amount": 500,
+            "ticket_count": ticket_count,
+            "total_amount": ticket_count * 100,
         }
     except Exception:
         return {}
 
 def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
-    """確定済み混合5点をnote公開用に整形する。三連複的中点順位は内部計算だけに使う。"""
+    """v335s推奨（3連単3点＋除外後三連複）をnote公開用に整形する。"""
     try:
         if not isinstance(plan, dict) or not plan:
             return "note用簡易出力生成不可：フォーメーション未確定"
@@ -11808,14 +11913,14 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         order_text = " → ".join(str(car) for car in adopted_sequence) if adopted_sequence else "未判定"
 
         lines = [
-            race_title,
+            f"### {race_title}",
             "",
             f"想定隊列　{queue_text}",
             f"着順予想　{order_text}",
         ]
 
-        # v335r:
-        # ・三連複的中点順位1～5位は第3候補Cの選定に使用する。
+        # v335s:
+        # ・三連複的中点順位1～5位は第3候補Cの選定と三連複購入候補に使用する。
         # ・note公開側には選出根拠として上位5点だけを再表示する。
         # ・6位以下はnoteには出さず、詳細確認側だけに残す。
         ranked_trios = tuple(trio_plan.get("ranked_high_to_low", tuple()) or tuple())
@@ -11827,14 +11932,16 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
 
         five_point_plan = _v335k_build_top12_five_point_plan(plan, trio_plan)
         if five_point_plan:
-            trifecta_text = str(five_point_plan.get("trifecta_text", "算出不可") or "算出不可")
-            exacta_text = str(five_point_plan.get("exacta_text", "算出不可") or "算出不可")
-            quinella_text = str(five_point_plan.get("quinella_text", "算出不可") or "算出不可")
+            trifecta_text = str(
+                five_point_plan.get("trifecta_text", "算出不可") or "算出不可"
+            )
+            trio_text = str(
+                five_point_plan.get("trio_text", "なし") or "なし"
+            )
             ticket_count = int(five_point_plan.get("ticket_count", 0) or 0)
         else:
             trifecta_text = "算出不可"
-            exacta_text = "算出不可"
-            quinella_text = "算出不可"
+            trio_text = "算出不可"
             ticket_count = 0
 
         lines.extend([
@@ -11842,10 +11949,8 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             "【推奨購入】",
             "３連単",
             trifecta_text,
-            "２車単",
-            exacta_text,
-            "２車複",
-            quinella_text,
+            "３連複",
+            trio_text,
             f"計{ticket_count}点",
             "",
             "※第3候補は三連複的中点順位想定1～5位から、軸2車を除いた車の出現回数で選出",
@@ -12170,15 +12275,22 @@ def _v281_format_fixed_flow_block(
                 f"／5点共通核から地区3列目除外={''.join(str(int(x)) for x in _excluded)}"
                 if _excluded else ""
             )
+            _trio_excluded_rows = tuple(
+                five_point_plan.get("trio_excluded", tuple()) or tuple()
+            )
+            _trio_excluded_text = " ".join(
+                f"{''.join(str(int(x)) for x in (row.get('ticket', tuple()) or tuple()))}"
+                f"（{','.join(str(r) for r in (row.get('reasons', tuple()) or tuple()))}）"
+                for row in _trio_excluded_rows
+            ) or "なし"
             purchase_lines.extend([
                 f"第3候補集計：{count_text}／共通核={_ta}{_tb}／第3候補={int(five_point_plan.get('third', 0) or 0)}{_excluded_text}",
+                f"三連複除外：{_trio_excluded_text}",
                 "【推奨購入】",
                 "３連単",
                 f"{five_point_plan.get('trifecta_text', '算出不可')}（各100円）",
-                "２車単",
-                f"{five_point_plan.get('exacta_text', '算出不可')}（各100円）",
-                "２車複",
-                f"{five_point_plan.get('quinella_text', '算出不可')}（100円）",
+                "３連複",
+                f"{five_point_plan.get('trio_text', 'なし')}（各100円）",
                 f"計{int(five_point_plan.get('ticket_count', 0) or 0)}点／{int(five_point_plan.get('total_amount', 0) or 0)}円",
             ])
         else:
