@@ -11913,7 +11913,7 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         order_text = " → ".join(str(car) for car in adopted_sequence) if adopted_sequence else "未判定"
 
         lines = [
-            f"### {race_title}",
+            f"{race_title}",
             "",
             f"想定隊列　{queue_text}",
             f"着順予想　{order_text}",
