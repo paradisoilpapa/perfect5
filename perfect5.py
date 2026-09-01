@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v335u（5車ライン追加ライン競合フォールバック到達修正版）:
+# ・予想順位、AI重圧補正、採用流れ、共通核A/B、第3候補C、3連単23-13-123、三連複除外条件は変更しない。
+# ・7車戦で代表5車ラインを追加ライン化した際、「ライン全車＋E」で6車要求となる競合だけを捕捉する。
+# ・この競合時は通常の全ライン生成を空扱いにし、既存v335pの5車ライン1-4-4フォールバックへ接続する。
+# ・v335pは plan.status=ok の場合でも、実際に代表5車ラインが存在する時だけ使用可能とする。
 # v335s（高配当寄せ・3連単3点＋三連複除外フィルター版）:
 # ・AI重圧補正、採用流れ、着順予想、共通核A/B、第3候補Cの選出ロジックは変更しない。
 # ・3連単は評価順位1/2/3を使い、23-13-123（2-1-3／2-3-1／3-1-2）の3点とする。
@@ -11531,7 +11536,11 @@ def _v335p_build_five_car_line_fallback_formations(plan):
     try:
         if not isinstance(plan, dict):
             return tuple()
-        if str(plan.get("status", "") or "") != "e_line_formation_generation_failed":
+        # v335u: 旧Eライン生成停止だけでなく、plan自体はokでも
+        # 代表5車ラインの追加ライン化で「ライン全車＋E」が6車になる場合に使う。
+        # ただし下段で実在する5車ラインを必須確認するため、通常レースへは広げない。
+        _status = str(plan.get("status", "") or "")
+        if _status not in {"ok", "e_line_formation_generation_failed"}:
             return tuple()
 
         sequence = [int(car) for car in _v281_unique_sequence(plan.get("adopted_sequence", tuple()) or tuple())]
@@ -11611,7 +11620,15 @@ def _v335p_build_five_car_line_fallback_formations(plan):
 
 def _v335_build_all_line_purchase_snapshot(plan, weighted_trio_rows, weighted_pair_rows):
     """三流れの代表ライン候補を合流し、3着候補抽出用に的中点1～5位を保持する。"""
-    formations = _v335_build_all_line_formations(plan)
+    # v335u: 代表5車ラインを追加ラインとして処理した時だけ発生する
+    # 「ライン全車＋E＝6車」の競合は、既存v335pフォールバックへ渡す。
+    try:
+        formations = _v335_build_all_line_formations(plan)
+    except ValueError as _v335u_all_line_error:
+        if str(_v335u_all_line_error) == "追加ラインとEの必須保護が5車を超えます":
+            formations = tuple()
+        else:
+            raise
     fallback_used = False
     if not formations:
         formations = _v335p_build_five_car_line_fallback_formations(plan)
