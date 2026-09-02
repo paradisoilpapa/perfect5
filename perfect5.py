@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+# v335w（会場推奨A/B/C・80％基準修正版）:
+# ・予想順位、AI重圧補正、採用流れ、共通核A/B、第3候補C、買い目ロジックは変更しない。
+# ・競輪場選択直下に、400mバンク＋みなし直線50.0～59.9mを基準とした会場推奨を表示する。
+# ・対象条件内かつ8～9月集計の回収率80%以上の会場を推奨A、80%未満を推奨B、それ以外を推奨Cとする。
+# ・条件内だが回収率未分類の会場は推奨C（条件合致・回収率未分類）として表示する。
 # v335u（5車ライン追加ライン競合フォールバック到達修正版）:
 # ・予想順位、AI重圧補正、採用流れ、共通核A/B、第3候補C、3連単23-13-123、三連複除外条件は変更しない。
 # ・7車戦で代表5車ラインを追加ライン化した際、「ライン全車＋E」で6車要求となる競合だけを捕捉する。
@@ -1964,6 +1969,37 @@ track = st.sidebar.selectbox(
 )
 info = KEIRIN_DATA[track]
 st.session_state["track"] = track
+
+# ==============================
+# v335v: 会場推奨A/B/C（表示のみ。予想・買い目ロジックには不使用）
+# 基準：400mバンク＋みなし直線50.0～59.9m
+# A：上記条件内かつ8～9月集計回収率80%以上
+# B：上記条件内かつ8～9月集計回収率80%未満
+# C：それ以外（条件内でも回収率未分類はC）
+# ==============================
+_V335V_RECOMMEND_A_TRACKS = {
+    "岸和田", "名古屋", "別府", "京王閣", "松山", "大垣",
+    "小倉", "和歌山", "立川",
+}
+_V335V_RECOMMEND_B_TRACKS = {
+    "平塚", "青森", "川崎", "小松島", "岐阜", "広島", "静岡",
+}
+
+_v335v_bank_length = float(info.get("bank_length", 0) or 0)
+_v335v_straight = float(info.get("straight_length", 0) or 0)
+_v335v_target_geometry = (
+    abs(_v335v_bank_length - 400.0) < 0.5
+    and 50.0 <= _v335v_straight < 60.0
+)
+
+if _v335v_target_geometry and track in _V335V_RECOMMEND_A_TRACKS:
+    st.sidebar.success("推奨A｜400mバンク＋みなし直線50〜59.9m／回収率80％以上")
+elif _v335v_target_geometry and track in _V335V_RECOMMEND_B_TRACKS:
+    st.sidebar.info("推奨B｜400mバンク＋みなし直線50〜59.9m／回収率80％未満")
+elif _v335v_target_geometry:
+    st.sidebar.warning("推奨C｜条件合致・回収率未分類")
+else:
+    st.sidebar.warning("推奨C｜400mバンク＋みなし直線50〜59.9mの条件外")
 
 st.sidebar.markdown("### 🏟️ 開催場決まり手成績")
 with st.sidebar.expander("数値入力（オッズパーク等の表をそのまま％入力）", expanded=True):
