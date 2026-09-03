@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# v335y（4車以上ライン・同ライン上位3車だけ除外版）:
+# ・予想順位、AI重圧補正、採用流れ、共通核A/B、第3候補C、3連単、WINTICKET◎〇△除外、競走得点上位3車除外は変更しない。
+# ・三連複の同ライン除外だけを修正し、各ラインの採用流れ最終着順予想上位3車そのものだけを除外する。
+# ・4車以上のラインでは、評価上位3車以外を含む同ライン3車組は残す。例：1234で評価1→2→3→4なら123だけ除外し、124・134・234は残す。
 # v335x（全会場A/B/C/D分類・武雄B対応版）:
 # ・予想順位、AI重圧補正、採用流れ、共通核A/B、第3候補C、買い目ロジックは変更しない。
 # ・会場推奨表示のみをA/B/C/Dの4段階へ変更する。
@@ -11730,7 +11734,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
     推奨：
     ・3連単 23-13-123（2-1-3／2-3-1／3-1-2）の3点。
     ・三連複は的中点順位1～5位から、次の組合せを除外した残りだけを購入する。
-      1) 3車すべてが同一ライン
+      1) 各ラインの採用流れ評価上位3車そのもの
       2) 市場近畿印◎〇△の3車そのもの
       3) 競走得点上位3車そのもの
     """
@@ -11825,7 +11829,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
 
         # -------------------------------------------------
         # v335s：三連複1～5位から安目候補を除外する。
-        # ①3車同一ライン
+        # ①各ラインの採用流れ評価上位3車そのもの
         # ②市場近畿印◎〇△そのもの
         # ③競走得点上位3車そのもの
         # -------------------------------------------------
@@ -11869,15 +11873,31 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             if len(score_pairs) >= 3 else set()
         )
 
-        line_sets = []
+        # v335y：同一ライン除外は、各ラインの採用流れ評価上位3車そのものだけを対象にする。
+        # 例：1234ラインで採用流れ評価が 1→2→3→4 なら、123だけを除外し、124・134・234は残す。
+        # 3車ラインはその3車すべてが上位3車なので、従来どおりその組合せを除外する。
+        line_top3_sets = []
         if isinstance(line_def_obj, dict):
             for _members in line_def_obj.values():
                 try:
-                    _s = {int(x) for x in (_members or [])}
+                    _members_unique = []
+                    _seen_members = set()
+                    for _x in (_members or []):
+                        _c = int(_x)
+                        if _c not in _seen_members:
+                            _members_unique.append(_c)
+                            _seen_members.add(_c)
                 except Exception:
-                    _s = set()
-                if len(_s) >= 3:
-                    line_sets.append(_s)
+                    _members_unique = []
+
+                if len(_members_unique) >= 3:
+                    _ordered_line = sorted(
+                        _members_unique,
+                        key=lambda _c: (int(eval_pos.get(int(_c), 999)), int(_c)),
+                    )
+                    _top3 = {int(_c) for _c in _ordered_line[:3]}
+                    if len(_top3) == 3:
+                        line_top3_sets.append(_top3)
 
         def _trio_exclusion_reasons(_key):
             combo = tuple(sorted(int(x) for x in (_key or tuple())))
@@ -11888,8 +11908,8 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
                 reasons.append("重複車")
                 return reasons
 
-            if any(combo_set.issubset(_line_set) for _line_set in line_sets):
-                reasons.append("3車同一ライン")
+            if any(combo_set == _line_top3 for _line_top3 in line_top3_sets):
+                reasons.append("同ライン評価上位3車")
 
             if len(market_top3) == 3 and combo_set == market_top3:
                 reasons.append("市場近畿印◎〇△")
