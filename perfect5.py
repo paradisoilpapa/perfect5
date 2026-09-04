@@ -1,4 +1,12 @@
 # -*- coding: utf-8 -*-
+# v335aa（検証用2車単・除外前トップ5母集団版）:
+# ・既存の予想順位、AI重圧補正、採用流れ、共通核A/B、第3候補C、3連単、3連複および三連複除外条件は変更しない。
+# ・【検証用２車単】の頭2車は現行3連単23-13-123の頭候補（評価2位B＋第3候補C）をそのまま使用する。
+# ・2車単ヒモの母集団は「三連複除外後の購入対象」ではなく、三連複的中点順位想定1～5位そのものへ変更する。
+# ・その上位5点から3連単で使う3車（評価1位A・評価2位B・第3候補C）を除外し、残り車の出現回数を集計する。
+# ・出現回数上位2車をヒモに採用し、同数時は採用流れ最終着順予想上位、さらに同順位なら車番順で決める。
+# ・検証用2車単は「頭2車－ヒモ2車」の4点（例：41-56＝4→5／4→6／1→5／1→6）とする。
+# ・表示・検証専用で、既存の推奨購入点数・金額には含めない。
 # v335z（検証用2車単4点追加版）:
 # ・既存の予想順位、AI重圧補正、採用流れ、共通核A/B、第3候補C、3連単、3連複および除外条件は変更しない。
 # ・【検証用２車単】を表示専用で追加する。既存の推奨購入点数・金額には含めない。
@@ -11951,18 +11959,26 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         ) if trio_tickets else "なし"
 
         # -------------------------------------------------
-        # v335z：【検証用２車単】
+        # v335aa：【検証用２車単】
         # 頭＝現行3連単の頭候補2車（評価2位B＋第3候補C）。
-        # ヒモ＝購入対象3連複から、3連単で使う3車 A/B/C を除外した
-        #      残り車の出現回数上位2車。
+        # ヒモ母集団＝三連複的中点順位想定1～5位そのもの。
+        # 三連複の除外処理（市場印／競走得点／同ライン）は2車単には適用しない。
+        # 上位5点から3連単で使う3車 A/B/C を除外し、残り車の出現回数上位2車。
         # 同数時は採用流れ最終着順予想上位→車番順。
         # ※表示・検証専用。既存の推奨購入点数・金額には加算しない。
         # -------------------------------------------------
         validation_exacta_heads = (int(axis_b), int(third))
         validation_exacta_excluded = {int(axis_a), int(axis_b), int(third)}
         validation_exacta_counts = {}
-        for _combo in trio_tickets:
-            for _raw_car in (_combo or tuple()):
+        validation_exacta_source_trios = []
+        _validation_seen_source = set()
+        for _key in ranked_trios[:5]:
+            _combo = tuple(sorted(int(x) for x in (_key or tuple())))
+            if len(_combo) != 3 or _combo in _validation_seen_source:
+                continue
+            _validation_seen_source.add(_combo)
+            validation_exacta_source_trios.append(_combo)
+            for _raw_car in _combo:
                 _car = int(_raw_car)
                 if _car in validation_exacta_excluded:
                     continue
@@ -12025,6 +12041,10 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
                 int(_car): int(validation_exacta_counts[_car])
                 for _car in validation_exacta_counts
             },
+            "validation_exacta_source_trios": tuple(
+                tuple(int(x) for x in _combo)
+                for _combo in validation_exacta_source_trios
+            ),
             "validation_exacta_order": tuple(
                 int(_car) for _car in validation_exacta_order
             ),
