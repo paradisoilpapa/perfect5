@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+# v335z（検証用2車単4点追加版）:
+# ・既存の予想順位、AI重圧補正、採用流れ、共通核A/B、第3候補C、3連単、3連複および除外条件は変更しない。
+# ・【検証用２車単】を表示専用で追加する。既存の推奨購入点数・金額には含めない。
+# ・2車単の頭2車は現行3連単23-13-123の頭候補（評価2位B＋第3候補C）をそのまま使用する。
+# ・ヒモは現行の購入対象3連複から、3連単で使う3車（評価1位A・評価2位B・第3候補C）を除外して出現回数を集計する。
+# ・出現回数上位2車をヒモに採用し、同数時は採用流れ最終着順予想上位、さらに同順位なら車番順で決める。
+# ・検証用2車単は「頭2車－ヒモ2車」の4点（例：75-24＝7→2／7→4／5→2／5→4）とする。
 # v335y（4車以上ライン・同ライン上位3車だけ除外版）:
 # ・予想順位、AI重圧補正、採用流れ、共通核A/B、第3候補C、3連単、WINTICKET◎〇△除外、競走得点上位3車除外は変更しない。
 # ・三連複の同ライン除外だけを修正し、各ラインの採用流れ最終着順予想上位3車そのものだけを除外する。
@@ -11943,6 +11950,52 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "".join(str(int(x)) for x in combo) for combo in trio_tickets
         ) if trio_tickets else "なし"
 
+        # -------------------------------------------------
+        # v335z：【検証用２車単】
+        # 頭＝現行3連単の頭候補2車（評価2位B＋第3候補C）。
+        # ヒモ＝購入対象3連複から、3連単で使う3車 A/B/C を除外した
+        #      残り車の出現回数上位2車。
+        # 同数時は採用流れ最終着順予想上位→車番順。
+        # ※表示・検証専用。既存の推奨購入点数・金額には加算しない。
+        # -------------------------------------------------
+        validation_exacta_heads = (int(axis_b), int(third))
+        validation_exacta_excluded = {int(axis_a), int(axis_b), int(third)}
+        validation_exacta_counts = {}
+        for _combo in trio_tickets:
+            for _raw_car in (_combo or tuple()):
+                _car = int(_raw_car)
+                if _car in validation_exacta_excluded:
+                    continue
+                validation_exacta_counts[_car] = int(
+                    validation_exacta_counts.get(_car, 0)
+                ) + 1
+
+        validation_exacta_order = sorted(
+            validation_exacta_counts,
+            key=lambda _car: (
+                -int(validation_exacta_counts.get(_car, 0)),
+                int(eval_pos.get(_car, 999)),
+                int(_car),
+            ),
+        )
+        validation_exacta_himo = tuple(
+            int(_car) for _car in validation_exacta_order[:2]
+        )
+
+        if len(validation_exacta_himo) == 2:
+            _vh1, _vh2 = validation_exacta_heads
+            _vs1, _vs2 = validation_exacta_himo
+            validation_exacta_tickets = (
+                (_vh1, _vs1),
+                (_vh1, _vs2),
+                (_vh2, _vs1),
+                (_vh2, _vs2),
+            )
+            validation_exacta_text = f"{_vh1}{_vh2}-{_vs1}{_vs2}"
+        else:
+            validation_exacta_tickets = tuple()
+            validation_exacta_text = "算出不可"
+
         ticket_count = int(len(trifecta_tickets) + len(trio_tickets))
 
         return {
@@ -11964,6 +12017,19 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
 
             "trifecta_tickets": trifecta_tickets,
             "trifecta_text": trifecta_text,
+
+            # v335z：表示・検証専用の2車単4点。
+            "validation_exacta_heads": validation_exacta_heads,
+            "validation_exacta_himo": validation_exacta_himo,
+            "validation_exacta_counts": {
+                int(_car): int(validation_exacta_counts[_car])
+                for _car in validation_exacta_counts
+            },
+            "validation_exacta_order": tuple(
+                int(_car) for _car in validation_exacta_order
+            ),
+            "validation_exacta_tickets": validation_exacta_tickets,
+            "validation_exacta_text": validation_exacta_text,
 
             # v335s：購入対象となる三連複と除外根拠。
             "trio_tickets": trio_tickets,
@@ -12039,10 +12105,18 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
                 five_point_plan.get("trio_text", "なし") or "なし"
             )
             ticket_count = int(five_point_plan.get("ticket_count", 0) or 0)
+            validation_exacta_text = str(
+                five_point_plan.get("validation_exacta_text", "算出不可") or "算出不可"
+            )
+            validation_exacta_count = len(
+                tuple(five_point_plan.get("validation_exacta_tickets", tuple()) or tuple())
+            )
         else:
             trifecta_text = "算出不可"
             trio_text = "算出不可"
             ticket_count = 0
+            validation_exacta_text = "算出不可"
+            validation_exacta_count = 0
 
         lines.extend([
             "",
@@ -12052,6 +12126,10 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             "３連複",
             trio_text,
             f"計{ticket_count}点",
+            "",
+            "【検証用２車単】",
+            validation_exacta_text,
+            f"計{validation_exacta_count}点（推奨購入の計{ticket_count}点には含めない）",
             "",
             "※第3候補は三連複的中点順位想定1～5位から、軸2車を除いた車の出現回数で選出",
             trio_rank_top5_text,
@@ -12383,6 +12461,26 @@ def _v281_format_fixed_flow_block(
                 f"（{','.join(str(r) for r in (row.get('reasons', tuple()) or tuple()))}）"
                 for row in _trio_excluded_rows
             ) or "なし"
+            _validation_counts = dict(
+                five_point_plan.get("validation_exacta_counts", {}) or {}
+            )
+            _validation_order = tuple(
+                five_point_plan.get("validation_exacta_order", tuple()) or tuple()
+            )
+            _validation_count_text = " ".join(
+                f"{int(_car)}={int(_validation_counts.get(int(_car), 0))}回"
+                for _car in _validation_order
+            ) or "算出不可"
+            _validation_himo = tuple(
+                five_point_plan.get("validation_exacta_himo", tuple()) or tuple()
+            )
+            _validation_himo_text = (
+                "".join(str(int(_x)) for _x in _validation_himo)
+                if _validation_himo else "算出不可"
+            )
+            _validation_ticket_count = len(
+                tuple(five_point_plan.get("validation_exacta_tickets", tuple()) or tuple())
+            )
             purchase_lines.extend([
                 f"第3候補集計：{count_text}／共通核={_ta}{_tb}／第3候補={int(five_point_plan.get('third', 0) or 0)}{_excluded_text}",
                 f"三連複除外：{_trio_excluded_text}",
@@ -12392,6 +12490,10 @@ def _v281_format_fixed_flow_block(
                 "３連複",
                 f"{five_point_plan.get('trio_text', 'なし')}（各100円）",
                 f"計{int(five_point_plan.get('ticket_count', 0) or 0)}点／{int(five_point_plan.get('total_amount', 0) or 0)}円",
+                "【検証用２車単】",
+                f"{five_point_plan.get('validation_exacta_text', '算出不可')}（各100円）",
+                f"ヒモ候補集計：{_validation_count_text}／採用ヒモ={_validation_himo_text}",
+                f"計{_validation_ticket_count}点（推奨購入の点数・金額には含めない）",
             ])
         else:
             purchase_lines.append("【推奨購入】着順予想1・2位または的中点1～5位が不足のため生成不可")
