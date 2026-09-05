@@ -12049,7 +12049,9 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         for _car in adopted_sequence:
             common_exacta_counts.setdefault(int(_car), 0)
 
-        common_exacta_order = tuple(sorted(
+        # TOP5出現順位（従来の専用順位）。
+        # 同数時の並びは従来どおり、採用流れAI重圧補正後順位→車番順。
+        top5_occurrence_order = tuple(sorted(
             (int(_car) for _car in common_exacta_counts),
             key=lambda _car: (
                 -int(common_exacta_counts.get(_car, 0)),
@@ -12058,9 +12060,45 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             ),
         ))
 
-        # v335aq：この専用順位を以後の「最終着順予想」として統一する。
-        # 2車単・3連単・最終日3連複・苦手会場ファジーの下流買い目は、
-        # すべてこの順位を共通基準にする。
+        # v335av：得意/普通会場の最終着順予想を二軸50:50で生成する。
+        # ① 三連複TOP5出現順位
+        # ② 採用流れのAI重圧補正後順位（adopted_sequence）
+        # それぞれの順位値を単純加算し、合計が小さい車を上位とする。
+        # 完全同点の場合だけKO使用スコア上位を優先し、その後は車番順。
+        # 苦手会場は現行ロジックを維持するため、TOP5出現順位をそのまま使用する。
+        _top5_rank_map = {int(_car): int(_idx) for _idx, _car in enumerate(top5_occurrence_order, start=1)}
+        _flow_rank_map = {int(_car): int(_idx) for _idx, _car in enumerate(adopted_sequence, start=1)}
+        _ko_map_for_final = globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {}
+
+        def _final_ko_score(_car):
+            try:
+                _raw = _ko_map_for_final.get(int(_car), _ko_map_for_final.get(str(int(_car)), 0.0))
+                _val = float(_raw)
+                return _val if np.isfinite(_val) else 0.0
+            except Exception:
+                return 0.0
+
+        _all_rank_cars = tuple(dict.fromkeys(
+            [int(x) for x in top5_occurrence_order] + [int(x) for x in adopted_sequence]
+        ))
+        merged_final_order = tuple(sorted(
+            _all_rank_cars,
+            key=lambda _car: (
+                int(_top5_rank_map.get(int(_car), 999)) + int(_flow_rank_map.get(int(_car), 999)),
+                -float(_final_ko_score(int(_car))),
+                int(_car),
+            ),
+        ))
+
+        _rank_track_name = str(globals().get("track") or globals().get("place") or "").strip()
+        _rank_is_fuzzy_venue = bool(_v335ao_is_fuzzy_venue(_rank_track_name))
+        common_exacta_order = (
+            tuple(int(x) for x in top5_occurrence_order)
+            if _rank_is_fuzzy_venue
+            else tuple(int(x) for x in merged_final_order)
+        )
+
+        # 最終着順予想は、得意/普通会場では二軸加算順位、苦手会場では現行順位。
         final_prediction_order = tuple(int(x) for x in common_exacta_order)
 
         # 3連単も専用順位＝最終着順予想TOP3を使用する。
