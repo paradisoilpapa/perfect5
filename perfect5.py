@@ -12116,38 +12116,76 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             trifecta_tickets = tuple()
             trifecta_text = "算出不可"
 
-        # v335au：2車単の期待値補正。
-        # 得意/普通会場では、最終着順予想1位が市場印◎なら◎を1着軸にしない。
-        # 通常 1→234、◎一致時は 2→134。苦手会場は従来どおり1→234のまま。
+        # v335aw：2車単の1着軸フィルタ＋期待値補正。
+        # 得意/普通会場では次の車を「1着軸候補」から外す。
+        #   ① 市場印◎（最終順位1位が◎のとき、従来どおり◎を頭固定しない）
+        #   ② ライン3番手以降（thirdplus）かつ後位信頼が「地区まとめ」の車
+        # ②は以前の共通核除外と同じ思想で、1着だけを除外する。相手からは消さない。
+        # 苦手会場は現行ロジックを維持し、従来どおり順位1位→234。
         _value_track_name = str(globals().get("track") or globals().get("place") or "").strip()
         _is_fuzzy_venue_for_value = bool(_v335ao_is_fuzzy_venue(_value_track_name))
         common_exacta_honmei_avoided = False
+        common_exacta_district_thirdplus_avoided = False
         common_exacta_rule_text = "1→234"
+
+        def _v335aw_exacta_head_eligible(_car):
+            try:
+                _c = int(_car)
+                _role = str(role_in_line(_c, line_def_obj))
+                if _role != "thirdplus":
+                    return True
+                _label = str(
+                    trust_map.get(_c, trust_map.get(str(_c), "通常")) or "通常"
+                )
+                return _label != "地区まとめ"
+            except Exception:
+                return True
+
         if len(common_exacta_order) >= 4:
-            _ce1 = int(common_exacta_order[0])
-            _ce2 = int(common_exacta_order[1])
-            _ce3 = int(common_exacta_order[2])
-            _ce4 = int(common_exacta_order[3])
-            if (
-                not _is_fuzzy_venue_for_value
-                and market_honmei is not None
-                and int(_ce1) == int(market_honmei)
-            ):
-                common_exacta_honmei_avoided = True
-                common_exacta_rule_text = "2→134"
-                common_exacta_tickets = (
-                    (_ce2, _ce1),
-                    (_ce2, _ce3),
-                    (_ce2, _ce4),
-                )
-                common_exacta_text = f"{_ce2}-{_ce1}{_ce3}{_ce4}"
+            if _is_fuzzy_venue_for_value:
+                # 苦手会場は現行どおり。
+                _exacta_head = int(common_exacta_order[0])
             else:
-                common_exacta_tickets = (
-                    (_ce1, _ce2),
-                    (_ce1, _ce3),
-                    (_ce1, _ce4),
+                _exacta_head = None
+                for _candidate in common_exacta_order:
+                    _candidate = int(_candidate)
+                    if market_honmei is not None and _candidate == int(market_honmei):
+                        # 市場◎は1着軸から外すが、相手には残す。
+                        common_exacta_honmei_avoided = True
+                        continue
+                    if not _v335aw_exacta_head_eligible(_candidate):
+                        # 地区まとめの3番手以降は1着軸から外すが、相手には残す。
+                        common_exacta_district_thirdplus_avoided = True
+                        continue
+                    _exacta_head = _candidate
+                    break
+
+                # 万一すべて除外された場合だけ、順位1位へフォールバック。
+                if _exacta_head is None:
+                    _exacta_head = int(common_exacta_order[0])
+
+            _exacta_himo = [
+                int(_c) for _c in common_exacta_order
+                if int(_c) != int(_exacta_head)
+            ][:3]
+
+            if len(_exacta_himo) >= 3:
+                common_exacta_tickets = tuple(
+                    (int(_exacta_head), int(_h)) for _h in _exacta_himo
                 )
-                common_exacta_text = f"{_ce1}-{_ce2}{_ce3}{_ce4}"
+                common_exacta_text = f"{int(_exacta_head)}-{''.join(str(int(_h)) for _h in _exacta_himo)}"
+                try:
+                    _head_rank = list(int(x) for x in common_exacta_order).index(int(_exacta_head)) + 1
+                    _himo_ranks = [
+                        list(int(x) for x in common_exacta_order).index(int(_h)) + 1
+                        for _h in _exacta_himo
+                    ]
+                    common_exacta_rule_text = f"{_head_rank}→{''.join(str(int(x)) for x in _himo_ranks)}"
+                except Exception:
+                    common_exacta_rule_text = "1着軸フィルタ適用"
+            else:
+                common_exacta_tickets = tuple()
+                common_exacta_text = "算出不可"
         else:
             common_exacta_tickets = tuple()
             common_exacta_text = "算出不可"
@@ -12472,6 +12510,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "common_exacta_source_trios": tuple(tuple(int(x) for x in c) for c in common_exacta_source_trios),
             "recommended_exacta_count": 0 if _purchase_mode == "fuzzy" else _exacta_count,
             "common_exacta_honmei_avoided": bool(common_exacta_honmei_avoided),
+            "common_exacta_district_thirdplus_avoided": bool(common_exacta_district_thirdplus_avoided),
             "common_exacta_rule_text": str(common_exacta_rule_text),
             "market_honmei": int(market_honmei) if market_honmei is not None else None,
             "final_simple_trio_honmei_avoided": bool(final_simple_trio_honmei_avoided),
