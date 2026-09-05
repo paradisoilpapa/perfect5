@@ -1,8 +1,14 @@
+# v335bb（最終着順選別維持・券種配置更新版）:
+# ・v335baのバンク形状による購入モード判定をそのまま維持。
+# ・今日のミッドナイトで機能した最終着順選別（該当流れ＋AI重圧補正＋三連複TOP5該当数の50:50統合）は変更しない。
+# ・通常3連単を評価順位23-123-12へ変更（231／312／321の3点）。
+# ・共通2車単を評価順位3-124へ変更（3→1／3→2／3→4の3点）。
+# ・新配置と矛盾するため、旧v335aw/v335ayの市場◎回避および地区まとめ3番手の1着禁止は3連単・2車単から撤廃。
+# ・最終日の3連複ロジック、ファジー会場の3連複ロジック、三連複除外条件は変更しない。
 # v335ba（サイドバー券種判定と実購入モード統一版）:
 # ・v335abで廃止したA/B/C/D・過去ROI分類をv335aoが再利用していた不整合を解消。
 # ・苦手会場判定はサイドバーと同じバンク形状3条件に統一。2条件以上＝3連単側、0～1条件＝3連複ファジー側。
 # ・久留米は400m＋みなし50.7mの2条件該当なので、通常日は3連単＋2車単側になる。
-# ・最終日分岐、順位、買い目生成、◎回避、地区まとめ3番手以降の1着除外は変更しない。
 # v335ao（会場相性×開催日・精密/ファジー分岐版）:
 # ・得意/普通会場の通常日：三連複TOP5集計から作る専用順位を最終着順予想とし、2車単は通常1→234・最終1位が市場◎なら2→134（3点）＋同順位TOP3の3連単23-13-123（3点）＝6点。
 # ・得意/普通会場の最終日：専用順位＝最終着順予想を共通基準に、最終1位が市場◎なら2車単2→134・3連複2-134-134へ補正（各3点、計6点）。それ以外は従来どおり。
@@ -2084,7 +2090,7 @@ def _v335ac_track_purchase_mode(track_name=None):
 _v335ac_mode_info = _v335ac_track_purchase_mode(track)
 
 # ==============================
-# v335ba: 苦手会場＝サイドバーのバンク形状判定と完全一致
+# v335bb: 苦手会場＝サイドバーのバンク形状判定と完全一致
 # v335abでA/B/C/D・過去ROI判定を廃止しているため、
 # ここでも旧D/未分類リストは使わない。
 # ①400m ②みなし50.0～59.9m ③角33°以上 のうち
@@ -12109,143 +12115,68 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         # 最終着順予想は、得意/普通会場では二軸加算順位、苦手会場では現行順位。
         final_prediction_order = tuple(int(x) for x in common_exacta_order)
 
-        # v335ax：地区まとめ3番手以降は、3連単でも1着に置かない。
-        # ただし候補からは消さず、2・3着には残す。
-        # 苦手会場は従来ロジックを維持する。
-        def _v335ax_first_place_eligible(_car):
-            try:
-                _c = int(_car)
-                _role = str(role_in_line(_c, line_def_obj))
-                if _role != "thirdplus":
-                    return True
-                _label = str(
-                    trust_map.get(_c, trust_map.get(str(_c), "通常")) or "通常"
-                )
-                return _label != "地区まとめ"
-            except Exception:
-                return True
-
+        # v335bb：今日のミッドナイトで機能した最終着順選別はそのまま維持し、
+        # 券種への「配置」だけを更新する。
+        # 最終着順順位そのもの（該当流れ＋AI重圧補正＋3連複TOP5該当数の二軸50:50）は変更しない。
+        #
+        # 3連単：評価順位 23-123-12（3点）
+        #   → 231 / 312 / 321
+        #   評価2位・3位の1着を想定し、評価3位が2着まで残るズレも取る。
+        # 2車単：評価順位 3-124（3点）
+        #   → 3→1 / 3→2 / 3→4
+        #   評価3位がさらに頭へ突き抜けた場合を広めに救済する。
+        #
+        # 旧v335aw/v335ayの「市場◎回避」「地区まとめ3番手の頭禁止」は、
+        # この新配置と矛盾するため、通常の3連単側／共通2車単では適用しない。
         _trifecta_track_name = str(globals().get("track") or globals().get("place") or "").strip()
         _trifecta_is_fuzzy_venue = bool(_v335ao_is_fuzzy_venue(_trifecta_track_name))
         trifecta_district_thirdplus_avoided = False
 
-        # 3連単は最終着順予想TOP3、基本フォーメーション23-13-123を維持。
-        # ただし得意/普通会場で「地区まとめ×3番手以降」が1着候補（rank2/rank3）に入った場合、
-        # その車だけ1着配置を禁止し、TOP3内で2・3着に回す。
         if len(final_prediction_order) >= 3:
             _tf1 = int(final_prediction_order[0])
             _tf2 = int(final_prediction_order[1])
             _tf3 = int(final_prediction_order[2])
-            _base_trifecta_tickets = (
-                (_tf2, _tf1, _tf3),
-                (_tf2, _tf3, _tf1),
-                (_tf3, _tf1, _tf2),
-            )
-            _blocked_tf_heads = set()
-            if not _trifecta_is_fuzzy_venue:
-                for _candidate in (_tf2, _tf3):
-                    if not _v335ax_first_place_eligible(_candidate):
-                        _blocked_tf_heads.add(int(_candidate))
 
-            if _blocked_tf_heads:
-                trifecta_district_thirdplus_avoided = True
-                # v335ay：TOP3は維持し、禁止車は2・3着だけに配置する。
-                # 元の 23-13-123 の3点構造をできるだけ維持し、
-                # 禁止された1着候補をrank1へ置き換えて3点を再構成する。
-                # 例：rank1=1, rank2=5(禁止), rank3=2 → 12-15-125
-                _tf_top3 = (_tf1, _tf2, _tf3)
-                _eligible_heads = [int(x) for x in _tf_top3 if int(x) not in _blocked_tf_heads]
-                _blocked_order = [int(x) for x in (_tf2, _tf3) if int(x) in _blocked_tf_heads]
-
-                if len(_blocked_order) == 1:
-                    _blocked = int(_blocked_order[0])
-                    _other = int(_tf3 if _blocked == int(_tf2) else _tf2)
-                    _first_candidates = (int(_tf1), _other)
-                    _second_candidates = (int(_tf1), _blocked)
-                    _third_candidates = (int(_tf1), int(_tf2), int(_tf3))
-                else:
-                    # rank2・rank3がともに禁止なら、rank1だけを1着に固定。
-                    _first_candidates = (int(_tf1),)
-                    _second_candidates = tuple(int(x) for x in (_tf2, _tf3))
-                    _third_candidates = (int(_tf1), int(_tf2), int(_tf3))
-
-                _adjusted = []
-                for _head in _first_candidates:
-                    for _second in _second_candidates:
-                        for _third in _third_candidates:
-                            if len({_head, _second, _third}) != 3:
-                                continue
-                            _adjusted.append((int(_head), int(_second), int(_third)))
-                trifecta_tickets = tuple(dict.fromkeys(_adjusted))
-
-                _f1_text = "".join(str(int(x)) for x in _first_candidates)
-                _f2_text = "".join(str(int(x)) for x in _second_candidates)
-                _f3_text = "".join(str(int(x)) for x in _third_candidates)
-                trifecta_text = f"{_f1_text}-{_f2_text}-{_f3_text}" if trifecta_tickets else "算出不可"
-            else:
-                trifecta_tickets = _base_trifecta_tickets
-                trifecta_text = f"{_tf2}{_tf3}-{_tf1}{_tf3}-{_tf1}{_tf2}{_tf3}"
+            # 評価23-123-12を重複車番除外で展開。
+            _tf_first = (_tf2, _tf3)
+            _tf_second = (_tf1, _tf2, _tf3)
+            _tf_third = (_tf1, _tf2)
+            _tf_rows = []
+            for _head in _tf_first:
+                for _second in _tf_second:
+                    for _third in _tf_third:
+                        if len({_head, _second, _third}) != 3:
+                            continue
+                        _ticket = (int(_head), int(_second), int(_third))
+                        if _ticket not in _tf_rows:
+                            _tf_rows.append(_ticket)
+            trifecta_tickets = tuple(_tf_rows)
+            trifecta_text = f"{_tf2}{_tf3}-{_tf1}{_tf2}{_tf3}-{_tf1}{_tf2}"
         else:
             trifecta_tickets = tuple()
             trifecta_text = "算出不可"
 
-        # v335aw：2車単の1着軸フィルタ＋期待値補正。
-        # 得意/普通会場では次の車を「1着軸候補」から外す。
-        #   ① 市場印◎（最終順位1位が◎のとき、従来どおり◎を頭固定しない）
-        #   ② ライン3番手以降（thirdplus）かつ後位信頼が「地区まとめ」の車
-        # ②は以前の共通核除外と同じ思想で、1着だけを除外する。相手からは消さない。
-        # 苦手会場は現行ロジックを維持し、従来どおり順位1位→234。
+        # 2車単は評価3位を頭固定し、評価1・2・4位へ流す。
+        # 会場ごとの購入券種分岐自体は現行維持。
         _value_track_name = str(globals().get("track") or globals().get("place") or "").strip()
         _is_fuzzy_venue_for_value = bool(_v335ao_is_fuzzy_venue(_value_track_name))
         common_exacta_honmei_avoided = False
         common_exacta_district_thirdplus_avoided = False
-        common_exacta_rule_text = "1→234"
-
-        def _v335aw_exacta_head_eligible(_car):
-            return bool(_v335ax_first_place_eligible(_car))
+        common_exacta_rule_text = "3→124"
 
         if len(common_exacta_order) >= 4:
-            if _is_fuzzy_venue_for_value:
-                # 苦手会場は現行どおり。
-                _exacta_head = int(common_exacta_order[0])
-            else:
-                _exacta_head = None
-                for _candidate in common_exacta_order:
-                    _candidate = int(_candidate)
-                    if market_honmei is not None and _candidate == int(market_honmei):
-                        # 市場◎は1着軸から外すが、相手には残す。
-                        common_exacta_honmei_avoided = True
-                        continue
-                    if not _v335aw_exacta_head_eligible(_candidate):
-                        # 地区まとめの3番手以降は1着軸から外すが、相手には残す。
-                        common_exacta_district_thirdplus_avoided = True
-                        continue
-                    _exacta_head = _candidate
-                    break
-
-                # 万一すべて除外された場合だけ、順位1位へフォールバック。
-                if _exacta_head is None:
-                    _exacta_head = int(common_exacta_order[0])
-
-            _exacta_himo = [
-                int(_c) for _c in common_exacta_order
-                if int(_c) != int(_exacta_head)
-            ][:3]
-
-            if len(_exacta_himo) >= 3:
-                common_exacta_tickets = tuple(
-                    (int(_exacta_head), int(_h)) for _h in _exacta_himo
-                )
+            _exacta_head = int(common_exacta_order[2])
+            _exacta_himo = (
+                int(common_exacta_order[0]),
+                int(common_exacta_order[1]),
+                int(common_exacta_order[3]),
+            )
+            common_exacta_tickets = tuple(
+                (int(_exacta_head), int(_h)) for _h in _exacta_himo
+                if int(_h) != int(_exacta_head)
+            )
+            if len(common_exacta_tickets) == 3:
                 common_exacta_text = f"{int(_exacta_head)}-{''.join(str(int(_h)) for _h in _exacta_himo)}"
-                try:
-                    _head_rank = list(int(x) for x in common_exacta_order).index(int(_exacta_head)) + 1
-                    _himo_ranks = [
-                        list(int(x) for x in common_exacta_order).index(int(_h)) + 1
-                        for _h in _exacta_himo
-                    ]
-                    common_exacta_rule_text = f"{_head_rank}→{''.join(str(int(x)) for x in _himo_ranks)}"
-                except Exception:
-                    common_exacta_rule_text = "1着軸フィルタ適用"
             else:
                 common_exacta_tickets = tuple()
                 common_exacta_text = "算出不可"
@@ -12254,8 +12185,10 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             common_exacta_text = "算出不可"
 
         # 旧キー互換：v335aaの検証用2車単参照先も、新共通2車単を返す。
-        validation_exacta_heads = (int(common_exacta_order[0]),) if common_exacta_order else tuple()
-        validation_exacta_himo = tuple(common_exacta_order[1:4]) if len(common_exacta_order) >= 4 else tuple()
+        validation_exacta_heads = (int(common_exacta_order[2]),) if len(common_exacta_order) >= 3 else tuple()
+        validation_exacta_himo = (
+            int(common_exacta_order[0]), int(common_exacta_order[1]), int(common_exacta_order[3])
+        ) if len(common_exacta_order) >= 4 else tuple()
         validation_exacta_counts = dict(common_exacta_counts)
         validation_exacta_source_trios = list(common_exacta_source_trios)
         validation_exacta_order = list(common_exacta_order)
