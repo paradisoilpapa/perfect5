@@ -1,6 +1,6 @@
 # v335ao（会場相性×開催日・精密/ファジー分岐版）:
-# ・得意/普通会場の通常日：三連複TOP5集計から作る専用順位を最終着順予想とし、2車単1→234（3点）＋同順位TOP3の3連単23-13-123（3点）＝6点。
-# ・得意/普通会場の最終日：専用順位＝最終着順予想を共通基準に、2車単1→234（3点）＋3連複1-234-234（3点）＝6点。
+# ・得意/普通会場の通常日：三連複TOP5集計から作る専用順位を最終着順予想とし、2車単は通常1→234・最終1位が市場◎なら2→134（3点）＋同順位TOP3の3連単23-13-123（3点）＝6点。
+# ・得意/普通会場の最終日：専用順位＝最終着順予想を共通基準に、最終1位が市場◎なら2車単2→134・3連複2-134-134へ補正（各3点、計6点）。それ以外は従来どおり。
 # ・苦手会場：開催日に関係なく、専用順位＝最終着順予想を使い3連複12-3-下位2車（7車時は12-3-67、4点）のみ。
 # ・苦手会場では三連複TOP5集計・市場印/競走得点/同ライン除外を推奨購入に使わない。
 # ・苦手会場は既存会場評価でDまたは未分類だった会場を明示集合化し、富山を含める。
@@ -11914,6 +11914,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         # result_marks（ヴェロビ側の計算印）はここでは一切使わない。
         market_marks = globals().get("market_mark_map", {}) or {}
         market_top3 = set()
+        market_honmei = None
         try:
             _market_vals = []
             for _target_mark in ("◎", "〇", "△"):
@@ -11922,6 +11923,8 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
                     if str(_mk).strip() in ({"◎"} if _target_mark == "◎" else ({"〇", "○"} if _target_mark == "〇" else {"△", "▲"}))
                 ), None)
                 _market_vals.append(_car)
+            if _market_vals and _market_vals[0] is not None:
+                market_honmei = int(_market_vals[0])
             if all(v is not None for v in _market_vals):
                 market_top3 = {int(v) for v in _market_vals}
                 if len(market_top3) != 3:
@@ -12075,17 +12078,38 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             trifecta_tickets = tuple()
             trifecta_text = "算出不可"
 
+        # v335au：2車単の期待値補正。
+        # 得意/普通会場では、最終着順予想1位が市場印◎なら◎を1着軸にしない。
+        # 通常 1→234、◎一致時は 2→134。苦手会場は従来どおり1→234のまま。
+        _value_track_name = str(globals().get("track") or globals().get("place") or "").strip()
+        _is_fuzzy_venue_for_value = bool(_v335ao_is_fuzzy_venue(_value_track_name))
+        common_exacta_honmei_avoided = False
+        common_exacta_rule_text = "1→234"
         if len(common_exacta_order) >= 4:
             _ce1 = int(common_exacta_order[0])
             _ce2 = int(common_exacta_order[1])
             _ce3 = int(common_exacta_order[2])
             _ce4 = int(common_exacta_order[3])
-            common_exacta_tickets = (
-                (_ce1, _ce2),
-                (_ce1, _ce3),
-                (_ce1, _ce4),
-            )
-            common_exacta_text = f"{_ce1}-{_ce2}{_ce3}{_ce4}"
+            if (
+                not _is_fuzzy_venue_for_value
+                and market_honmei is not None
+                and int(_ce1) == int(market_honmei)
+            ):
+                common_exacta_honmei_avoided = True
+                common_exacta_rule_text = "2→134"
+                common_exacta_tickets = (
+                    (_ce2, _ce1),
+                    (_ce2, _ce3),
+                    (_ce2, _ce4),
+                )
+                common_exacta_text = f"{_ce2}-{_ce1}{_ce3}{_ce4}"
+            else:
+                common_exacta_tickets = (
+                    (_ce1, _ce2),
+                    (_ce1, _ce3),
+                    (_ce1, _ce4),
+                )
+                common_exacta_text = f"{_ce1}-{_ce2}{_ce3}{_ce4}"
         else:
             common_exacta_tickets = tuple()
             common_exacta_text = "算出不可"
@@ -12255,19 +12279,34 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         final_simple_trio_tickets = tuple()
         final_simple_trio_text = "算出不可"
         final_simple_trio_formation_text = "算出不可"
+        # v335au：最終日の3連複にも同じ期待値補正を適用。
+        # 得意/普通会場で最終1位＝市場◎なら、固定軸を2位へ移して 2-134-134。
+        # 苦手会場のファジー3連複は下段の現行ロジックを一切変更しない。
+        final_simple_trio_honmei_avoided = False
         if len(common_exacta_order) >= 4:
             _f1, _f2, _f3, _f4 = (int(common_exacta_order[i]) for i in range(4))
+            if (
+                not _is_fuzzy_venue_for_value
+                and market_honmei is not None
+                and int(_f1) == int(market_honmei)
+            ):
+                final_simple_trio_honmei_avoided = True
+                _fa = _f2
+                _fh1, _fh2, _fh3 = _f1, _f3, _f4
+            else:
+                _fa = _f1
+                _fh1, _fh2, _fh3 = _f2, _f3, _f4
             final_simple_trio_tickets = (
-                tuple(sorted((_f1, _f2, _f3))),
-                tuple(sorted((_f1, _f3, _f4))),
-                tuple(sorted((_f1, _f2, _f4))),
+                tuple(sorted((_fa, _fh1, _fh2))),
+                tuple(sorted((_fa, _fh2, _fh3))),
+                tuple(sorted((_fa, _fh1, _fh3))),
             )
             final_simple_trio_text = "・".join(
                 "".join(str(int(x)) for x in _combo)
                 for _combo in final_simple_trio_tickets
             )
-            _f_himo = f"{_f2}{_f3}{_f4}"
-            final_simple_trio_formation_text = f"{_f1}-{_f_himo}-{_f_himo}"
+            _f_himo = f"{_fh1}{_fh2}{_fh3}"
+            final_simple_trio_formation_text = f"{_fa}-{_f_himo}-{_f_himo}"
 
         # -------------------------------------------------
         # v335aq：苦手会場用ファジー3連複。
@@ -12394,6 +12433,10 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "final_prediction_order": tuple(int(x) for x in final_prediction_order),
             "common_exacta_source_trios": tuple(tuple(int(x) for x in c) for c in common_exacta_source_trios),
             "recommended_exacta_count": 0 if _purchase_mode == "fuzzy" else _exacta_count,
+            "common_exacta_honmei_avoided": bool(common_exacta_honmei_avoided),
+            "common_exacta_rule_text": str(common_exacta_rule_text),
+            "market_honmei": int(market_honmei) if market_honmei is not None else None,
+            "final_simple_trio_honmei_avoided": bool(final_simple_trio_honmei_avoided),
             "is_fuzzy_venue": _is_fuzzy_venue,
             "is_final_day": _is_final_day,
             "fuzzy_venues": tuple(sorted(V335AO_FUZZY_VENUES)),
@@ -12549,7 +12592,7 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             _primary_text = None
             _validation_type = "３連単"
         else:
-            _primary_type = "３連単・通常日（専用順位＝最終着順予想 23-13-123）"
+            _primary_type = "３連単"
             _primary_text = trifecta_text
             _validation_type = "旧3連複"
 
@@ -12572,7 +12615,6 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             validation_alt_text,
             f"計{validation_alt_count}点（推奨購入の計{ticket_count}点には含めない）",
             "",
-            "※専用順位を最終着順予想として統一。苦手会場はその順位をファジー3連複に使用",
             trio_rank_top5_text,
         ])
         return "\n".join(lines).strip() + "\n"
@@ -12949,7 +12991,7 @@ def _v281_format_fixed_flow_block(
                     "【２車単】",
                     f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
                     f"2車単専用順位集計：{_validation_count_text}／順位={''.join(str(int(x)) for x in _validation_order) if _validation_order else '算出不可'}",
-                    "2車単フォメ：専用順位1→234（3点固定）",
+                    f"2車単フォメ：{five_point_plan.get('common_exacta_rule_text', '1→234')}（3点固定）",
                     f"最終着順予想：{' → '.join(str(int(x)) for x in _validation_order) if _validation_order else '算出不可'}",
                     f"計{_official_count}点／{_official_amount}円",
                     "【検証用３連単】",
@@ -12959,12 +13001,12 @@ def _v281_format_fixed_flow_block(
             else:
                 purchase_lines.extend([
                     "【推奨購入・通常日】",
-                    "３連単 専用順位＝最終着順予想23-13-123（3点固定）",
+                    "３連単",
                     f"{five_point_plan.get('trifecta_text', '算出不可')}（各100円）",
                     "【２車単】",
                     f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
                     f"2車単専用順位集計：{_validation_count_text}／順位={''.join(str(int(x)) for x in _validation_order) if _validation_order else '算出不可'}",
-                    "2車単フォメ：専用順位1→234（3点固定）",
+                    f"2車単フォメ：{five_point_plan.get('common_exacta_rule_text', '1→234')}（3点固定）",
                     f"最終着順予想：{' → '.join(str(int(x)) for x in _validation_order) if _validation_order else '算出不可'}",
                     f"計{_official_count}点／{_official_amount}円",
                     "【検証用・旧3連複】",
