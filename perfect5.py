@@ -12529,14 +12529,14 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             validation_alt_text = "算出不可"
             validation_alt_count = 0
 
-        # v335aq：2車単専用順位を明示し、その順位を最終着順予想として表示する。
+        # v335as：専用順位を最終着順予想として表示する。
+        # 「２車単順位」は重複表示になるため出力しない。
         _dedicated_order = tuple(
             int(x) for x in (five_point_plan.get("final_prediction_order", tuple()) or tuple())
         ) if five_point_plan else tuple()
         _dedicated_order_text = " → ".join(str(int(x)) for x in _dedicated_order) if _dedicated_order else "算出不可"
         if len(lines) >= 4:
-            lines[3] = f"２車単順位　{_dedicated_order_text}"
-            lines.insert(4, f"最終着順予想　{_dedicated_order_text}")
+            lines[3] = f"最終着順予想　{_dedicated_order_text}"
 
         if purchase_mode == "fuzzy":
             _primary_type = "３連複・苦手会場ファジー（12-3-下位2車）"
@@ -12545,8 +12545,8 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             exacta_text = "なし"
         elif purchase_mode == "final_trio":
             _final_form = str(five_point_plan.get("final_simple_trio_formation_text", "算出不可") or "算出不可")
-            _primary_type = f"３連複・最終日（{_final_form}）"
-            _primary_text = str(five_point_plan.get("final_simple_trio_text", "算出不可") or "算出不可")
+            _primary_type = f"３連複　{_final_form}"
+            _primary_text = None
             _validation_type = "３連単"
         else:
             _primary_type = "３連単・通常日（専用順位＝最終着順予想 23-13-123）"
@@ -12557,8 +12557,9 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             "",
             "【推奨購入】",
             _primary_type,
-            _primary_text,
         ])
+        if _primary_text:
+            lines.append(_primary_text)
         if purchase_mode != "fuzzy":
             lines.extend([
                 "【２車単】",
@@ -12944,8 +12945,7 @@ def _v281_format_fixed_flow_block(
                 _final_form = str(five_point_plan.get("final_simple_trio_formation_text", "算出不可") or "算出不可")
                 purchase_lines.extend([
                     "【推奨購入・最終日】",
-                    f"３連複 {_final_form}（3点固定）",
-                    f"{_final_simple_text}（各100円）",
+                    f"３連複 {_final_form}",
                     "【２車単】",
                     f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
                     f"2車単専用順位集計：{_validation_count_text}／順位={''.join(str(int(x)) for x in _validation_order) if _validation_order else '算出不可'}",
