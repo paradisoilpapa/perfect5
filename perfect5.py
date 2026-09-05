@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-# v335ai（最終日2車複・あぶれ自力vs選考外版）:
+# v335aj（最終日2車単12-12A・4点版）:
 # ・最終日以外はv335acを維持し、バンク形状3条件のうち2条件以上＝「3連単3点＋2車単4点」、0～1条件＝「除外後3連複＋2車単4点」。
-# ・最終日はバンク形状に関係なく「最終日専用2車単3点＋2車複2点」を基本とする。
+# ・最終日はバンク形状に関係なく「最終日専用2車単4点＋2車複2点」を基本とする。
 # ・最終日専用2車単の軸2車は現行3連単23-13-123の役割1・2（axis_a＋axis_b）。ココAは除外後の購入対象3連複から軸2車を除いた出現回数1位、同数時は最終着順予想上位→車番順。
-# ・最終日専用2車単は「12-1A」の3点（軸1→A／軸2→軸1／軸2→A）とする。
+# ・最終日専用2車単は「12-12A」の4点（軸1→軸2／軸1→A／軸2→軸1／軸2→A）とする。
 # ・最終日2車複の軸は役割1・2の2車を固定する。候補Aは最終日専用2車単の3車からあぶれた「自力／自力自在」のうち最終着順予想上位1車。
 # ・候補Bは三連複的中点順位想定TOP5に一度も登場しない「選考外」のうち最終着順予想上位1車。
 # ・候補A（あぶれ自力）vs候補B（選考外）を最終着順予想の評価で競わせ、上位1車だけを2車複ヒモに採用する。片方がいなければ他方を採用する。
@@ -2327,7 +2327,7 @@ day_stage = str(day_stage_map[day_label])
 # v335ad：最終日はバンク形状による券種振り分けを停止する。
 if day_stage == "最終日":
     st.sidebar.warning("最終日：バンク形状に関係なく 2車単＋2車複")
-    st.sidebar.caption("2車単＝最終日専用3点／2車複＝軸2車固定＋選考外ヒモを自力優先で1車に絞る")
+    st.sidebar.caption("2車単＝最終日専用12-12A・4点／2車複＝軸2車固定＋あぶれ自力vs選考外でヒモ1車")
 elif _v335ac_mode_info.get("valid", False):
     _v335ac_hits = list(_v335ac_mode_info.get("hits", tuple()) or tuple())
     _v335ac_hit_count = int(_v335ac_mode_info.get("hit_count", 0) or 0)
@@ -12051,7 +12051,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         # 軸2車＝現行3連単23-13-123の役割1・2（axis_a＋axis_b）。
         # ココA＝除外後の購入対象3連複で、軸2車を除いた出現回数1位。
         # 同数時は採用流れ最終着順予想上位→車番順。
-        # 2車単＝12-1A（軸1→A／軸2→軸1／軸2→A）の3点。
+        # 2車単＝12-12A（軸1→軸2／軸1→A／軸2→軸1／軸2→A）の4点。
         # 2車複：
         #   役割1・2の軸2車は必ず残す。
         #   選考外（ヒモ）が1車ならその1車を採用。
@@ -12081,11 +12081,12 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             _fx1, _fx2 = final_axis_heads
             _fa = int(final_kokoa)
             final_exacta_tickets = (
+                (_fx1, _fx2),
                 (_fx1, _fa),
                 (_fx2, _fx1),
                 (_fx2, _fa),
             )
-            final_exacta_text = f"{_fx1}{_fx2}-{_fx1}{_fa}"
+            final_exacta_text = f"{_fx1}{_fx2}-{_fx1}{_fx2}{_fa}"
         else:
             final_exacta_tickets = tuple()
             final_exacta_text = "算出不可"
@@ -12113,7 +12114,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             )
 
         # 最終日2車複のヒモは「メイン2車単からあぶれた自力」vs「選考外」で決める。
-        # まず最終日専用2車単「12-1A」で実際に使う3車を確定する。
+        # まず最終日専用2車単「12-12A」で実際に使う3車（軸1・軸2・A）を確定する。
         _final_exacta_used = set(int(x) for x in final_axis_heads)
         if final_kokoa is not None:
             _final_exacta_used.add(int(final_kokoa))
@@ -12393,7 +12394,7 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             lines.extend([
                 "",
                 "【推奨購入・最終日】",
-                "【２車単・最終日専用3点】",
+                "【２車単・最終日専用4点】",
                 exacta_text,
                 f"ココA={_kokoa if _kokoa is not None else '算出不可'}",
                 "【２車複・軸2車－あぶれ自力vs選考外】",
@@ -12804,7 +12805,7 @@ def _v281_format_fixed_flow_block(
                     f"第3候補集計：{count_text}／共通核={_ta}{_tb}／第3候補={int(five_point_plan.get('third', 0) or 0)}{_excluded_text}",
                     f"三連複除外：{_trio_excluded_text}",
                     "【推奨購入・最終日】",
-                    "【２車単・最終日専用3点】",
+                    "【２車単・最終日専用4点】",
                     f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
                     f"ココA集計：{_final_kokoa_count_text}／採用A={_final_kokoa if _final_kokoa is not None else '算出不可'}",
                     "【２車複・軸2車－あぶれ自力vs選考外】",
