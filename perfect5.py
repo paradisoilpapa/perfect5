@@ -12141,19 +12141,39 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
 
             if _blocked_tf_heads:
                 trifecta_district_thirdplus_avoided = True
-                # TOP3は維持し、禁止車を2・3着だけに配置。
-                # 1着可能な車について、残る2車の着順を両方採る。
+                # v335ay：TOP3は維持し、禁止車は2・3着だけに配置する。
+                # 元の 23-13-123 の3点構造をできるだけ維持し、
+                # 禁止された1着候補をrank1へ置き換えて3点を再構成する。
+                # 例：rank1=1, rank2=5(禁止), rank3=2 → 12-15-125
                 _tf_top3 = (_tf1, _tf2, _tf3)
+                _eligible_heads = [int(x) for x in _tf_top3 if int(x) not in _blocked_tf_heads]
+                _blocked_order = [int(x) for x in (_tf2, _tf3) if int(x) in _blocked_tf_heads]
+
+                if len(_blocked_order) == 1:
+                    _blocked = int(_blocked_order[0])
+                    _other = int(_tf3 if _blocked == int(_tf2) else _tf2)
+                    _first_candidates = (int(_tf1), _other)
+                    _second_candidates = (int(_tf1), _blocked)
+                    _third_candidates = (int(_tf1), int(_tf2), int(_tf3))
+                else:
+                    # rank2・rank3がともに禁止なら、rank1だけを1着に固定。
+                    _first_candidates = (int(_tf1),)
+                    _second_candidates = tuple(int(x) for x in (_tf2, _tf3))
+                    _third_candidates = (int(_tf1), int(_tf2), int(_tf3))
+
                 _adjusted = []
-                for _head in (_tf2, _tf3):
-                    if int(_head) in _blocked_tf_heads:
-                        continue
-                    _rest = [int(x) for x in _tf_top3 if int(x) != int(_head)]
-                    if len(_rest) == 2:
-                        _adjusted.append((int(_head), _rest[0], _rest[1]))
-                        _adjusted.append((int(_head), _rest[1], _rest[0]))
+                for _head in _first_candidates:
+                    for _second in _second_candidates:
+                        for _third in _third_candidates:
+                            if len({_head, _second, _third}) != 3:
+                                continue
+                            _adjusted.append((int(_head), int(_second), int(_third)))
                 trifecta_tickets = tuple(dict.fromkeys(_adjusted))
-                trifecta_text = "・".join("".join(str(int(x)) for x in _t) for _t in trifecta_tickets) if trifecta_tickets else "算出不可"
+
+                _f1_text = "".join(str(int(x)) for x in _first_candidates)
+                _f2_text = "".join(str(int(x)) for x in _second_candidates)
+                _f3_text = "".join(str(int(x)) for x in _third_candidates)
+                trifecta_text = f"{_f1_text}-{_f2_text}-{_f3_text}" if trifecta_tickets else "算出不可"
             else:
                 trifecta_tickets = _base_trifecta_tickets
                 trifecta_text = f"{_tf2}{_tf3}-{_tf1}{_tf3}-{_tf1}{_tf2}{_tf3}"
