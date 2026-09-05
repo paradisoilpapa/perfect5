@@ -1,3 +1,10 @@
+# v335ao（会場相性×開催日・精密/ファジー分岐版）:
+# ・得意/普通会場の通常日：共通2車単1→234（3点）＋最終着順予想TOP3直結3連単23-13-123（3点）＝6点。
+# ・得意/普通会場の最終日：共通2車単1→234（3点）＋最終着順予想1-234-234の3連複（123/124/134、3点）＝6点。
+# ・苦手会場：開催日に関係なく、最終着順予想を加工せず3連複12-3-下位2車（7車時は12-3-67、4点）のみ。
+# ・苦手会場では三連複TOP5集計・市場印/競走得点/同ライン除外を推奨購入に使わない。
+# ・苦手会場は既存会場評価でDまたは未分類だった会場を明示集合化し、富山を含める。
+# ・予想本体（隊列、順流/渦/逆流、補正、最終着順予想、三連複TOP5計算）は変更しない。
 # v335an（共通2車単1-234・3点版）:
 # ・2車単専用順位の作り方はv335al/v335amを維持し、三連複的中点順位想定TOP5の出現回数で再順位する。
 # ・2車単は専用順位1位→専用順位2位・3位・4位の『1-234』3点固定へ変更する。
@@ -2070,6 +2077,20 @@ def _v335ac_track_purchase_mode(track_name=None):
     }
 
 _v335ac_mode_info = _v335ac_track_purchase_mode(track)
+
+# ==============================
+# v335ao: 苦手会場＝ファジー購入
+# 既存の会場評価でDまたは未分類だった会場を対象とする。
+# 得意/普通会場はこの集合に含めず、精密ロジックを使う。
+# ==============================
+V335AO_FUZZY_VENUES = {
+    "四日市", "川崎", "小松島", "岐阜", "前橋", "宇都宮", "防府", "広島", "伊東", "静岡", "奈良",
+    "函館", "取手", "大宮", "富山", "福井", "向日町", "高松", "久留米",
+}
+
+def _v335ao_is_fuzzy_venue(track_name=None):
+    _name = str(track_name or globals().get("track") or globals().get("place") or "").strip()
+    return _name in V335AO_FUZZY_VENUES
 
 st.sidebar.markdown("### 🏟️ 開催場決まり手成績")
 with st.sidebar.expander("数値入力（オッズパーク等の表をそのまま％入力）", expanded=True):
@@ -11877,17 +11898,19 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         himo = tuple(int(car) for car in candidate_order[:3])
 
         # -------------------------------------------------
-        # v335s：3連単は 23-13-123 の3点。
-        # A=評価1位、B=評価2位、C=第3候補。
-        # 例 A=1/B=2/C=4 → 24-14-124
-        # 実券は 2-1-4 / 2-4-1 / 4-1-2。
+        # v335ao：通常日の3連単は「最終着順予想TOP3」をそのまま使用。
+        # 23-13-123 = 2-1-3 / 2-3-1 / 3-1-2 の3点。
+        # TOP5集計から作る第3候補Cは3連単には使わない。
         # -------------------------------------------------
+        _raw1 = int(adopted_sequence[0])
+        _raw2 = int(adopted_sequence[1])
+        _raw3 = int(adopted_sequence[2])
         trifecta_tickets = (
-            (axis_b, axis_a, third),
-            (axis_b, third, axis_a),
-            (third, axis_a, axis_b),
+            (_raw2, _raw1, _raw3),
+            (_raw2, _raw3, _raw1),
+            (_raw3, _raw1, _raw2),
         )
-        trifecta_text = f"{axis_b}{third}-{axis_a}{third}-{axis_a}{axis_b}{third}"
+        trifecta_text = f"{_raw2}{_raw3}-{_raw1}{_raw3}-{_raw1}{_raw2}{_raw3}"
 
         # -------------------------------------------------
         # v335s：三連複1～5位から安目候補を除外する。
@@ -12212,23 +12235,87 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             final_quinella_text = "なし"
 
         # -------------------------------------------------
-        # v335ac：2車単を共通軸にし、バンク形状で追加券種を切り替える。
-        # 2条件以上＝3連単、0～1条件＝3連複。
+        # v335ao：最終日（得意/普通会場）用の単純3連複。
+        # 最終着順予想 1-234-234 = 123 / 124 / 134 の3点。
+        # -------------------------------------------------
+        final_simple_trio_tickets = tuple()
+        final_simple_trio_text = "算出不可"
+        if len(adopted_sequence) >= 4:
+            _f1, _f2, _f3, _f4 = (int(adopted_sequence[i]) for i in range(4))
+            final_simple_trio_tickets = (
+                tuple(sorted((_f1, _f2, _f3))),
+                tuple(sorted((_f1, _f2, _f4))),
+                tuple(sorted((_f1, _f3, _f4))),
+            )
+            final_simple_trio_text = "・".join(
+                "".join(str(int(x)) for x in _combo)
+                for _combo in final_simple_trio_tickets
+            )
+
+        # -------------------------------------------------
+        # v335ao：苦手会場用ファジー3連複。
+        # 最終着順予想の1/2位のどちらか + 3位固定 + 予想下位2車。
+        # 7車なら順位表記12-3-67 = 4点。
+        # TOP5集計・市場印・得点・同ライン除外は通さない。
+        # -------------------------------------------------
+        fuzzy_trio_tickets = tuple()
+        fuzzy_trio_text = "算出不可"
+        fuzzy_lower_two = tuple()
+        if len(adopted_sequence) >= 5:
+            _fz_top = (int(adopted_sequence[0]), int(adopted_sequence[1]))
+            _fz_mid = int(adopted_sequence[2])
+            fuzzy_lower_two = (int(adopted_sequence[-2]), int(adopted_sequence[-1]))
+            _fz_seen = set()
+            _fz_rows = []
+            for _fz_head in _fz_top:
+                for _fz_low in fuzzy_lower_two:
+                    _combo = tuple(sorted((_fz_head, _fz_mid, _fz_low)))
+                    if len(set(_combo)) == 3 and _combo not in _fz_seen:
+                        _fz_seen.add(_combo)
+                        _fz_rows.append(_combo)
+            fuzzy_trio_tickets = tuple(_fz_rows)
+            fuzzy_trio_text = "・".join(
+                "".join(str(int(x)) for x in _combo)
+                for _combo in fuzzy_trio_tickets
+            ) if fuzzy_trio_tickets else "算出不可"
+
+        # -------------------------------------------------
+        # v335ao：会場相性を最優先し、その次に開催日で分岐。
+        # 1) 苦手会場：ファジー3連複のみ
+        # 2) 得意/普通・最終日：2車単 + 単純3連複
+        # 3) 得意/普通・通常日：2車単 + TOP3直結3連単
+        # 旧バンク形状分岐は検証情報として残すが、推奨券種決定には使わない。
         # -------------------------------------------------
         _purchase_mode_info = _v335ac_track_purchase_mode(
             globals().get("track") or globals().get("place") or ""
         )
-        _purchase_mode = str(_purchase_mode_info.get("mode", "trio") or "trio")
+        _track_name = str(globals().get("track") or globals().get("place") or "").strip()
+        _is_fuzzy_venue = bool(_v335ao_is_fuzzy_venue(_track_name))
+        _is_final_day = str(globals().get("day_stage", "") or "") == "最終日"
+
+        if _is_fuzzy_venue:
+            _purchase_mode = "fuzzy"
+        elif _is_final_day:
+            _purchase_mode = "final_trio"
+        else:
+            _purchase_mode = "trifecta"
+
         _trifecta_count = int(len(trifecta_tickets))
         _trio_count = int(len(trio_tickets))
         _exacta_count = int(len(common_exacta_tickets))
+        _final_simple_trio_count = int(len(final_simple_trio_tickets))
+        _fuzzy_trio_count = int(len(fuzzy_trio_tickets))
         _quinella_count = 0
-        if _purchase_mode == "trifecta":
+
+        if _purchase_mode == "fuzzy":
+            ticket_count = int(_fuzzy_trio_count)
+            validation_ticket_count = int(_exacta_count + _trifecta_count)
+        elif _purchase_mode == "final_trio":
+            ticket_count = int(_exacta_count + _final_simple_trio_count)
+            validation_ticket_count = int(_trifecta_count)
+        else:
             ticket_count = int(_exacta_count + _trifecta_count)
             validation_ticket_count = int(_trio_count)
-        else:
-            ticket_count = int(_exacta_count + _trio_count)
-            validation_ticket_count = int(_trifecta_count)
 
         return {
             "axis_a": axis_a,
@@ -12283,12 +12370,20 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             # v335ac：実購入券種と検証券種。
             "purchase_mode": _purchase_mode,
             "purchase_mode_info": dict(_purchase_mode_info),
-            "recommended_exacta_tickets": common_exacta_tickets,
-            "recommended_exacta_text": common_exacta_text,
+            "recommended_exacta_tickets": tuple() if _purchase_mode == "fuzzy" else common_exacta_tickets,
+            "recommended_exacta_text": "なし（苦手会場は3連複のみ）" if _purchase_mode == "fuzzy" else common_exacta_text,
             "common_exacta_counts": {int(k): int(v) for k, v in common_exacta_counts.items()},
             "common_exacta_order": tuple(int(x) for x in common_exacta_order),
             "common_exacta_source_trios": tuple(tuple(int(x) for x in c) for c in common_exacta_source_trios),
-            "recommended_exacta_count": _exacta_count,
+            "recommended_exacta_count": 0 if _purchase_mode == "fuzzy" else _exacta_count,
+            "is_fuzzy_venue": _is_fuzzy_venue,
+            "is_final_day": _is_final_day,
+            "fuzzy_venues": tuple(sorted(V335AO_FUZZY_VENUES)),
+            "fuzzy_lower_two": fuzzy_lower_two,
+            "fuzzy_trio_tickets": fuzzy_trio_tickets,
+            "fuzzy_trio_text": fuzzy_trio_text,
+            "final_simple_trio_tickets": final_simple_trio_tickets,
+            "final_simple_trio_text": final_simple_trio_text,
             "final_day_axis_heads": final_axis_heads,
             "final_day_kokoa": final_kokoa,
             "final_day_kokoa_counts": {int(k): int(v) for k, v in final_kokoa_counts.items()},
@@ -12305,12 +12400,32 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "recommended_quinella_tickets": tuple(),
             "recommended_quinella_text": "",
             "recommended_quinella_count": 0,
-            "recommended_primary_tickets": trifecta_tickets if _purchase_mode == "trifecta" else trio_tickets,
-            "recommended_primary_text": trifecta_text if _purchase_mode == "trifecta" else trio_text,
-            "recommended_primary_type": "３連単" if _purchase_mode == "trifecta" else "３連複",
-            "validation_alt_tickets": trio_tickets if _purchase_mode == "trifecta" else trifecta_tickets,
-            "validation_alt_text": trio_text if _purchase_mode == "trifecta" else trifecta_text,
-            "validation_alt_type": "３連複" if _purchase_mode == "trifecta" else "３連単",
+            "recommended_primary_tickets": (
+                fuzzy_trio_tickets if _purchase_mode == "fuzzy"
+                else final_simple_trio_tickets if _purchase_mode == "final_trio"
+                else trifecta_tickets
+            ),
+            "recommended_primary_text": (
+                fuzzy_trio_text if _purchase_mode == "fuzzy"
+                else final_simple_trio_text if _purchase_mode == "final_trio"
+                else trifecta_text
+            ),
+            "recommended_primary_type": "３連複" if _purchase_mode in ("fuzzy", "final_trio") else "３連単",
+            "validation_alt_tickets": (
+                tuple(common_exacta_tickets) + tuple(trifecta_tickets) if _purchase_mode == "fuzzy"
+                else trifecta_tickets if _purchase_mode == "final_trio"
+                else trio_tickets
+            ),
+            "validation_alt_text": (
+                f"2車単:{common_exacta_text}／3連単:{trifecta_text}" if _purchase_mode == "fuzzy"
+                else trifecta_text if _purchase_mode == "final_trio"
+                else trio_text
+            ),
+            "validation_alt_type": (
+                "旧精密系" if _purchase_mode == "fuzzy"
+                else "３連単" if _purchase_mode == "final_trio"
+                else "３連複"
+            ),
             "validation_ticket_count": validation_ticket_count,
 
             "top5": tuple(tuple(int(x) for x in key) for key in ranked_trios[:5]),
@@ -12321,7 +12436,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         return {}
 
 def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
-    """v335an推奨（共通2車単1-234＋三連複最大3点＋形状別3連単/3連複）をnote公開用に整形する。"""
+    """v335ao推奨（通常日精密／最終日ややファジー／苦手会場ファジー）をnote公開用に整形する。"""
     try:
         if not isinstance(plan, dict) or not plan:
             return "note用簡易出力生成不可：フォーメーション未確定"
@@ -12395,29 +12510,39 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             validation_alt_text = "算出不可"
             validation_alt_count = 0
 
-        if purchase_mode == "trifecta":
-            _primary_type = "３連単"
-            _primary_text = trifecta_text
-            _validation_type = "３連複"
-        else:
-            _primary_type = "３連複"
-            _primary_text = trio_text
+        if purchase_mode == "fuzzy":
+            _primary_type = "３連複・苦手会場ファジー（12-3-下位2車）"
+            _primary_text = str(five_point_plan.get("fuzzy_trio_text", "算出不可") or "算出不可")
+            _validation_type = "旧精密系"
+            exacta_text = "なし"
+        elif purchase_mode == "final_trio":
+            _primary_type = "３連複・最終日（1-234-234）"
+            _primary_text = str(five_point_plan.get("final_simple_trio_text", "算出不可") or "算出不可")
             _validation_type = "３連単"
+        else:
+            _primary_type = "３連単・通常日（最終着順予想23-13-123）"
+            _primary_text = trifecta_text
+            _validation_type = "旧3連複"
 
         lines.extend([
             "",
             "【推奨購入】",
             _primary_type,
             _primary_text,
-            "【２車単】",
-            exacta_text,
+        ])
+        if purchase_mode != "fuzzy":
+            lines.extend([
+                "【２車単】",
+                exacta_text,
+            ])
+        lines.extend([
             f"計{ticket_count}点",
             "",
             f"【検証用{_validation_type}】",
             validation_alt_text,
             f"計{validation_alt_count}点（推奨購入の計{ticket_count}点には含めない）",
             "",
-            "※第3候補は三連複的中点順位想定1～5位から、軸2車を除いた車の出現回数で選出",
+            "※苦手会場はTOP5集計で絞らず、最終着順予想をそのままファジーに使用",
             trio_rank_top5_text,
         ])
         return "\n".join(lines).strip() + "\n"
@@ -12771,64 +12896,48 @@ def _v281_format_fixed_flow_block(
             _official_count = int(five_point_plan.get("ticket_count", 0) or 0)
             _official_amount = int(five_point_plan.get("total_amount", 0) or 0)
             _validation_alt_count = int(five_point_plan.get("validation_ticket_count", 0) or 0)
-            if _purchase_mode == "final":
-                _final_kokoa = five_point_plan.get("final_day_kokoa", None)
-                _final_nc = tuple(five_point_plan.get("final_day_non_candidates", tuple()) or tuple())
-                _final_qh = tuple(five_point_plan.get("final_day_quinella_heads", tuple()) or tuple())
-                _final_qhimo_candidates = tuple(five_point_plan.get("final_day_quinella_himo_candidates", tuple()) or tuple())
-                _final_qhimo = five_point_plan.get("final_day_quinella_himo", None)
-                _final_qreason = str(five_point_plan.get("final_day_quinella_himo_reason", "") or "")
-                _final_qspill = five_point_plan.get("final_day_quinella_spilled_jiryoku_candidate", None)
-                _final_qnon = five_point_plan.get("final_day_quinella_non_candidate", None)
-                _final_kokoa_counts = dict(five_point_plan.get("final_day_kokoa_counts", {}) or {})
-                _final_kokoa_count_text = " ".join(
-                    f"{int(k)}={int(v)}回" for k, v in sorted(
-                        _final_kokoa_counts.items(),
-                        key=lambda kv: (-int(kv[1]), int(eval_pos.get(int(kv[0]), 999)), int(kv[0]))
-                    )
-                ) or "算出不可"
+            if _purchase_mode == "fuzzy":
+                _fuzzy_text = str(five_point_plan.get("fuzzy_trio_text", "算出不可") or "算出不可")
+                _fuzzy_low = tuple(five_point_plan.get("fuzzy_lower_two", tuple()) or tuple())
                 purchase_lines.extend([
-                    f"第3候補集計：{count_text}／共通核={_ta}{_tb}／第3候補={int(five_point_plan.get('third', 0) or 0)}{_excluded_text}",
-                    f"三連複除外：{_trio_excluded_text}",
-                    "【推奨購入・最終日】",
-                    "【２車単・最終日専用4点】",
-                    f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
-                    f"ココA集計：{_final_kokoa_count_text}／採用A={_final_kokoa if _final_kokoa is not None else '算出不可'}",
-                    "【２車複・軸2車－あぶれ自力vs選考外】",
-                    f"{five_point_plan.get('recommended_quinella_text', 'なし')}（各100円）",
-                    f"2車複軸={''.join(str(int(x)) for x in _final_qh) if _final_qh else 'なし'}",
-                    f"候補A・あぶれ自力={int(_final_qspill) if _final_qspill is not None else 'なし'}",
-                    f"候補B・選考外={int(_final_qnon) if _final_qnon is not None else 'なし'}",
-                    f"採用ヒモ={int(_final_qhimo) if _final_qhimo is not None else 'なし'}（{_final_qreason or '未判定'}）",
-                    f"選考外（参考）={''.join(str(int(x)) for x in _final_nc) if _final_nc else 'なし'}",
+                    "【推奨購入・苦手会場ファジー】",
+                    "３連複 12-3-下位2車（7車時12-3-67）",
+                    f"{_fuzzy_text}（各100円）",
+                    f"下位2車={''.join(str(int(x)) for x in _fuzzy_low) if _fuzzy_low else '算出不可'}",
+                    "TOP5集計・市場印・競走得点・同ライン除外は推奨購入に不使用",
                     f"計{_official_count}点／{_official_amount}円",
+                    "【検証用・精密系】",
+                    f"2車単 {five_point_plan.get('validation_exacta_text', '算出不可')}／3連単 {five_point_plan.get('trifecta_text', '算出不可')}",
+                    f"計{_validation_alt_count}点（推奨購入には含めない）",
                 ])
-            else:
-                if _purchase_mode == "trifecta":
-                    _primary_label = "３連単"
-                    _primary_text = str(five_point_plan.get("trifecta_text", "算出不可") or "算出不可")
-                    _validation_alt_label = "３連複"
-                    _validation_alt_text = str(five_point_plan.get("trio_text", "なし") or "なし")
-                else:
-                    _primary_label = "３連複"
-                    _primary_text = str(five_point_plan.get("trio_text", "なし") or "なし")
-                    _validation_alt_label = "３連単"
-                    _validation_alt_text = str(five_point_plan.get("trifecta_text", "算出不可") or "算出不可")
-
+            elif _purchase_mode == "final_trio":
+                _final_simple_text = str(five_point_plan.get("final_simple_trio_text", "算出不可") or "算出不可")
                 purchase_lines.extend([
-                    f"第3候補集計：{count_text}／共通核={_ta}{_tb}／第3候補={int(five_point_plan.get('third', 0) or 0)}{_excluded_text}",
-                    f"三連複除外：{_trio_excluded_text}",
-                    "【推奨購入】",
-                    _primary_label,
-                    f"{_primary_text}（各100円）",
+                    "【推奨購入・最終日】",
+                    "３連複 1-234-234（3点固定）",
+                    f"{_final_simple_text}（各100円）",
                     "【２車単】",
                     f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
                     f"2車単専用順位集計：{_validation_count_text}／順位={''.join(str(int(x)) for x in _validation_order) if _validation_order else '算出不可'}",
-                    f"2車単フォメ：専用順位1→234（3点固定）",
+                    "2車単フォメ：専用順位1→234（3点固定）",
                     f"計{_official_count}点／{_official_amount}円",
-                    f"【検証用{_validation_alt_label}】",
-                    f"{_validation_alt_text}（各100円）",
-                    f"計{_validation_alt_count}点（推奨購入の点数・金額には含めない）",
+                    "【検証用３連単】",
+                    f"{five_point_plan.get('trifecta_text', '算出不可')}（各100円）",
+                    f"計{_validation_alt_count}点（推奨購入には含めない）",
+                ])
+            else:
+                purchase_lines.extend([
+                    "【推奨購入・通常日】",
+                    "３連単 最終着順予想23-13-123（3点固定）",
+                    f"{five_point_plan.get('trifecta_text', '算出不可')}（各100円）",
+                    "【２車単】",
+                    f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
+                    f"2車単専用順位集計：{_validation_count_text}／順位={''.join(str(int(x)) for x in _validation_order) if _validation_order else '算出不可'}",
+                    "2車単フォメ：専用順位1→234（3点固定）",
+                    f"計{_official_count}点／{_official_amount}円",
+                    "【検証用・旧3連複】",
+                    f"{five_point_plan.get('trio_text', 'なし')}（各100円）",
+                    f"計{_validation_alt_count}点（推奨購入には含めない）",
                 ])
         else:
             purchase_lines.append("【推奨購入】着順予想1・2位または的中点1～5位が不足のため生成不可")
