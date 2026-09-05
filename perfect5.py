@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-# v335ag（最終日2車複・ヒモ自力優先絞り版）:
+# v335ai（最終日2車複・あぶれ自力vs選考外版）:
 # ・最終日以外はv335acを維持し、バンク形状3条件のうち2条件以上＝「3連単3点＋2車単4点」、0～1条件＝「除外後3連複＋2車単4点」。
-# ・最終日はバンク形状に関係なく「最終日専用2車単3点＋選考外2車複」に統一する。
+# ・最終日はバンク形状に関係なく「最終日専用2車単3点＋2車複2点」を基本とする。
 # ・最終日専用2車単の軸2車は現行3連単23-13-123の役割1・2（axis_a＋axis_b）。ココAは除外後の購入対象3連複から軸2車を除いた出現回数1位、同数時は最終着順予想上位→車番順。
 # ・最終日専用2車単は「12-1A」の3点（軸1→A／軸2→軸1／軸2→A）とする。
-# ・選考外は三連複的中点順位想定1～5位のどの組合せにも登場しない出走車。
-# ・最終日2車複は役割1・2の軸2車を必ず残し、選考外（ヒモ）側だけを1車に絞る。
-# ・ヒモが複数なら「自力／自力自在」チェック車を優先し、自力系が複数または該当なしなら最終着順予想の評価上位→車番順で1車を採用する。ヒモが1車ならそのまま採用する。
-# ・2車複表示はフォーメーション表記（例：53-2／41-2）とし、原則2点とする。
+# ・最終日2車複の軸は役割1・2の2車を固定する。候補Aは最終日専用2車単の3車からあぶれた「自力／自力自在」のうち最終着順予想上位1車。
+# ・候補Bは三連複的中点順位想定TOP5に一度も登場しない「選考外」のうち最終着順予想上位1車。
+# ・候補A（あぶれ自力）vs候補B（選考外）を最終着順予想の評価で競わせ、上位1車だけを2車複ヒモに採用する。片方がいなければ他方を採用する。
+# ・2車複表示はフォーメーション表記（例：42-3）とし、原則2点とする。
 # ・最終日は3連単・3連複を推奨購入点数・金額に含めない。予想順位、AI重圧補正、採用流れ、3連単・3連複生成ロジック自体は変更しない。
 # v335ab（バンク形状3条件・券種判定サイドバー版）:
 # ・会場A/B/C/Dおよび過去ROIによるサイドバー判定を廃止し、バンク形状だけで券種側を判定する。
@@ -12101,7 +12101,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             if int(_car) not in _top5_union
         )
 
-        # 既存入力の「自力」「自力自在」をヒモ選抜だけに利用する。
+        # 既存入力の「自力」「自力自在」を、最終日2車複のヒモ選抜だけに利用する。
         _jiryoku_map = globals().get("jiryoku_comment", {}) or {}
         _jiryoku_jizai_map = globals().get("jiryoku_jizai_comment", {}) or {}
 
@@ -12112,31 +12112,64 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
                 or _jiryoku_jizai_map.get(_car, _jiryoku_jizai_map.get(str(_car), False))
             )
 
-        _final_nc_sorted = tuple(sorted(
+        # 最終日2車複のヒモは「メイン2車単からあぶれた自力」vs「選考外」で決める。
+        # まず最終日専用2車単「12-1A」で実際に使う3車を確定する。
+        _final_exacta_used = set(int(x) for x in final_axis_heads)
+        if final_kokoa is not None:
+            _final_exacta_used.add(int(final_kokoa))
+
+        # 候補A：メイン2車単3車から漏れた自力／自力自在。複数なら着順予想上位。
+        final_quinella_spilled_jiryoku = tuple(sorted(
+            (
+                int(_car) for _car in adopted_sequence
+                if int(_car) not in _final_exacta_used and _is_final_jiryoku(_car)
+            ),
+            key=lambda _car: (int(eval_pos.get(_car, 999)), int(_car)),
+        ))
+        final_quinella_spilled_jiryoku_candidate = (
+            int(final_quinella_spilled_jiryoku[0]) if final_quinella_spilled_jiryoku else None
+        )
+
+        # 候補B：三連複的中点順位想定TOP5のどこにも登場しない「選考外」。
+        # 複数なら着順予想上位。
+        final_quinella_non_candidate_pool = tuple(sorted(
             (int(_car) for _car in final_non_candidates),
             key=lambda _car: (int(eval_pos.get(_car, 999)), int(_car)),
         ))
-        _final_jiryoku_himo = tuple(
-            int(_car) for _car in _final_nc_sorted if _is_final_jiryoku(_car)
+        final_quinella_non_candidate = (
+            int(final_quinella_non_candidate_pool[0]) if final_quinella_non_candidate_pool else None
         )
 
-        if len(_final_nc_sorted) == 1:
-            final_quinella_himo = int(_final_nc_sorted[0])
-            final_quinella_himo_reason = "選考外1車"
-        elif len(_final_nc_sorted) >= 2:
-            if _final_jiryoku_himo:
-                # 自力系が複数でも、最終着順予想の評価上位を1車だけ残す。
-                final_quinella_himo = int(_final_jiryoku_himo[0])
-                if len(_final_jiryoku_himo) == 1:
-                    final_quinella_himo_reason = "自力ヒモ優先"
+        # 候補Aと候補Bを着順予想の評価で競わせ、上位1車だけを最終ヒモに採用。
+        # 同一車ならその車をそのまま採用する。
+        _final_himo_duel = []
+        for _car in (final_quinella_spilled_jiryoku_candidate, final_quinella_non_candidate):
+            if _car is not None and int(_car) not in _final_himo_duel:
+                _final_himo_duel.append(int(_car))
+        final_quinella_himo_candidates = tuple(sorted(
+            _final_himo_duel,
+            key=lambda _car: (int(eval_pos.get(_car, 999)), int(_car)),
+        ))
+
+        if final_quinella_himo_candidates:
+            final_quinella_himo = int(final_quinella_himo_candidates[0])
+            if final_quinella_spilled_jiryoku_candidate is not None and final_quinella_non_candidate is not None:
+                if int(final_quinella_spilled_jiryoku_candidate) == int(final_quinella_non_candidate):
+                    final_quinella_himo_reason = "あぶれ自力＝選考外"
+                elif int(final_quinella_himo) == int(final_quinella_spilled_jiryoku_candidate):
+                    final_quinella_himo_reason = "あぶれ自力vs選考外→自力側が評価上位"
                 else:
-                    final_quinella_himo_reason = "自力ヒモ複数のため評価上位"
+                    final_quinella_himo_reason = "あぶれ自力vs選考外→選考外側が評価上位"
+            elif final_quinella_spilled_jiryoku_candidate is not None:
+                final_quinella_himo_reason = "選考外なし→あぶれ自力"
             else:
-                final_quinella_himo = int(_final_nc_sorted[0])
-                final_quinella_himo_reason = "自力ヒモなしのため評価上位"
+                final_quinella_himo_reason = "あぶれ自力なし→選考外"
         else:
             final_quinella_himo = None
-            final_quinella_himo_reason = "選考外なし"
+            final_quinella_himo_reason = "あぶれ自力・選考外ともになし"
+
+        # 旧キー互換用：ここでは「あぶれた自力候補」を保持する。
+        _final_jiryoku_himo = final_quinella_spilled_jiryoku
 
         # 軸側は役割1・2の2車を必ず残す。
         final_quinella_heads = tuple(int(x) for x in final_axis_heads)
@@ -12246,6 +12279,11 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "final_day_kokoa_counts": {int(k): int(v) for k, v in final_kokoa_counts.items()},
             "final_day_non_candidates": final_non_candidates,
             "final_day_quinella_heads": final_quinella_heads,
+            "final_day_quinella_himo_candidates": final_quinella_himo_candidates,
+            "final_day_quinella_spilled_jiryoku": final_quinella_spilled_jiryoku,
+            "final_day_quinella_spilled_jiryoku_candidate": final_quinella_spilled_jiryoku_candidate,
+            "final_day_quinella_non_candidate_pool": final_quinella_non_candidate_pool,
+            "final_day_quinella_non_candidate": final_quinella_non_candidate,
             "final_day_quinella_himo": final_quinella_himo,
             "final_day_quinella_jiryoku_himo": _final_jiryoku_himo,
             "final_day_quinella_himo_reason": final_quinella_himo_reason,
@@ -12347,19 +12385,24 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             _kokoa = five_point_plan.get("final_day_kokoa", None) if five_point_plan else None
             _nc = tuple(five_point_plan.get("final_day_non_candidates", tuple()) or tuple()) if five_point_plan else tuple()
             _qh = tuple(five_point_plan.get("final_day_quinella_heads", tuple()) or tuple()) if five_point_plan else tuple()
+            _qhimo_candidates = tuple(five_point_plan.get("final_day_quinella_himo_candidates", tuple()) or tuple()) if five_point_plan else tuple()
             _qhimo = five_point_plan.get("final_day_quinella_himo", None) if five_point_plan else None
             _qreason = str(five_point_plan.get("final_day_quinella_himo_reason", "") or "") if five_point_plan else ""
+            _qspill = five_point_plan.get("final_day_quinella_spilled_jiryoku_candidate", None) if five_point_plan else None
+            _qnon = five_point_plan.get("final_day_quinella_non_candidate", None) if five_point_plan else None
             lines.extend([
                 "",
                 "【推奨購入・最終日】",
                 "【２車単・最終日専用3点】",
                 exacta_text,
                 f"ココA={_kokoa if _kokoa is not None else '算出不可'}",
-                "【２車複・軸2車－自力優先ヒモ】",
+                "【２車複・軸2車－あぶれ自力vs選考外】",
                 _qtext,
                 f"2車複軸={''.join(str(int(x)) for x in _qh) if _qh else 'なし'}",
+                f"候補A・あぶれ自力={int(_qspill) if _qspill is not None else 'なし'}",
+                f"候補B・選考外={int(_qnon) if _qnon is not None else 'なし'}",
                 f"採用ヒモ={int(_qhimo) if _qhimo is not None else 'なし'}（{_qreason or '未判定'}）",
-                f"選考外={''.join(str(int(x)) for x in _nc) if _nc else 'なし'}",
+                f"選考外（参考）={''.join(str(int(x)) for x in _nc) if _nc else 'なし'}",
                 f"計{ticket_count}点",
                 "",
                 trio_rank_top5_text,
@@ -12745,8 +12788,11 @@ def _v281_format_fixed_flow_block(
                 _final_kokoa = five_point_plan.get("final_day_kokoa", None)
                 _final_nc = tuple(five_point_plan.get("final_day_non_candidates", tuple()) or tuple())
                 _final_qh = tuple(five_point_plan.get("final_day_quinella_heads", tuple()) or tuple())
+                _final_qhimo_candidates = tuple(five_point_plan.get("final_day_quinella_himo_candidates", tuple()) or tuple())
                 _final_qhimo = five_point_plan.get("final_day_quinella_himo", None)
                 _final_qreason = str(five_point_plan.get("final_day_quinella_himo_reason", "") or "")
+                _final_qspill = five_point_plan.get("final_day_quinella_spilled_jiryoku_candidate", None)
+                _final_qnon = five_point_plan.get("final_day_quinella_non_candidate", None)
                 _final_kokoa_counts = dict(five_point_plan.get("final_day_kokoa_counts", {}) or {})
                 _final_kokoa_count_text = " ".join(
                     f"{int(k)}={int(v)}回" for k, v in sorted(
@@ -12761,11 +12807,13 @@ def _v281_format_fixed_flow_block(
                     "【２車単・最終日専用3点】",
                     f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
                     f"ココA集計：{_final_kokoa_count_text}／採用A={_final_kokoa if _final_kokoa is not None else '算出不可'}",
-                    "【２車複・軸2車－自力優先ヒモ】",
+                    "【２車複・軸2車－あぶれ自力vs選考外】",
                     f"{five_point_plan.get('recommended_quinella_text', 'なし')}（各100円）",
                     f"2車複軸={''.join(str(int(x)) for x in _final_qh) if _final_qh else 'なし'}",
+                    f"候補A・あぶれ自力={int(_final_qspill) if _final_qspill is not None else 'なし'}",
+                    f"候補B・選考外={int(_final_qnon) if _final_qnon is not None else 'なし'}",
                     f"採用ヒモ={int(_final_qhimo) if _final_qhimo is not None else 'なし'}（{_final_qreason or '未判定'}）",
-                    f"選考外={''.join(str(int(x)) for x in _final_nc) if _final_nc else 'なし'}",
+                    f"選考外（参考）={''.join(str(int(x)) for x in _final_nc) if _final_nc else 'なし'}",
                     f"計{_official_count}点／{_official_amount}円",
                 ])
             else:
