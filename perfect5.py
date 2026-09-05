@@ -1,4 +1,16 @@
+# v335ac（バンク形状連動・2車単軸＋3連単/3連複切替版）:
+# ・2車単4点を全会場共通の推奨購入軸へ変更する。
+# ・形状3条件（①400m、②みなし直線50.0～59.9m、③バンク角33度以上）のうち2条件以上該当なら、推奨購入は「3連単3点＋2車単4点」。
+# ・0～1条件該当なら、推奨購入は「除外後3連複＋2車単4点」。
+# ・3連単側では3連複を検証用、3連複側では3連単を検証用として表示し、検証用は推奨購入点数・金額に含めない。
+# ・予想順位、AI重圧補正、採用流れ、共通核A/B、第3候補C、3連単生成、3連複除外条件、2車単生成ロジック自体は変更しない。
 # -*- coding: utf-8 -*-
+# v335ab（バンク形状3条件・券種判定サイドバー版）:
+# ・会場A/B/C/Dおよび過去ROIによるサイドバー判定を廃止し、バンク形状だけで券種側を判定する。
+# ・判定条件は①距離400m、②みなし直線50.0～59.9m、③バンク角33度以上の3項目。
+# ・3条件のうち2つ以上該当なら「3連単」、0～1つ該当なら「三連複」と表示する。
+# ・サイドバーには該当項目を「距離＋みなし＋角」のように明示する。例：名古屋＝距離＋みなし＋角 3該当により3連単、武雄＝距離のみ該当 三連複。
+# ・この判定は表示専用で、既存の予想順位、AI重圧補正、採用流れ、3連単、3連複、検証用2車単の生成ロジックには一切使用しない。
 # v335aa（検証用2車単・除外前トップ5母集団版）:
 # ・既存の予想順位、AI重圧補正、採用流れ、共通核A/B、第3候補C、3連単、3連複および三連複除外条件は変更しない。
 # ・【検証用２車単】の頭2車は現行3連単23-13-123の頭候補（評価2位B＋第3候補C）をそのまま使用する。
@@ -1998,50 +2010,65 @@ info = KEIRIN_DATA[track]
 st.session_state["track"] = track
 
 # ==============================
-# v335x: 全会場A/B/C/D分類（表示のみ。予想・買い目ロジックには不使用）
-# 8～9月集計を基準に4段階で表示。
-# A：400m＋みなし直線50.0～59.9m＋バンク角33度以上、かつROI80%以上
-# B：A型ではないがROI80%以上（武雄を含む）
-# C：ROI50～79.9%
-# D：ROI50%未満、または8～9月実績未分類
+# v335ac: バンク形状3条件による券種切替
+# ①距離400m ②みなし直線50.0～59.9m ③バンク角33度以上
+# 2条件以上該当 → 2車単＋3連単 / 0～1条件該当 → 2車単＋3連複
 # ==============================
-_V335X_RECOMMEND_A_TRACKS = {
-    "名古屋", "別府", "松山", "小倉",
-}
+def _v335ac_track_purchase_mode(track_name=None):
+    _name = str(track_name or globals().get("track") or "").strip()
+    _data = KEIRIN_DATA.get(_name, {}) or {}
+    try:
+        _bank_length = float(_data.get("bank_length"))
+        _straight = float(_data.get("straight_length"))
+        _angle = float(_data.get("bank_angle"))
+    except (TypeError, ValueError):
+        return {
+            "mode": "trio",
+            "hits": tuple(),
+            "hit_count": 0,
+            "bank_length": None,
+            "straight": None,
+            "angle": None,
+            "valid": False,
+        }
 
-_V335X_RECOMMEND_B_TRACKS = {
-    "岸和田", "京王閣", "武雄", "佐世保", "小田原", "豊橋",
-    "大垣", "和歌山", "立川", "熊本", "松戸", "松坂",
-}
+    _hits = []
+    if abs(_bank_length - 400.0) <= 1e-9:
+        _hits.append("距離")
+    if 50.0 <= _straight <= 59.9:
+        _hits.append("みなし")
+    if _angle >= 33.0:
+        _hits.append("角")
+    _hit_count = len(_hits)
+    return {
+        "mode": "trifecta" if _hit_count >= 2 else "trio",
+        "hits": tuple(_hits),
+        "hit_count": _hit_count,
+        "bank_length": _bank_length,
+        "straight": _straight,
+        "angle": _angle,
+        "valid": True,
+    }
 
-_V335X_RECOMMEND_C_TRACKS = {
-    "高知", "いわき平", "弥彦", "西武園", "平塚", "青森", "玉野",
-}
-
-# Dのうち、実績あり・ROI50%未満
-_V335X_RECOMMEND_D_TRACKS = {
-    "四日市", "川崎", "小松島", "岐阜", "前橋", "宇都宮",
-    "防府", "広島", "伊東", "静岡", "奈良",
-}
-
-# Dのうち、8～9月実績未分類
-_V335X_UNCLASSIFIED_TRACKS = {
-    "函館", "取手", "大宮", "富山", "福井", "向日町", "高松", "久留米",
-}
-
-if track in _V335X_RECOMMEND_A_TRACKS:
-    st.sidebar.success("推奨A｜本命会場｜A型バンク＋回収率80％以上")
-elif track in _V335X_RECOMMEND_B_TRACKS:
-    st.sidebar.info("推奨B｜実績優良｜A型外でも回収率80％以上")
-elif track in _V335X_RECOMMEND_C_TRACKS:
-    st.sidebar.warning("推奨C｜様子見｜回収率50〜79.9％")
-elif track in _V335X_RECOMMEND_D_TRACKS:
-    st.sidebar.error("推奨D｜慎重｜回収率50％未満")
-elif track in _V335X_UNCLASSIFIED_TRACKS:
-    st.sidebar.error("推奨D｜未判定｜8〜9月実績不足")
+_v335ac_mode_info = _v335ac_track_purchase_mode(track)
+if _v335ac_mode_info.get("valid", False):
+    _v335ac_hits = list(_v335ac_mode_info.get("hits", tuple()) or tuple())
+    _v335ac_hit_count = int(_v335ac_mode_info.get("hit_count", 0) or 0)
+    if _v335ac_hit_count >= 2:
+        st.sidebar.success(
+            f"{'＋'.join(_v335ac_hits)}　{_v335ac_hit_count}該当により3連単"
+        )
+    elif _v335ac_hit_count == 1:
+        st.sidebar.info(f"{_v335ac_hits[0]}のみ該当　三連複")
+    else:
+        st.sidebar.info("該当なし　三連複")
+    st.sidebar.caption(
+        f"判定値：{float(_v335ac_mode_info['bank_length']):.0f}m／"
+        f"みなし{float(_v335ac_mode_info['straight']):.1f}m／"
+        f"角{float(_v335ac_mode_info['angle']):.1f}°"
+    )
 else:
-    # 手入力など、固定会場分類の対象外
-    st.sidebar.warning("推奨D｜未判定｜会場分類データなし")
+    st.sidebar.warning("バンク形状データ不足｜券種判定不可")
 
 st.sidebar.markdown("### 🏟️ 開催場決まり手成績")
 with st.sidebar.expander("数値入力（オッズパーク等の表をそのまま％入力）", expanded=True):
@@ -12012,7 +12039,23 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             validation_exacta_tickets = tuple()
             validation_exacta_text = "算出不可"
 
-        ticket_count = int(len(trifecta_tickets) + len(trio_tickets))
+        # -------------------------------------------------
+        # v335ac：2車単を共通軸にし、バンク形状で追加券種を切り替える。
+        # 2条件以上＝3連単、0～1条件＝3連複。
+        # -------------------------------------------------
+        _purchase_mode_info = _v335ac_track_purchase_mode(
+            globals().get("track") or globals().get("place") or ""
+        )
+        _purchase_mode = str(_purchase_mode_info.get("mode", "trio") or "trio")
+        _exacta_count = int(len(validation_exacta_tickets))
+        _trifecta_count = int(len(trifecta_tickets))
+        _trio_count = int(len(trio_tickets))
+        if _purchase_mode == "trifecta":
+            ticket_count = int(_exacta_count + _trifecta_count)
+            validation_ticket_count = int(_trio_count)
+        else:
+            ticket_count = int(_exacta_count + _trio_count)
+            validation_ticket_count = int(_trifecta_count)
 
         return {
             "axis_a": axis_a,
@@ -12064,6 +12107,20 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "exacta_text": "",
             "quinella_text": "",
 
+            # v335ac：実購入券種と検証券種。
+            "purchase_mode": _purchase_mode,
+            "purchase_mode_info": dict(_purchase_mode_info),
+            "recommended_exacta_tickets": validation_exacta_tickets,
+            "recommended_exacta_text": validation_exacta_text,
+            "recommended_exacta_count": _exacta_count,
+            "recommended_primary_tickets": trifecta_tickets if _purchase_mode == "trifecta" else trio_tickets,
+            "recommended_primary_text": trifecta_text if _purchase_mode == "trifecta" else trio_text,
+            "recommended_primary_type": "３連単" if _purchase_mode == "trifecta" else "３連複",
+            "validation_alt_tickets": trio_tickets if _purchase_mode == "trifecta" else trifecta_tickets,
+            "validation_alt_text": trio_text if _purchase_mode == "trifecta" else trifecta_text,
+            "validation_alt_type": "３連複" if _purchase_mode == "trifecta" else "３連単",
+            "validation_ticket_count": validation_ticket_count,
+
             "top5": tuple(tuple(int(x) for x in key) for key in ranked_trios[:5]),
             "ticket_count": ticket_count,
             "total_amount": ticket_count * 100,
@@ -12072,7 +12129,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         return {}
 
 def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
-    """v335s推奨（3連単3点＋除外後三連複）をnote公開用に整形する。"""
+    """v335ac推奨（2車単軸＋形状別3連単/3連複）をnote公開用に整形する。"""
     try:
         if not isinstance(plan, dict) or not plan:
             return "note用簡易出力生成不可：フォーメーション未確定"
@@ -12125,31 +12182,48 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
                 five_point_plan.get("trio_text", "なし") or "なし"
             )
             ticket_count = int(five_point_plan.get("ticket_count", 0) or 0)
-            validation_exacta_text = str(
-                five_point_plan.get("validation_exacta_text", "算出不可") or "算出不可"
+            exacta_text = str(
+                five_point_plan.get("recommended_exacta_text", "算出不可") or "算出不可"
             )
-            validation_exacta_count = len(
-                tuple(five_point_plan.get("validation_exacta_tickets", tuple()) or tuple())
+            exacta_count = int(five_point_plan.get("recommended_exacta_count", 0) or 0)
+            purchase_mode = str(five_point_plan.get("purchase_mode", "trio") or "trio")
+            validation_alt_text = str(
+                five_point_plan.get("validation_alt_text", "算出不可") or "算出不可"
+            )
+            validation_alt_count = int(
+                five_point_plan.get("validation_ticket_count", 0) or 0
             )
         else:
             trifecta_text = "算出不可"
             trio_text = "算出不可"
             ticket_count = 0
-            validation_exacta_text = "算出不可"
-            validation_exacta_count = 0
+            exacta_text = "算出不可"
+            exacta_count = 0
+            purchase_mode = "trio"
+            validation_alt_text = "算出不可"
+            validation_alt_count = 0
+
+        if purchase_mode == "trifecta":
+            _primary_type = "３連単"
+            _primary_text = trifecta_text
+            _validation_type = "３連複"
+        else:
+            _primary_type = "３連複"
+            _primary_text = trio_text
+            _validation_type = "３連単"
 
         lines.extend([
             "",
             "【推奨購入】",
-            "３連単",
-            trifecta_text,
-            "３連複",
-            trio_text,
+            _primary_type,
+            _primary_text,
+            "【２車単】",
+            exacta_text,
             f"計{ticket_count}点",
             "",
-            "【検証用２車単】",
-            validation_exacta_text,
-            f"計{validation_exacta_count}点（推奨購入の計{ticket_count}点には含めない）",
+            f"【検証用{_validation_type}】",
+            validation_alt_text,
+            f"計{validation_alt_count}点（推奨購入の計{ticket_count}点には含めない）",
             "",
             "※第3候補は三連複的中点順位想定1～5位から、軸2車を除いた車の出現回数で選出",
             trio_rank_top5_text,
@@ -12501,19 +12575,34 @@ def _v281_format_fixed_flow_block(
             _validation_ticket_count = len(
                 tuple(five_point_plan.get("validation_exacta_tickets", tuple()) or tuple())
             )
+            _purchase_mode = str(five_point_plan.get("purchase_mode", "trio") or "trio")
+            _official_count = int(five_point_plan.get("ticket_count", 0) or 0)
+            _official_amount = int(five_point_plan.get("total_amount", 0) or 0)
+            _validation_alt_count = int(five_point_plan.get("validation_ticket_count", 0) or 0)
+            if _purchase_mode == "trifecta":
+                _primary_label = "３連単"
+                _primary_text = str(five_point_plan.get("trifecta_text", "算出不可") or "算出不可")
+                _validation_alt_label = "３連複"
+                _validation_alt_text = str(five_point_plan.get("trio_text", "なし") or "なし")
+            else:
+                _primary_label = "３連複"
+                _primary_text = str(five_point_plan.get("trio_text", "なし") or "なし")
+                _validation_alt_label = "３連単"
+                _validation_alt_text = str(five_point_plan.get("trifecta_text", "算出不可") or "算出不可")
+
             purchase_lines.extend([
                 f"第3候補集計：{count_text}／共通核={_ta}{_tb}／第3候補={int(five_point_plan.get('third', 0) or 0)}{_excluded_text}",
                 f"三連複除外：{_trio_excluded_text}",
                 "【推奨購入】",
-                "３連単",
-                f"{five_point_plan.get('trifecta_text', '算出不可')}（各100円）",
-                "３連複",
-                f"{five_point_plan.get('trio_text', 'なし')}（各100円）",
-                f"計{int(five_point_plan.get('ticket_count', 0) or 0)}点／{int(five_point_plan.get('total_amount', 0) or 0)}円",
-                "【検証用２車単】",
-                f"{five_point_plan.get('validation_exacta_text', '算出不可')}（各100円）",
+                _primary_label,
+                f"{_primary_text}（各100円）",
+                "【２車単】",
+                f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
                 f"ヒモ候補集計：{_validation_count_text}／採用ヒモ={_validation_himo_text}",
-                f"計{_validation_ticket_count}点（推奨購入の点数・金額には含めない）",
+                f"計{_official_count}点／{_official_amount}円",
+                f"【検証用{_validation_alt_label}】",
+                f"{_validation_alt_text}（各100円）",
+                f"計{_validation_alt_count}点（推奨購入の点数・金額には含めない）",
             ])
         else:
             purchase_lines.append("【推奨購入】着順予想1・2位または的中点1～5位が不足のため生成不可")
