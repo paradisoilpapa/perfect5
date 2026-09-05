@@ -1,3 +1,11 @@
+# v335an（共通2車単1-234・3点版）:
+# ・2車単専用順位の作り方はv335al/v335amを維持し、三連複的中点順位想定TOP5の出現回数で再順位する。
+# ・2車単は専用順位1位→専用順位2位・3位・4位の『1-234』3点固定へ変更する。
+# ・三連複はv335amの除外後上位3点打ち止め、3連単23-13-123・3点、バンク形状による券種切替を維持する。
+# v335am（三連複・除外後上位3点打ち止め版）:
+# ・三連複は従来の3除外条件をそのまま適用し、除外後に残った候補を元の的中点順位順で最大3点まで購入する。
+# ・2車単はv335anで三連複TOP5再順位1-234・3点固定へ変更する。
+# ・3連単23-13-123・3点、バンク形状による3連単/3連複の切替、その他の予想ロジックは変更しない。
 # v335al（三連複TOP5再順位・共通2車単234-1・3点版）:
 # ・2車単は開催日を問わず全レース共通で「三連複的中点順位想定TOP5」から専用順位を再生成する。
 # ・専用順位はTOP5の5候補に各車が何回登場するかを数え、出現回数の多い順。同数は採用流れ最終着順予想上位→車番順。
@@ -2332,7 +2340,7 @@ day_index = int(day_index_map[day_label])
 day_stage = str(day_stage_map[day_label])
 
 # v335al：開催日に関係なく、バンク形状で追加券種を判定する。
-# 2車単は三連複TOP5再順位の234-1・3点を全レース共通で使う。
+# 2車単は三連複TOP5再順位の1-234・3点を全レース共通で使う。
 if _v335ac_mode_info.get("valid", False):
     _v335ac_hits = list(_v335ac_mode_info.get("hits", tuple()) or tuple())
     _v335ac_hit_count = int(_v335ac_mode_info.get("hit_count", 0) or 0)
@@ -11992,7 +12000,9 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             else:
                 trio_tickets.append(combo)
 
-        trio_tickets = tuple(trio_tickets)
+        # v335am：除外条件通過後の三連複は、元の的中点順位順で上位3点まで。
+        # 除外条件そのものは変更せず、4点目・5点目だけを購入対象から外して損失を抑える。
+        trio_tickets = tuple(trio_tickets[:3])
         trio_text = "・".join(
             "".join(str(int(x)) for x in combo) for combo in trio_tickets
         ) if trio_tickets else "なし"
@@ -12001,7 +12011,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         # v335al：【共通2車単】三連複TOP5から専用順位を再生成。
         # 1) 三連複的中点順位想定TOP5の5候補に各車が何回登場するかを集計。
         # 2) 出現回数の多い順。同数は採用流れ最終着順予想上位→車番順。
-        # 3) 専用順位2位・3位・4位 → 専用順位1位の「234-1」3点固定。
+        # 3) 専用順位1位 → 専用順位2位・3位・4位の「1-234」3点固定。
         # ※三連複の除外処理（市場印／競走得点／同ライン）は2車単順位生成には適用しない。
         # -------------------------------------------------
         common_exacta_counts = {int(_car): 0 for _car in adopted_sequence}
@@ -12036,18 +12046,18 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             _ce3 = int(common_exacta_order[2])
             _ce4 = int(common_exacta_order[3])
             common_exacta_tickets = (
-                (_ce2, _ce1),
-                (_ce3, _ce1),
-                (_ce4, _ce1),
+                (_ce1, _ce2),
+                (_ce1, _ce3),
+                (_ce1, _ce4),
             )
-            common_exacta_text = f"{_ce2}{_ce3}{_ce4}-{_ce1}"
+            common_exacta_text = f"{_ce1}-{_ce2}{_ce3}{_ce4}"
         else:
             common_exacta_tickets = tuple()
             common_exacta_text = "算出不可"
 
         # 旧キー互換：v335aaの検証用2車単参照先も、新共通2車単を返す。
-        validation_exacta_heads = tuple(common_exacta_order[1:4]) if len(common_exacta_order) >= 4 else tuple()
-        validation_exacta_himo = (int(common_exacta_order[0]),) if common_exacta_order else tuple()
+        validation_exacta_heads = (int(common_exacta_order[0]),) if common_exacta_order else tuple()
+        validation_exacta_himo = tuple(common_exacta_order[1:4]) if len(common_exacta_order) >= 4 else tuple()
         validation_exacta_counts = dict(common_exacta_counts)
         validation_exacta_source_trios = list(common_exacta_source_trios)
         validation_exacta_order = list(common_exacta_order)
@@ -12311,7 +12321,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         return {}
 
 def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
-    """v335al推奨（共通2車単234-1＋形状別3連単/3連複）をnote公開用に整形する。"""
+    """v335an推奨（共通2車単1-234＋三連複最大3点＋形状別3連単/3連複）をnote公開用に整形する。"""
     try:
         if not isinstance(plan, dict) or not plan:
             return "note用簡易出力生成不可：フォーメーション未確定"
@@ -12814,7 +12824,7 @@ def _v281_format_fixed_flow_block(
                     "【２車単】",
                     f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
                     f"2車単専用順位集計：{_validation_count_text}／順位={''.join(str(int(x)) for x in _validation_order) if _validation_order else '算出不可'}",
-                    f"2車単フォメ：専用順位234→1（3点固定）",
+                    f"2車単フォメ：専用順位1→234（3点固定）",
                     f"計{_official_count}点／{_official_amount}円",
                     f"【検証用{_validation_alt_label}】",
                     f"{_validation_alt_text}（各100円）",
