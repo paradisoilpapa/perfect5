@@ -12235,13 +12235,16 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             final_quinella_text = "なし"
 
         # -------------------------------------------------
-        # v335ao：最終日（得意/普通会場）用の単純3連複。
-        # 最終着順予想 1-234-234 = 123 / 124 / 134 の3点。
+        # v335ap：最終日（得意/普通会場）用の3連複。
+        # 2車単専用順位の軸を3連複でも共通軸にする。
+        # 専用順位 1-234-234 = 軸1 + 相手234から2車を選ぶ3点。
+        # 例：専用順位 2,5,1,3 → 2-513-513 → 125 / 123 / 235。
         # -------------------------------------------------
         final_simple_trio_tickets = tuple()
         final_simple_trio_text = "算出不可"
-        if len(adopted_sequence) >= 4:
-            _f1, _f2, _f3, _f4 = (int(adopted_sequence[i]) for i in range(4))
+        final_simple_trio_formation_text = "算出不可"
+        if len(common_exacta_order) >= 4:
+            _f1, _f2, _f3, _f4 = (int(common_exacta_order[i]) for i in range(4))
             final_simple_trio_tickets = (
                 tuple(sorted((_f1, _f2, _f3))),
                 tuple(sorted((_f1, _f2, _f4))),
@@ -12251,6 +12254,8 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
                 "".join(str(int(x)) for x in _combo)
                 for _combo in final_simple_trio_tickets
             )
+            _f_himo = f"{_f2}{_f3}{_f4}"
+            final_simple_trio_formation_text = f"{_f1}-{_f_himo}-{_f_himo}"
 
         # -------------------------------------------------
         # v335ao：苦手会場用ファジー3連複。
@@ -12384,6 +12389,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "fuzzy_trio_text": fuzzy_trio_text,
             "final_simple_trio_tickets": final_simple_trio_tickets,
             "final_simple_trio_text": final_simple_trio_text,
+            "final_simple_trio_formation_text": final_simple_trio_formation_text,
             "final_day_axis_heads": final_axis_heads,
             "final_day_kokoa": final_kokoa,
             "final_day_kokoa_counts": {int(k): int(v) for k, v in final_kokoa_counts.items()},
@@ -12436,7 +12442,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         return {}
 
 def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
-    """v335ao推奨（通常日精密／最終日ややファジー／苦手会場ファジー）をnote公開用に整形する。"""
+    """v335ap推奨（通常日精密／最終日2車単軸共通／苦手会場ファジー）をnote公開用に整形する。"""
     try:
         if not isinstance(plan, dict) or not plan:
             return "note用簡易出力生成不可：フォーメーション未確定"
@@ -12516,7 +12522,8 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             _validation_type = "旧精密系"
             exacta_text = "なし"
         elif purchase_mode == "final_trio":
-            _primary_type = "３連複・最終日（1-234-234）"
+            _final_form = str(five_point_plan.get("final_simple_trio_formation_text", "算出不可") or "算出不可")
+            _primary_type = f"３連複・最終日（{_final_form}）"
             _primary_text = str(five_point_plan.get("final_simple_trio_text", "算出不可") or "算出不可")
             _validation_type = "３連単"
         else:
@@ -12912,9 +12919,10 @@ def _v281_format_fixed_flow_block(
                 ])
             elif _purchase_mode == "final_trio":
                 _final_simple_text = str(five_point_plan.get("final_simple_trio_text", "算出不可") or "算出不可")
+                _final_form = str(five_point_plan.get("final_simple_trio_formation_text", "算出不可") or "算出不可")
                 purchase_lines.extend([
                     "【推奨購入・最終日】",
-                    "３連複 1-234-234（3点固定）",
+                    f"３連複 {_final_form}（3点固定）",
                     f"{_final_simple_text}（各100円）",
                     "【２車単】",
                     f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
