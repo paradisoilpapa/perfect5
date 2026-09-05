@@ -12101,17 +12101,62 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         # 最終着順予想は、得意/普通会場では二軸加算順位、苦手会場では現行順位。
         final_prediction_order = tuple(int(x) for x in common_exacta_order)
 
-        # 3連単も専用順位＝最終着順予想TOP3を使用する。
+        # v335ax：地区まとめ3番手以降は、3連単でも1着に置かない。
+        # ただし候補からは消さず、2・3着には残す。
+        # 苦手会場は従来ロジックを維持する。
+        def _v335ax_first_place_eligible(_car):
+            try:
+                _c = int(_car)
+                _role = str(role_in_line(_c, line_def_obj))
+                if _role != "thirdplus":
+                    return True
+                _label = str(
+                    trust_map.get(_c, trust_map.get(str(_c), "通常")) or "通常"
+                )
+                return _label != "地区まとめ"
+            except Exception:
+                return True
+
+        _trifecta_track_name = str(globals().get("track") or globals().get("place") or "").strip()
+        _trifecta_is_fuzzy_venue = bool(_v335ao_is_fuzzy_venue(_trifecta_track_name))
+        trifecta_district_thirdplus_avoided = False
+
+        # 3連単は最終着順予想TOP3、基本フォーメーション23-13-123を維持。
+        # ただし得意/普通会場で「地区まとめ×3番手以降」が1着候補（rank2/rank3）に入った場合、
+        # その車だけ1着配置を禁止し、TOP3内で2・3着に回す。
         if len(final_prediction_order) >= 3:
             _tf1 = int(final_prediction_order[0])
             _tf2 = int(final_prediction_order[1])
             _tf3 = int(final_prediction_order[2])
-            trifecta_tickets = (
+            _base_trifecta_tickets = (
                 (_tf2, _tf1, _tf3),
                 (_tf2, _tf3, _tf1),
                 (_tf3, _tf1, _tf2),
             )
-            trifecta_text = f"{_tf2}{_tf3}-{_tf1}{_tf3}-{_tf1}{_tf2}{_tf3}"
+            _blocked_tf_heads = set()
+            if not _trifecta_is_fuzzy_venue:
+                for _candidate in (_tf2, _tf3):
+                    if not _v335ax_first_place_eligible(_candidate):
+                        _blocked_tf_heads.add(int(_candidate))
+
+            if _blocked_tf_heads:
+                trifecta_district_thirdplus_avoided = True
+                # TOP3は維持し、禁止車を2・3着だけに配置。
+                # 1着可能な車について、残る2車の着順を両方採る。
+                _tf_top3 = (_tf1, _tf2, _tf3)
+                _adjusted = []
+                for _head in (_tf2, _tf3):
+                    if int(_head) in _blocked_tf_heads:
+                        continue
+                    _rest = [int(x) for x in _tf_top3 if int(x) != int(_head)]
+                    if len(_rest) == 2:
+                        _adjusted.append((int(_head), _rest[0], _rest[1]))
+                        _adjusted.append((int(_head), _rest[1], _rest[0]))
+                trifecta_tickets = tuple(dict.fromkeys(_adjusted))
+                trifecta_text = "・".join("".join(str(int(x)) for x in _t) for _t in trifecta_tickets) if trifecta_tickets else "算出不可"
+            else:
+                trifecta_tickets = _base_trifecta_tickets
+                trifecta_text = f"{_tf2}{_tf3}-{_tf1}{_tf3}-{_tf1}{_tf2}{_tf3}"
         else:
             trifecta_tickets = tuple()
             trifecta_text = "算出不可"
@@ -12129,17 +12174,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         common_exacta_rule_text = "1→234"
 
         def _v335aw_exacta_head_eligible(_car):
-            try:
-                _c = int(_car)
-                _role = str(role_in_line(_c, line_def_obj))
-                if _role != "thirdplus":
-                    return True
-                _label = str(
-                    trust_map.get(_c, trust_map.get(str(_c), "通常")) or "通常"
-                )
-                return _label != "地区まとめ"
-            except Exception:
-                return True
+            return bool(_v335ax_first_place_eligible(_car))
 
         if len(common_exacta_order) >= 4:
             if _is_fuzzy_venue_for_value:
@@ -12511,6 +12546,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "recommended_exacta_count": 0 if _purchase_mode == "fuzzy" else _exacta_count,
             "common_exacta_honmei_avoided": bool(common_exacta_honmei_avoided),
             "common_exacta_district_thirdplus_avoided": bool(common_exacta_district_thirdplus_avoided),
+            "trifecta_district_thirdplus_avoided": bool(trifecta_district_thirdplus_avoided),
             "common_exacta_rule_text": str(common_exacta_rule_text),
             "market_honmei": int(market_honmei) if market_honmei is not None else None,
             "final_simple_trio_honmei_avoided": bool(final_simple_trio_honmei_avoided),
