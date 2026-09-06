@@ -1,3 +1,7 @@
+# v335be（Aパターン2車複2-3固定・返却値上書き修正版）
+# ・Aパターンの2車複は最終評価2位-3位を無条件で1点表示する。
+# ・v335bdでrecommended_quinella_*が返却dict後半の旧互換キーにより空値へ上書きされていた不具合を修正。
+# ・Aパターンは2車単23-1の2点＋2車複2-3の1点＝常に3点（最終評価上位3車算出時）。
 # v335bd（お小遣い車券A/B/C・資金目安版）
 # ・A：2車単 評価23→1（2点）＋2車複 評価2=3（1点）＝3点。
 # ・B：従来の除外後推奨3連複を最大3点。
@@ -12420,8 +12424,6 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         _quinella_count = int(len(recommended_quinella_tickets))
         _final_simple_trio_count = int(len(final_simple_trio_tickets))
         _fuzzy_trio_count = int(len(fuzzy_trio_tickets))
-        _quinella_count = 0
-
         # A(2車単2＋2車複1)＋C(3連単3)を同時購入した場合の互換用合計。
         # B(3連複)は独立パターンとしてnote表示するため、この互換用合計には含めない。
         ticket_count = int(_exacta_count + _quinella_count + _trifecta_count)
@@ -12518,9 +12520,6 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "final_day_quinella_himo": final_quinella_himo,
             "final_day_quinella_jiryoku_himo": _final_jiryoku_himo,
             "final_day_quinella_himo_reason": final_quinella_himo_reason,
-            "recommended_quinella_tickets": tuple(),
-            "recommended_quinella_text": "",
-            "recommended_quinella_count": 0,
             "recommended_primary_tickets": trifecta_tickets,
             "recommended_primary_text": trifecta_text,
             "recommended_primary_type": "３連単",
