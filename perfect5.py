@@ -1,3 +1,10 @@
+# v335bd（お小遣い車券A/B/C・資金目安版）
+# ・A：2車単 評価23→1（2点）＋2車複 評価2=3（1点）＝3点。
+# ・B：従来の除外後推奨3連複を最大3点。
+# ・C：3連単 評価23-123-12（231／312／321の3点）。
+# ・note簡易表示はA/B/Cを並列表示し、すべて1点100円平買い。
+# ・1パターンを2開催分継続できる推奨資金：モーニング4,200円／デイ7,200円／ナイター7,200円／ミッドナイト5,400円。
+# ・複数パターン併用時はパターン数分だけ推奨資金を加算する。
 # v335bc（全会場2車単＋3連単統一・サイドバーABCD復帰版）:
 # ・サイドバー会場評価を過去のA/B/C/D表示へ戻す。会場評価は表示専用で買い目には使わない。
 # ・全会場・全開催日で推奨購入を2車単＋3連単に統一する。
@@ -12150,39 +12157,32 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             trifecta_tickets = tuple()
             trifecta_text = "算出不可"
 
-        # 2車単は評価3位を頭固定し、評価1・2・4位へ流す。
-        # 会場ごとの購入券種分岐自体は現行維持。
+        # v335bd：お小遣い車券Aパターン。
+        # 2車単は評価2位・3位→評価1位の「23-1」2点。
+        # 評価2位と3位の折り返しは2車単2点にせず、2車複「2-3」1点で拾う。
         _value_track_name = str(globals().get("track") or globals().get("place") or "").strip()
         _is_fuzzy_venue_for_value = bool(_v335ao_is_fuzzy_venue(_value_track_name))
         common_exacta_honmei_avoided = False
         common_exacta_district_thirdplus_avoided = False
-        common_exacta_rule_text = "3→124"
+        common_exacta_rule_text = "23→1"
 
-        if len(common_exacta_order) >= 4:
-            _exacta_head = int(common_exacta_order[2])
-            _exacta_himo = (
-                int(common_exacta_order[0]),
-                int(common_exacta_order[1]),
-                int(common_exacta_order[3]),
-            )
-            common_exacta_tickets = tuple(
-                (int(_exacta_head), int(_h)) for _h in _exacta_himo
-                if int(_h) != int(_exacta_head)
-            )
-            if len(common_exacta_tickets) == 3:
-                common_exacta_text = f"{int(_exacta_head)}-{''.join(str(int(_h)) for _h in _exacta_himo)}"
-            else:
-                common_exacta_tickets = tuple()
-                common_exacta_text = "算出不可"
+        if len(common_exacta_order) >= 3:
+            _rank1 = int(common_exacta_order[0])
+            _rank2 = int(common_exacta_order[1])
+            _rank3 = int(common_exacta_order[2])
+            common_exacta_tickets = ((_rank2, _rank1), (_rank3, _rank1))
+            common_exacta_text = f"{_rank2}{_rank3}-{_rank1}"
+            recommended_quinella_tickets = (tuple(sorted((_rank2, _rank3))),)
+            recommended_quinella_text = f"{_rank2}-{_rank3}"
         else:
             common_exacta_tickets = tuple()
             common_exacta_text = "算出不可"
+            recommended_quinella_tickets = tuple()
+            recommended_quinella_text = "算出不可"
 
         # 旧キー互換：v335aaの検証用2車単参照先も、新共通2車単を返す。
-        validation_exacta_heads = (int(common_exacta_order[2]),) if len(common_exacta_order) >= 3 else tuple()
-        validation_exacta_himo = (
-            int(common_exacta_order[0]), int(common_exacta_order[1]), int(common_exacta_order[3])
-        ) if len(common_exacta_order) >= 4 else tuple()
+        validation_exacta_heads = (int(common_exacta_order[1]), int(common_exacta_order[2])) if len(common_exacta_order) >= 3 else tuple()
+        validation_exacta_himo = (int(common_exacta_order[0]),) if len(common_exacta_order) >= 3 else tuple()
         validation_exacta_counts = dict(common_exacta_counts)
         validation_exacta_source_trios = list(common_exacta_source_trios)
         validation_exacta_order = list(common_exacta_order)
@@ -12417,11 +12417,14 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         _trifecta_count = int(len(trifecta_tickets))
         _trio_count = int(len(trio_tickets))
         _exacta_count = int(len(common_exacta_tickets))
+        _quinella_count = int(len(recommended_quinella_tickets))
         _final_simple_trio_count = int(len(final_simple_trio_tickets))
         _fuzzy_trio_count = int(len(fuzzy_trio_tickets))
         _quinella_count = 0
 
-        ticket_count = int(_exacta_count + _trifecta_count)
+        # A(2車単2＋2車複1)＋C(3連単3)を同時購入した場合の互換用合計。
+        # B(3連複)は独立パターンとしてnote表示するため、この互換用合計には含めない。
+        ticket_count = int(_exacta_count + _quinella_count + _trifecta_count)
         validation_ticket_count = int(_trio_count)
 
         return {
@@ -12484,6 +12487,9 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "final_prediction_order": tuple(int(x) for x in final_prediction_order),
             "common_exacta_source_trios": tuple(tuple(int(x) for x in c) for c in common_exacta_source_trios),
             "recommended_exacta_count": _exacta_count,
+            "recommended_quinella_tickets": recommended_quinella_tickets,
+            "recommended_quinella_text": recommended_quinella_text,
+            "recommended_quinella_count": _quinella_count,
             "common_exacta_honmei_avoided": bool(common_exacta_honmei_avoided),
             "common_exacta_district_thirdplus_avoided": bool(common_exacta_district_thirdplus_avoided),
             "trifecta_district_thirdplus_avoided": bool(trifecta_district_thirdplus_avoided),
@@ -12588,6 +12594,8 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
                 five_point_plan.get("recommended_exacta_text", "算出不可") or "算出不可"
             )
             exacta_count = int(five_point_plan.get("recommended_exacta_count", 0) or 0)
+            quinella_text = str(five_point_plan.get("recommended_quinella_text", "算出不可") or "算出不可")
+            quinella_count = int(five_point_plan.get("recommended_quinella_count", 0) or 0)
             purchase_mode = str(five_point_plan.get("purchase_mode", "trio") or "trio")
             validation_alt_text = str(
                 five_point_plan.get("validation_alt_text", "算出不可") or "算出不可"
@@ -12601,6 +12609,8 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             ticket_count = 0
             exacta_text = "算出不可"
             exacta_count = 0
+            quinella_text = "算出不可"
+            quinella_count = 0
             purchase_mode = "trio"
             validation_alt_text = "算出不可"
             validation_alt_count = 0
@@ -12614,27 +12624,34 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         if len(lines) >= 4:
             lines[3] = f"最終着順予想　{_dedicated_order_text}"
 
-        _primary_type = "３連単"
-        _primary_text = trifecta_text
-        _validation_type = "旧3連複"
+        # v335bd：開催区分ごとに「1パターン3点×2開催分」の推奨資金を表示する。
+        _race_time = str(globals().get("race_time", "") or "").strip()
+        _fund_map = {
+            "モーニング": 4200,
+            "デイ": 7200,
+            "ナイター": 7200,
+            "ミッドナイト": 5400,
+        }
+        _fund = int(_fund_map.get(_race_time, 0) or 0)
+        _fund_text = f"資金{_fund:,}円以上推奨" if _fund else "資金目安：開催区分を確認"
 
         lines.extend([
             "",
-            "【推奨購入】",
-            _primary_type,
-        ])
-        if _primary_text:
-            lines.append(_primary_text)
-        lines.extend([
-            "【２車単】",
-            exacta_text,
-        ])
-        lines.extend([
-            f"計{ticket_count}点",
+            "【お小遣いで楽しむ車券】",
+            _fund_text,
             "",
-            f"【検証用{_validation_type}】",
-            validation_alt_text,
-            f"計{validation_alt_count}点（推奨購入の計{ticket_count}点には含めない）",
+            "Aパターン",
+            f"2車単　{exacta_text}　{exacta_count}点",
+            f"2車複　{quinella_text}　{quinella_count}点",
+            "",
+            "Bパターン",
+            f"推奨3連複　{trio_text}　{len(five_point_plan.get('trio_tickets', tuple()) or tuple()) if five_point_plan else 0}点",
+            "",
+            "Cパターン",
+            f"3連単　{trifecta_text}　{len(five_point_plan.get('trifecta_tickets', tuple()) or tuple()) if five_point_plan else 0}点",
+            "",
+            "※すべて1点100円の平買い",
+            "※お好みのパターンで。組み合わせる場合はパターン分だけ資金を足してください。",
             "",
             trio_rank_top5_text,
         ])
