@@ -1,3 +1,6 @@
+# v335bf（資金目安を補足行へ移動版）:
+# ・【お小遣いで楽しむ車券】直下の資金推奨表示を廃止。
+# ・開催区分別の資金目安を注意書きへ統合し、「※今開催目安○○円以上推奨。お好みのパターンで。組み合わせる場合はパターン分だけ資金を足してください。」と表示する。
 # v335be（Aパターン2車複2-3固定・返却値上書き修正版）
 # ・Aパターンの2車複は最終評価2位-3位を無条件で1点表示する。
 # ・v335bdでrecommended_quinella_*が返却dict後半の旧互換キーにより空値へ上書きされていた不具合を修正。
@@ -12632,12 +12635,11 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             "ミッドナイト": 5400,
         }
         _fund = int(_fund_map.get(_race_time, 0) or 0)
-        _fund_text = f"資金{_fund:,}円以上推奨" if _fund else "資金目安：開催区分を確認"
+        _fund_text = f"今開催目安{_fund:,}円以上推奨" if _fund else "今開催資金目安：開催区分を確認"
 
         lines.extend([
             "",
             "【お小遣いで楽しむ車券】",
-            _fund_text,
             "",
             "Aパターン",
             f"2車単　{exacta_text}　{exacta_count}点",
@@ -12650,7 +12652,7 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"3連単　{trifecta_text}　{len(five_point_plan.get('trifecta_tickets', tuple()) or tuple()) if five_point_plan else 0}点",
             "",
             "※すべて1点100円の平買い",
-            "※お好みのパターンで。組み合わせる場合はパターン分だけ資金を足してください。",
+            f"※{_fund_text}。お好みのパターンで。組み合わせる場合はパターン分だけ資金を足してください。",
             "",
             trio_rank_top5_text,
         ])
