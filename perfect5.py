@@ -1,3 +1,6 @@
+# v335bj（Aパターンを新123-12思想へ統一）:
+# ・Aは2車単「3-12」2点＋2車複「1-2」1点。
+# ・事前購入推奨「123-12」とC「123-12-23」、最終順位選出ロジックは変更しない。
 # v335bh（note表示・三連複順位非表示版）:
 # ・【お小遣いで楽しむ車券】の末尾に表示していた三連複的中点順位TOP5を非表示にする。
 # ・A/B/Cパターンの買い目、順位計算、三連複選抜ロジック、その他の予想ロジックは変更しない。
@@ -12170,23 +12173,24 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             trifecta_tickets = tuple()
             trifecta_text = "算出不可"
 
-        # v335bd：お小遣い車券Aパターン。
-        # 2車単は評価2位・3位→評価1位の「23-1」2点。
-        # 評価2位と3位の折り返しは2車単2点にせず、2車複「2-3」1点で拾う。
+        # v335bj：お小遣い車券Aパターンを、新C「123-12-23」の思想へ統一。
+        # 新しい2車単基本形「123-12」＝ 12 / 21 / 31 / 32 のうち、
+        # 評価1位-2位の折り返し（12 / 21）は2車単2点にせず、2車複「1-2」1点へ圧縮。
+        # 残る評価3位→評価1位・2位（31 / 32）を2車単2点で購入する。
         _value_track_name = str(globals().get("track") or globals().get("place") or "").strip()
         _is_fuzzy_venue_for_value = bool(_v335ao_is_fuzzy_venue(_value_track_name))
         common_exacta_honmei_avoided = False
         common_exacta_district_thirdplus_avoided = False
-        common_exacta_rule_text = "23→1"
+        common_exacta_rule_text = "3→12＋2車複1-2"
 
         if len(common_exacta_order) >= 3:
             _rank1 = int(common_exacta_order[0])
             _rank2 = int(common_exacta_order[1])
             _rank3 = int(common_exacta_order[2])
-            common_exacta_tickets = ((_rank2, _rank1), (_rank3, _rank1))
-            common_exacta_text = f"{_rank2}{_rank3}-{_rank1}"
-            recommended_quinella_tickets = (tuple(sorted((_rank2, _rank3))),)
-            recommended_quinella_text = f"{_rank2}-{_rank3}"
+            common_exacta_tickets = ((_rank3, _rank1), (_rank3, _rank2))
+            common_exacta_text = f"{_rank3}-{_rank1}{_rank2}"
+            recommended_quinella_tickets = (tuple(sorted((_rank1, _rank2))),)
+            recommended_quinella_text = f"{_rank1}-{_rank2}"
             # v335bi：働きながらの事前購入向け固定2車単。
             # 最終順位123-12を重複除外で展開 → 12 / 21 / 31 / 32 の4点。
             prepurchase_exacta_tickets = ((_rank1, _rank2), (_rank2, _rank1), (_rank3, _rank1), (_rank3, _rank2))
@@ -12199,9 +12203,9 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             prepurchase_exacta_tickets = tuple()
             prepurchase_exacta_text = "算出不可"
 
-        # 旧キー互換：v335aaの検証用2車単参照先も、新共通2車単を返す。
-        validation_exacta_heads = (int(common_exacta_order[1]), int(common_exacta_order[2])) if len(common_exacta_order) >= 3 else tuple()
-        validation_exacta_himo = (int(common_exacta_order[0]),) if len(common_exacta_order) >= 3 else tuple()
+        # 旧キー互換：検証用2車単参照先も、現在のA（3→12）に合わせる。
+        validation_exacta_heads = (int(common_exacta_order[2]),) if len(common_exacta_order) >= 3 else tuple()
+        validation_exacta_himo = (int(common_exacta_order[0]), int(common_exacta_order[1])) if len(common_exacta_order) >= 3 else tuple()
         validation_exacta_counts = dict(common_exacta_counts)
         validation_exacta_source_trios = list(common_exacta_source_trios)
         validation_exacta_order = list(common_exacta_order)
@@ -12656,10 +12660,10 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
 
         lines.extend([
             "",
-            "【事前購入なら変動の少ないこちら】",
+            "【事前購入推奨】",
             f"2車単　{_prepurchase_text}　{_prepurchase_count}点",
             "",
-            "【リアルタイムでお小遣いで楽しむ車券】",
+            "【お小遣いで楽しむ車券】",
             "",
             "Aパターン",
             f"2車単　{exacta_text}　{exacta_count}点",
@@ -13032,7 +13036,7 @@ def _v281_format_fixed_flow_block(
                 f"{five_point_plan.get('trifecta_text', '算出不可')}（各100円）",
                 "【２車単】",
                 f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
-                f"2車単フォメ：{five_point_plan.get('common_exacta_rule_text', '3→124')}（3点固定）",
+                f"Aフォメ：{five_point_plan.get('common_exacta_rule_text', '3→12＋2車複1-2')}（2車単2点＋2車複1点）",
                 f"最終着順予想：{' → '.join(str(int(x)) for x in tuple(five_point_plan.get('final_prediction_order', tuple()) or tuple())) if tuple(five_point_plan.get('final_prediction_order', tuple()) or tuple()) else '算出不可'}",
                 f"計{_official_count}点／{_official_amount}円",
                 "【検証用・旧3連複】",
