@@ -12656,10 +12656,10 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
 
         lines.extend([
             "",
-            "【事前購入推奨】",
+            "【事前購入なら変動の少ないこちら】",
             f"2車単　{_prepurchase_text}　{_prepurchase_count}点",
             "",
-            "【お小遣いで楽しむ車券】",
+            "【リアルタイムでお小遣いで楽しむ車券】",
             "",
             "Aパターン",
             f"2車単　{exacta_text}　{exacta_count}点",
