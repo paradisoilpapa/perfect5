@@ -1,3 +1,8 @@
+# v335bl（v335bk算出不可バグ修正版）:
+# ・v335bkで消えていた _is_fuzzy_venue_for_value を会場相性判定から復元。
+# ・この未定義参照が例外を起こし、five_point_plan全体が空dictになっていたため、
+#   最終着順予想・買い目・資金目安がすべて「算出不可」になっていた不具合を修正。
+# ・買い目ルール／最終順位ロジック自体はv335bkから変更しない。
 # v335bk（会場相性×級別・固定買い目統合版）:
 # ・得意会場＝サイドバー推奨A/B。その他（C/D/未判定）は当面すべて苦手会場扱い。
 # ・得意会場は全級共通：2車単 評価2→1（1点）＋3連単 評価1→2→4/5/6（3点）＝計4点。
@@ -12151,6 +12156,10 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             or _strategy_track_name in _V335X_RECOMMEND_B_TRACKS
         )
         _strategy_is_s_class = (_strategy_race_class == "Ｓ級")
+        # 旧・最終日3連複互換ブロックが参照する会場相性フラグ。
+        # v335bkで買い目分岐を置換した際に定義が消えており、
+        # NameError → five_point_plan={} → 「算出不可」になっていた。
+        _is_fuzzy_venue_for_value = not bool(_strategy_is_good_venue)
 
         trifecta_district_thirdplus_avoided = False
         common_exacta_honmei_avoided = False
