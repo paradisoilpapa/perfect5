@@ -12654,7 +12654,7 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             f"3連単　{trifecta_text}　{len(five_point_plan.get('trifecta_tickets', tuple()) or tuple()) if five_point_plan else 0}点",
             "",
             "※すべて1点100円の平買い",
-            "※2車複の組み合わせを2車単に変換した際、2車複オッズの3倍以上となる方向があれば、その2車単を100円追加購入します。",
+            "※2車複の組み合わせを2車単に変換した際、2車複オッズの3倍以上となる買い目があれば、その2車単を100円追加購入します。",
             f"※{_fund_text}。お好みのパターンで。組み合わせる場合はパターン分だけ資金を足してください。",
             "",
             trio_rank_top5_text,
