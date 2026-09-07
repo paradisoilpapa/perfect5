@@ -1,3 +1,14 @@
+# v335bk（会場相性×級別・固定買い目統合版）:
+# ・得意会場＝サイドバー推奨A/B。その他（C/D/未判定）は当面すべて苦手会場扱い。
+# ・得意会場は全級共通：2車単 評価2→1（1点）＋3連単 評価1→2→4/5/6（3点）＝計4点。
+# ・苦手会場A級系（Ａ級／Ａ級チャレンジ／ガールズ／アドバンス）：
+#   2車単 評価2→3（1点）＋3連単 評価3→2→1/5（2点）＝計3点。
+# ・苦手会場S級：2車単 評価4→1/3/7（3点）のみ。
+# ・note表示は実際の車番へ変換して表示する。
+# ・資金目安は「1点100円×当該開催レース数×2開催分」。
+#   得意会場：モーニング5,600円／デイ9,600円／ナイター9,600円／ミッドナイト7,200円。
+#   苦手会場：モーニング4,200円／デイ7,200円／ナイター7,200円／ミッドナイト5,400円。
+# ・最終順位選出ロジック（TOP5出現順位＋採用流れ順位の50:50統合）は変更しない。
 # v335bj（Aパターンを新123-12思想へ統一）:
 # ・Aは2車単「3-12」2点＋2車複「1-2」1点。
 # ・事前購入推奨「123-12」とC「123-12-23」、最終順位選出ロジックは変更しない。
@@ -12132,80 +12143,95 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         # 最終着順予想は二軸50:50統合順位を全会場共通で使用する。
         final_prediction_order = tuple(int(x) for x in common_exacta_order)
 
-        # v335bb：今日のミッドナイトで機能した最終着順選別はそのまま維持し、
-        # 券種への「配置」だけを更新する。
-        # 最終着順順位そのもの（該当流れ＋AI重圧補正＋3連複TOP5該当数の二軸50:50）は変更しない。
-        #
-        # 3連単：最終順位 123-12-23（3点）
-        #   → 123 / 213 / 312
-        #   1・2・3は現在のヴェロビ最終順位をそのまま使用する。
-        # 2車単：評価順位 3-124（3点）
-        #   → 3→1 / 3→2 / 3→4
-        #   評価3位がさらに頭へ突き抜けた場合を広めに救済する。
-        #
-        # 旧v335aw/v335ayの「市場◎回避」「地区まとめ3番手の頭禁止」は、
-        # この新配置と矛盾するため、通常の3連単側／共通2車単では適用しない。
-        _trifecta_track_name = str(globals().get("track") or globals().get("place") or "").strip()
-        _trifecta_is_fuzzy_venue = bool(_v335ao_is_fuzzy_venue(_trifecta_track_name))
+        # v335bk：最終順位そのものは変更せず、会場相性×級別で買い目だけを配置する。
+        _strategy_track_name = str(globals().get("track") or globals().get("place") or "").strip()
+        _strategy_race_class = str(globals().get("race_class", "") or "").strip()
+        _strategy_is_good_venue = bool(
+            _strategy_track_name in _V335X_RECOMMEND_A_TRACKS
+            or _strategy_track_name in _V335X_RECOMMEND_B_TRACKS
+        )
+        _strategy_is_s_class = (_strategy_race_class == "Ｓ級")
+
         trifecta_district_thirdplus_avoided = False
-
-        if len(final_prediction_order) >= 3:
-            _tf1 = int(final_prediction_order[0])
-            _tf2 = int(final_prediction_order[1])
-            _tf3 = int(final_prediction_order[2])
-
-            # 最終順位123-12-23を重複車番除外で展開。
-            _tf_first = (_tf1, _tf2, _tf3)
-            _tf_second = (_tf1, _tf2)
-            _tf_third = (_tf2, _tf3)
-            _tf_rows = []
-            for _head in _tf_first:
-                for _second in _tf_second:
-                    for _third in _tf_third:
-                        if len({_head, _second, _third}) != 3:
-                            continue
-                        _ticket = (int(_head), int(_second), int(_third))
-                        if _ticket not in _tf_rows:
-                            _tf_rows.append(_ticket)
-            trifecta_tickets = tuple(_tf_rows)
-            trifecta_text = f"{_tf1}{_tf2}{_tf3}-{_tf1}{_tf2}-{_tf2}{_tf3}"
-        else:
-            trifecta_tickets = tuple()
-            trifecta_text = "算出不可"
-
-        # v335bj：お小遣い車券Aパターンを、新C「123-12-23」の思想へ統一。
-        # 新しい2車単基本形「123-12」＝ 12 / 21 / 31 / 32 のうち、
-        # 評価1位-2位の折り返し（12 / 21）は2車単2点にせず、2車複「1-2」1点へ圧縮。
-        # 残る評価3位→評価1位・2位（31 / 32）を2車単2点で購入する。
-        _value_track_name = str(globals().get("track") or globals().get("place") or "").strip()
-        _is_fuzzy_venue_for_value = bool(_v335ao_is_fuzzy_venue(_value_track_name))
         common_exacta_honmei_avoided = False
         common_exacta_district_thirdplus_avoided = False
-        common_exacta_rule_text = "3→12＋2車複1-2"
+        recommended_quinella_tickets = tuple()
+        recommended_quinella_text = "なし"
 
-        if len(common_exacta_order) >= 3:
-            _rank1 = int(common_exacta_order[0])
-            _rank2 = int(common_exacta_order[1])
-            _rank3 = int(common_exacta_order[2])
-            common_exacta_tickets = ((_rank3, _rank1), (_rank3, _rank2))
-            common_exacta_text = f"{_rank3}-{_rank1}{_rank2}"
-            recommended_quinella_tickets = (tuple(sorted((_rank1, _rank2))),)
-            recommended_quinella_text = f"{_rank1}-{_rank2}"
-            # v335bi：働きながらの事前購入向け固定2車単。
-            # 最終順位123-12を重複除外で展開 → 12 / 21 / 31 / 32 の4点。
-            prepurchase_exacta_tickets = ((_rank1, _rank2), (_rank2, _rank1), (_rank3, _rank1), (_rank3, _rank2))
-            prepurchase_exacta_text = f"{_rank1}{_rank2}{_rank3}-{_rank1}{_rank2}"
+        _strategy_exacta_label = "算出不可"
+        _strategy_trifecta_label = ""
+        _strategy_kind = ""
+        common_exacta_tickets = tuple()
+        common_exacta_text = "算出不可"
+        trifecta_tickets = tuple()
+        trifecta_text = "算出不可"
+
+        if _strategy_is_good_venue:
+            _strategy_kind = "得意会場・全級共通"
+            common_exacta_rule_text = "評価2→1＋評価1→2→4/5/6"
+            if len(final_prediction_order) >= 6:
+                _s1 = int(final_prediction_order[0])
+                _s2 = int(final_prediction_order[1])
+                _s4 = int(final_prediction_order[3])
+                _s5 = int(final_prediction_order[4])
+                _s6 = int(final_prediction_order[5])
+
+                common_exacta_tickets = ((_s2, _s1),)
+                common_exacta_text = f"{_s2}-{_s1}"
+                _strategy_exacta_label = f"{_s2}→{_s1}"
+
+                trifecta_tickets = (
+                    (_s1, _s2, _s4),
+                    (_s1, _s2, _s5),
+                    (_s1, _s2, _s6),
+                )
+                trifecta_text = f"{_s1}-{_s2}-{_s4}{_s5}{_s6}"
+                _strategy_trifecta_label = f"{_s1}→{_s2}→{_s4}・{_s5}・{_s6}"
+        elif _strategy_is_s_class:
+            _strategy_kind = "苦手会場・S級"
+            common_exacta_rule_text = "評価4→1/3/7"
+            if len(final_prediction_order) >= 7:
+                _s1 = int(final_prediction_order[0])
+                _s3 = int(final_prediction_order[2])
+                _s4 = int(final_prediction_order[3])
+                _s7 = int(final_prediction_order[6])
+
+                common_exacta_tickets = (
+                    (_s4, _s1),
+                    (_s4, _s3),
+                    (_s4, _s7),
+                )
+                common_exacta_text = f"{_s4}-{_s1}{_s3}{_s7}"
+                _strategy_exacta_label = f"{_s4}→{_s1}・{_s3}・{_s7}"
+                trifecta_tickets = tuple()
+                trifecta_text = "なし"
+                _strategy_trifecta_label = ""
         else:
-            common_exacta_tickets = tuple()
-            common_exacta_text = "算出不可"
-            recommended_quinella_tickets = tuple()
-            recommended_quinella_text = "算出不可"
-            prepurchase_exacta_tickets = tuple()
-            prepurchase_exacta_text = "算出不可"
+            _strategy_kind = "苦手会場・A級系"
+            common_exacta_rule_text = "評価2→3＋評価3→2→1/5"
+            if len(final_prediction_order) >= 5:
+                _s1 = int(final_prediction_order[0])
+                _s2 = int(final_prediction_order[1])
+                _s3 = int(final_prediction_order[2])
+                _s5 = int(final_prediction_order[4])
 
-        # 旧キー互換：検証用2車単参照先も、現在のA（3→12）に合わせる。
-        validation_exacta_heads = (int(common_exacta_order[2]),) if len(common_exacta_order) >= 3 else tuple()
-        validation_exacta_himo = (int(common_exacta_order[0]), int(common_exacta_order[1])) if len(common_exacta_order) >= 3 else tuple()
+                common_exacta_tickets = ((_s2, _s3),)
+                common_exacta_text = f"{_s2}-{_s3}"
+                _strategy_exacta_label = f"{_s2}→{_s3}"
+
+                trifecta_tickets = (
+                    (_s3, _s2, _s1),
+                    (_s3, _s2, _s5),
+                )
+                trifecta_text = f"{_s3}-{_s2}-{_s1}{_s5}"
+                _strategy_trifecta_label = f"{_s3}→{_s2}→{_s1}・{_s5}"
+
+        prepurchase_exacta_tickets = tuple(common_exacta_tickets)
+        prepurchase_exacta_text = str(common_exacta_text)
+
+        # 旧キー互換：検証用2車単参照先も現在の固定戦略へ合わせる。
+        validation_exacta_heads = tuple(dict.fromkeys(int(a) for a, _ in common_exacta_tickets))
+        validation_exacta_himo = tuple(dict.fromkeys(int(b) for _, b in common_exacta_tickets))
         validation_exacta_counts = dict(common_exacta_counts)
         validation_exacta_source_trios = list(common_exacta_source_trios)
         validation_exacta_order = list(common_exacta_order)
@@ -12425,27 +12451,23 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             ) if fuzzy_trio_tickets else "算出不可"
 
         # -------------------------------------------------
-        # v335bc：全会場・全開催日で推奨券種を統一。
-        # 3連単 23-123-12（3点）＋2車単 3-124（3点）＝計6点。
-        # A/B/C/D会場評価・最終日・旧ファジー判定は買い目分岐に使用しない。
+        # v335bk：実購入は会場相性×級別の固定戦略のみ。
         # -------------------------------------------------
         _purchase_mode_info = _v335ac_track_purchase_mode(
             globals().get("track") or globals().get("place") or ""
         )
         _track_name = str(globals().get("track") or globals().get("place") or "").strip()
-        _is_fuzzy_venue = False
+        _is_fuzzy_venue = not bool(_strategy_is_good_venue)
         _is_final_day = str(globals().get("day_stage", "") or "") == "最終日"
-        _purchase_mode = "trifecta"
+        _purchase_mode = "fixed_strategy"
 
         _trifecta_count = int(len(trifecta_tickets))
         _trio_count = int(len(trio_tickets))
         _exacta_count = int(len(common_exacta_tickets))
-        _quinella_count = int(len(recommended_quinella_tickets))
+        _quinella_count = 0
         _final_simple_trio_count = int(len(final_simple_trio_tickets))
         _fuzzy_trio_count = int(len(fuzzy_trio_tickets))
-        # A(2車単2＋2車複1)＋C(3連単3)を同時購入した場合の互換用合計。
-        # B(3連複)は独立パターンとしてnote表示するため、この互換用合計には含めない。
-        ticket_count = int(_exacta_count + _quinella_count + _trifecta_count)
+        ticket_count = int(_exacta_count + _trifecta_count)
         validation_ticket_count = int(_trio_count)
 
         return {
@@ -12517,6 +12539,11 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "common_exacta_district_thirdplus_avoided": bool(common_exacta_district_thirdplus_avoided),
             "trifecta_district_thirdplus_avoided": bool(trifecta_district_thirdplus_avoided),
             "common_exacta_rule_text": str(common_exacta_rule_text),
+            "strategy_kind": str(_strategy_kind),
+            "strategy_is_good_venue": bool(_strategy_is_good_venue),
+            "strategy_race_class": str(_strategy_race_class),
+            "strategy_exacta_label": str(_strategy_exacta_label),
+            "strategy_trifecta_label": str(_strategy_trifecta_label),
             "market_honmei": int(market_honmei) if market_honmei is not None else None,
             "final_simple_trio_honmei_avoided": bool(final_simple_trio_honmei_avoided),
             "is_fuzzy_venue": _is_fuzzy_venue,
@@ -12644,40 +12671,50 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         if len(lines) >= 4:
             lines[3] = f"最終着順予想　{_dedicated_order_text}"
 
-        # v335bd：開催区分ごとに「1パターン3点×2開催分」の推奨資金を表示する。
+        # v335bk：固定戦略の点数×開催レース数×2開催分で資金目安を算出。
         _race_time = str(globals().get("race_time", "") or "").strip()
-        _fund_map = {
-            "モーニング": 4200,
-            "デイ": 7200,
-            "ナイター": 7200,
-            "ミッドナイト": 5400,
+        _race_count_map = {
+            "モーニング": 7,
+            "デイ": 12,
+            "ナイター": 12,
+            "ミッドナイト": 9,
         }
-        _fund = int(_fund_map.get(_race_time, 0) or 0)
-        _fund_text = f"今開催目安{_fund:,}円以上推奨" if _fund else "今開催資金目安：開催区分を確認"
 
-        _prepurchase_text = str(five_point_plan.get("prepurchase_exacta_text", "算出不可") or "算出不可") if five_point_plan else "算出不可"
-        _prepurchase_count = len(five_point_plan.get("prepurchase_exacta_tickets", tuple()) or tuple()) if five_point_plan else 0
+        _strategy_exacta_label = str(
+            five_point_plan.get("strategy_exacta_label", "算出不可") or "算出不可"
+        ) if five_point_plan else "算出不可"
+        _strategy_trifecta_label = str(
+            five_point_plan.get("strategy_trifecta_label", "") or ""
+        ) if five_point_plan else ""
+        _strategy_exacta_count = int(
+            five_point_plan.get("recommended_exacta_count", 0) or 0
+        ) if five_point_plan else 0
+        _strategy_trifecta_count = len(
+            five_point_plan.get("trifecta_tickets", tuple()) or tuple()
+        ) if five_point_plan else 0
+        _strategy_total_points = int(_strategy_exacta_count + _strategy_trifecta_count)
+
+        _race_count = int(_race_count_map.get(_race_time, 0) or 0)
+        _fund = int(_race_count * _strategy_total_points * 100 * 2) if _race_count else 0
+        _fund_text = (
+            f"今開催目安{_fund:,}円以上推奨"
+            if _fund
+            else "今開催資金目安：開催区分を確認"
+        )
 
         lines.extend([
             "",
-            "【事前購入推奨】",
-            f"2車単　{_prepurchase_text}　{_prepurchase_count}点",
-            "",
-            "【お小遣いで楽しむ車券】",
-            "",
-            "Aパターン",
-            f"2車単　{exacta_text}　{exacta_count}点",
-            f"2車複　{quinella_text}　{quinella_count}点",
-            "",
-            "Bパターン",
-            f"推奨3連複　{trio_text}　{len(five_point_plan.get('trio_tickets', tuple()) or tuple()) if five_point_plan else 0}点",
-            "",
-            "Cパターン",
-            f"3連単　{trifecta_text}　{len(five_point_plan.get('trifecta_tickets', tuple()) or tuple()) if five_point_plan else 0}点",
+            f"2車単：{_strategy_exacta_label}　{_strategy_exacta_count}点",
+        ])
+        if _strategy_trifecta_count > 0 and _strategy_trifecta_label:
+            lines.append(
+                f"3連単：{_strategy_trifecta_label}　{_strategy_trifecta_count}点"
+            )
+
+        lines.extend([
             "",
             "※すべて1点100円の平買い",
-            "※2車複の組み合わせを2車単に変換した際、2車複オッズの3倍以上となる買い目があれば、その2車単を100円追加購入します。",
-            f"※{_fund_text}。お好みのパターンで。組み合わせる場合はパターン分だけ資金を足してください。",
+            f"※{_fund_text}。",
         ])
         return "\n".join(lines).strip() + "\n"
 
