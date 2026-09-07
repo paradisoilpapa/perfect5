@@ -12133,9 +12133,9 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         # 券種への「配置」だけを更新する。
         # 最終着順順位そのもの（該当流れ＋AI重圧補正＋3連複TOP5該当数の二軸50:50）は変更しない。
         #
-        # 3連単：評価順位 23-123-12（3点）
-        #   → 231 / 312 / 321
-        #   評価2位・3位の1着を想定し、評価3位が2着まで残るズレも取る。
+        # 3連単：最終順位 123-12-23（3点）
+        #   → 123 / 213 / 312
+        #   1・2・3は現在のヴェロビ最終順位をそのまま使用する。
         # 2車単：評価順位 3-124（3点）
         #   → 3→1 / 3→2 / 3→4
         #   評価3位がさらに頭へ突き抜けた場合を広めに救済する。
@@ -12151,10 +12151,10 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             _tf2 = int(final_prediction_order[1])
             _tf3 = int(final_prediction_order[2])
 
-            # 評価23-123-12を重複車番除外で展開。
-            _tf_first = (_tf2, _tf3)
-            _tf_second = (_tf1, _tf2, _tf3)
-            _tf_third = (_tf1, _tf2)
+            # 最終順位123-12-23を重複車番除外で展開。
+            _tf_first = (_tf1, _tf2, _tf3)
+            _tf_second = (_tf1, _tf2)
+            _tf_third = (_tf2, _tf3)
             _tf_rows = []
             for _head in _tf_first:
                 for _second in _tf_second:
@@ -12165,7 +12165,7 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
                         if _ticket not in _tf_rows:
                             _tf_rows.append(_ticket)
             trifecta_tickets = tuple(_tf_rows)
-            trifecta_text = f"{_tf2}{_tf3}-{_tf1}{_tf2}{_tf3}-{_tf1}{_tf2}"
+            trifecta_text = f"{_tf1}{_tf2}{_tf3}-{_tf1}{_tf2}-{_tf2}{_tf3}"
         else:
             trifecta_tickets = tuple()
             trifecta_text = "算出不可"
@@ -12187,11 +12187,17 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             common_exacta_text = f"{_rank2}{_rank3}-{_rank1}"
             recommended_quinella_tickets = (tuple(sorted((_rank2, _rank3))),)
             recommended_quinella_text = f"{_rank2}-{_rank3}"
+            # v335bi：働きながらの事前購入向け固定2車単。
+            # 最終順位123-12を重複除外で展開 → 12 / 21 / 31 / 32 の4点。
+            prepurchase_exacta_tickets = ((_rank1, _rank2), (_rank2, _rank1), (_rank3, _rank1), (_rank3, _rank2))
+            prepurchase_exacta_text = f"{_rank1}{_rank2}{_rank3}-{_rank1}{_rank2}"
         else:
             common_exacta_tickets = tuple()
             common_exacta_text = "算出不可"
             recommended_quinella_tickets = tuple()
             recommended_quinella_text = "算出不可"
+            prepurchase_exacta_tickets = tuple()
+            prepurchase_exacta_text = "算出不可"
 
         # 旧キー互換：v335aaの検証用2車単参照先も、新共通2車単を返す。
         validation_exacta_heads = (int(common_exacta_order[1]), int(common_exacta_order[2])) if len(common_exacta_order) >= 3 else tuple()
@@ -12496,6 +12502,8 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
             "common_exacta_counts": {int(k): int(v) for k, v in common_exacta_counts.items()},
             "common_exacta_order": tuple(int(x) for x in common_exacta_order),
             "final_prediction_order": tuple(int(x) for x in final_prediction_order),
+            "prepurchase_exacta_tickets": tuple(prepurchase_exacta_tickets),
+            "prepurchase_exacta_text": str(prepurchase_exacta_text),
             "common_exacta_source_trios": tuple(tuple(int(x) for x in c) for c in common_exacta_source_trios),
             "recommended_exacta_count": _exacta_count,
             "recommended_quinella_tickets": recommended_quinella_tickets,
@@ -12643,7 +12651,13 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         _fund = int(_fund_map.get(_race_time, 0) or 0)
         _fund_text = f"今開催目安{_fund:,}円以上推奨" if _fund else "今開催資金目安：開催区分を確認"
 
+        _prepurchase_text = str(five_point_plan.get("prepurchase_exacta_text", "算出不可") or "算出不可") if five_point_plan else "算出不可"
+        _prepurchase_count = len(five_point_plan.get("prepurchase_exacta_tickets", tuple()) or tuple()) if five_point_plan else 0
+
         lines.extend([
+            "",
+            "【事前購入推奨】",
+            f"2車単　{_prepurchase_text}　{_prepurchase_count}点",
             "",
             "【お小遣いで楽しむ車券】",
             "",
