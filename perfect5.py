@@ -1,3 +1,10 @@
+# v335bq（評価順×着率ベース想定回収率・各券種最大3点版）:
+# ・note用の旧固定買い目「2車単 評価2→1／3連単 評価1→2→4/5」の表示を廃止。
+# ・会場マスタに登録した2車単／3連単の全出目候補を、当日の最終着順評価上位から順に照合する。
+# ・現在入力の1着/2着/3着/着外実績から、順序付きの着率ベース想定的中率を計算する。
+# ・想定回収率＝想定的中率×会場マスタ平均配当。100％超だけを採用し、2車単・3連単それぞれ最大3点。
+# ・100％超が3点未満なら無理に埋めず、0点なら見送り。実車番と順序は会場マスタの買い目をそのまま使う。
+# ・最終着順評価は買い目候補の優先順に使用し、想定的中率には現在入力の実着率を使用する。
 # v335bp（会場別マスタ自動読込・実車ROI自動抽出版）:
 # ・会場×開催区分×級別×車立てのマスタを追加。登録済み条件では開催場決まり手を自動読込し、手入力ミスを防ぐ。
 # ・第1号として「京王閣×ミッドナイト×A級系（A級／A級チャレンジ）×7車」を登録。
@@ -2307,6 +2314,201 @@ def _v335bp_expected_value_candidates(profile, threshold=100.0):
     return _rows
 
 
+def _v335bq_finish_strength_map(final_order):
+    """
+    現在入力の x1/x2/x3/x_out から各車の「1着/2着/3着の強さ」を作る。
+    0回や少数回のゼロ固定を避けるため、各着区分へ0.5回だけ平滑化する。
+    最終着順評価はここでは確率へ直接掛けず、候補を上位から探索する順番に使う。
+    """
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    _x1 = globals().get("x1", {}) or {}
+    _x2 = globals().get("x2", {}) or {}
+    _x3 = globals().get("x3", {}) or {}
+    _xo = globals().get("x_out", {}) or {}
+
+    _out = {}
+    _valid_n = 0
+    for _car in _order:
+        try:
+            _n1 = float(_x1.get(_car, _x1.get(str(_car), 0)) or 0)
+            _n2 = float(_x2.get(_car, _x2.get(str(_car), 0)) or 0)
+            _n3 = float(_x3.get(_car, _x3.get(str(_car), 0)) or 0)
+            _no = float(_xo.get(_car, _xo.get(str(_car), 0)) or 0)
+            _total = _n1 + _n2 + _n3 + _no
+            if _total > 0:
+                _valid_n += 1
+            # Jeffreys型の軽い平滑化：4区分それぞれ+0.5回
+            _den = float(_total + 2.0)
+            _out[int(_car)] = {
+                "p1_strength": (_n1 + 0.5) / _den,
+                "p2_strength": (_n2 + 0.5) / _den,
+                "p3_strength": (_n3 + 0.5) / _den,
+                "sample_n": int(round(_total)),
+            }
+        except Exception:
+            continue
+    return _out, int(_valid_n)
+
+
+def _v335bq_ticket_hit_probability(ticket, strength_map):
+    """
+    着順を条件付きで順に割り当てる近似確率。
+      2車単 a→b   = P1(a) × P2(b | a除外)
+      3連単 a→b→c = 上記 × P3(c | a,b除外)
+    各着の強さは同一レース内で正規化するため、合計確率が暴走しにくい。
+    """
+    _ticket = tuple(int(x) for x in (ticket or tuple()))
+    _cars = tuple(int(x) for x in strength_map.keys())
+    if len(_ticket) not in (2, 3) or len(set(_ticket)) != len(_ticket):
+        return None
+    if any(_car not in strength_map for _car in _ticket):
+        return None
+
+    try:
+        _a = int(_ticket[0])
+        _den1 = sum(float(strength_map[c]["p1_strength"]) for c in _cars)
+        if _den1 <= 0:
+            return None
+        _p = float(strength_map[_a]["p1_strength"]) / _den1
+
+        _b = int(_ticket[1])
+        _den2 = sum(
+            float(strength_map[c]["p2_strength"])
+            for c in _cars if int(c) != _a
+        )
+        if _den2 <= 0:
+            return None
+        _p *= float(strength_map[_b]["p2_strength"]) / _den2
+
+        if len(_ticket) == 3:
+            _c = int(_ticket[2])
+            _den3 = sum(
+                float(strength_map[c]["p3_strength"])
+                for c in _cars if int(c) not in {_a, _b}
+            )
+            if _den3 <= 0:
+                return None
+            _p *= float(strength_map[_c]["p3_strength"]) / _den3
+
+        return max(0.0, min(1.0, float(_p)))
+    except Exception:
+        return None
+
+
+def _v335bq_dynamic_value_rows(final_order, profile, kind):
+    """
+    会場マスタの全出目をV評価上位から順に並べ、
+    着率ベース想定回収率100％超だけを返す。
+    """
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    if not _order or not isinstance(profile, dict):
+        return [], 0
+
+    _strength_map, _valid_n = _v335bq_finish_strength_map(_order)
+    if _valid_n <= 0:
+        return [], 0
+
+    _rank = {int(car): idx for idx, car in enumerate(_order, start=1)}
+    _key = "exacta_rows" if str(kind) == "2車単" else "trifecta_rows"
+    _rows = []
+
+    for _raw in tuple(profile.get(_key, tuple()) or tuple()):
+        try:
+            _ticket, _H, _avg = _raw
+            _ticket = tuple(int(x) for x in _ticket)
+            if any(x not in _rank for x in _ticket):
+                continue
+            _p = _v335bq_ticket_hit_probability(_ticket, _strength_map)
+            if _p is None:
+                continue
+            _avg = float(_avg)
+            _expected_roi = float(_p) * _avg  # 100円購入時のROI％
+            _v_ranks = tuple(int(_rank[x]) for x in _ticket)
+            # 「評価1位から順番に組む」ため、まず上位何位まで使うか、次に順位合計で並べる。
+            _priority = (
+                max(_v_ranks),
+                sum(_v_ranks),
+                tuple(_v_ranks),
+                -int(_H),
+            )
+            _rows.append({
+                "kind": str(kind),
+                "ticket": _ticket,
+                "H": int(_H),
+                "avg_pay": _avg,
+                "hit_prob": float(_p),
+                "expected_roi": float(_expected_roi),
+                "v_ranks": _v_ranks,
+                "priority": _priority,
+            })
+        except Exception:
+            continue
+
+    _rows.sort(key=lambda r: r.get("priority"))
+    _over100 = [r for r in _rows if float(r.get("expected_roi", 0.0)) > 100.0]
+    return _over100, int(_valid_n)
+
+
+def _v335bq_dynamic_value_lines(
+    final_order,
+    track_name=None,
+    race_time_name=None,
+    race_class_name=None,
+    field_n=None,
+    max_each=3,
+):
+    """note用：V評価順に探索し、想定回収率100％超を2車単/3連単各最大3点表示。"""
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    _field_n = int(field_n or len(_order) or 0)
+    _profile = _v335bp_get_venue_profile(
+        track_name=track_name,
+        race_time_name=race_time_name,
+        race_class_name=race_class_name,
+        field_n=_field_n,
+    )
+
+    if not _profile:
+        return [
+            "【想定回収率100％超｜会場別マスタ】",
+            "この会場×開催区分×級別×車立ては基準データ未登録",
+        ]
+
+    _label = str(_profile.get("label", "会場別マスタ"))
+    _out = [f"【想定回収率100％超｜{_label}】"]
+    _out.append("基準：V評価上位から順に候補化→現在入力の実着率で想定的中率→会場平均配当で想定回収率")
+
+    _any_data = False
+    _total_selected = 0
+    for _kind in ("2車単", "3連単"):
+        _rows, _valid_n = _v335bq_dynamic_value_rows(_order, _profile, _kind)
+        if _valid_n <= 0:
+            _out.append(f"{_kind}：着順実績未入力のため算出不可")
+            continue
+        _any_data = True
+        _selected = list(_rows[:max(0, int(max_each))])
+        _total_selected += len(_selected)
+        if not _selected:
+            _out.append(f"{_kind}：100％超なし（見送り）")
+            continue
+
+        _out.append(f"{_kind}：{len(_selected)}点")
+        for _idx, _row in enumerate(_selected, start=1):
+            _ticket_text = "→".join(str(int(x)) for x in _row.get("ticket", tuple()))
+            _vr_text = "→".join(str(int(x)) for x in _row.get("v_ranks", tuple()))
+            _out.append(
+                f"  {_idx}. {_ticket_text}｜V評価{_vr_text}"
+                f"｜想定的中率{float(_row.get('hit_prob', 0.0))*100:.2f}%"
+                f"｜平均{float(_row.get('avg_pay', 0.0)):.0f}円"
+                f"｜想定回収率{float(_row.get('expected_roi', 0.0)):.1f}%"
+            )
+
+    if _any_data:
+        _out.append(f"合計：{_total_selected}点（各券種最大{int(max_each)}点、100％超だけ）")
+        _out.append("※想定的中率は現在入力の1着/2着/3着実績を順序付きに正規化した試算値です。")
+        _out.append("※評価順位パターン自体の過去的中率ではありません。100％超が少なければ無理に点数を埋めません。")
+    return _out
+
+
 def _v335bp_relative_order_ok(ticket, velo_top3):
     """TOP3に重なった車だけを抜き出し、実車券の相対順序と矛盾しないか確認。"""
     _ticket = tuple(int(x) for x in (ticket or tuple()))
@@ -2518,9 +2720,9 @@ if _v335bp_active_profile:
                 + f" ({float(r['roi']):.1f}%)"
                 for r in _bp_candidates
             )
-            st.caption(f"実車ROI100％超：{_bp_text}")
+            st.caption(f"長期実車ROI100％超（参考）：{_bp_text}")
         else:
-            st.caption("実車ROI100％超：該当なし")
+            st.caption("長期実車ROI100％超（参考）：該当なし")
 
 else:
     with st.sidebar.expander(
@@ -13082,81 +13284,23 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         if len(lines) >= 4:
             lines[3] = f"最終着順予想　{_dedicated_order_text}"
 
-        # v335bn：開催区分のレース数は全外れ確率の算出にだけ使用する。
-        _race_time = str(globals().get("race_time", "") or "").strip()
-        _race_count_map = {
-            "モーニング": 7,
-            "デイ": 12,
-            "ナイター": 12,
-            "ミッドナイト": 9,
-        }
-
-        _strategy_exacta_label = str(
-            five_point_plan.get("strategy_exacta_label", "算出不可") or "算出不可"
-        ) if five_point_plan else "算出不可"
-        _strategy_trifecta_label = str(
-            five_point_plan.get("strategy_trifecta_label", "") or ""
-        ) if five_point_plan else ""
-        _strategy_exacta_count = int(
-            five_point_plan.get("recommended_exacta_count", 0) or 0
-        ) if five_point_plan else 0
-        _strategy_trifecta_count = len(
-            five_point_plan.get("trifecta_tickets", tuple()) or tuple()
-        ) if five_point_plan else 0
-        _race_count = int(_race_count_map.get(_race_time, 0) or 0)
-
-        # v335bm：固定戦略別の想定的中率と、開催全外れ確率をnote表示用に算出。
-        # 全外れ確率＝(1－1レース想定的中率)^開催レース数
-        _strategy_kind = str(
-            five_point_plan.get("strategy_kind", "") or ""
-        ) if five_point_plan else ""
-        if _strategy_kind == "得意会場・全級共通":
-            _expected_hit_rate = 0.125
-        elif _strategy_kind == "苦手会場・S級":
-            _expected_hit_rate = 0.077
-        elif _strategy_kind == "苦手会場・A級系":
-            _expected_hit_rate = 0.072
-        else:
-            _expected_hit_rate = 0.0
-
-        _expected_hit_text = (
-            f"{_expected_hit_rate * 100:.1f}"
-            if _expected_hit_rate > 0.0
-            else "算出不可"
-        )
-        _all_miss_text = (
-            f"{((1.0 - _expected_hit_rate) ** _race_count) * 100:.0f}"
-            if _expected_hit_rate > 0.0 and _race_count > 0
-            else "算出不可"
-        )
-
-        lines.extend([
-            "",
-            f"2車単：{_strategy_exacta_label}　{_strategy_exacta_count}点",
-        ])
-        if _strategy_trifecta_count > 0 and _strategy_trifecta_label:
-            lines.append(
-                f"3連単：{_strategy_trifecta_label}　{_strategy_trifecta_count}点"
-            )
-
-        # v335bp：会場別マスタからROI100％超の実車番候補を抽出し、最終着順予想へ「後から」照合する。
-        # ここは検証表示だけで、上の固定3点の購入点数には加算しない。
-        _real_value_lines = _v335bp_real_number_value_lines(
+        # v335bq：旧固定3点のnote表示は廃止。
+        # 会場マスタの全出目をV評価上位から順に探索し、着率ベース想定回収率100％超だけ表示する。
+        _dynamic_value_lines = _v335bq_dynamic_value_lines(
             _dedicated_order,
             track_name=str(globals().get("track") or globals().get("place") or "").strip(),
             race_time_name=str(globals().get("race_time", "") or "").strip(),
             race_class_name=str(globals().get("race_class", "") or "").strip(),
             field_n=len(_dedicated_order),
+            max_each=3,
         )
-        if _real_value_lines:
+        if _dynamic_value_lines:
             lines.append("")
-            lines.extend(_real_value_lines)
+            lines.extend(_dynamic_value_lines)
 
         lines.extend([
             "",
             "※すべて1点100円の平買い想定です。",
-            f"※想定的中率：約{_expected_hit_text}％　全外れ確率：約{_all_miss_text}％",
-            "※実車期待値照合は検証枠のため、上記想定的中率・全外れ確率には含めていません。",
         ])
         return "\n".join(lines).strip() + "\n"
 
