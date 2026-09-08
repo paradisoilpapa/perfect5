@@ -1,16 +1,13 @@
-# v335bw（note簡易出力・推奨購入先頭表示版）:
-# ・note用簡易出力の並び順を変更。
-# ・「想定隊列／最終着順予想」の直後に【推奨購入】を表示し、その下に【想定的中率TOP3】の詳細を表示。
-# ・買い目を最優先で確認できるようにし、検証用の確率詳細は後段へ移動。
-# ・「オッズ・平均配当・過去H/Nは不使用」の注記は簡易出力から省略。
-# ・想定的中率モデル、ライン軽補正±15%、同ライン最上位のみ3連単化する推奨3点ロジックは変更しない。
-# v335bv（短いライン優遇解消・ライン軽補正版）:
-# ・想定的中率モデルで、ライン勢力比を「ラインごとの確率総量」として人数分配する方式を廃止。
-# ・単騎や2車ラインがライン勢力を少人数で独占して浮上する構造バイアスを解消。
-# ・最終個人評価は KOスコア×車番別着率×脚質適合 を全車同じ土俵で比較し、ライン勢力比は軽い倍率補正だけにする。
-# ・ライン補正は各ライン均等勢力を1.00基準として相対差を反映し、±15%で上限固定。
-# ・単騎そのものへの減点はしない。KO・脚質・逆流等の個人条件が強ければ単騎でもTOP3へ浮上可能。
-# ・会場データのサイドバー入力、想定的中率TOP3、同ライン最上位のみ3連単化する推奨3点ルールは維持。
+# v335bv（ライン軽補正・上振れヒモ追加版）:
+# ・v335buを土台に、単騎／短いラインがライン勢力比を1車で独占して個人確率が過大になる構造を修正。
+# ・ライン勢力比は「ラインへ確率質量を配る」用途をやめ、各個人評価へ0.85～1.15の軽い文脈補正として使用する。
+# ・個人の着順別評価は従来どおり、KOスコア＋車番別着率＋脚質×会場決まり手を同格の幾何平均で作る。
+# ・推奨購入は、2車単想定的中率1位の1着車を軸に固定し、その軸からの想定的中率上位3車を基本ヒモとする。
+# ・さらに会場車番別の過去3着内率順位より、今回のヴェロビ最終評価順位が上の車をヒモ追加する。同順位は追加しない。
+# ・最終ヒモはヴェロビ最終評価順で表示。過去最下位かつ今回も最下位の車は「同順位」なので自動追加しない。
+# ・軸と同ラインのヒモがある場合、その中で想定的中率が最上位の1組だけを3連単1点へ置換する。
+# ・3連単の3着は、1・2着を除いた条件付き3着確率1位。残りのヒモは2車単のまま購入する。
+# ・点数はヒモ数と同数（例：ヒモ4車なら、同ライン1点を3連単化しても合計4点）。
 # v335bu（会場データ・サイドバー手入力版）:
 # ・各会場データをコードへ追加し続ける方式をやめ、想定的中率モデル用の会場データをサイドバーから入力できるようにする。
 # ・車番ごとは「出走数N／1着回数／2着回数／3着回数」だけ入力。勝率・2連対率・3連対率・着外は内部で自動計算。
@@ -2446,58 +2443,6 @@ def _v335br_normalized_line_share(cars, car_line_info):
     return {_key: float(_raw[_key]) / float(_total) for _key in _line_keys}
 
 
-
-# v335bv：ライン勢力比は「確率の取り分」ではなく、最終個人評価への軽い補正だけに使う。
-V335BV_LINE_FACTOR_GAIN = 0.45
-V335BV_LINE_FACTOR_CAP = 0.15
-
-
-def _v335bv_line_factor_map(cars, car_line_info, line_share):
-    """
-    各ライン均等勢力(1/ライン数)を1.00基準として、
-    ライン勢力比の相対差を軽い倍率へ変換する。
-
-    factor = 1 + gain * ((share - equal_share) / equal_share)
-    ただし 0.85～1.15 に制限。
-
-    例：3ラインで share=0.377/0.344/0.280 の場合
-        約1.059 / 1.014 / 0.928
-    となり、単騎が0.280を丸ごと受け取ることはない。
-    """
-    _cars = tuple(int(x) for x in (cars or tuple()))
-    _line_keys = []
-    for _car in _cars:
-        _info = car_line_info.get(int(_car), {}) or {}
-        _key = str(_info.get("key", "") or "")
-        if _key and _key not in _line_keys:
-            _line_keys.append(_key)
-
-    if not _line_keys:
-        return {int(_car): 1.0 for _car in _cars}
-
-    _equal = 1.0 / float(len(_line_keys))
-    _gain = float(V335BV_LINE_FACTOR_GAIN)
-    _cap = float(V335BV_LINE_FACTOR_CAP)
-
-    _line_factor = {}
-    for _key in _line_keys:
-        _share = max(0.0, _v335br_safe_float((line_share or {}).get(_key, _equal), _equal))
-        if _equal > 0.0:
-            _rel = (_share - _equal) / _equal
-        else:
-            _rel = 0.0
-        _f = 1.0 + _gain * _rel
-        _f = max(1.0 - _cap, min(1.0 + _cap, float(_f)))
-        _line_factor[_key] = float(_f)
-
-    _out = {}
-    for _car in _cars:
-        _info = car_line_info.get(int(_car), {}) or {}
-        _key = str(_info.get("key", "") or "")
-        _out[int(_car)] = float(_line_factor.get(_key, 1.0))
-    return _out
-
-
 def _v335br_score_factor_map(cars, final_order):
     """
     最終個人KOスコアをレース内z化し exp(z) へ変換。
@@ -2668,25 +2613,55 @@ def _v335br_tactic_position_factor(profile, cars, car_line_info, finish_pos):
     }
 
 
+def _v335bv_line_context_factor(cars, car_line_info):
+    """
+    v335bv：ライン勢力比は各ラインへの「総確率質量」ではなく、
+    個人評価へ掛ける軽い文脈補正として使う。
+
+    ・各ライン勢力比をライン平均=1へ相対化
+    ・rel ** 0.25 で強く圧縮
+    ・0.85～1.15へクランプ
+    ・単騎も2車/3車ラインも同じ式（人数による特別扱いなし）
+    """
+    _cars = tuple(int(x) for x in (cars or tuple()))
+    _share = _v335br_normalized_line_share(_cars, car_line_info)
+    if not _share:
+        return {int(_car): 1.0 for _car in _cars}
+
+    _vals = [max(0.0, _v335br_safe_float(v, 0.0)) for v in _share.values()]
+    _mean = sum(_vals) / float(len(_vals)) if _vals else 0.0
+    if _mean <= 1e-12:
+        return {int(_car): 1.0 for _car in _cars}
+
+    _line_factor = {}
+    for _key, _v in _share.items():
+        _rel = max(float(_v) / float(_mean), 1e-9)
+        _f = _rel ** 0.25
+        _line_factor[str(_key)] = max(0.85, min(1.15, float(_f)))
+
+    _out = {}
+    for _car in _cars:
+        _key = str((car_line_info.get(int(_car), {}) or {}).get("key", str(int(_car))))
+        _out[int(_car)] = float(_line_factor.get(_key, 1.0))
+    return _out
+
+
 def _v335br_position_probability_map(profile, final_order, finish_pos):
     """
-    v335bv 2段階モデル:
-      1) 序盤：現行ライン勢力比を「軽い展開補正」として取得
-      2) 最終：全車を同じ土俵で
-         個人KOスコア×車番別着率×脚質適合×ライン軽補正
-         から着順別確率へ正規化
+    v335bv 着順別個人確率:
+      1) KOスコア＋車番別着率＋脚質適合を個人ごとに幾何平均
+      2) ライン勢力比は0.85～1.15の軽い文脈補正だけ掛ける
+      3) 全車を一括で正規化
 
-    旧方式の「ライン勢力をライン内人数で分配」は廃止。
-    単騎・2車ラインが人数の少なさだけで浮くことを防ぐ。
+    旧版の「ラインへ確率質量を配り、そのライン内で人数割り」は廃止。
+    これにより単騎がライン勢力を1車で独占する構造をなくす。
     """
     _cars = tuple(int(x) for x in (final_order or tuple()))
     if not _cars:
         return {}
 
     _line_info = _v335br_car_line_info(_cars)
-    _line_share = _v335br_normalized_line_share(_cars, _line_info)
-    _line_factor = _v335bv_line_factor_map(_cars, _line_info, _line_share)
-
+    _line_factor = _v335bv_line_context_factor(_cars, _line_info)
     _score_factor = _v335br_score_factor_map(_cars, final_order)
     _car_factor = _v335br_car_number_position_factor(profile, _cars, finish_pos)
     _tactic_factor = _v335br_tactic_position_factor(
@@ -2700,8 +2675,7 @@ def _v335br_position_probability_map(profile, final_order, finish_pos):
         _tf = max(_tactic_factor.get(int(_car), 1.0), 1e-9)
         _lf = max(_line_factor.get(int(_car), 1.0), 1e-9)
 
-        # KO・車番・脚質は同格の幾何平均。
-        # ラインは既に展開形成側の情報なので、軽い倍率として最後にだけ掛ける。
+        # 個人3信号は従来どおり同格の幾何平均。
         _personal = (_sf * _cf * _tf) ** (1.0 / 3.0)
         _raw[int(_car)] = max(float(_personal) * float(_lf), 1e-12)
 
@@ -2710,10 +2684,7 @@ def _v335br_position_probability_map(profile, final_order, finish_pos):
         _eq = 1.0 / float(len(_cars))
         return {int(_car): _eq for _car in _cars}
 
-    return {
-        int(_car): float(_raw[int(_car)]) / float(_total)
-        for _car in _cars
-    }
+    return {int(_car): float(_raw[int(_car)]) / float(_total) for _car in _cars}
 
 def _v335br_conditional_pick_prob(prob_map, car, excluded):
     _excluded = {int(x) for x in (excluded or set())}
@@ -2800,27 +2771,87 @@ def _v335bt_same_line_pair(ticket):
     return False
 
 
+def _v335bv_historical_trio_rank_map(profile, cars):
+    """
+    会場車番別の過去3着内率（1着+2着+3着）順位。
+    順位は「自分より率が高い車の数+1」とし、同率は同順位。
+    N=0等の未入力車はNone。
+    """
+    _cars = tuple(int(x) for x in (cars or tuple()))
+    _stats = (profile or {}).get("car_stats", {}) or {}
+    _rate = {}
+
+    for _car in _cars:
+        _row = _stats.get(int(_car), _stats.get(str(int(_car)), {})) or {}
+        _n = max(0.0, _v335br_safe_float(_row.get("N", 0), 0.0))
+        _finish = tuple(_row.get("finish", tuple()) or tuple())
+        if _n > 0.0 and len(_finish) >= 3:
+            _top3 = sum(max(0.0, _v335br_safe_float(_finish[i], 0.0)) for i in range(3))
+            _rate[int(_car)] = float(_top3) / float(_n)
+        else:
+            _rate[int(_car)] = None
+
+    _valid = [float(v) for v in _rate.values() if v is not None]
+    if not _valid:
+        return {int(_car): None for _car in _cars}
+
+    _out = {}
+    _eps = 1e-12
+    for _car in _cars:
+        _v = _rate.get(int(_car))
+        if _v is None:
+            _out[int(_car)] = None
+            continue
+        _out[int(_car)] = 1 + sum(1 for _x in _valid if float(_x) > float(_v) + _eps)
+    return _out
+
+
+def _v335bv_upshift_himo_cars(final_order, profile, axis):
+    """
+    過去3着内率順位より今回V評価順位が上の車をヒモ追加。
+    同順位は追加しない。軸自身は除外。
+    """
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    _axis = int(axis)
+    _v_rank = {int(c): i for i, c in enumerate(_order, start=1)}
+    _hist_rank = _v335bv_historical_trio_rank_map(profile, _order)
+
+    _cars = []
+    for _car in _order:
+        if int(_car) == _axis:
+            continue
+        _hr = _hist_rank.get(int(_car))
+        _vr = _v_rank.get(int(_car))
+        if _hr is None or _vr is None:
+            continue
+        if int(_vr) < int(_hr):
+            _cars.append(int(_car))
+    return _cars, _hist_rank
+
+
 def _v335bt_promote_same_line_exacta(exacta_rows, p3_map):
     """
-    2車単TOP3のうち同ライン最上位1組だけを3連単1点へ昇格。
-    3着は1・2着を除いた条件付き3着確率1位。
+    選択済み2車単のうち、同ライン買い目で想定的中率が最上位の1組だけ
+    3連単1点へ置換する。3着は条件付き3着確率1位。
     """
     _rows = list(exacta_rows or [])
-    _promote_idx = None
+    _same = []
     for _idx, _row in enumerate(_rows):
         if _v335bt_same_line_pair(_row.get("ticket", tuple())):
-            _promote_idx = int(_idx)
-            break
+            _same.append((_idx, _row))
 
-    if _promote_idx is None:
+    if not _same:
         return {
             "exacta_rows": _rows,
             "trifecta_row": None,
             "promoted_exacta": None,
         }
 
-    _promoted = _rows[_promote_idx]
-    _ticket2 = tuple(int(x) for x in _promoted.get("ticket", tuple()))
+    # 表示順ではなく、想定的中率が最大の同ライン買い目を1組だけ置換。
+    _same.sort(key=lambda t: (-float((t[1] or {}).get("hit_prob", 0.0)), int(t[0])))
+    _promote_idx, _promoted = _same[0]
+
+    _ticket2 = tuple(int(x) for x in (_promoted or {}).get("ticket", tuple()))
     if len(_ticket2) != 2:
         return {
             "exacta_rows": _rows,
@@ -2847,15 +2878,14 @@ def _v335bt_promote_same_line_exacta(exacta_rows, p3_map):
             "promoted_exacta": None,
         }
 
-    # 3着は条件付き3着確率が最も高い車。
     _third_candidates.sort(key=lambda t: (-float(t[1]), int(t[0])))
     _third, _p3_cond = _third_candidates[0]
 
-    _tri_prob = float(_promoted.get("hit_prob", 0.0)) * float(_p3_cond)
+    _tri_prob = float((_promoted or {}).get("hit_prob", 0.0)) * float(_p3_cond)
     _tri = {
         "ticket": (int(_ticket2[0]), int(_ticket2[1]), int(_third)),
         "hit_prob": float(_tri_prob),
-        "source_exacta_hit_prob": float(_promoted.get("hit_prob", 0.0)),
+        "source_exacta_hit_prob": float((_promoted or {}).get("hit_prob", 0.0)),
         "third_cond_prob": float(_p3_cond),
     }
 
@@ -2869,48 +2899,101 @@ def _v335bt_promote_same_line_exacta(exacta_rows, p3_map):
 
 def _v335bt_purchase_lines(final_order, profile):
     """
-    note用推奨購入:
-      - 2車単TOP3を母集団
-      - 同ライン最上位1組のみ3連単1点へ
-      - 残り2車単2点
-      - 同ラインなしなら2車単3点
+    v335bv note用推奨購入:
+      1) 全2車単の想定的中率1位の「1着車」を軸に固定
+      2) その軸→相手の想定的中率上位3車を基本ヒモ
+      3) 過去3着内率順位より今回V評価順位が上の車を追加（同順位は追加しない）
+      4) ヒモは今回V評価順で表示
+      5) 軸と同ラインのヒモがあれば、想定的中率最上位の1組だけ3連単へ置換
     """
-    _exacta_rows, _p1, _p2, _p3 = _v335br_hit_top_rows(
-        final_order, profile, "2車単", top_n=3
-    )
-    if not _exacta_rows:
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    if len(_order) < 2 or not isinstance(profile, dict):
         return ["【推奨購入】", "算出不可"]
 
-    _plan = _v335bt_promote_same_line_exacta(_exacta_rows, _p3)
+    # 全2車単を一度だけ算出。TOP1から軸を決め、その軸の相手上位3車を取る。
+    _all_exacta, _p1, _p2, _p3 = _v335br_hit_top_rows(
+        _order, profile, "2車単", top_n=max(1, len(_order) * (len(_order) - 1))
+    )
+    if not _all_exacta:
+        return ["【推奨購入】", "算出不可"]
+
+    _top_ticket = tuple(int(x) for x in (_all_exacta[0] or {}).get("ticket", tuple()))
+    if len(_top_ticket) != 2:
+        return ["【推奨購入】", "算出不可"]
+    _axis = int(_top_ticket[0])
+
+    _axis_rows_all = [
+        r for r in _all_exacta
+        if len(tuple(r.get("ticket", tuple()))) == 2
+        and int(tuple(r.get("ticket", tuple()))[0]) == _axis
+    ]
+    _base_rows = _axis_rows_all[:3]
+    _base_himo = [int(tuple(r.get("ticket", tuple()))[1]) for r in _base_rows]
+
+    _upshift, _hist_rank = _v335bv_upshift_himo_cars(_order, profile, _axis)
+    _selected = set(_base_himo)
+    _selected.update(int(c) for c in _upshift)
+    _selected.discard(_axis)
+
+    _v_rank = {int(c): i for i, c in enumerate(_order, start=1)}
+    _himo = sorted(_selected, key=lambda c: (int(_v_rank.get(int(c), 999)), int(c)))
+
+    # 選ばれた軸→ヒモを、全2車単行から復元。
+    _row_map = {
+        tuple(int(x) for x in r.get("ticket", tuple())): r
+        for r in _all_exacta
+        if len(tuple(r.get("ticket", tuple()))) == 2
+    }
+    _selected_rows = []
+    for _car in _himo:
+        _key = (int(_axis), int(_car))
+        _row = _row_map.get(_key)
+        if _row is not None:
+            _selected_rows.append(_row)
+
+    if not _selected_rows:
+        return ["【推奨購入】", "算出不可"]
+
+    _plan = _v335bt_promote_same_line_exacta(_selected_rows, _p3)
     _ex_rows = list(_plan.get("exacta_rows", []) or [])
     _tri = _plan.get("trifecta_row")
 
     _out = ["【推奨購入】"]
-    if _tri is not None:
-        _ex_texts = [
-            "→".join(str(int(x)) for x in r.get("ticket", tuple()))
-            for r in _ex_rows[:2]
-        ]
-        _tri_text = "→".join(str(int(x)) for x in _tri.get("ticket", tuple()))
+    _out.append(f"軸：{int(_axis)}")
+
+    _ex_texts = [
+        "→".join(str(int(x)) for x in r.get("ticket", tuple()))
+        for r in _ex_rows
+    ]
+    if _ex_texts:
         _out.append("2車単：" + "・".join(_ex_texts) + "（各100円）")
+    else:
+        _out.append("2車単：なし")
+
+    if _tri is not None:
+        _tri_text = "→".join(str(int(x)) for x in _tri.get("ticket", tuple()))
         _out.append("3連単：" + _tri_text + "（100円）")
-        _out.append("計3点／300円")
+    else:
+        _out.append("3連単：なし")
+
+    _points = len(_ex_texts) + (1 if _tri is not None else 0)
+    _out.append(f"計{int(_points)}点／{int(_points)*100}円")
+
+    _base_text = "・".join(str(int(c)) for c in sorted(set(_base_himo), key=lambda c: (int(_v_rank.get(int(c), 999)), int(c))))
+    _add_only = [int(c) for c in _himo if int(c) not in set(_base_himo)]
+    _add_text = "・".join(str(int(c)) for c in _add_only) if _add_only else "なし"
+    _out.append(
+        f"※基本ヒモ={_base_text}／過去3着内率順位より今回V評価が上で追加={_add_text}（同順位は追加なし）。"
+    )
+
+    if _tri is not None:
         _src = _plan.get("promoted_exacta") or {}
         _src_text = "→".join(str(int(x)) for x in _src.get("ticket", tuple()))
-        _out.append(
-            f"※2車単TOP3内の同ライン最上位 {_src_text} を3連単1点へ昇格。"
-        )
+        _out.append(f"※同ラインの想定的中率最上位 {_src_text} だけを3連単1点へ置換。")
     else:
-        _ex_texts = [
-            "→".join(str(int(x)) for x in r.get("ticket", tuple()))
-            for r in _ex_rows[:3]
-        ]
-        _out.append("2車単：" + "・".join(_ex_texts) + "（各100円）")
-        _out.append("3連単：なし")
-        _out.append(f"計{len(_ex_texts)}点／{len(_ex_texts)*100}円")
-        _out.append("※2車単TOP3内に同ライン買い目がないため、無理に3連単化しません。")
-    return _out
+        _out.append("※軸と同ラインのヒモがないため、3連単化しません。")
 
+    return _out
 
 def _v335br_hit_top_lines(
     final_order,
@@ -2937,13 +3020,8 @@ def _v335br_hit_top_lines(
         ]
 
     _label = str(_profile.get("label", "会場別マスタ"))
-
-    # v335bw：まず買い目を先頭表示。その後に検証用の想定的中率詳細を出す。
-    _out = []
-    _out.extend(_v335bt_purchase_lines(_order, _profile))
-    _out.append("")
-    _out.append(f"【想定的中率TOP3｜{_label}】")
-    _out.append("基準：序盤=ライン勢力比（軽補正±15%）／最終=個人KOスコア＋車番別着率＋脚質×会場決まり手")
+    _out = [f"【想定的中率TOP3｜{_label}】"]
+    _out.append("基準：序盤=ライン勢力比（軽補正）／最終=個人KOスコア＋車番別着率＋脚質×会場決まり手")
 
     for _kind in ("2車単", "3連単"):
         _rows, _p1, _p2, _p3 = _v335br_hit_top_rows(
@@ -2966,8 +3044,10 @@ def _v335br_hit_top_lines(
             )
         _out.append(f"  TOP{len(_rows)}合算想定的中率：{_sum_p*100:.2f}%")
 
-    _out.append("")
+    _out.append("※オッズ・平均配当・過去の2車単/3連単H/Nは、このTOP3選出には使用していません。")
     _out.append("※想定的中率はヴェロビ内部指標から作るモデル値で、実測的中率として校正済みではありません。")
+    _out.append("")
+    _out.extend(_v335bt_purchase_lines(_order, _profile))
     return _out
 
 
