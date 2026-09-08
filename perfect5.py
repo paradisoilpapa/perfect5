@@ -1,3 +1,7 @@
+# v335bs（v335br itertools実行時エラー修正版）:
+# ・note用簡易出力で「name itertools is not defined」になる不具合を修正。
+# ・既存importは from itertools import combinations, permutations のため、itertools.permutations ではなく permutations を直接使用。
+# ・ライン展開→個人決着・想定的中率TOP3の計算内容はv335brから変更しない。
 # v335br（ライン展開→個人決着・想定的中率TOP3版）:
 # ・買い目選出を「回収率」から「想定的中率」へ切替。実オッズ・平均配当・過去車券H/Nは買い目選出に使わない。
 # ・序盤は現行ヴェロビのLINE_STRENGTH_SHARE_MAP（ライン2車換算勢力比）を使い、ライン単位で展開確率を持たせる。
@@ -2665,7 +2669,7 @@ def _v335br_hit_top_rows(final_order, profile, kind, top_n=3):
 
     _rows = []
     _length = 2 if str(kind) == "2車単" else 3
-    for _ticket in itertools.permutations(_order, _length):
+    for _ticket in permutations(_order, _length):
         _prob = _v335br_ticket_probability(_ticket, _p1, _p2, _p3)
         _v_ranks = tuple(int(_rank.get(int(c), 99)) for c in _ticket)
         _rows.append({
