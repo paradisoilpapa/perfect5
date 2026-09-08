@@ -1,3 +1,10 @@
+# v335bp（会場別マスタ自動読込・実車ROI自動抽出版）:
+# ・会場×開催区分×級別×車立てのマスタを追加。登録済み条件では開催場決まり手を自動読込し、手入力ミスを防ぐ。
+# ・第1号として「京王閣×ミッドナイト×A級系（A級／A級チャレンジ）×7車」を登録。
+# ・京王閣の決まり手は1着 逃26.6/差47.4/捲26.2、2着 逃22.9/差26.4/捲10.0/マーク40.6、母数711を使用。
+# ・2車単／3連単の出目表は回数・平均配当を生データで保持し、推定ROI＝回数×平均配当÷母数 を自動計算。
+# ・推定ROIが100％を超える実車番＋順序だけを期待値候補へ自動抽出し、ヴェロビ最終順位は金/銀判定にだけ使う。
+# ・未登録の会場条件では従来どおり決まり手を手入力できる。予想順位ロジックと固定3点戦略は変更しない。
 # v335bo（実車期待値照合・得意3点化検証版）:
 # ・得意会場の固定買い目を3点化：2車単 評価2→1（1点）＋3連単 評価1→2→4/5（2点）。
 # ・予想順位ロジックは変更せず、長期の「実車番＋順序」期待値候補をヴェロビ最終順位へ後から照合する検証枠を追加。
@@ -2105,6 +2112,20 @@ track = st.sidebar.selectbox(
 info = KEIRIN_DATA[track]
 st.session_state["track"] = track
 
+# v335bp：会場別マスタ判定に必要な開催区分・級別を先に確定する。
+race_time = st.sidebar.selectbox(
+    "開催区分（天候取得時刻用）",
+    ["モーニング", "デイ", "ナイター", "ミッドナイト"],
+    index=1,
+    key="race_time",
+)
+race_class = st.sidebar.selectbox(
+    "級別",
+    ["Ｓ級", "Ａ級", "Ａ級チャレンジ", "ガールズ", "アドバンス"],
+    index=0,
+    key="race_class",
+)
+
 # ==============================
 # v335bc: サイドバー会場評価を過去のA/B/C/D表示へ復帰
 # ※表示専用。予想順位・券種・買い目生成には一切使用しない。
@@ -2133,52 +2154,160 @@ _V335X_UNCLASSIFIED_TRACKS = {
 
 
 # ==============================
-# v335bo: 実車番・長期期待値候補（検証用）
+# v335bp: 会場×開催区分×級別×車立てマスタ
 # ==============================
-# 重要：ここは「評価順位」ではなく、実際の車番と着順の組み合わせを固定する。
-# ヴェロビ最終順位は買い目生成には使わず、金/銀の照合判定だけに使う。
+# ここへ各会場のスクリーンショット集計を順次追加する。
+# ・kimarite：開催場決まり手補正へ自動投入
+# ・exacta_rows / trifecta_rows：実車番の出目、回数、平均配当を生データで保持
+# ・car_stats：車番別成績。現時点では保存用で、予想順位へ直接は混ぜない
 #
-# AB_A の暫定母集団：F1・ナイター・A級7車の長期集計 N=783。
-# ROI =（的中回数×平均配当）÷（N×100円）で算出した参考値。
-# 低サンプルの高ROI目は入れず、ここではH>=10を目安に登録している。
-_V335BO_REAL_NUMBER_VALUE_DB = {
-    "AB_A": (
-        {"kind": "3連単", "ticket": (7, 1, 4), "N": 783, "H": 19, "avg_pay": 6575, "roi": 159.5},
-        {"kind": "3連単", "ticket": (1, 7, 2), "N": 783, "H": 16, "avg_pay": 6512, "roi": 133.1},
-        {"kind": "3連単", "ticket": (1, 7, 3), "N": 783, "H": 20, "avg_pay": 4169, "roi": 106.5},
-        {"kind": "2車単", "ticket": (7, 1),    "N": 783, "H": 72, "avg_pay": 1120, "roi": 103.0},
-        {"kind": "3連単", "ticket": (1, 7, 4), "N": 783, "H": 18, "avg_pay": 4443, "roi": 102.1},
-    ),
-    "AB_S": tuple(),
-    "CD_A": tuple(),
-    "CD_S": tuple(),
+# ROI(%) = 回数 × 平均配当 ÷ 母数
+# 例：7→1、10回、平均8,353円、N=711 → 10×8353÷711 = 117.5%
+#
+# 注意：実車番出目は評価順位へ変換しない。
+# ヴェロビは「その日の支持度（金/銀）」を判定するだけで、買い目の車番・順序を変更しない。
+
+def _v335bp_profile_class_key(race_class_name):
+    _cls = str(race_class_name or "").strip()
+    if _cls in ("Ａ級", "Ａ級チャレンジ"):
+        return "A級系"
+    if _cls == "Ｓ級":
+        return "S級"
+    if _cls in ("ガールズ", "アドバンス"):
+        return _cls
+    return _cls
+
+
+_V335BP_VENUE_PROFILE_DB = {
+    ("京王閣", "ミッドナイト", "A級系", 7): {
+        "label": "京王閣｜ミッドナイト｜A級＋A級チャレンジ｜7車",
+        "source_note": "OddsPark長期集計（ユーザー提供画像）",
+        "N": 711,
+        "kimarite": {
+            "enabled": True,
+            "win_escape": 26.6,
+            "win_sashi": 47.4,
+            "win_makuri": 26.2,
+            "sec_escape": 22.9,
+            "sec_sashi": 26.4,
+            "sec_makuri": 10.0,
+            "sec_mark": 40.6,
+            "sample_count": 711,
+        },
+        "car_stats": {
+            1: {"win_rate": 40.6, "quinella_rate": 61.8, "trio_rate": 76.9, "N": 709, "finish": (288, 150, 107, 164)},
+            2: {"win_rate": 22.1, "quinella_rate": 46.3, "trio_rate": 61.5, "N": 709, "finish": (157, 171, 108, 273)},
+            3: {"win_rate": 12.7, "quinella_rate": 32.2, "trio_rate": 48.4, "N": 711, "finish": (90, 139, 115, 367)},
+            4: {"win_rate": 8.5, "quinella_rate": 22.7, "trio_rate": 40.0, "N": 710, "finish": (60, 101, 123, 426)},
+            5: {"win_rate": 7.9, "quinella_rate": 17.2, "trio_rate": 32.1, "N": 711, "finish": (56, 66, 106, 483)},
+            6: {"win_rate": 4.7, "quinella_rate": 11.9, "trio_rate": 24.3, "N": 708, "finish": (33, 51, 88, 536)},
+            7: {"win_rate": 4.1, "quinella_rate": 8.7, "trio_rate": 17.6, "N": 711, "finish": (29, 33, 63, 586)},
+        },
+        "exacta_rows": (
+            ((1, 2), 98, 514),
+            ((1, 3), 69, 652),
+            ((2, 1), 65, 670),
+            ((1, 4), 54, 835),
+            ((2, 3), 37, 1757),
+            ((3, 1), 31, 1574),
+            ((1, 5), 29, 1196),
+            ((3, 2), 27, 1384),
+            ((2, 4), 23, 2070),
+            ((1, 6), 23, 1231),
+            ((4, 2), 17, 3224),
+            ((4, 1), 17, 2252),
+            ((5, 1), 16, 2081),
+            ((1, 7), 13, 2030),
+            ((5, 3), 12, 6307),
+            ((3, 5), 12, 4958),
+            ((5, 2), 12, 4939),
+            ((3, 4), 12, 4693),
+            ((2, 5), 12, 1967),
+            ((7, 1), 10, 8353),
+            ((2, 6), 10, 6326),
+            ((6, 1), 10, 5794),
+            ((6, 2), 9, 3587),
+        ),
+        "trifecta_rows": (
+            ((1, 2, 4), 25, 1416),
+            ((2, 1, 3), 25, 1180),
+            ((1, 2, 5), 24, 3146),
+            ((1, 2, 3), 23, 1900),
+            ((1, 4, 2), 22, 2971),
+            ((1, 3, 2), 22, 2329),
+            ((1, 3, 4), 19, 1968),
+            ((2, 3, 1), 17, 3029),
+            ((1, 4, 3), 16, 2372),
+            ((3, 1, 2), 14, 4957),
+            ((1, 2, 7), 13, 3900),
+            ((1, 3, 6), 13, 3588),
+            ((1, 2, 6), 13, 1908),
+            ((1, 3, 5), 12, 4873),
+            ((2, 1, 7), 11, 4787),
+            ((2, 1, 4), 11, 3104),
+            ((3, 2, 1), 10, 2401),
+            ((2, 4, 1), 9, 5332),
+            ((2, 1, 5), 9, 4012),
+            ((2, 1, 6), 9, 2932),
+            ((4, 2, 1), 8, 9550),
+            ((2, 3, 4), 8, 6950),
+            ((3, 2, 5), 8, 6210),
+        ),
+    },
 }
 
-_V335BO_REAL_NUMBER_VALUE_LABELS = {
-    "AB_A": "AB×A級",
-    "AB_S": "AB×S級",
-    "CD_A": "CD×A級",
-    "CD_S": "CD×S級",
-}
 
-
-def _v335bo_real_number_bucket(track_name=None, race_class_name=None):
-    """会場AB/CD×A/Sの4区分を返す。チャレンジ・ガールズ等は実車長期表の対象外。"""
+def _v335bp_get_venue_profile(track_name=None, race_time_name=None, race_class_name=None, field_n=None):
     _track = str(track_name or globals().get("track") or globals().get("place") or "").strip()
-    _class = str(race_class_name or globals().get("race_class", "") or "").strip()
-    if _class not in ("Ａ級", "Ｓ級"):
-        return ""
-    _is_ab = bool(_track in _V335X_RECOMMEND_A_TRACKS or _track in _V335X_RECOMMEND_B_TRACKS)
-    if _is_ab and _class == "Ａ級":
-        return "AB_A"
-    if _is_ab and _class == "Ｓ級":
-        return "AB_S"
-    if (not _is_ab) and _class == "Ａ級":
-        return "CD_A"
-    return "CD_S"
+    _time = str(race_time_name or globals().get("race_time", "") or "").strip()
+    _class_key = _v335bp_profile_class_key(
+        race_class_name or globals().get("race_class", "")
+    )
+    try:
+        _field_n = int(field_n or globals().get("n_cars", 0) or 0)
+    except Exception:
+        _field_n = 0
+    return _V335BP_VENUE_PROFILE_DB.get((_track, _time, _class_key, _field_n))
 
 
-def _v335bo_relative_order_ok(ticket, velo_top3):
+def _v335bp_expected_value_candidates(profile, threshold=100.0):
+    """会場マスタの生出目から、推定ROIがthresholdを超える実車券だけ抽出する。"""
+    if not isinstance(profile, dict):
+        return []
+    try:
+        _N = int(profile.get("N", 0) or 0)
+    except Exception:
+        _N = 0
+    if _N <= 0:
+        return []
+
+    _rows = []
+    for _kind, _key in (("2車単", "exacta_rows"), ("3連単", "trifecta_rows")):
+        for _raw in tuple(profile.get(_key, tuple()) or tuple()):
+            try:
+                _ticket, _H, _avg = _raw
+                _ticket = tuple(int(x) for x in _ticket)
+                _H = int(_H)
+                _avg = float(_avg)
+                # ROI(%) = (H×平均配当)/(N×100)×100 = H×平均配当/N
+                _roi = (float(_H) * float(_avg)) / float(_N)
+                if _roi > float(threshold):
+                    _rows.append({
+                        "kind": _kind,
+                        "ticket": _ticket,
+                        "N": _N,
+                        "H": _H,
+                        "avg_pay": _avg,
+                        "roi": _roi,
+                    })
+            except Exception:
+                continue
+
+    _rows.sort(key=lambda r: (-float(r.get("roi", 0.0)), -int(r.get("H", 0))))
+    return _rows
+
+
+def _v335bp_relative_order_ok(ticket, velo_top3):
     """TOP3に重なった車だけを抜き出し、実車券の相対順序と矛盾しないか確認。"""
     _ticket = tuple(int(x) for x in (ticket or tuple()))
     _top3 = tuple(int(x) for x in (velo_top3 or tuple()))
@@ -2190,42 +2319,63 @@ def _v335bo_relative_order_ok(ticket, velo_top3):
     return _ticket_overlap == _velo_overlap
 
 
-def _v335bo_real_number_match_grade(kind, ticket, final_order):
+def _v335bp_real_number_match_grade(kind, ticket, final_order):
     """実車券をヴェロビ最終順位へ照合し、金/銀/—を返す。"""
     _ticket = tuple(int(x) for x in (ticket or tuple()))
     _order = tuple(int(x) for x in (final_order or tuple()))
     _top3 = _order[:3]
+
     if str(kind) == "2車単":
         if len(_order) >= 2 and tuple(_order[:2]) == _ticket:
             return "金"
-        if len(_ticket) == 2 and all(x in _top3 for x in _ticket) and _v335bo_relative_order_ok(_ticket, _top3):
+        if (
+            len(_ticket) == 2
+            and all(x in _top3 for x in _ticket)
+            and _v335bp_relative_order_ok(_ticket, _top3)
+        ):
             return "銀"
         return "—"
+
     if str(kind) == "3連単":
         if len(_order) >= 3 and tuple(_order[:3]) == _ticket:
             return "金"
         _overlap_n = sum(1 for x in _ticket if x in _top3)
-        if _overlap_n >= 2 and _v335bo_relative_order_ok(_ticket, _top3):
+        if _overlap_n >= 2 and _v335bp_relative_order_ok(_ticket, _top3):
             return "銀"
         return "—"
+
     return "—"
 
 
-def _v335bo_real_number_value_lines(final_order, track_name=None, race_class_name=None, field_n=None):
-    """note用：実車期待値候補の長期優先順位＋ヴェロビ照合結果を返す。"""
+def _v335bp_real_number_value_lines(
+    final_order,
+    track_name=None,
+    race_time_name=None,
+    race_class_name=None,
+    field_n=None,
+):
+    """note用：会場別ROI100％超の実車券を、ヴェロビ最終順位へ後から照合する。"""
     _order = tuple(int(x) for x in (final_order or tuple()))
     _field_n = int(field_n or len(_order) or 0)
-    _bucket = _v335bo_real_number_bucket(track_name, race_class_name)
-    if not _bucket:
-        return ["【実車期待値照合｜検証】", "A級/S級7車の基準外（チャレンジ・ガールズ等）"]
-    _label = _V335BO_REAL_NUMBER_VALUE_LABELS.get(_bucket, _bucket)
-    _rows = list(_V335BO_REAL_NUMBER_VALUE_DB.get(_bucket, tuple()) or tuple())
-    _out = [f"【実車期待値照合｜{_label}・検証】"]
-    if _field_n != 7:
-        _out.append("長期実車データは7車戦基準のため対象外")
-        return _out
+    _profile = _v335bp_get_venue_profile(
+        track_name=track_name,
+        race_time_name=race_time_name,
+        race_class_name=race_class_name,
+        field_n=_field_n,
+    )
+
+    if not _profile:
+        return [
+            "【実車期待値照合｜会場別マスタ】",
+            "この会場×開催区分×級別×車立ては基準データ未登録",
+        ]
+
+    _label = str(_profile.get("label", "会場別マスタ"))
+    _rows = _v335bp_expected_value_candidates(_profile, threshold=100.0)
+    _out = [f"【実車期待値照合｜{_label}】"]
+
     if not _rows:
-        _out.append("基準データ未登録（推測値は使用しません）")
+        _out.append("推定ROI100％超の実車買い目なし")
         return _out
 
     _pos = {int(car): idx for idx, car in enumerate(_order, start=1)}
@@ -2234,39 +2384,58 @@ def _v335bo_real_number_value_lines(final_order, track_name=None, race_class_nam
         _ticket = tuple(int(x) for x in (_row.get("ticket", tuple()) or tuple()))
         if any(x < 1 or x > _field_n for x in _ticket):
             continue
-        _grade = _v335bo_real_number_match_grade(_row.get("kind"), _ticket, _order)
+        _grade = _v335bp_real_number_match_grade(
+            _row.get("kind"), _ticket, _order
+        )
         _v_ranks = tuple(int(_pos.get(x, 99)) for x in _ticket)
         _ranked.append({**dict(_row), "grade": _grade, "v_ranks": _v_ranks})
 
-    # 長期候補の優先順位は買い目単位。ROI→的中数の順で並べる。
-    _ranked.sort(key=lambda r: (-float(r.get("roi", 0.0)), -int(r.get("H", 0))))
+    _ranked.sort(
+        key=lambda r: (-float(r.get("roi", 0.0)), -int(r.get("H", 0)))
+    )
+
     for _idx, _row in enumerate(_ranked, start=1):
         _ticket = tuple(int(x) for x in _row.get("ticket", tuple()))
         _ticket_text = "→".join(str(x) for x in _ticket)
-        _vr_text = "→".join(str(int(x)) if int(x) < 99 else "外" for x in _row.get("v_ranks", tuple()))
+        _vr_text = "→".join(
+            str(int(x)) if int(x) < 99 else "外"
+            for x in _row.get("v_ranks", tuple())
+        )
         _out.append(
             f"{_idx}位【{_row.get('grade', '—')}】{_row.get('kind')} {_ticket_text}"
-            f"｜長期ROI{float(_row.get('roi', 0.0)):.1f}%・H{int(_row.get('H', 0))}/{int(_row.get('N', 0))}"
+            f"｜推定ROI{float(_row.get('roi', 0.0)):.1f}%"
+            f"・H{int(_row.get('H', 0))}/{int(_row.get('N', 0))}"
+            f"・平均{float(_row.get('avg_pay', 0.0)):.0f}円"
             f"｜V評価{_vr_text}"
         )
 
     _grade_score = {"金": 2, "銀": 1, "—": 0}
-    _matched = [r for r in _ranked if _grade_score.get(str(r.get("grade")), 0) > 0]
-    _matched.sort(key=lambda r: (
-        -_grade_score.get(str(r.get("grade")), 0),
-        -float(r.get("roi", 0.0)),
-        -int(r.get("H", 0)),
-    ))
+    _matched = [
+        r for r in _ranked
+        if _grade_score.get(str(r.get("grade")), 0) > 0
+    ]
+    _matched.sort(
+        key=lambda r: (
+            -_grade_score.get(str(r.get("grade")), 0),
+            -float(r.get("roi", 0.0)),
+            -int(r.get("H", 0)),
+        )
+    )
     _buy = _matched[:3]
+
     if _buy:
         _buy_text = "・".join(
-            f"{r.get('grade')}:{r.get('kind')} " + "→".join(str(int(x)) for x in r.get("ticket", tuple()))
+            f"{r.get('grade')}:{r.get('kind')} "
+            + "→".join(str(int(x)) for x in r.get("ticket", tuple()))
             for r in _buy
         )
         _out.append(f"購入候補（金/銀から最大3点）：{_buy_text}")
     else:
         _out.append("購入候補：なし（金/銀なし＝見送り）")
-    _out.append("※買い目は実車番固定。ヴェロビ評価に合わせて並べ替えません。")
+
+    _out.append(
+        "※ROIは出目回数×平均配当÷母数の概算。買い目は実車番固定で並べ替えません。"
+    )
     return _out
 
 if track in _V335X_RECOMMEND_A_TRACKS:
@@ -2302,58 +2471,141 @@ def _v335ao_is_fuzzy_venue(track_name=None):
     return False
 
 st.sidebar.markdown("### 🏟️ 開催場決まり手成績")
-with st.sidebar.expander("数値入力（オッズパーク等の表をそのまま％入力）", expanded=True):
-    st.caption("開催場決まり手補正：常時適用")
-    st.caption("オッズパーク等の表をそのまま％で入力。例：13.9 / 62.4 / 24.2")
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        vk_win_escape = st.number_input("1着 逃げ%", 0.0, 100.0, float(st.session_state.get("vk_win_escape", 0.0) or 0.0), 0.1, key="vk_win_escape")
-    with c2:
-        vk_win_sashi = st.number_input("1着 差し%", 0.0, 100.0, float(st.session_state.get("vk_win_sashi", 0.0) or 0.0), 0.1, key="vk_win_sashi")
-    with c3:
-        vk_win_makuri = st.number_input("1着 捲り%", 0.0, 100.0, float(st.session_state.get("vk_win_makuri", 0.0) or 0.0), 0.1, key="vk_win_makuri")
+_v335bp_active_profile = _v335bp_get_venue_profile(
+    track_name=track,
+    race_time_name=race_time,
+    race_class_name=race_class,
+    field_n=n_cars,
+)
 
-    c4, c5, c6, c7 = st.columns(4)
-    with c4:
-        vk_sec_escape = st.number_input("2着 逃げ%", 0.0, 100.0, float(st.session_state.get("vk_sec_escape", 0.0) or 0.0), 0.1, key="vk_sec_escape")
-    with c5:
-        vk_sec_sashi = st.number_input("2着 差し%", 0.0, 100.0, float(st.session_state.get("vk_sec_sashi", 0.0) or 0.0), 0.1, key="vk_sec_sashi")
-    with c6:
-        vk_sec_makuri = st.number_input("2着 捲り%", 0.0, 100.0, float(st.session_state.get("vk_sec_makuri", 0.0) or 0.0), 0.1, key="vk_sec_makuri")
-    with c7:
-        vk_sec_mark = st.number_input("2着 マーク%", 0.0, 100.0, float(st.session_state.get("vk_sec_mark", 0.0) or 0.0), 0.1, key="vk_sec_mark")
-
-    vk_sample_count = st.number_input(
-        "回数",
-        min_value=0,
-        max_value=10000,
-        value=int(st.session_state.get("vk_sample_count", 0) or 0),
-        step=1,
-        key="vk_sample_count",
-    )
-
+if _v335bp_active_profile:
+    _vk_master = dict(_v335bp_active_profile.get("kimarite", {}) or {})
     VENUE_KIMARITE_STATS = {
         "enabled": True,
-        "win_escape": float(vk_win_escape),
-        "win_sashi": float(vk_win_sashi),
-        "win_makuri": float(vk_win_makuri),
-        "sec_escape": float(vk_sec_escape),
-        "sec_sashi": float(vk_sec_sashi),
-        "sec_makuri": float(vk_sec_makuri),
-        "sec_mark": float(vk_sec_mark),
-        "sample_count": int(vk_sample_count),
+        "win_escape": float(_vk_master.get("win_escape", 0.0) or 0.0),
+        "win_sashi": float(_vk_master.get("win_sashi", 0.0) or 0.0),
+        "win_makuri": float(_vk_master.get("win_makuri", 0.0) or 0.0),
+        "sec_escape": float(_vk_master.get("sec_escape", 0.0) or 0.0),
+        "sec_sashi": float(_vk_master.get("sec_sashi", 0.0) or 0.0),
+        "sec_makuri": float(_vk_master.get("sec_makuri", 0.0) or 0.0),
+        "sec_mark": float(_vk_master.get("sec_mark", 0.0) or 0.0),
+        "sample_count": int(_vk_master.get("sample_count", 0) or 0),
     }
 
-    _vk_role_bonus_preview, _vk_rel_preview, _vk_detail_preview = _calc_venue_kimarite_role_bonus_map(VENUE_KIMARITE_STATS)
-    st.caption(
-        "補正プレビュー："
-        f"先頭 {_fmt_signed_pt(_vk_role_bonus_preview.get('head', 0.0))} / "
-        f"番手 {_fmt_signed_pt(_vk_role_bonus_preview.get('second', 0.0))} / "
-        f"3番手以降 {_fmt_signed_pt(_vk_role_bonus_preview.get('thirdplus', 0.0))} / "
-        f"単騎 {_fmt_signed_pt(_vk_role_bonus_preview.get('single', 0.0))} "
-        f"｜信頼係数 {_vk_rel_preview:.2f}"
-    )
+    with st.sidebar.expander("✅ 会場マスタ自動読込", expanded=True):
+        st.success(str(_v335bp_active_profile.get("label", "登録会場データ")))
+        st.caption(
+            f"1着：逃{VENUE_KIMARITE_STATS['win_escape']:.1f}% "
+            f"差{VENUE_KIMARITE_STATS['win_sashi']:.1f}% "
+            f"捲{VENUE_KIMARITE_STATS['win_makuri']:.1f}%"
+        )
+        st.caption(
+            f"2着：逃{VENUE_KIMARITE_STATS['sec_escape']:.1f}% "
+            f"差{VENUE_KIMARITE_STATS['sec_sashi']:.1f}% "
+            f"捲{VENUE_KIMARITE_STATS['sec_makuri']:.1f}% "
+            f"マーク{VENUE_KIMARITE_STATS['sec_mark']:.1f}% "
+            f"｜回数{VENUE_KIMARITE_STATS['sample_count']}"
+        )
+
+        _bp_candidates = _v335bp_expected_value_candidates(
+            _v335bp_active_profile, threshold=100.0
+        )
+        if _bp_candidates:
+            _bp_text = " / ".join(
+                f"{r['kind']} "
+                + "→".join(str(int(x)) for x in r["ticket"])
+                + f" ({float(r['roi']):.1f}%)"
+                for r in _bp_candidates
+            )
+            st.caption(f"実車ROI100％超：{_bp_text}")
+        else:
+            st.caption("実車ROI100％超：該当なし")
+
+else:
+    with st.sidebar.expander(
+        "数値入力（会場マスタ未登録時のみ）",
+        expanded=True,
+    ):
+        st.warning("この条件は会場マスタ未登録のため、決まり手を手入力します。")
+        st.caption("オッズパーク等の表をそのまま％で入力。例：13.9 / 62.4 / 24.2")
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            vk_win_escape = st.number_input(
+                "1着 逃げ%", 0.0, 100.0,
+                float(st.session_state.get("vk_win_escape", 0.0) or 0.0),
+                0.1, key="vk_win_escape"
+            )
+        with c2:
+            vk_win_sashi = st.number_input(
+                "1着 差し%", 0.0, 100.0,
+                float(st.session_state.get("vk_win_sashi", 0.0) or 0.0),
+                0.1, key="vk_win_sashi"
+            )
+        with c3:
+            vk_win_makuri = st.number_input(
+                "1着 捲り%", 0.0, 100.0,
+                float(st.session_state.get("vk_win_makuri", 0.0) or 0.0),
+                0.1, key="vk_win_makuri"
+            )
+
+        c4, c5, c6, c7 = st.columns(4)
+        with c4:
+            vk_sec_escape = st.number_input(
+                "2着 逃げ%", 0.0, 100.0,
+                float(st.session_state.get("vk_sec_escape", 0.0) or 0.0),
+                0.1, key="vk_sec_escape"
+            )
+        with c5:
+            vk_sec_sashi = st.number_input(
+                "2着 差し%", 0.0, 100.0,
+                float(st.session_state.get("vk_sec_sashi", 0.0) or 0.0),
+                0.1, key="vk_sec_sashi"
+            )
+        with c6:
+            vk_sec_makuri = st.number_input(
+                "2着 捲り%", 0.0, 100.0,
+                float(st.session_state.get("vk_sec_makuri", 0.0) or 0.0),
+                0.1, key="vk_sec_makuri"
+            )
+        with c7:
+            vk_sec_mark = st.number_input(
+                "2着 マーク%", 0.0, 100.0,
+                float(st.session_state.get("vk_sec_mark", 0.0) or 0.0),
+                0.1, key="vk_sec_mark"
+            )
+
+        vk_sample_count = st.number_input(
+            "回数",
+            min_value=0,
+            max_value=10000,
+            value=int(st.session_state.get("vk_sample_count", 0) or 0),
+            step=1,
+            key="vk_sample_count",
+        )
+
+        VENUE_KIMARITE_STATS = {
+            "enabled": True,
+            "win_escape": float(vk_win_escape),
+            "win_sashi": float(vk_win_sashi),
+            "win_makuri": float(vk_win_makuri),
+            "sec_escape": float(vk_sec_escape),
+            "sec_sashi": float(vk_sec_sashi),
+            "sec_makuri": float(vk_sec_makuri),
+            "sec_mark": float(vk_sec_mark),
+            "sample_count": int(vk_sample_count),
+        }
+
+_vk_role_bonus_preview, _vk_rel_preview, _vk_detail_preview = _calc_venue_kimarite_role_bonus_map(
+    VENUE_KIMARITE_STATS
+)
+st.sidebar.caption(
+    "決まり手補正："
+    f"先頭 {_fmt_signed_pt(_vk_role_bonus_preview.get('head', 0.0))} / "
+    f"番手 {_fmt_signed_pt(_vk_role_bonus_preview.get('second', 0.0))} "
+    f"｜信頼係数 {_vk_rel_preview:.2f}"
+)
 
 globals()["VENUE_KIMARITE_STATS"] = VENUE_KIMARITE_STATS
 st.session_state["VENUE_KIMARITE_STATS"] = VENUE_KIMARITE_STATS
@@ -2377,8 +2629,7 @@ with st.sidebar.expander("🎯 2車複｜同ライン妙味基準", expanded=Tru
 
 globals()["NIFUKU_SAME_LINE_MYOUMI_MIN"] = float(NIFUKU_SAME_LINE_MYOUMI_MIN)
 
-race_time = st.sidebar.selectbox("開催区分（天候取得時刻用）", ["モーニング","デイ","ナイター","ミッドナイト"], 1)
-st.sidebar.caption("予想係数は区分で変更せず、風速・風向・降水量の取得時刻だけを切り替えます。")
+st.sidebar.caption("開催区分は会場マスタ選択と、風速・風向・降水量の取得時刻に使用します。")
 race_day = st.sidebar.date_input("日付（風取得用）", value=date.today())
 
 # 競輪場固定マスタを先に解決する。ドーム場はウィジェット生成前に無風へ固定する。
@@ -2596,11 +2847,7 @@ else:
 # 経過日数は実際の日数、係数はday_stage（初日／中日／最終日）で評価する。
 eff_laps = int(base_laps) + int(day_index)
 
-race_class = st.sidebar.selectbox(
-    "級別",
-    ["Ｓ級", "Ａ級", "Ａ級チャレンジ", "ガールズ", "アドバンス"],
-    0
-)
+# v335bp：級別は会場マスタ判定のためサイドバー上部で選択済み。
 
 is_girls_like = race_class in ("ガールズ", "アドバンス")
 
@@ -12892,11 +13139,12 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
                 f"3連単：{_strategy_trifecta_label}　{_strategy_trifecta_count}点"
             )
 
-        # v335bo：実車番の長期期待値候補を、最終着順予想へ「後から」照合する。
+        # v335bp：会場別マスタからROI100％超の実車番候補を抽出し、最終着順予想へ「後から」照合する。
         # ここは検証表示だけで、上の固定3点の購入点数には加算しない。
-        _real_value_lines = _v335bo_real_number_value_lines(
+        _real_value_lines = _v335bp_real_number_value_lines(
             _dedicated_order,
             track_name=str(globals().get("track") or globals().get("place") or "").strip(),
+            race_time_name=str(globals().get("race_time", "") or "").strip(),
             race_class_name=str(globals().get("race_class", "") or "").strip(),
             field_n=len(_dedicated_order),
         )
