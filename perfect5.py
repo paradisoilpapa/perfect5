@@ -1,3 +1,8 @@
+# v335bn（資金目安表示・計算削除版）:
+# ・note用簡易表示から「※今開催目安○○円以上推奨。」を削除。
+# ・資金目安専用の点数合計・金額計算（_strategy_total_points／_fund／_fund_text）も削除。
+# ・開催区分のレース数（7R／9R／12R）は全外れ確率の計算に必要なため維持。
+# ・想定的中率／全外れ確率、買い目ルール、最終順位ロジックはv335bmから変更しない。
 # v335bm（想定的中率・開催全外れ確率表示版）:
 # ・note用簡易表示の注意書きに、固定戦略別の想定的中率と開催全外れ確率を追加。
 # ・想定的中率は、得意会場12.5％／苦手会場A級系7.2％／苦手会場S級7.7％。
@@ -12685,7 +12690,7 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         if len(lines) >= 4:
             lines[3] = f"最終着順予想　{_dedicated_order_text}"
 
-        # v335bk：固定戦略の点数×開催レース数×2開催分で資金目安を算出。
+        # v335bn：開催区分のレース数は全外れ確率の算出にだけ使用する。
         _race_time = str(globals().get("race_time", "") or "").strip()
         _race_count_map = {
             "モーニング": 7,
@@ -12706,15 +12711,7 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         _strategy_trifecta_count = len(
             five_point_plan.get("trifecta_tickets", tuple()) or tuple()
         ) if five_point_plan else 0
-        _strategy_total_points = int(_strategy_exacta_count + _strategy_trifecta_count)
-
         _race_count = int(_race_count_map.get(_race_time, 0) or 0)
-        _fund = int(_race_count * _strategy_total_points * 100 * 2) if _race_count else 0
-        _fund_text = (
-            f"今開催目安{_fund:,}円以上推奨"
-            if _fund
-            else "今開催資金目安：開催区分を確認"
-        )
 
         # v335bm：固定戦略別の想定的中率と、開催全外れ確率をnote表示用に算出。
         # 全外れ確率＝(1－1レース想定的中率)^開催レース数
@@ -12753,7 +12750,6 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         lines.extend([
             "",
             "※すべて1点100円の平買い想定です。",
-            f"※{_fund_text}。",
             f"※想定的中率：約{_expected_hit_text}％　全外れ確率：約{_all_miss_text}％",
         ])
         return "\n".join(lines).strip() + "\n"
