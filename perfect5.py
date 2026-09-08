@@ -1,3 +1,8 @@
+# v335bm（想定的中率・開催全外れ確率表示版）:
+# ・note用簡易表示の注意書きに、固定戦略別の想定的中率と開催全外れ確率を追加。
+# ・想定的中率は、得意会場12.5％／苦手会場A級系7.2％／苦手会場S級7.7％。
+# ・全外れ確率は開催区分のレース数を使い「(1－想定的中率)^開催レース数」で自動算出し、整数％表示。
+# ・買い目ルール／最終順位ロジック／資金目安計算はv335blから変更しない。
 # v335bl（v335bk算出不可バグ修正版）:
 # ・v335bkで消えていた _is_fuzzy_venue_for_value を会場相性判定から復元。
 # ・この未定義参照が例外を起こし、five_point_plan全体が空dictになっていたため、
@@ -12711,6 +12716,31 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             else "今開催資金目安：開催区分を確認"
         )
 
+        # v335bm：固定戦略別の想定的中率と、開催全外れ確率をnote表示用に算出。
+        # 全外れ確率＝(1－1レース想定的中率)^開催レース数
+        _strategy_kind = str(
+            five_point_plan.get("strategy_kind", "") or ""
+        ) if five_point_plan else ""
+        if _strategy_kind == "得意会場・全級共通":
+            _expected_hit_rate = 0.125
+        elif _strategy_kind == "苦手会場・S級":
+            _expected_hit_rate = 0.077
+        elif _strategy_kind == "苦手会場・A級系":
+            _expected_hit_rate = 0.072
+        else:
+            _expected_hit_rate = 0.0
+
+        _expected_hit_text = (
+            f"{_expected_hit_rate * 100:.1f}"
+            if _expected_hit_rate > 0.0
+            else "算出不可"
+        )
+        _all_miss_text = (
+            f"{((1.0 - _expected_hit_rate) ** _race_count) * 100:.0f}"
+            if _expected_hit_rate > 0.0 and _race_count > 0
+            else "算出不可"
+        )
+
         lines.extend([
             "",
             f"2車単：{_strategy_exacta_label}　{_strategy_exacta_count}点",
@@ -12722,8 +12752,9 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
 
         lines.extend([
             "",
-            "※すべて1点100円の平買い",
+            "※すべて1点100円の平買い想定です。",
             f"※{_fund_text}。",
+            f"※想定的中率：約{_expected_hit_text}％　全外れ確率：約{_all_miss_text}％",
         ])
         return "\n".join(lines).strip() + "\n"
 
