@@ -1,4 +1,12 @@
-# v335bq（評価順×着率ベース想定回収率・各券種最大3点版）:
+# v335br（ライン展開→個人決着・想定的中率TOP3版）:
+# ・買い目選出を「回収率」から「想定的中率」へ切替。実オッズ・平均配当・過去車券H/Nは買い目選出に使わない。
+# ・序盤は現行ヴェロビのLINE_STRENGTH_SHARE_MAP（ライン2車換算勢力比）を使い、ライン単位で展開確率を持たせる。
+# ・最終局面は個人戦として、KO_SCORE_MAP_FOR_SANTEN＋会場車番別1/2/3着率＋当該選手の逃/捲/差/マーク構成×会場決まり手率で着順別個人確率を作る。
+# ・各ライン内で個人確率を正規化してからライン勢力比を配分するため、3車ラインだから単純に3倍になることはない。
+# ・2車単42通り／3連単210通り（7車時）を順序付き確率で全探索し、券種別に想定的中率TOP3を表示する。
+# ・最終着順予想は表示・同率時の優先に使い、旧固定3点はnote推奨に使用しない。
+# ・京王閣会場マスタの決まり手・車番別成績は自動読込。登録済み過去2車単/3連単配当表は保管のみで、この版の買い目選出には使わない。
+# v335bq（旧：評価順×着率ベース想定回収率・各券種最大3点版／v335brでnote推奨から廃止）:
 # ・note用の旧固定買い目「2車単 評価2→1／3連単 評価1→2→4/5」の表示を廃止。
 # ・会場マスタに登録した2車単／3連単の全出目候補を、当日の最終着順評価上位から順に照合する。
 # ・現在入力の1着/2着/3着/着外実績から、順序付きの着率ベース想定的中率を計算する。
@@ -2314,6 +2322,424 @@ def _v335bp_expected_value_candidates(profile, threshold=100.0):
     return _rows
 
 
+
+# ==============================
+# v335br: 序盤ライン → 最終個人 の想定的中率モデル
+# ==============================
+
+def _v335br_safe_float(v, default=0.0):
+    try:
+        x = float(v)
+        return x if math.isfinite(x) else float(default)
+    except Exception:
+        return float(default)
+
+
+def _v335br_car_line_info(cars):
+    """各車の所属ラインkey・メンバー・役割を返す。"""
+    _cars = tuple(int(x) for x in (cars or tuple()))
+    _line_def = globals().get("line_def", {}) or {}
+    _out = {}
+    _used = set()
+
+    for _gid, _mem in (_line_def or {}).items():
+        _members = [int(x) for x in (_mem or []) if int(x) in _cars]
+        if not _members:
+            continue
+        _key = "".join(str(int(x)) for x in _members)
+        for _car in _members:
+            _out[int(_car)] = {
+                "gid": str(_gid),
+                "key": _key,
+                "members": tuple(_members),
+                "role": role_in_line(int(_car), _line_def),
+            }
+            _used.add(int(_car))
+
+    # 未所属車があれば単騎として補完
+    for _car in _cars:
+        if int(_car) in _used:
+            continue
+        _out[int(_car)] = {
+            "gid": f"S{int(_car)}",
+            "key": str(int(_car)),
+            "members": (int(_car),),
+            "role": "single",
+        }
+    return _out
+
+
+def _v335br_normalized_line_share(cars, car_line_info):
+    """
+    現行ヴェロビのライン勢力比を利用。
+    未取得時はラインごと均等。ライン人数では増額しない。
+    """
+    _cars = tuple(int(x) for x in (cars or tuple()))
+    _src = globals().get("LINE_STRENGTH_SHARE_MAP", {}) or {}
+    _line_keys = []
+    for _car in _cars:
+        _info = car_line_info.get(int(_car), {}) or {}
+        _key = str(_info.get("key", "") or "")
+        if _key and _key not in _line_keys:
+            _line_keys.append(_key)
+
+    if not _line_keys:
+        return {}
+
+    _raw = {}
+    for _key in _line_keys:
+        _raw[_key] = max(
+            0.0,
+            _v335br_safe_float(
+                _src.get(_key, _src.get(str(_key), 0.0)),
+                0.0,
+            ),
+        )
+
+    _total = sum(_raw.values())
+    if _total <= 0.0:
+        _eq = 1.0 / float(len(_line_keys))
+        return {_key: _eq for _key in _line_keys}
+
+    return {_key: float(_raw[_key]) / float(_total) for _key in _line_keys}
+
+
+def _v335br_score_factor_map(cars, final_order):
+    """
+    最終個人KOスコアをレース内z化し exp(z) へ変換。
+    後段で車番着率・脚質適合と幾何平均するため、単独で支配しにくい。
+    """
+    _cars = tuple(int(x) for x in (cars or tuple()))
+    _score_map = globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {}
+    _rank = {int(c): i for i, c in enumerate((final_order or tuple()), start=1)}
+
+    _vals = []
+    for _car in _cars:
+        _v = _v335br_safe_float(
+            _score_map.get(int(_car), _score_map.get(str(int(_car)), 0.0)),
+            0.0,
+        )
+        _vals.append((int(_car), float(_v)))
+
+    _nums = [v for _, v in _vals]
+    if not _nums:
+        return {}
+
+    _mu = sum(_nums) / float(len(_nums))
+    _var = sum((v - _mu) ** 2 for v in _nums) / float(len(_nums))
+    _sd = math.sqrt(max(_var, 0.0))
+
+    _out = {}
+    for _car, _v in _vals:
+        if _sd > 1e-12:
+            _z = (_v - _mu) / _sd
+            _z = max(-2.0, min(2.0, float(_z)))
+            _factor = math.exp(_z)
+        else:
+            # スコア同一なら最終着順を弱いタイブレークとしてだけ利用
+            _r = int(_rank.get(int(_car), len(_cars)))
+            _factor = 1.0 + max(0.0, (len(_cars) - _r)) * 1e-6
+        _out[int(_car)] = max(float(_factor), 1e-9)
+    return _out
+
+
+def _v335br_car_number_position_factor(profile, cars, finish_pos):
+    """
+    会場の車番別成績から「その車番がその着に入った実率」を相対化。
+    1着/2着/3着の各列で平均=1になるようにするため、会場の車番偏りを
+    そのまま絶対確率として二重利用しない。
+    """
+    _cars = tuple(int(x) for x in (cars or tuple()))
+    _stats = (profile or {}).get("car_stats", {}) or {}
+    _idx = max(0, min(2, int(finish_pos) - 1))
+    _raw = {}
+
+    for _car in _cars:
+        _row = _stats.get(int(_car), _stats.get(str(int(_car)), {})) or {}
+        _finish = tuple(_row.get("finish", tuple()) or tuple())
+        _n = max(0.0, _v335br_safe_float(_row.get("N", 0), 0.0))
+        if _n > 0.0 and len(_finish) > _idx:
+            _rate = max(0.0, _v335br_safe_float(_finish[_idx], 0.0)) / _n
+        else:
+            _rate = 0.0
+        _raw[int(_car)] = float(_rate)
+
+    _positive = [v for v in _raw.values() if v > 0.0]
+    _mean = sum(_positive) / float(len(_positive)) if _positive else 1.0
+
+    return {
+        int(_car): max(float(_raw.get(int(_car), 0.0)) / max(_mean, 1e-12), 1e-9)
+        for _car in _cars
+    }
+
+
+def _v335br_rider_tactic_profile(car):
+    """当該選手の逃/捲/差/マーク構成を0～1で返す。"""
+    _car = int(car)
+    _ke = globals().get("k_esc", {}) or {}
+    _km = globals().get("k_mak", {}) or {}
+    _ks = globals().get("k_sashi", {}) or {}
+    _kk = globals().get("k_mark", {}) or {}
+
+    _esc = max(0.0, _v335br_safe_float(_ke.get(_car, _ke.get(str(_car), 0.0)), 0.0))
+    _mak = max(0.0, _v335br_safe_float(_km.get(_car, _km.get(str(_car), 0.0)), 0.0))
+    _sashi = max(0.0, _v335br_safe_float(_ks.get(_car, _ks.get(str(_car), 0.0)), 0.0))
+    _mark = max(0.0, _v335br_safe_float(_kk.get(_car, _kk.get(str(_car), 0.0)), 0.0))
+    _tot = _esc + _mak + _sashi + _mark
+
+    if _tot <= 0.0:
+        return {"逃": 0.25, "捲": 0.25, "差": 0.25, "マ": 0.25}
+
+    return {
+        "逃": _esc / _tot,
+        "捲": _mak / _tot,
+        "差": _sashi / _tot,
+        "マ": _mark / _tot,
+    }
+
+
+def _v335br_tactic_position_factor(profile, cars, car_line_info, finish_pos):
+    """
+    会場決まり手×当該選手の脚質構成を相対化。
+    1着は逃/差/捲、2着は逃/差/捲/マークを使用。
+    3着決まり手表はないため3着は中立1.0。
+    """
+    _cars = tuple(int(x) for x in (cars or tuple()))
+    _vk = (profile or {}).get("kimarite", {}) or {}
+
+    if int(finish_pos) == 3:
+        return {int(_car): 1.0 for _car in _cars}
+
+    if int(finish_pos) == 1:
+        _venue = {
+            "逃": max(0.0, _v335br_safe_float(_vk.get("win_escape", 0.0), 0.0)),
+            "捲": max(0.0, _v335br_safe_float(_vk.get("win_makuri", 0.0), 0.0)),
+            "差": max(0.0, _v335br_safe_float(_vk.get("win_sashi", 0.0), 0.0)),
+            # マーク型の勝ち切りは差し側へ寄せる
+            "マ": max(0.0, _v335br_safe_float(_vk.get("win_sashi", 0.0), 0.0)),
+        }
+    else:
+        _venue = {
+            "逃": max(0.0, _v335br_safe_float(_vk.get("sec_escape", 0.0), 0.0)),
+            "捲": max(0.0, _v335br_safe_float(_vk.get("sec_makuri", 0.0), 0.0)),
+            "差": max(0.0, _v335br_safe_float(_vk.get("sec_sashi", 0.0), 0.0)),
+            "マ": max(0.0, _v335br_safe_float(_vk.get("sec_mark", 0.0), 0.0)),
+        }
+
+    _venue_mean = sum(_venue.values()) / 4.0 if _venue else 1.0
+    _raw = {}
+
+    for _car in _cars:
+        _prof = _v335br_rider_tactic_profile(int(_car))
+        _fit = sum(float(_prof[k]) * float(_venue[k]) for k in ("逃", "捲", "差", "マ"))
+
+        # 今日のライン内役割も同じ決まり手表へ接続する。
+        _role = str((car_line_info.get(int(_car), {}) or {}).get("role", "single"))
+        if int(finish_pos) == 1:
+            if _role == "head":
+                _role_fit = 0.5 * (_venue["逃"] + _venue["捲"])
+            elif _role == "second":
+                _role_fit = _venue["差"]
+            elif _role == "thirdplus":
+                _role_fit = _venue["差"]
+            else:
+                _role_fit = _venue["捲"]
+        else:
+            if _role == "head":
+                _role_fit = _venue["逃"]
+            elif _role == "second":
+                _role_fit = 0.5 * (_venue["差"] + _venue["マ"])
+            elif _role == "thirdplus":
+                _role_fit = _venue["マ"]
+            else:
+                _role_fit = _venue["捲"]
+
+        # 選手自身の脚質適合と今日のライン役割適合を幾何平均。
+        _combined = math.sqrt(max(_fit, 1e-9) * max(_role_fit, 1e-9))
+        _raw[int(_car)] = float(_combined)
+
+    _mean = sum(_raw.values()) / float(len(_raw)) if _raw else max(_venue_mean, 1.0)
+    return {
+        int(_car): max(float(_raw.get(int(_car), _mean)) / max(_mean, 1e-12), 1e-9)
+        for _car in _cars
+    }
+
+
+def _v335br_position_probability_map(profile, final_order, finish_pos):
+    """
+    2段階モデル:
+      1) 序盤：ライン勢力比で各ラインへ確率質量を配分
+      2) 最終：各ライン内で個人スコア×車番着率×脚質適合を幾何平均し配分
+    """
+    _cars = tuple(int(x) for x in (final_order or tuple()))
+    if not _cars:
+        return {}
+
+    _line_info = _v335br_car_line_info(_cars)
+    _line_share = _v335br_normalized_line_share(_cars, _line_info)
+    _score_factor = _v335br_score_factor_map(_cars, final_order)
+    _car_factor = _v335br_car_number_position_factor(profile, _cars, finish_pos)
+    _tactic_factor = _v335br_tactic_position_factor(
+        profile, _cars, _line_info, finish_pos
+    )
+
+    # ライン単位に個人配分
+    _by_line = {}
+    for _car in _cars:
+        _key = str((_line_info.get(int(_car), {}) or {}).get("key", str(int(_car))))
+        _by_line.setdefault(_key, []).append(int(_car))
+
+    _raw = {int(_car): 0.0 for _car in _cars}
+    for _key, _members in _by_line.items():
+        _personal = {}
+        for _car in _members:
+            _sf = max(_score_factor.get(int(_car), 1.0), 1e-9)
+            _cf = max(_car_factor.get(int(_car), 1.0), 1e-9)
+            _tf = max(_tactic_factor.get(int(_car), 1.0), 1e-9)
+
+            # 3つの信号を同格で幾何平均。単独指標の暴走を抑える。
+            _w = (_sf * _cf * _tf) ** (1.0 / 3.0)
+            _personal[int(_car)] = max(float(_w), 1e-12)
+
+        _den = sum(_personal.values())
+        if _den <= 0.0:
+            _den = float(len(_members))
+            _personal = {int(_car): 1.0 for _car in _members}
+
+        _ls = max(float(_line_share.get(_key, 0.0)), 0.0)
+        for _car in _members:
+            _raw[int(_car)] = _ls * (_personal[int(_car)] / _den)
+
+    _total = sum(_raw.values())
+    if _total <= 0.0:
+        _eq = 1.0 / float(len(_cars))
+        return {int(_car): _eq for _car in _cars}
+
+    return {int(_car): float(_raw[int(_car)]) / _total for _car in _cars}
+
+
+def _v335br_conditional_pick_prob(prob_map, car, excluded):
+    _excluded = {int(x) for x in (excluded or set())}
+    _car = int(car)
+    if _car in _excluded:
+        return 0.0
+
+    _den = sum(
+        max(0.0, _v335br_safe_float(v, 0.0))
+        for c, v in (prob_map or {}).items()
+        if int(c) not in _excluded
+    )
+    if _den <= 0.0:
+        return 0.0
+    return max(0.0, _v335br_safe_float((prob_map or {}).get(_car, 0.0), 0.0)) / _den
+
+
+def _v335br_ticket_probability(ticket, p1_map, p2_map, p3_map):
+    _ticket = tuple(int(x) for x in (ticket or tuple()))
+    if len(_ticket) not in (2, 3) or len(set(_ticket)) != len(_ticket):
+        return 0.0
+
+    _a = int(_ticket[0])
+    _p = _v335br_conditional_pick_prob(p1_map, _a, set())
+    if _p <= 0.0:
+        return 0.0
+
+    _b = int(_ticket[1])
+    _p *= _v335br_conditional_pick_prob(p2_map, _b, {_a})
+    if len(_ticket) == 3:
+        _c = int(_ticket[2])
+        _p *= _v335br_conditional_pick_prob(p3_map, _c, {_a, _b})
+    return max(0.0, min(1.0, float(_p)))
+
+
+def _v335br_hit_top_rows(final_order, profile, kind, top_n=3):
+    """全順序組合せから想定的中率上位を返す。"""
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    if len(_order) < 2 or not isinstance(profile, dict):
+        return [], {}, {}, {}
+
+    _p1 = _v335br_position_probability_map(profile, _order, 1)
+    _p2 = _v335br_position_probability_map(profile, _order, 2)
+    _p3 = _v335br_position_probability_map(profile, _order, 3)
+    _rank = {int(c): i for i, c in enumerate(_order, start=1)}
+
+    _rows = []
+    _length = 2 if str(kind) == "2車単" else 3
+    for _ticket in itertools.permutations(_order, _length):
+        _prob = _v335br_ticket_probability(_ticket, _p1, _p2, _p3)
+        _v_ranks = tuple(int(_rank.get(int(c), 99)) for c in _ticket)
+        _rows.append({
+            "kind": str(kind),
+            "ticket": tuple(int(x) for x in _ticket),
+            "hit_prob": float(_prob),
+            "v_ranks": _v_ranks,
+        })
+
+    # 的中率を第一基準。完全同率のみV最終順位の近い買い目を優先。
+    _rows.sort(key=lambda r: (
+        -float(r.get("hit_prob", 0.0)),
+        max(r.get("v_ranks", (99,))),
+        sum(r.get("v_ranks", (99,))),
+        tuple(r.get("v_ranks", (99,))),
+        tuple(r.get("ticket", tuple())),
+    ))
+    return _rows[:max(0, int(top_n))], _p1, _p2, _p3
+
+
+def _v335br_hit_top_lines(
+    final_order,
+    track_name=None,
+    race_time_name=None,
+    race_class_name=None,
+    field_n=None,
+    top_n=3,
+):
+    """note用：ライン展開→個人決着モデルの2車単/3連単 想定的中率TOP3。"""
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    _field_n = int(field_n or len(_order) or 0)
+    _profile = _v335bp_get_venue_profile(
+        track_name=track_name,
+        race_time_name=race_time_name,
+        race_class_name=race_class_name,
+        field_n=_field_n,
+    )
+
+    if not _profile:
+        return [
+            "【想定的中率TOP3｜会場別マスタ】",
+            "この会場×開催区分×級別×車立ては車番別・決まり手データ未登録",
+        ]
+
+    _label = str(_profile.get("label", "会場別マスタ"))
+    _out = [f"【想定的中率TOP3｜{_label}】"]
+    _out.append("基準：序盤=ライン勢力比／最終=個人KOスコア＋車番別着率＋脚質×会場決まり手")
+
+    for _kind in ("2車単", "3連単"):
+        _rows, _p1, _p2, _p3 = _v335br_hit_top_rows(
+            _order, _profile, _kind, top_n=top_n
+        )
+        if not _rows:
+            _out.append(f"{_kind}：算出不可")
+            continue
+
+        _out.append(f"{_kind}：想定的中率TOP{len(_rows)}")
+        _sum_p = 0.0
+        for _idx, _row in enumerate(_rows, start=1):
+            _ticket_text = "→".join(str(int(x)) for x in _row.get("ticket", tuple()))
+            _vr_text = "→".join(str(int(x)) for x in _row.get("v_ranks", tuple()))
+            _hp = float(_row.get("hit_prob", 0.0))
+            _sum_p += _hp
+            _out.append(
+                f"  {_idx}. {_ticket_text}｜V評価{_vr_text}"
+                f"｜想定的中率{_hp*100:.2f}%"
+            )
+        _out.append(f"  TOP{len(_rows)}合算想定的中率：{_sum_p*100:.2f}%")
+
+    _out.append("※オッズ・平均配当・過去の2車単/3連単H/Nは、このTOP3選出には使用していません。")
+    _out.append("※想定的中率はヴェロビ内部指標から作るモデル値で、実測的中率として校正済みではありません。")
+    return _out
+
+
 def _v335bq_finish_strength_map(final_order):
     """
     現在入力の x1/x2/x3/x_out から各車の「1着/2着/3着の強さ」を作る。
@@ -2710,19 +3136,7 @@ if _v335bp_active_profile:
             f"｜回数{VENUE_KIMARITE_STATS['sample_count']}"
         )
 
-        _bp_candidates = _v335bp_expected_value_candidates(
-            _v335bp_active_profile, threshold=100.0
-        )
-        if _bp_candidates:
-            _bp_text = " / ".join(
-                f"{r['kind']} "
-                + "→".join(str(int(x)) for x in r["ticket"])
-                + f" ({float(r['roi']):.1f}%)"
-                for r in _bp_candidates
-            )
-            st.caption(f"長期実車ROI100％超（参考）：{_bp_text}")
-        else:
-            st.caption("長期実車ROI100％超（参考）：該当なし")
+        st.caption("v335br：この会場マスタの車番別成績・決まり手を、想定的中率TOP3へ自動使用します。")
 
 else:
     with st.sidebar.expander(
@@ -13284,24 +13698,20 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         if len(lines) >= 4:
             lines[3] = f"最終着順予想　{_dedicated_order_text}"
 
-        # v335bq：旧固定3点のnote表示は廃止。
-        # 会場マスタの全出目をV評価上位から順に探索し、着率ベース想定回収率100％超だけ表示する。
-        _dynamic_value_lines = _v335bq_dynamic_value_lines(
+        # v335br：旧固定買い目・回収率選抜はnote推奨に使わない。
+        # 序盤はライン勢力比、最終は個人KO＋会場車番別着率＋脚質×決まり手で
+        # 2車単／3連単の全順序組合せを想定的中率順に並べる。
+        _hit_top_lines = _v335br_hit_top_lines(
             _dedicated_order,
             track_name=str(globals().get("track") or globals().get("place") or "").strip(),
             race_time_name=str(globals().get("race_time", "") or "").strip(),
             race_class_name=str(globals().get("race_class", "") or "").strip(),
             field_n=len(_dedicated_order),
-            max_each=3,
+            top_n=3,
         )
-        if _dynamic_value_lines:
+        if _hit_top_lines:
             lines.append("")
-            lines.extend(_dynamic_value_lines)
-
-        lines.extend([
-            "",
-            "※すべて1点100円の平買い想定です。",
-        ])
+            lines.extend(_hit_top_lines)
         return "\n".join(lines).strip() + "\n"
 
         # v334r以前のA/B表示処理は履歴互換のため残すが、v335では到達しない。
