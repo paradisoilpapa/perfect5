@@ -1,3 +1,10 @@
+# v335bt（同ライン最上位のみ3連単化・推奨3点版）:
+# ・想定的中率2車単TOP3を購入候補の母集団にする。
+# ・TOP3内に同ライン買い目がある場合、そのうち想定的中率最上位の1組だけを3連単へ昇格。
+# ・昇格した1着→2着を固定し、残り車の条件付き3着確率が最上位の1車を付けて3連単1点にする。
+# ・残る2車単2点＋3連単1点＝計3点／300円をnote用【推奨購入】に表示。
+# ・TOP3内に同ライン買い目が無い場合は無理に3連単化せず、2車単TOP3の3点を表示。
+# ・想定的中率TOP3の検証表示自体は残す。
 # v335bs（v335br itertools実行時エラー修正版）:
 # ・note用簡易出力で「name itertools is not defined」になる不具合を修正。
 # ・既存importは from itertools import combinations, permutations のため、itertools.permutations ではなく permutations を直接使用。
@@ -2690,6 +2697,135 @@ def _v335br_hit_top_rows(final_order, profile, kind, top_n=3):
     return _rows[:max(0, int(top_n))], _p1, _p2, _p3
 
 
+
+def _v335bt_same_line_pair(ticket):
+    """2車単の1着・2着が同一ラインか。"""
+    try:
+        _ticket = tuple(int(x) for x in (ticket or tuple()))
+        if len(_ticket) != 2:
+            return False
+        _line_def = globals().get("line_def", {}) or {}
+        for _gid, _mem in (_line_def or {}).items():
+            _members = {int(x) for x in (_mem or [])}
+            if int(_ticket[0]) in _members and int(_ticket[1]) in _members:
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _v335bt_promote_same_line_exacta(exacta_rows, p3_map):
+    """
+    2車単TOP3のうち同ライン最上位1組だけを3連単1点へ昇格。
+    3着は1・2着を除いた条件付き3着確率1位。
+    """
+    _rows = list(exacta_rows or [])
+    _promote_idx = None
+    for _idx, _row in enumerate(_rows):
+        if _v335bt_same_line_pair(_row.get("ticket", tuple())):
+            _promote_idx = int(_idx)
+            break
+
+    if _promote_idx is None:
+        return {
+            "exacta_rows": _rows,
+            "trifecta_row": None,
+            "promoted_exacta": None,
+        }
+
+    _promoted = _rows[_promote_idx]
+    _ticket2 = tuple(int(x) for x in _promoted.get("ticket", tuple()))
+    if len(_ticket2) != 2:
+        return {
+            "exacta_rows": _rows,
+            "trifecta_row": None,
+            "promoted_exacta": None,
+        }
+
+    _excluded = {int(_ticket2[0]), int(_ticket2[1])}
+    _third_candidates = []
+    for _car in (p3_map or {}).keys():
+        try:
+            _car = int(_car)
+            if _car in _excluded:
+                continue
+            _p3_cond = _v335br_conditional_pick_prob(p3_map, _car, _excluded)
+            _third_candidates.append((_car, float(_p3_cond)))
+        except Exception:
+            continue
+
+    if not _third_candidates:
+        return {
+            "exacta_rows": _rows,
+            "trifecta_row": None,
+            "promoted_exacta": None,
+        }
+
+    # 3着は条件付き3着確率が最も高い車。
+    _third_candidates.sort(key=lambda t: (-float(t[1]), int(t[0])))
+    _third, _p3_cond = _third_candidates[0]
+
+    _tri_prob = float(_promoted.get("hit_prob", 0.0)) * float(_p3_cond)
+    _tri = {
+        "ticket": (int(_ticket2[0]), int(_ticket2[1]), int(_third)),
+        "hit_prob": float(_tri_prob),
+        "source_exacta_hit_prob": float(_promoted.get("hit_prob", 0.0)),
+        "third_cond_prob": float(_p3_cond),
+    }
+
+    _remain = [r for i, r in enumerate(_rows) if int(i) != int(_promote_idx)]
+    return {
+        "exacta_rows": _remain,
+        "trifecta_row": _tri,
+        "promoted_exacta": _promoted,
+    }
+
+
+def _v335bt_purchase_lines(final_order, profile):
+    """
+    note用推奨購入:
+      - 2車単TOP3を母集団
+      - 同ライン最上位1組のみ3連単1点へ
+      - 残り2車単2点
+      - 同ラインなしなら2車単3点
+    """
+    _exacta_rows, _p1, _p2, _p3 = _v335br_hit_top_rows(
+        final_order, profile, "2車単", top_n=3
+    )
+    if not _exacta_rows:
+        return ["【推奨購入】", "算出不可"]
+
+    _plan = _v335bt_promote_same_line_exacta(_exacta_rows, _p3)
+    _ex_rows = list(_plan.get("exacta_rows", []) or [])
+    _tri = _plan.get("trifecta_row")
+
+    _out = ["【推奨購入】"]
+    if _tri is not None:
+        _ex_texts = [
+            "→".join(str(int(x)) for x in r.get("ticket", tuple()))
+            for r in _ex_rows[:2]
+        ]
+        _tri_text = "→".join(str(int(x)) for x in _tri.get("ticket", tuple()))
+        _out.append("2車単：" + "・".join(_ex_texts) + "（各100円）")
+        _out.append("3連単：" + _tri_text + "（100円）")
+        _out.append("計3点／300円")
+        _src = _plan.get("promoted_exacta") or {}
+        _src_text = "→".join(str(int(x)) for x in _src.get("ticket", tuple()))
+        _out.append(
+            f"※2車単TOP3内の同ライン最上位 {_src_text} を3連単1点へ昇格。"
+        )
+    else:
+        _ex_texts = [
+            "→".join(str(int(x)) for x in r.get("ticket", tuple()))
+            for r in _ex_rows[:3]
+        ]
+        _out.append("2車単：" + "・".join(_ex_texts) + "（各100円）")
+        _out.append("3連単：なし")
+        _out.append(f"計{len(_ex_texts)}点／{len(_ex_texts)*100}円")
+        _out.append("※2車単TOP3内に同ライン買い目がないため、無理に3連単化しません。")
+    return _out
+
+
 def _v335br_hit_top_lines(
     final_order,
     track_name=None,
@@ -2741,6 +2877,8 @@ def _v335br_hit_top_lines(
 
     _out.append("※オッズ・平均配当・過去の2車単/3連単H/Nは、このTOP3選出には使用していません。")
     _out.append("※想定的中率はヴェロビ内部指標から作るモデル値で、実測的中率として校正済みではありません。")
+    _out.append("")
+    _out.extend(_v335bt_purchase_lines(_order, _profile))
     return _out
 
 
