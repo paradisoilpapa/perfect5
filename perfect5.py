@@ -1,4 +1,19 @@
-# v335bt（同ライン最上位のみ3連単化・推奨3点版）:
+# v335bv（短いライン優遇解消・ライン軽補正版）:
+# ・想定的中率モデルで、ライン勢力比を「ラインごとの確率総量」として人数分配する方式を廃止。
+# ・単騎や2車ラインがライン勢力を少人数で独占して浮上する構造バイアスを解消。
+# ・最終個人評価は KOスコア×車番別着率×脚質適合 を全車同じ土俵で比較し、ライン勢力比は軽い倍率補正だけにする。
+# ・ライン補正は各ライン均等勢力を1.00基準として相対差を反映し、±15%で上限固定。
+# ・単騎そのものへの減点はしない。KO・脚質・逆流等の個人条件が強ければ単騎でもTOP3へ浮上可能。
+# ・会場データのサイドバー入力、想定的中率TOP3、同ライン最上位のみ3連単化する推奨3点ルールは維持。
+# v335bu（会場データ・サイドバー手入力版）:
+# ・各会場データをコードへ追加し続ける方式をやめ、想定的中率モデル用の会場データをサイドバーから入力できるようにする。
+# ・車番ごとは「出走数N／1着回数／2着回数／3着回数」だけ入力。勝率・2連対率・3連対率・着外は内部で自動計算。
+# ・会場決まり手は1着=逃/差/捲、2着=逃/差/捲/マークを入力。
+# ・入力値は競輪場×開催区分×級別(A級系統合)×車立てごとにStreamlit session_stateへ保持する。
+# ・京王閣ミッドナイトA級系7車は既存マスタ値を初期値として表示し、他会場は0から入力する。
+# ・想定的中率TOP3と「同ライン最上位のみ3連単化」の推奨3点ロジックは変更しない。
+# ・車番成績が未入力の車は中立扱いにし、0入力だけで極端な不利にならないよう修正。
+# v335bt（同ライン最上位のみ3連単化・推奨3点版）:A
 # ・想定的中率2車単TOP3を購入候補の母集団にする。
 # ・TOP3内に同ライン買い目がある場合、そのうち想定的中率最上位の1組だけを3連単へ昇格。
 # ・昇格した1着→2着を固定し、残り車の条件付き3着確率が最上位の1車を付けて3連単1点にする。
@@ -2293,7 +2308,17 @@ def _v335bp_get_venue_profile(track_name=None, race_time_name=None, race_class_n
         _field_n = int(field_n or globals().get("n_cars", 0) or 0)
     except Exception:
         _field_n = 0
-    return _V335BP_VENUE_PROFILE_DB.get((_track, _time, _class_key, _field_n))
+
+    _key = (_track, _time, _class_key, _field_n)
+
+    # v335bu：現在のサイドバー入力が同一条件なら最優先で使用。
+    _manual = globals().get("_V335BU_ACTIVE_MANUAL_PROFILE", None)
+    if isinstance(_manual, dict):
+        _manual_key = tuple(_manual.get("_profile_key", tuple()) or tuple())
+        if _manual_key == _key:
+            return _manual
+
+    return _V335BP_VENUE_PROFILE_DB.get(_key)
 
 
 def _v335bp_expected_value_candidates(profile, threshold=100.0):
@@ -2415,6 +2440,58 @@ def _v335br_normalized_line_share(cars, car_line_info):
     return {_key: float(_raw[_key]) / float(_total) for _key in _line_keys}
 
 
+
+# v335bv：ライン勢力比は「確率の取り分」ではなく、最終個人評価への軽い補正だけに使う。
+V335BV_LINE_FACTOR_GAIN = 0.45
+V335BV_LINE_FACTOR_CAP = 0.15
+
+
+def _v335bv_line_factor_map(cars, car_line_info, line_share):
+    """
+    各ライン均等勢力(1/ライン数)を1.00基準として、
+    ライン勢力比の相対差を軽い倍率へ変換する。
+
+    factor = 1 + gain * ((share - equal_share) / equal_share)
+    ただし 0.85～1.15 に制限。
+
+    例：3ラインで share=0.377/0.344/0.280 の場合
+        約1.059 / 1.014 / 0.928
+    となり、単騎が0.280を丸ごと受け取ることはない。
+    """
+    _cars = tuple(int(x) for x in (cars or tuple()))
+    _line_keys = []
+    for _car in _cars:
+        _info = car_line_info.get(int(_car), {}) or {}
+        _key = str(_info.get("key", "") or "")
+        if _key and _key not in _line_keys:
+            _line_keys.append(_key)
+
+    if not _line_keys:
+        return {int(_car): 1.0 for _car in _cars}
+
+    _equal = 1.0 / float(len(_line_keys))
+    _gain = float(V335BV_LINE_FACTOR_GAIN)
+    _cap = float(V335BV_LINE_FACTOR_CAP)
+
+    _line_factor = {}
+    for _key in _line_keys:
+        _share = max(0.0, _v335br_safe_float((line_share or {}).get(_key, _equal), _equal))
+        if _equal > 0.0:
+            _rel = (_share - _equal) / _equal
+        else:
+            _rel = 0.0
+        _f = 1.0 + _gain * _rel
+        _f = max(1.0 - _cap, min(1.0 + _cap, float(_f)))
+        _line_factor[_key] = float(_f)
+
+    _out = {}
+    for _car in _cars:
+        _info = car_line_info.get(int(_car), {}) or {}
+        _key = str(_info.get("key", "") or "")
+        _out[int(_car)] = float(_line_factor.get(_key, 1.0))
+    return _out
+
+
 def _v335br_score_factor_map(cars, final_order):
     """
     最終個人KOスコアをレース内z化し exp(z) へ変換。
@@ -2457,8 +2534,8 @@ def _v335br_score_factor_map(cars, final_order):
 def _v335br_car_number_position_factor(profile, cars, finish_pos):
     """
     会場の車番別成績から「その車番がその着に入った実率」を相対化。
-    1着/2着/3着の各列で平均=1になるようにするため、会場の車番偏りを
-    そのまま絶対確率として二重利用しない。
+    1着/2着/3着の各列で平均=1。
+    v335bu：N=0など未入力の車は中立1.0とし、未入力だけで極端に下げない。
     """
     _cars = tuple(int(x) for x in (cars or tuple()))
     _stats = (profile or {}).get("car_stats", {}) or {}
@@ -2471,17 +2548,26 @@ def _v335br_car_number_position_factor(profile, cars, finish_pos):
         _n = max(0.0, _v335br_safe_float(_row.get("N", 0), 0.0))
         if _n > 0.0 and len(_finish) > _idx:
             _rate = max(0.0, _v335br_safe_float(_finish[_idx], 0.0)) / _n
+            _raw[int(_car)] = float(_rate)
         else:
-            _rate = 0.0
-        _raw[int(_car)] = float(_rate)
+            _raw[int(_car)] = None
 
-    _positive = [v for v in _raw.values() if v > 0.0]
-    _mean = sum(_positive) / float(len(_positive)) if _positive else 1.0
+    _valid = [float(v) for v in _raw.values() if v is not None and float(v) >= 0.0]
+    if not _valid:
+        return {int(_car): 1.0 for _car in _cars}
 
-    return {
-        int(_car): max(float(_raw.get(int(_car), 0.0)) / max(_mean, 1e-12), 1e-9)
-        for _car in _cars
-    }
+    _mean = sum(_valid) / float(len(_valid))
+    if _mean <= 1e-12:
+        return {int(_car): 1.0 for _car in _cars}
+
+    _out = {}
+    for _car in _cars:
+        _v = _raw.get(int(_car), None)
+        if _v is None:
+            _out[int(_car)] = 1.0
+        else:
+            _out[int(_car)] = max(float(_v) / _mean, 1e-9)
+    return _out
 
 
 def _v335br_rider_tactic_profile(car):
@@ -2578,9 +2664,14 @@ def _v335br_tactic_position_factor(profile, cars, car_line_info, finish_pos):
 
 def _v335br_position_probability_map(profile, final_order, finish_pos):
     """
-    2段階モデル:
-      1) 序盤：ライン勢力比で各ラインへ確率質量を配分
-      2) 最終：各ライン内で個人スコア×車番着率×脚質適合を幾何平均し配分
+    v335bv 2段階モデル:
+      1) 序盤：現行ライン勢力比を「軽い展開補正」として取得
+      2) 最終：全車を同じ土俵で
+         個人KOスコア×車番別着率×脚質適合×ライン軽補正
+         から着順別確率へ正規化
+
+    旧方式の「ライン勢力をライン内人数で分配」は廃止。
+    単騎・2車ラインが人数の少なさだけで浮くことを防ぐ。
     """
     _cars = tuple(int(x) for x in (final_order or tuple()))
     if not _cars:
@@ -2588,46 +2679,35 @@ def _v335br_position_probability_map(profile, final_order, finish_pos):
 
     _line_info = _v335br_car_line_info(_cars)
     _line_share = _v335br_normalized_line_share(_cars, _line_info)
+    _line_factor = _v335bv_line_factor_map(_cars, _line_info, _line_share)
+
     _score_factor = _v335br_score_factor_map(_cars, final_order)
     _car_factor = _v335br_car_number_position_factor(profile, _cars, finish_pos)
     _tactic_factor = _v335br_tactic_position_factor(
         profile, _cars, _line_info, finish_pos
     )
 
-    # ライン単位に個人配分
-    _by_line = {}
+    _raw = {}
     for _car in _cars:
-        _key = str((_line_info.get(int(_car), {}) or {}).get("key", str(int(_car))))
-        _by_line.setdefault(_key, []).append(int(_car))
+        _sf = max(_score_factor.get(int(_car), 1.0), 1e-9)
+        _cf = max(_car_factor.get(int(_car), 1.0), 1e-9)
+        _tf = max(_tactic_factor.get(int(_car), 1.0), 1e-9)
+        _lf = max(_line_factor.get(int(_car), 1.0), 1e-9)
 
-    _raw = {int(_car): 0.0 for _car in _cars}
-    for _key, _members in _by_line.items():
-        _personal = {}
-        for _car in _members:
-            _sf = max(_score_factor.get(int(_car), 1.0), 1e-9)
-            _cf = max(_car_factor.get(int(_car), 1.0), 1e-9)
-            _tf = max(_tactic_factor.get(int(_car), 1.0), 1e-9)
-
-            # 3つの信号を同格で幾何平均。単独指標の暴走を抑える。
-            _w = (_sf * _cf * _tf) ** (1.0 / 3.0)
-            _personal[int(_car)] = max(float(_w), 1e-12)
-
-        _den = sum(_personal.values())
-        if _den <= 0.0:
-            _den = float(len(_members))
-            _personal = {int(_car): 1.0 for _car in _members}
-
-        _ls = max(float(_line_share.get(_key, 0.0)), 0.0)
-        for _car in _members:
-            _raw[int(_car)] = _ls * (_personal[int(_car)] / _den)
+        # KO・車番・脚質は同格の幾何平均。
+        # ラインは既に展開形成側の情報なので、軽い倍率として最後にだけ掛ける。
+        _personal = (_sf * _cf * _tf) ** (1.0 / 3.0)
+        _raw[int(_car)] = max(float(_personal) * float(_lf), 1e-12)
 
     _total = sum(_raw.values())
     if _total <= 0.0:
         _eq = 1.0 / float(len(_cars))
         return {int(_car): _eq for _car in _cars}
 
-    return {int(_car): float(_raw[int(_car)]) / _total for _car in _cars}
-
+    return {
+        int(_car): float(_raw[int(_car)]) / float(_total)
+        for _car in _cars
+    }
 
 def _v335br_conditional_pick_prob(prob_map, car, excluded):
     _excluded = {int(x) for x in (excluded or set())}
@@ -2846,13 +2926,13 @@ def _v335br_hit_top_lines(
 
     if not _profile:
         return [
-            "【想定的中率TOP3｜会場別マスタ】",
-            "この会場×開催区分×級別×車立ては車番別・決まり手データ未登録",
+            "【想定的中率TOP3｜会場データ】",
+            "この会場条件の車番別・決まり手データをサイドバーへ入力してください",
         ]
 
     _label = str(_profile.get("label", "会場別マスタ"))
     _out = [f"【想定的中率TOP3｜{_label}】"]
-    _out.append("基準：序盤=ライン勢力比／最終=個人KOスコア＋車番別着率＋脚質×会場決まり手")
+    _out.append("基準：序盤=ライン勢力比（軽補正±15%）／最終=個人KOスコア＋車番別着率＋脚質×会場決まり手")
 
     for _kind in ("2車単", "3連単"):
         _rows, _p1, _p2, _p3 = _v335br_hit_top_rows(
@@ -3240,120 +3320,216 @@ V335AO_FUZZY_VENUES = set()
 def _v335ao_is_fuzzy_venue(track_name=None):
     return False
 
-st.sidebar.markdown("### 🏟️ 開催場決まり手成績")
+st.sidebar.markdown("### 🏟️ 会場データ｜想定的中率用")
 
-_v335bp_active_profile = _v335bp_get_venue_profile(
-    track_name=track,
-    race_time_name=race_time,
-    race_class_name=race_class,
-    field_n=n_cars,
+# v335bu：コードへ会場マスタを増やさず、ここで入力。
+# 条件ごとに別keyを持つので、同一Streamlitセッション中は会場を切り替えても値を保持する。
+_v335bu_class_key = _v335bp_profile_class_key(race_class)
+_v335bu_profile_key = (str(track), str(race_time), str(_v335bu_class_key), int(n_cars))
+_v335bu_key_prefix = (
+    f"v335bu_{str(track)}_{str(race_time)}_{str(_v335bu_class_key)}_{int(n_cars)}"
 )
 
-if _v335bp_active_profile:
-    _vk_master = dict(_v335bp_active_profile.get("kimarite", {}) or {})
-    VENUE_KIMARITE_STATS = {
-        "enabled": True,
-        "win_escape": float(_vk_master.get("win_escape", 0.0) or 0.0),
-        "win_sashi": float(_vk_master.get("win_sashi", 0.0) or 0.0),
-        "win_makuri": float(_vk_master.get("win_makuri", 0.0) or 0.0),
-        "sec_escape": float(_vk_master.get("sec_escape", 0.0) or 0.0),
-        "sec_sashi": float(_vk_master.get("sec_sashi", 0.0) or 0.0),
-        "sec_makuri": float(_vk_master.get("sec_makuri", 0.0) or 0.0),
-        "sec_mark": float(_vk_master.get("sec_mark", 0.0) or 0.0),
-        "sample_count": int(_vk_master.get("sample_count", 0) or 0),
-    }
+# 既存の埋込マスタがある条件だけ、初回入力の初期値として利用。
+# 今後の会場追加はこのDBへ書かず、サイドバー入力だけで運用できる。
+_v335bu_seed_profile = _V335BP_VENUE_PROFILE_DB.get(_v335bu_profile_key, {}) or {}
+_v335bu_seed_k = dict(_v335bu_seed_profile.get("kimarite", {}) or {})
+_v335bu_seed_cars = dict(_v335bu_seed_profile.get("car_stats", {}) or {})
 
-    with st.sidebar.expander("✅ 会場マスタ自動読込", expanded=True):
-        st.success(str(_v335bp_active_profile.get("label", "登録会場データ")))
-        st.caption(
-            f"1着：逃{VENUE_KIMARITE_STATS['win_escape']:.1f}% "
-            f"差{VENUE_KIMARITE_STATS['win_sashi']:.1f}% "
-            f"捲{VENUE_KIMARITE_STATS['win_makuri']:.1f}%"
+with st.sidebar.expander("① 決まり手｜1着・2着", expanded=True):
+    st.caption("％で入力。1着＝逃・差・捲／2着＝逃・差・捲・マーク")
+
+    _k1, _k2, _k3 = st.columns(3)
+    with _k1:
+        vk_win_escape = st.number_input(
+            "1着 逃%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("win_escape", 0.0) or 0.0),
+            step=0.1,
+            key=f"{_v335bu_key_prefix}_win_escape",
         )
-        st.caption(
-            f"2着：逃{VENUE_KIMARITE_STATS['sec_escape']:.1f}% "
-            f"差{VENUE_KIMARITE_STATS['sec_sashi']:.1f}% "
-            f"捲{VENUE_KIMARITE_STATS['sec_makuri']:.1f}% "
-            f"マーク{VENUE_KIMARITE_STATS['sec_mark']:.1f}% "
-            f"｜回数{VENUE_KIMARITE_STATS['sample_count']}"
+    with _k2:
+        vk_win_sashi = st.number_input(
+            "1着 差%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("win_sashi", 0.0) or 0.0),
+            step=0.1,
+            key=f"{_v335bu_key_prefix}_win_sashi",
         )
-
-        st.caption("v335br：この会場マスタの車番別成績・決まり手を、想定的中率TOP3へ自動使用します。")
-
-else:
-    with st.sidebar.expander(
-        "数値入力（会場マスタ未登録時のみ）",
-        expanded=True,
-    ):
-        st.warning("この条件は会場マスタ未登録のため、決まり手を手入力します。")
-        st.caption("オッズパーク等の表をそのまま％で入力。例：13.9 / 62.4 / 24.2")
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            vk_win_escape = st.number_input(
-                "1着 逃げ%", 0.0, 100.0,
-                float(st.session_state.get("vk_win_escape", 0.0) or 0.0),
-                0.1, key="vk_win_escape"
-            )
-        with c2:
-            vk_win_sashi = st.number_input(
-                "1着 差し%", 0.0, 100.0,
-                float(st.session_state.get("vk_win_sashi", 0.0) or 0.0),
-                0.1, key="vk_win_sashi"
-            )
-        with c3:
-            vk_win_makuri = st.number_input(
-                "1着 捲り%", 0.0, 100.0,
-                float(st.session_state.get("vk_win_makuri", 0.0) or 0.0),
-                0.1, key="vk_win_makuri"
-            )
-
-        c4, c5, c6, c7 = st.columns(4)
-        with c4:
-            vk_sec_escape = st.number_input(
-                "2着 逃げ%", 0.0, 100.0,
-                float(st.session_state.get("vk_sec_escape", 0.0) or 0.0),
-                0.1, key="vk_sec_escape"
-            )
-        with c5:
-            vk_sec_sashi = st.number_input(
-                "2着 差し%", 0.0, 100.0,
-                float(st.session_state.get("vk_sec_sashi", 0.0) or 0.0),
-                0.1, key="vk_sec_sashi"
-            )
-        with c6:
-            vk_sec_makuri = st.number_input(
-                "2着 捲り%", 0.0, 100.0,
-                float(st.session_state.get("vk_sec_makuri", 0.0) or 0.0),
-                0.1, key="vk_sec_makuri"
-            )
-        with c7:
-            vk_sec_mark = st.number_input(
-                "2着 マーク%", 0.0, 100.0,
-                float(st.session_state.get("vk_sec_mark", 0.0) or 0.0),
-                0.1, key="vk_sec_mark"
-            )
-
-        vk_sample_count = st.number_input(
-            "回数",
-            min_value=0,
-            max_value=10000,
-            value=int(st.session_state.get("vk_sample_count", 0) or 0),
-            step=1,
-            key="vk_sample_count",
+    with _k3:
+        vk_win_makuri = st.number_input(
+            "1着 捲%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("win_makuri", 0.0) or 0.0),
+            step=0.1,
+            key=f"{_v335bu_key_prefix}_win_makuri",
         )
 
-        VENUE_KIMARITE_STATS = {
-            "enabled": True,
-            "win_escape": float(vk_win_escape),
-            "win_sashi": float(vk_win_sashi),
-            "win_makuri": float(vk_win_makuri),
-            "sec_escape": float(vk_sec_escape),
-            "sec_sashi": float(vk_sec_sashi),
-            "sec_makuri": float(vk_sec_makuri),
-            "sec_mark": float(vk_sec_mark),
-            "sample_count": int(vk_sample_count),
+    _k4, _k5, _k6, _k7 = st.columns(4)
+    with _k4:
+        vk_sec_escape = st.number_input(
+            "2着 逃%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("sec_escape", 0.0) or 0.0),
+            step=0.1,
+            key=f"{_v335bu_key_prefix}_sec_escape",
+        )
+    with _k5:
+        vk_sec_sashi = st.number_input(
+            "2着 差%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("sec_sashi", 0.0) or 0.0),
+            step=0.1,
+            key=f"{_v335bu_key_prefix}_sec_sashi",
+        )
+    with _k6:
+        vk_sec_makuri = st.number_input(
+            "2着 捲%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("sec_makuri", 0.0) or 0.0),
+            step=0.1,
+            key=f"{_v335bu_key_prefix}_sec_makuri",
+        )
+    with _k7:
+        vk_sec_mark = st.number_input(
+            "2着 マ%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("sec_mark", 0.0) or 0.0),
+            step=0.1,
+            key=f"{_v335bu_key_prefix}_sec_mark",
+        )
+
+    vk_sample_count = st.number_input(
+        "決まり手の母数N",
+        min_value=0,
+        max_value=100000,
+        value=int(_v335bu_seed_k.get(
+            "sample_count",
+            _v335bu_seed_profile.get("N", 0),
+        ) or 0),
+        step=1,
+        key=f"{_v335bu_key_prefix}_kimarite_n",
+    )
+
+VENUE_KIMARITE_STATS = {
+    "enabled": True,
+    "win_escape": float(vk_win_escape),
+    "win_sashi": float(vk_win_sashi),
+    "win_makuri": float(vk_win_makuri),
+    "sec_escape": float(vk_sec_escape),
+    "sec_sashi": float(vk_sec_sashi),
+    "sec_makuri": float(vk_sec_makuri),
+    "sec_mark": float(vk_sec_mark),
+    "sample_count": int(vk_sample_count),
+}
+
+with st.sidebar.expander("② 車番別｜N・1着・2着・3着", expanded=True):
+    st.caption(
+        "各車番について4項目だけ入力。着外・勝率・2連対率・3連対率は自動計算します。"
+    )
+
+    _v335bu_car_stats = {}
+    _v335bu_complete_cars = 0
+
+    for _car in range(1, int(n_cars) + 1):
+        _seed_row = dict(
+            _v335bu_seed_cars.get(
+                int(_car),
+                _v335bu_seed_cars.get(str(int(_car)), {}),
+            ) or {}
+        )
+        _seed_finish = tuple(_seed_row.get("finish", tuple()) or tuple())
+        _seed_n = int(_seed_row.get("N", 0) or 0)
+        _seed_1 = int(_seed_finish[0]) if len(_seed_finish) >= 1 else 0
+        _seed_2 = int(_seed_finish[1]) if len(_seed_finish) >= 2 else 0
+        _seed_3 = int(_seed_finish[2]) if len(_seed_finish) >= 3 else 0
+
+        st.caption(f"**{int(_car)}番車**")
+        _cN, _c1, _c2, _c3 = st.columns(4)
+        with _cN:
+            _n = st.number_input(
+                f"{int(_car)}番 N",
+                min_value=0, max_value=100000,
+                value=int(_seed_n),
+                step=1,
+                key=f"{_v335bu_key_prefix}_car{int(_car)}_N",
+            )
+        with _c1:
+            _h1 = st.number_input(
+                f"{int(_car)}番 1着",
+                min_value=0, max_value=100000,
+                value=int(_seed_1),
+                step=1,
+                key=f"{_v335bu_key_prefix}_car{int(_car)}_1",
+            )
+        with _c2:
+            _h2 = st.number_input(
+                f"{int(_car)}番 2着",
+                min_value=0, max_value=100000,
+                value=int(_seed_2),
+                step=1,
+                key=f"{_v335bu_key_prefix}_car{int(_car)}_2",
+            )
+        with _c3:
+            _h3 = st.number_input(
+                f"{int(_car)}番 3着",
+                min_value=0, max_value=100000,
+                value=int(_seed_3),
+                step=1,
+                key=f"{_v335bu_key_prefix}_car{int(_car)}_3",
+            )
+
+        _n = int(_n)
+        _h1, _h2, _h3 = int(_h1), int(_h2), int(_h3)
+        _sum3 = _h1 + _h2 + _h3
+
+        if _n > 0 and _sum3 > _n:
+            st.warning(
+                f"{int(_car)}番車：1着+2着+3着={_sum3} が N={_n} を超えています。"
+            )
+
+        _out = max(0, _n - _sum3)
+        _win_rate = (100.0 * _h1 / _n) if _n > 0 else 0.0
+        _quinella_rate = (100.0 * (_h1 + _h2) / _n) if _n > 0 else 0.0
+        _trio_rate = (100.0 * _sum3 / _n) if _n > 0 else 0.0
+
+        if _n > 0:
+            _v335bu_complete_cars += 1
+
+        _v335bu_car_stats[int(_car)] = {
+            "win_rate": float(_win_rate),
+            "quinella_rate": float(_quinella_rate),
+            "trio_rate": float(_trio_rate),
+            "N": int(_n),
+            "finish": (int(_h1), int(_h2), int(_h3), int(_out)),
         }
+
+    st.caption(
+        f"入力済み：{int(_v335bu_complete_cars)}/{int(n_cars)}車 "
+        "（N=0の車は想定的中率計算で中立扱い）"
+    )
+
+# サイドバー入力から、現行の想定的中率モデルが読むprofileをその場で構築。
+_v335bu_label_class = (
+    "A級＋A級チャレンジ"
+    if _v335bu_class_key == "A級系"
+    else str(_v335bu_class_key)
+)
+_V335BU_ACTIVE_MANUAL_PROFILE = {
+    "_profile_key": tuple(_v335bu_profile_key),
+    "label": (
+        f"{str(track)}｜{str(race_time)}｜{_v335bu_label_class}｜"
+        f"{int(n_cars)}車｜サイドバー入力"
+    ),
+    "source_note": "v335bu sidebar manual input",
+    "N": int(vk_sample_count),
+    "kimarite": dict(VENUE_KIMARITE_STATS),
+    "car_stats": dict(_v335bu_car_stats),
+    # 旧ROI系関数との互換だけ維持。新TOP3選出では使わない。
+    "exacta_rows": tuple(),
+    "trifecta_rows": tuple(),
+}
+globals()["_V335BU_ACTIVE_MANUAL_PROFILE"] = _V335BU_ACTIVE_MANUAL_PROFILE
 
 _vk_role_bonus_preview, _vk_rel_preview, _vk_detail_preview = _calc_venue_kimarite_role_bonus_map(
     VENUE_KIMARITE_STATS
@@ -3363,6 +3539,9 @@ st.sidebar.caption(
     f"先頭 {_fmt_signed_pt(_vk_role_bonus_preview.get('head', 0.0))} / "
     f"番手 {_fmt_signed_pt(_vk_role_bonus_preview.get('second', 0.0))} "
     f"｜信頼係数 {_vk_rel_preview:.2f}"
+)
+st.sidebar.caption(
+    "この入力値を【想定的中率TOP3】の車番別着率・会場決まり手へ使用します。"
 )
 
 globals()["VENUE_KIMARITE_STATS"] = VENUE_KIMARITE_STATS
