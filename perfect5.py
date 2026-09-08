@@ -1,8 +1,17 @@
+# v335bo（実車期待値照合・得意3点化検証版）:
+# ・得意会場の固定買い目を3点化：2車単 評価2→1（1点）＋3連単 評価1→2→4/5（2点）。
+# ・予想順位ロジックは変更せず、長期の「実車番＋順序」期待値候補をヴェロビ最終順位へ後から照合する検証枠を追加。
+# ・実車期待値候補そのものからフォーメーションは作らない。実車番の買い目を固定し、ヴェロビ評価は金/銀判定にだけ使う。
+# ・金：2車単はヴェロビTOP2と完全一致、3連単はTOP3と完全一致。
+# ・銀：候補車のうち2車以上がヴェロビTOP3に入り、かつ買い目内の相対順序とヴェロビ順位が矛盾しない。
+# ・実車期待値照合は検証表示のみ。現行の固定3点購入とは別枠で、購入点数・想定的中率・全外れ確率には加算しない。
+# ・現時点で出所を再確認できた長期実車データはAB×A級の7車母集団（N=783）だけを暫定登録。
+#   AB×S級／CD×A級／CD×S級は基準データ未登録とし、推測値は入れない。
 # v335bn（資金目安表示・計算削除版）:
 # ・note用簡易表示から「※今開催目安○○円以上推奨。」を削除。
 # ・資金目安専用の点数合計・金額計算（_strategy_total_points／_fund／_fund_text）も削除。
 # ・開催区分のレース数（7R／9R／12R）は全外れ確率の計算に必要なため維持。
-# ・想定的中率／全外れ確率、買い目ルール、最終順位ロジックはv335bmから変更しない。
+# ・v335bn時点では想定的中率／全外れ確率、買い目ルール、最終順位ロジックはv335bmから変更しない。
 # v335bm（想定的中率・開催全外れ確率表示版）:
 # ・note用簡易表示の注意書きに、固定戦略別の想定的中率と開催全外れ確率を追加。
 # ・想定的中率は、得意会場12.5％／苦手会場A級系7.2％／苦手会場S級7.7％。
@@ -2121,6 +2130,144 @@ _V335X_RECOMMEND_D_TRACKS = {
 _V335X_UNCLASSIFIED_TRACKS = {
     "函館", "取手", "大宮", "富山", "福井", "向日町", "高松", "久留米",
 }
+
+
+# ==============================
+# v335bo: 実車番・長期期待値候補（検証用）
+# ==============================
+# 重要：ここは「評価順位」ではなく、実際の車番と着順の組み合わせを固定する。
+# ヴェロビ最終順位は買い目生成には使わず、金/銀の照合判定だけに使う。
+#
+# AB_A の暫定母集団：F1・ナイター・A級7車の長期集計 N=783。
+# ROI =（的中回数×平均配当）÷（N×100円）で算出した参考値。
+# 低サンプルの高ROI目は入れず、ここではH>=10を目安に登録している。
+_V335BO_REAL_NUMBER_VALUE_DB = {
+    "AB_A": (
+        {"kind": "3連単", "ticket": (7, 1, 4), "N": 783, "H": 19, "avg_pay": 6575, "roi": 159.5},
+        {"kind": "3連単", "ticket": (1, 7, 2), "N": 783, "H": 16, "avg_pay": 6512, "roi": 133.1},
+        {"kind": "3連単", "ticket": (1, 7, 3), "N": 783, "H": 20, "avg_pay": 4169, "roi": 106.5},
+        {"kind": "2車単", "ticket": (7, 1),    "N": 783, "H": 72, "avg_pay": 1120, "roi": 103.0},
+        {"kind": "3連単", "ticket": (1, 7, 4), "N": 783, "H": 18, "avg_pay": 4443, "roi": 102.1},
+    ),
+    "AB_S": tuple(),
+    "CD_A": tuple(),
+    "CD_S": tuple(),
+}
+
+_V335BO_REAL_NUMBER_VALUE_LABELS = {
+    "AB_A": "AB×A級",
+    "AB_S": "AB×S級",
+    "CD_A": "CD×A級",
+    "CD_S": "CD×S級",
+}
+
+
+def _v335bo_real_number_bucket(track_name=None, race_class_name=None):
+    """会場AB/CD×A/Sの4区分を返す。チャレンジ・ガールズ等は実車長期表の対象外。"""
+    _track = str(track_name or globals().get("track") or globals().get("place") or "").strip()
+    _class = str(race_class_name or globals().get("race_class", "") or "").strip()
+    if _class not in ("Ａ級", "Ｓ級"):
+        return ""
+    _is_ab = bool(_track in _V335X_RECOMMEND_A_TRACKS or _track in _V335X_RECOMMEND_B_TRACKS)
+    if _is_ab and _class == "Ａ級":
+        return "AB_A"
+    if _is_ab and _class == "Ｓ級":
+        return "AB_S"
+    if (not _is_ab) and _class == "Ａ級":
+        return "CD_A"
+    return "CD_S"
+
+
+def _v335bo_relative_order_ok(ticket, velo_top3):
+    """TOP3に重なった車だけを抜き出し、実車券の相対順序と矛盾しないか確認。"""
+    _ticket = tuple(int(x) for x in (ticket or tuple()))
+    _top3 = tuple(int(x) for x in (velo_top3 or tuple()))
+    _overlap_set = set(_ticket) & set(_top3)
+    if len(_overlap_set) < 2:
+        return False
+    _ticket_overlap = tuple(x for x in _ticket if x in _overlap_set)
+    _velo_overlap = tuple(x for x in _top3 if x in _overlap_set)
+    return _ticket_overlap == _velo_overlap
+
+
+def _v335bo_real_number_match_grade(kind, ticket, final_order):
+    """実車券をヴェロビ最終順位へ照合し、金/銀/—を返す。"""
+    _ticket = tuple(int(x) for x in (ticket or tuple()))
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    _top3 = _order[:3]
+    if str(kind) == "2車単":
+        if len(_order) >= 2 and tuple(_order[:2]) == _ticket:
+            return "金"
+        if len(_ticket) == 2 and all(x in _top3 for x in _ticket) and _v335bo_relative_order_ok(_ticket, _top3):
+            return "銀"
+        return "—"
+    if str(kind) == "3連単":
+        if len(_order) >= 3 and tuple(_order[:3]) == _ticket:
+            return "金"
+        _overlap_n = sum(1 for x in _ticket if x in _top3)
+        if _overlap_n >= 2 and _v335bo_relative_order_ok(_ticket, _top3):
+            return "銀"
+        return "—"
+    return "—"
+
+
+def _v335bo_real_number_value_lines(final_order, track_name=None, race_class_name=None, field_n=None):
+    """note用：実車期待値候補の長期優先順位＋ヴェロビ照合結果を返す。"""
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    _field_n = int(field_n or len(_order) or 0)
+    _bucket = _v335bo_real_number_bucket(track_name, race_class_name)
+    if not _bucket:
+        return ["【実車期待値照合｜検証】", "A級/S級7車の基準外（チャレンジ・ガールズ等）"]
+    _label = _V335BO_REAL_NUMBER_VALUE_LABELS.get(_bucket, _bucket)
+    _rows = list(_V335BO_REAL_NUMBER_VALUE_DB.get(_bucket, tuple()) or tuple())
+    _out = [f"【実車期待値照合｜{_label}・検証】"]
+    if _field_n != 7:
+        _out.append("長期実車データは7車戦基準のため対象外")
+        return _out
+    if not _rows:
+        _out.append("基準データ未登録（推測値は使用しません）")
+        return _out
+
+    _pos = {int(car): idx for idx, car in enumerate(_order, start=1)}
+    _ranked = []
+    for _row in _rows:
+        _ticket = tuple(int(x) for x in (_row.get("ticket", tuple()) or tuple()))
+        if any(x < 1 or x > _field_n for x in _ticket):
+            continue
+        _grade = _v335bo_real_number_match_grade(_row.get("kind"), _ticket, _order)
+        _v_ranks = tuple(int(_pos.get(x, 99)) for x in _ticket)
+        _ranked.append({**dict(_row), "grade": _grade, "v_ranks": _v_ranks})
+
+    # 長期候補の優先順位は買い目単位。ROI→的中数の順で並べる。
+    _ranked.sort(key=lambda r: (-float(r.get("roi", 0.0)), -int(r.get("H", 0))))
+    for _idx, _row in enumerate(_ranked, start=1):
+        _ticket = tuple(int(x) for x in _row.get("ticket", tuple()))
+        _ticket_text = "→".join(str(x) for x in _ticket)
+        _vr_text = "→".join(str(int(x)) if int(x) < 99 else "外" for x in _row.get("v_ranks", tuple()))
+        _out.append(
+            f"{_idx}位【{_row.get('grade', '—')}】{_row.get('kind')} {_ticket_text}"
+            f"｜長期ROI{float(_row.get('roi', 0.0)):.1f}%・H{int(_row.get('H', 0))}/{int(_row.get('N', 0))}"
+            f"｜V評価{_vr_text}"
+        )
+
+    _grade_score = {"金": 2, "銀": 1, "—": 0}
+    _matched = [r for r in _ranked if _grade_score.get(str(r.get("grade")), 0) > 0]
+    _matched.sort(key=lambda r: (
+        -_grade_score.get(str(r.get("grade")), 0),
+        -float(r.get("roi", 0.0)),
+        -int(r.get("H", 0)),
+    ))
+    _buy = _matched[:3]
+    if _buy:
+        _buy_text = "・".join(
+            f"{r.get('grade')}:{r.get('kind')} " + "→".join(str(int(x)) for x in r.get("ticket", tuple()))
+            for r in _buy
+        )
+        _out.append(f"購入候補（金/銀から最大3点）：{_buy_text}")
+    else:
+        _out.append("購入候補：なし（金/銀なし＝見送り）")
+    _out.append("※買い目は実車番固定。ヴェロビ評価に合わせて並べ替えません。")
+    return _out
 
 if track in _V335X_RECOMMEND_A_TRACKS:
     st.sidebar.success("推奨A｜本命会場｜A型バンク＋回収率80％以上")
@@ -12187,13 +12334,12 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
 
         if _strategy_is_good_venue:
             _strategy_kind = "得意会場・全級共通"
-            common_exacta_rule_text = "評価2→1＋評価1→2→4/5/6"
-            if len(final_prediction_order) >= 6:
+            common_exacta_rule_text = "評価2→1＋評価1→2→4/5"
+            if len(final_prediction_order) >= 5:
                 _s1 = int(final_prediction_order[0])
                 _s2 = int(final_prediction_order[1])
                 _s4 = int(final_prediction_order[3])
                 _s5 = int(final_prediction_order[4])
-                _s6 = int(final_prediction_order[5])
 
                 common_exacta_tickets = ((_s2, _s1),)
                 common_exacta_text = f"{_s2}-{_s1}"
@@ -12202,10 +12348,9 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
                 trifecta_tickets = (
                     (_s1, _s2, _s4),
                     (_s1, _s2, _s5),
-                    (_s1, _s2, _s6),
                 )
-                trifecta_text = f"{_s1}-{_s2}-{_s4}{_s5}{_s6}"
-                _strategy_trifecta_label = f"{_s1}→{_s2}→{_s4}・{_s5}・{_s6}"
+                trifecta_text = f"{_s1}-{_s2}-{_s4}{_s5}"
+                _strategy_trifecta_label = f"{_s1}→{_s2}→{_s4}・{_s5}"
         elif _strategy_is_s_class:
             _strategy_kind = "苦手会場・S級"
             common_exacta_rule_text = "評価4→1/3/7"
@@ -12747,10 +12892,23 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
                 f"3連単：{_strategy_trifecta_label}　{_strategy_trifecta_count}点"
             )
 
+        # v335bo：実車番の長期期待値候補を、最終着順予想へ「後から」照合する。
+        # ここは検証表示だけで、上の固定3点の購入点数には加算しない。
+        _real_value_lines = _v335bo_real_number_value_lines(
+            _dedicated_order,
+            track_name=str(globals().get("track") or globals().get("place") or "").strip(),
+            race_class_name=str(globals().get("race_class", "") or "").strip(),
+            field_n=len(_dedicated_order),
+        )
+        if _real_value_lines:
+            lines.append("")
+            lines.extend(_real_value_lines)
+
         lines.extend([
             "",
             "※すべて1点100円の平買い想定です。",
             f"※想定的中率：約{_expected_hit_text}％　全外れ確率：約{_all_miss_text}％",
+            "※実車期待値照合は検証枠のため、上記想定的中率・全外れ確率には含めていません。",
         ])
         return "\n".join(lines).strip() + "\n"
 
