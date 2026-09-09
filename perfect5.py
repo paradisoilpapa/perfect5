@@ -1,10 +1,11 @@
-# v335cc（2車単・2着内率ゆがみヒモ説明版）:
-# ・2車単特化のヒモ判定基準を、会場車番別の過去3着内率順位から「過去2着内率（1着+2着）順位」へ変更。
-# ・軸は従来どおりヴェロビ最終着順予想1位で固定。想定的中率モデルで軸を変更しない。
-# ・ヒモは「今回V評価順位が、過去の車番別2着内率順位より上」の車だけ。同順位は採用しない。
-# ・読者向けに、過去集計母数・車番別2着内率順位（実率%）・今回V評価順位・ゆがみヒモ候補を推奨購入の後へ表示。
-# ・【想定的中率TOP3】は表示しない。軸の1着想定確率だけを表示する。
-# ・3連単は使用しない。その他の予想ロジック、ライン軽補正、KO/脚質/会場決まり手の計算は変更しない。
+# v335cd（足切り候補・2車単V順・3連単ゆがみ順位版）:
+# ・軸はヴェロビ最終着順予想1位に固定。想定的中率モデルで軸を変更しない。
+# ・過去の車番別2着内率順位と今回V評価順位を比較し、「V順位<=過去順位」の車を足切り通過候補とする。
+#   つまり上昇車と据え置き車は残し、過去実績順位より今回V評価順位が下がった車だけを除外する。
+# ・2車単は、足切り通過候補のうち軸以外を元のV評価順位順でヒモにする。
+# ・ゆがみポイント=過去2着内率順位-V評価順位。3連単だけは足切り通過候補をゆがみポイント降順、同点はV評価順位順で並べる。
+# ・3連単はその上位3車を使い「12-13-123」の3点を生成する。2車単の順位自体はゆがみポイントで並べ替えない。
+# ・読者向けに、過去集計母数・車番別2着内率順位・今回V評価順位・足切り通過候補・3連単用ゆがみ順位を表示する。
 # v335cb（2車単・上振れヒモ・軸1着想定表示版）:
 # ・v335caの2車単特化ロジックは変更しない。軸はヴェロビ最終着順予想1位で固定。
 # ・読者向け【想定的中率TOP3】表示を完全に削除。
@@ -3060,14 +3061,57 @@ def _v335bx_expand_same_line_exacta(exacta_rows, p3_map):
         "trifecta_rows": _tri_rows,
     }
 
+def _v335cd_pass_candidates(final_order, profile):
+    """
+    v335cd 足切り候補。
+    V評価順位 <= 過去車番別2着内率順位 の車を残す。
+    つまり上昇車・据え置き車を残し、下落車だけを除外する。
+    戻り値: (V順位順の通過候補, 過去順位map, V順位map, ゆがみポイントmap)
+    """
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    _v_rank = {int(c): i for i, c in enumerate(_order, start=1)}
+    _hist_rank = _v335cc_historical_quinella_rank_map(profile, _order)
+
+    _passed = []
+    _point = {}
+    for _car in _order:
+        _car = int(_car)
+        _vr = _v_rank.get(_car)
+        _hr = _hist_rank.get(_car)
+        if _vr is None or _hr is None:
+            continue
+        _point[_car] = int(_hr) - int(_vr)
+        if int(_vr) <= int(_hr):
+            _passed.append(_car)
+
+    return _passed, _hist_rank, _v_rank, _point
+
+
+def _v335cd_trifecta_12_13_123(cars3):
+    """
+    順位1・2・3の3車から、12-13-123 の有効3点を生成する。
+    例: [A,B,C] -> A-C-B / B-A-C / B-C-A
+    """
+    _cars = [int(x) for x in (cars3 or [])]
+    if len(_cars) < 3:
+        return []
+    _a, _b, _c = _cars[:3]
+    return [
+        (_a, _c, _b),
+        (_b, _a, _c),
+        (_b, _c, _a),
+    ]
+
+
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335cc note用推奨購入（2車単・2着内率ゆがみヒモ特化）:
-      1) ヴェロビ最終着順予想1位を軸に固定
-      2) 会場車番別の過去2着内率順位より、今回V評価順位が上の車だけをヒモ採用
-      3) 同順位は採用しない。軸自身は除外
-      4) 同ライン/別ラインは区別せず、採用ヒモはすべて2車単のまま残す
-      5) 読者向けに過去2着内率順位・今回V評価順位・ゆがみヒモ候補を表示
+    v335cd note用推奨購入:
+      1) 軸はヴェロビ最終着順予想1位に固定
+      2) V順位<=過去2着内率順位の車を足切り通過候補にする（上昇+据え置き）
+      3) 2車単は、通過候補のうち軸以外を元のV順位順で軸→ヒモ
+      4) ゆがみポイント=過去順位-V順位
+      5) 3連単だけは、通過候補をゆがみポイント降順・同点V順位順で並べ、
+         上位3車から12-13-123の3点を生成
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
     if len(_order) < 2 or not isinstance(profile, dict):
@@ -3076,15 +3120,25 @@ def _v335bt_purchase_lines(final_order, profile):
     # 軸はヴェロビ最終着順予想1位に固定。
     _axis = int(_order[0])
 
-    # ヒモは「過去2着内率順位より今回V評価順位が上」の車だけ。
-    _upshift, _hist_rank = _v335bv_upshift_himo_cars(_order, profile, _axis)
-    _v_rank = {int(c): i for i, c in enumerate(_order, start=1)}
-    _himo = sorted(
-        {int(c) for c in (_upshift or []) if int(c) != _axis},
-        key=lambda c: (int(_v_rank.get(int(c), 999)), int(c)),
-    )
+    # 足切り: 上昇車と据え置き車を残し、下落車を除外。
+    _passed, _hist_rank, _v_rank, _point = _v335cd_pass_candidates(_order, profile)
 
-    # 軸の1着想定確率。読者向けにはこの値だけを表示する。
+    # 2車単は元のV評価順位を優先。ゆがみポイントで並べ替えない。
+    _himo = [int(c) for c in _passed if int(c) != _axis]
+
+    # 3連単だけ、ゆがみポイントを大きい順。同点は元のV順位を優先。
+    _warp_order = sorted(
+        [int(c) for c in _passed],
+        key=lambda c: (
+            -int(_point.get(int(c), -999)),
+            int(_v_rank.get(int(c), 999)),
+            int(c),
+        ),
+    )
+    _tri_top3 = _warp_order[:3]
+    _tri_tickets = _v335cd_trifecta_12_13_123(_tri_top3) if len(_tri_top3) >= 3 else []
+
+    # 軸の1着想定確率。
     try:
         _p1_map = _v335br_position_probability_map(profile, _order, 1)
         _axis_p1 = float((_p1_map or {}).get(int(_axis), 0.0) or 0.0)
@@ -3104,7 +3158,16 @@ def _v335bt_purchase_lines(final_order, profile):
     else:
         _out.append("2車単：なし")
 
-    # 読者向け：なぜこのヒモなのかを、実際の会場車番データと今回V評価のズレで示す。
+    if _tri_tickets:
+        _out.append(
+            "3連単：" + "/".join(
+                f"{int(a)}→{int(b)}→{int(c)}" for a, b, c in _tri_tickets
+            )
+        )
+    else:
+        _out.append("3連単：なし")
+
+    # 読者向け：足切りと3連単順位の理由を表示。
     try:
         _hist_rank2, _rate_map, _n_map = _v335cc_historical_quinella_data(profile, _order)
         _valid_cars = [int(c) for c in _order if _rate_map.get(int(c)) is not None]
@@ -3112,7 +3175,11 @@ def _v335bt_purchase_lines(final_order, profile):
             _valid_cars,
             key=lambda c: (-float(_rate_map.get(int(c), 0.0)), int(c)),
         )
-        _n_vals = [float(_n_map.get(int(c))) for c in _valid_cars if _n_map.get(int(c)) is not None]
+        _n_vals = [
+            float(_n_map.get(int(c)))
+            for c in _valid_cars
+            if _n_map.get(int(c)) is not None
+        ]
 
         if _n_vals:
             _n_min = int(round(min(_n_vals)))
@@ -3130,14 +3197,23 @@ def _v335bt_purchase_lines(final_order, profile):
             _hist_text = "算出不可"
 
         _v_text = " → ".join(str(int(c)) for c in _order)
-        _himo_text = "・".join(str(int(c)) for c in _himo) if _himo else "なし"
+        _pass_text = "・".join(str(int(c)) for c in _passed) if _passed else "なし"
+        _warp_text = (
+            " → ".join(
+                f"{int(c)}（{int(_point.get(int(c), 0)):+d}）" for c in _warp_order
+            )
+            if _warp_order
+            else "なし"
+        )
 
         _out.append("")
-        _out.append("※ヒモ選定")
+        _out.append("※候補選定")
         _out.append(f"過去{_n_text}レース集計・車番別2着内率順位：{_hist_text}")
         _out.append(f"今回V評価順位：{_v_text}")
-        _out.append(f"ゆがみヒモ候補：{_himo_text}")
-        _out.append("※過去の車番別2着内率順位より今回V評価順位が上の車を「ゆがみヒモ」として選出しています。")
+        _out.append(f"足切り通過候補：{_pass_text}")
+        _out.append(f"3連単用ゆがみ順位：{_warp_text}")
+        _out.append("※足切りはV評価順位が過去2着内率順位以上（同順位を含む）の車を残します。")
+        _out.append("※3連単のゆがみポイントは『過去順位－V評価順位』。同点はV評価順位を優先します。")
     except Exception:
         pass
 
@@ -3153,7 +3229,7 @@ def _v335br_hit_top_lines(
     top_n=3,
 ):
     """
-    v335cc note用：読者向けは推奨購入＋ヒモ選定根拠だけを表示する。
+    v335cd note用：読者向けは推奨購入＋候補選定根拠を表示する。
     想定的中率TOP3は表示せず、軸の1着想定確率だけを推奨購入欄へ併記する。
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
