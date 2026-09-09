@@ -1,3 +1,10 @@
+# v335ck（3連単V配列優先・ゆがみ1車必須版）:
+# ・2車単ロジックはv335cjから変更しない。軸はV最終着順予想1位固定、ゆがみ優先＋最低2点保証。
+# ・3連単はまずV最終着順予想の軸以外上位2車を2列目へ採用する。
+# ・その2車内にゆがみポイント+1以上の車が1車でも含まれていれば、V配列をそのまま維持する。
+# ・2列目2車ともゆがみなしの場合だけ、V評価下位側1車を「ゆがみポイント最大（同点はV順位上位）」の車へ差し替える。
+# ・3列目は確定した2列目2車＋残るV評価最上位1車。
+# ・軸固定、足切り、想定的中率計算、表示形式は変更しない。
 # v335cj（2車単最低2点・3連単ゆがみ配列維持版）:
 # ・軸はヴェロビ最終着順予想1位で固定。軸選定・最終着順予想ロジックは変更しない。
 # ・2車単はゆがみポイント>0のヒモを優先するが、2点未満ならV評価上位から補完して最低2点を必ず組む。
@@ -3148,9 +3155,10 @@ def _v335bt_purchase_lines(final_order, profile):
          ・0車: V評価2位・3位を採用
          → 2車単は最低2点を必ず組む
       4) 3連単は「軸-2車-3車」の配列を維持
-         ・ゆがみヒモあり: 2列目に必ずゆがみ車を最低1車入れる
-         ・ゆがみヒモなし: V評価上位2車を2列目にする（◎-12-123）
-      5) 3列目は2列目2車＋残るV評価上位1車
+         ・まずV評価上位2車を2列目にする
+         ・その2車にゆがみ車が1車でもあれば配列を維持
+         ・2車ともゆがみなしの場合だけ、V評価下位側を最上位ゆがみ車へ差し替える
+      5) 3列目は確定した2列目2車＋残るV評価上位1車
       6) 2車単・3連単の各実買い目に既存モデルの順序付き想定的中率を表示する
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
@@ -3223,25 +3231,25 @@ def _v335bt_purchase_lines(final_order, profile):
         if int(_c) not in _tri_pool:
             _tri_pool.append(int(_c))
 
-    if len(_tri_pool) >= 3:
-        if _warp_himo_order:
-            # 必須ゆがみ車：ゆがみP最大、同点はV順位上位。
-            _warp_required = int(_warp_himo_order[0])
+    if len(_v_all_himo) >= 3:
+        # まずV最終着順予想の上位2車を、そのまま2列目候補にする。
+        _tri_second_sel = [int(c) for c in _v_all_himo[:2]]
 
-            # もう1車はV評価上位。
-            _second_partner = next(
-                (int(c) for c in _tri_pool if int(c) != _warp_required),
-                None,
-            )
-            if _second_partner is not None:
-                _tri_second_sel = [_warp_required, int(_second_partner)]
-            else:
-                _tri_second_sel = []
-        else:
-            # ヒモ側にゆがみがない場合はV評価上位2車。
-            _tri_second_sel = [int(c) for c in _v_all_himo[:2]]
+        # 2列目にゆがみ車が1車でも入っていれば、V配列を壊さない。
+        _second_has_warp = any(
+            int(_point.get(int(c), 0)) > 0
+            for c in _tri_second_sel
+        )
+
+        # 2列目が2車とも据え置き/下落で、別にゆがみ車が存在する場合だけ、
+        # V評価下位側（2番目）を最上位ゆがみ車へ差し替える。
+        if (not _second_has_warp) and _warp_himo_order:
+            _warp_required = int(_warp_himo_order[0])
+            if _warp_required not in _tri_second_sel:
+                _tri_second_sel[1] = _warp_required
 
         if len(_tri_second_sel) >= 2:
+            # 3列目へ追加する1車は、確定した2列目以外でV評価最上位の車。
             _third_add = next(
                 (
                     int(c) for c in _v_all_himo
@@ -3400,7 +3408,7 @@ def _v335bt_purchase_lines(final_order, profile):
         _out.append(f"3連単2列目候補　　 ：{_tri_second_text}")
         _out.append(f"3連単3列目候補　　 ：{_tri_third_text}")
         _out.append("※2車単はゆがみ車を優先し、2点未満の場合はV評価上位から補完して最低2点を組みます。")
-        _out.append("※3連単は軸を1着固定。ゆがみ車がある場合は2列目2車のうち最低1車をゆがみ車とし、ゆがみ車がない場合はV評価上位2車を2列目にします。3列目は次のV評価上位1車を加えます。")
+        _out.append("※3連単は軸を1着固定。まずV評価上位2車を2列目にし、その中にゆがみ車がなければV評価下位側1車を最上位ゆがみ車へ差し替えます。3列目は次のV評価上位1車を加えます。")
     except Exception:
         pass
 
