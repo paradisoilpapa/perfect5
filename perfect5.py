@@ -1,3 +1,12 @@
+# v335ca（2車単・評価上振れヒモ特化版）:
+# ・軸はv335bzどおり、ヴェロビ最終着順予想1位に固定。軸は変更しない。
+# ・推奨購入は2車単だけに特化し、3連単への置換・展開を停止。
+# ・従来の「軸→想定的中率上位3車を基本ヒモ」は廃止。
+# ・2車単ヒモは、会場車番別の過去3着内率順位より今回V評価順位が上の車だけを採用する。
+# ・同順位は採用しない。軸自身は除外。該当車がなければ「2車単：なし」と表示。
+# ・同ラインか別ラインかはヒモ採用条件にしない。同ライン3番手以降でも上振れ条件を満たせば2車単に残す。
+# ・読者向け【想定的中率TOP3】も2車単だけ表示し、3連単TOP3は表示しない。
+# ・ライン軽補正、KOスコア、車番別着率、脚質×会場決まり手の想定的中率計算自体は変更しない。
 # v335bz（読者向けTOP3表示簡潔版）:
 # ・v335byから表示だけを整理。予想・軸固定・ヒモ追加・3連単展開・確率計算ロジックは変更しない。
 # ・【想定的中率TOP3】見出しから会場/開催区分/級別/車立て/サイドバー入力のラベルを削除。
@@ -2992,85 +3001,38 @@ def _v335bx_expand_same_line_exacta(exacta_rows, p3_map):
 
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335by note用推奨購入:
-      1) ヴェロビ最終着順予想1位を軸に固定（想定的中率モデルでは軸を変更しない）
-      2) その軸→相手の想定的中率上位3車を基本ヒモ
-      3) 過去3着内率順位より今回V評価順位が上の車を追加（同順位は追加しない）
-      4) ヒモは今回V評価順で表示
-      5) 軸と同ラインのヒモがあれば、想定的中率最上位の1組だけ1・2着固定で3連単化
-      6) 3連単3着は、選出済みの残りヒモすべてを展開
-      7) 金額・合計点数・推奨理由の補足文は表示しない
+    v335ca note用推奨購入（2車単特化）:
+      1) ヴェロビ最終着順予想1位を軸に固定
+      2) 会場車番別の過去3着内率順位より、今回V評価順位が上の車だけをヒモ採用
+      3) 同順位は採用しない。軸自身は除外
+      4) 同ライン/別ラインは区別せず、採用ヒモはすべて2車単のまま残す
+      5) 従来の基本ヒモ3車と3連単化は使用しない
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
     if len(_order) < 2 or not isinstance(profile, dict):
         return ["【推奨購入】", "算出不可"]
 
-    # 全2車単を一度だけ算出。軸はヴェロビ最終着順予想1位に固定し、その軸の相手上位3車を取る。
-    _all_exacta, _p1, _p2, _p3 = _v335br_hit_top_rows(
-        _order, profile, "2車単", top_n=max(1, len(_order) * (len(_order) - 1))
-    )
-    if not _all_exacta:
-        return ["【推奨購入】", "算出不可"]
-
-    # 軸はヴェロビ最終着順予想1位を固定。
-    # 想定的中率モデルはヒモ選定にのみ使い、軸は上書きしない。
+    # 軸はヴェロビ最終着順予想1位に固定。
     _axis = int(_order[0])
 
-    _axis_rows_all = [
-        r for r in _all_exacta
-        if len(tuple(r.get("ticket", tuple()))) == 2
-        and int(tuple(r.get("ticket", tuple()))[0]) == _axis
-    ]
-    _base_rows = _axis_rows_all[:3]
-    _base_himo = [int(tuple(r.get("ticket", tuple()))[1]) for r in _base_rows]
-
+    # ヒモは「過去3着内率順位より今回V評価順位が上」の車だけ。
+    # 同順位は不採用。軸自身は関数内で除外される。
     _upshift, _hist_rank = _v335bv_upshift_himo_cars(_order, profile, _axis)
-    _selected = set(_base_himo)
-    _selected.update(int(c) for c in _upshift)
-    _selected.discard(_axis)
-
     _v_rank = {int(c): i for i, c in enumerate(_order, start=1)}
-    _himo = sorted(_selected, key=lambda c: (int(_v_rank.get(int(c), 999)), int(c)))
-
-    # 選ばれた軸→ヒモを、全2車単行から復元。
-    _row_map = {
-        tuple(int(x) for x in r.get("ticket", tuple())): r
-        for r in _all_exacta
-        if len(tuple(r.get("ticket", tuple()))) == 2
-    }
-    _selected_rows = []
-    for _car in _himo:
-        _key = (int(_axis), int(_car))
-        _row = _row_map.get(_key)
-        if _row is not None:
-            _selected_rows.append(_row)
-
-    if not _selected_rows:
-        return ["【推奨購入】", "算出不可"]
-
-    _plan = _v335bx_expand_same_line_exacta(_selected_rows, _p3)
-    _ex_rows = list(_plan.get("exacta_rows", []) or [])
-    _tri_head = _plan.get("trifecta_head")
-    _tri_second = _plan.get("trifecta_second")
-    _tri_thirds = [int(c) for c in (_plan.get("trifecta_thirds", []) or [])]
+    _himo = sorted(
+        {int(c) for c in (_upshift or []) if int(c) != _axis},
+        key=lambda c: (int(_v_rank.get(int(c), 999)), int(c)),
+    )
 
     _out = ["【推奨購入】"]
     _out.append(f"軸：{int(_axis)}")
 
-    _ex_texts = [
-        "→".join(str(int(x)) for x in r.get("ticket", tuple()))
-        for r in _ex_rows
-    ]
-    if _ex_texts:
-        _out.append("2車単：" + "/".join(_ex_texts))
+    if _himo:
+        _out.append(
+            "2車単：" + "/".join(f"{int(_axis)}→{int(_car)}" for _car in _himo)
+        )
     else:
         _out.append("2車単：なし")
-
-    if _tri_head is not None and _tri_second is not None and _tri_thirds:
-        _third_text = "".join(str(int(c)) for c in _tri_thirds)
-        _out.append(f"3連単：{int(_tri_head)}→{int(_tri_second)}→{_third_text}")
-    else:
-        _out.append("3連単：なし")
 
     return _out
 
@@ -3082,7 +3044,7 @@ def _v335br_hit_top_lines(
     field_n=None,
     top_n=3,
 ):
-    """note用：推奨購入を先に表示し、その後に2車単/3連単 想定的中率TOP3を検証表示する。"""
+    """note用：2車単推奨購入を先に表示し、その後に2車単の想定的中率TOP3を検証表示する。"""
     _order = tuple(int(x) for x in (final_order or tuple()))
     _field_n = int(field_n or len(_order) or 0)
     _profile = _v335bp_get_venue_profile(
@@ -3105,16 +3067,14 @@ def _v335br_hit_top_lines(
     _out.append("【想定的中率TOP3】")
     _out.append("")
 
-    for _kind_idx, _kind in enumerate(("2車単", "3連単")):
-        if _kind_idx > 0:
-            _out.append("")
-        _rows, _p1, _p2, _p3 = _v335br_hit_top_rows(
-            _order, _profile, _kind, top_n=top_n
-        )
-        if not _rows:
-            _out.append(f"{_kind}：算出不可")
-            continue
-
+    # v335ca：読者向け検証表示も2車単だけに特化。
+    _kind = "2車単"
+    _rows, _p1, _p2, _p3 = _v335br_hit_top_rows(
+        _order, _profile, _kind, top_n=top_n
+    )
+    if not _rows:
+        _out.append(f"{_kind}：算出不可")
+    else:
         _out.append(f"{_kind}：想定的中率TOP{len(_rows)}")
         for _idx, _row in enumerate(_rows, start=1):
             _ticket_text = "→".join(str(int(x)) for x in _row.get("ticket", tuple()))
