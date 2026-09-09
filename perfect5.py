@@ -1,3 +1,9 @@
+# v335co（出走数変更でも会場入力保持版）:
+# ・会場データ入力のStreamlitキーから出走数(n_cars)を外し、出走数変更で入力値がリセットされないよう修正。
+# ・保持単位は競輪場×開催区分×級別。出走数を増減しても、既存車番のN/1着/2着/3着と決まり手入力を保持する。
+# ・出走数を減らした際の非表示車番データもsession_state内に保持し、再度増やした際に復元する。
+# ・旧v335cnまでの「出走数込みキー」から、新しい安定キーへ初回のみ値を移行する。
+# ・買い目、V順位、ゆがみポイント、ヒモ順位、軸固定、2車単3点／3連単4点ロジックは変更しない。
 # v335cn: 候補選定表示を簡潔化（購入ロジックはv335cmのまま）
 # v335cm（V順位基礎点＋ゆがみ補正・2車単3点3連単4点版）:
 # ・軸はヴェロビ最終着順予想1位に固定。軸選定・最終着順予想ロジックは変更しない。
@@ -7,7 +13,7 @@
 # ・2位以下を総合ポイント降順で再順位し、同点は元のV評価順位上位を優先する。
 # ・2車単は軸→調整順位上位3車の3点固定。
 # ・3連単は軸1着固定、2列目=調整順位上位2車、3列目=調整順位上位3車の4点固定。
-# ・3連単的中時は2着車が必ず2車単ヒモに含まれるため、W的中構造を維持する。
+# ・3連単的中時は2着車が必ず2車単ヒモに含まれるため、W的中構造を維持Aする。
 # ・各2車単/3連単の想定的中率表示は既存v335brモデルをそのまま使用する。
 # ・旧「足切り通過」「最低2点補完」「3列目据え置き以上限定」は購入選定には使用しない。
 # v335cl（3連単3列目据え置き以上限定版）:
@@ -3714,13 +3720,30 @@ def _v335ao_is_fuzzy_venue(track_name=None):
 
 st.sidebar.markdown("### 🏟️ 会場データ｜想定的中率用")
 
-# v335bu：コードへ会場マスタを増やさず、ここで入力。
-# 条件ごとに別keyを持つので、同一Streamlitセッション中は会場を切り替えても値を保持する。
+# v335co：コードへ会場マスタを増やさず、ここで入力。
+# 会場データの入力状態は「競輪場×開催区分×級別」で保持する。
+# 出走数(n_cars)はウィジェットkeyに含めない。
+# これにより出走数を変更しても、決まり手・車番別N/1着/2着/3着を保持する。
 _v335bu_class_key = _v335bp_profile_class_key(race_class)
 _v335bu_profile_key = (str(track), str(race_time), str(_v335bu_class_key), int(n_cars))
+
+# 現行の安定キー：n_carsを含めない。
 _v335bu_key_prefix = (
+    f"v335bu_{str(track)}_{str(race_time)}_{str(_v335bu_class_key)}"
+)
+
+# v335cn以前の旧キー：n_carsを含む。既存セッションの入力値を失わないため移行元としてだけ使う。
+_v335bu_legacy_key_prefix = (
     f"v335bu_{str(track)}_{str(race_time)}_{str(_v335bu_class_key)}_{int(n_cars)}"
 )
+
+def _v335co_migrate_sidebar_state(_suffix):
+    """旧n_cars依存キーの値を、新しい安定キーへ初回だけ移行する。"""
+    _new_key = f"{_v335bu_key_prefix}_{str(_suffix)}"
+    _old_key = f"{_v335bu_legacy_key_prefix}_{str(_suffix)}"
+    if _new_key not in st.session_state and _old_key in st.session_state:
+        st.session_state[_new_key] = st.session_state[_old_key]
+    return _new_key
 
 # 既存の埋込マスタがある条件だけ、初回入力の初期値として利用。
 # 今後の会場追加はこのDBへ書かず、サイドバー入力だけで運用できる。
@@ -3738,7 +3761,7 @@ with st.sidebar.expander("① 決まり手｜1着・2着", expanded=True):
             min_value=0.0, max_value=100.0,
             value=float(_v335bu_seed_k.get("win_escape", 0.0) or 0.0),
             step=0.1,
-            key=f"{_v335bu_key_prefix}_win_escape",
+            key=_v335co_migrate_sidebar_state("win_escape"),
         )
     with _k2:
         vk_win_sashi = st.number_input(
@@ -3746,7 +3769,7 @@ with st.sidebar.expander("① 決まり手｜1着・2着", expanded=True):
             min_value=0.0, max_value=100.0,
             value=float(_v335bu_seed_k.get("win_sashi", 0.0) or 0.0),
             step=0.1,
-            key=f"{_v335bu_key_prefix}_win_sashi",
+            key=_v335co_migrate_sidebar_state("win_sashi"),
         )
     with _k3:
         vk_win_makuri = st.number_input(
@@ -3754,7 +3777,7 @@ with st.sidebar.expander("① 決まり手｜1着・2着", expanded=True):
             min_value=0.0, max_value=100.0,
             value=float(_v335bu_seed_k.get("win_makuri", 0.0) or 0.0),
             step=0.1,
-            key=f"{_v335bu_key_prefix}_win_makuri",
+            key=_v335co_migrate_sidebar_state("win_makuri"),
         )
 
     _k4, _k5, _k6, _k7 = st.columns(4)
@@ -3764,7 +3787,7 @@ with st.sidebar.expander("① 決まり手｜1着・2着", expanded=True):
             min_value=0.0, max_value=100.0,
             value=float(_v335bu_seed_k.get("sec_escape", 0.0) or 0.0),
             step=0.1,
-            key=f"{_v335bu_key_prefix}_sec_escape",
+            key=_v335co_migrate_sidebar_state("sec_escape"),
         )
     with _k5:
         vk_sec_sashi = st.number_input(
@@ -3772,7 +3795,7 @@ with st.sidebar.expander("① 決まり手｜1着・2着", expanded=True):
             min_value=0.0, max_value=100.0,
             value=float(_v335bu_seed_k.get("sec_sashi", 0.0) or 0.0),
             step=0.1,
-            key=f"{_v335bu_key_prefix}_sec_sashi",
+            key=_v335co_migrate_sidebar_state("sec_sashi"),
         )
     with _k6:
         vk_sec_makuri = st.number_input(
@@ -3780,7 +3803,7 @@ with st.sidebar.expander("① 決まり手｜1着・2着", expanded=True):
             min_value=0.0, max_value=100.0,
             value=float(_v335bu_seed_k.get("sec_makuri", 0.0) or 0.0),
             step=0.1,
-            key=f"{_v335bu_key_prefix}_sec_makuri",
+            key=_v335co_migrate_sidebar_state("sec_makuri"),
         )
     with _k7:
         vk_sec_mark = st.number_input(
@@ -3788,7 +3811,7 @@ with st.sidebar.expander("① 決まり手｜1着・2着", expanded=True):
             min_value=0.0, max_value=100.0,
             value=float(_v335bu_seed_k.get("sec_mark", 0.0) or 0.0),
             step=0.1,
-            key=f"{_v335bu_key_prefix}_sec_mark",
+            key=_v335co_migrate_sidebar_state("sec_mark"),
         )
 
     vk_sample_count = st.number_input(
@@ -3800,7 +3823,7 @@ with st.sidebar.expander("① 決まり手｜1着・2着", expanded=True):
             _v335bu_seed_profile.get("N", 0),
         ) or 0),
         step=1,
-        key=f"{_v335bu_key_prefix}_kimarite_n",
+        key=_v335co_migrate_sidebar_state("kimarite_n"),
     )
 
 VENUE_KIMARITE_STATS = {
@@ -3844,7 +3867,7 @@ with st.sidebar.expander("② 車番別｜N・1着・2着・3着", expanded=True
                 min_value=0, max_value=100000,
                 value=int(_seed_n),
                 step=1,
-                key=f"{_v335bu_key_prefix}_car{int(_car)}_N",
+                key=_v335co_migrate_sidebar_state(f"car{int(_car)}_N"),
             )
         with _c1:
             _h1 = st.number_input(
@@ -3852,7 +3875,7 @@ with st.sidebar.expander("② 車番別｜N・1着・2着・3着", expanded=True
                 min_value=0, max_value=100000,
                 value=int(_seed_1),
                 step=1,
-                key=f"{_v335bu_key_prefix}_car{int(_car)}_1",
+                key=_v335co_migrate_sidebar_state(f"car{int(_car)}_1"),
             )
         with _c2:
             _h2 = st.number_input(
@@ -3860,7 +3883,7 @@ with st.sidebar.expander("② 車番別｜N・1着・2着・3着", expanded=True
                 min_value=0, max_value=100000,
                 value=int(_seed_2),
                 step=1,
-                key=f"{_v335bu_key_prefix}_car{int(_car)}_2",
+                key=_v335co_migrate_sidebar_state(f"car{int(_car)}_2"),
             )
         with _c3:
             _h3 = st.number_input(
@@ -3868,7 +3891,7 @@ with st.sidebar.expander("② 車番別｜N・1着・2着・3着", expanded=True
                 min_value=0, max_value=100000,
                 value=int(_seed_3),
                 step=1,
-                key=f"{_v335bu_key_prefix}_car{int(_car)}_3",
+                key=_v335co_migrate_sidebar_state(f"car{int(_car)}_3"),
             )
 
         _n = int(_n)
