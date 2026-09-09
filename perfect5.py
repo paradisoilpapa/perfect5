@@ -2987,14 +2987,14 @@ def _v335bx_expand_same_line_exacta(exacta_rows, p3_map):
 
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335bx note用推奨購入:
+    v335by note用推奨購入:
       1) ヴェロビ最終着順予想1位を軸に固定（想定的中率モデルでは軸を変更しない）
       2) その軸→相手の想定的中率上位3車を基本ヒモ
       3) 過去3着内率順位より今回V評価順位が上の車を追加（同順位は追加しない）
       4) ヒモは今回V評価順で表示
       5) 軸と同ラインのヒモがあれば、想定的中率最上位の1組だけ1・2着固定で3連単化
       6) 3連単3着は、選出済みの残りヒモすべてを展開
-      7) 金額・合計点数は表示しない
+      7) 金額・合計点数・推奨理由の補足文は表示しない
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
     if len(_order) < 2 or not isinstance(profile, dict):
@@ -3067,27 +3067,6 @@ def _v335bt_purchase_lines(final_order, profile):
     else:
         _out.append("3連単：なし")
 
-    _base_text = "・".join(
-        str(int(c)) for c in sorted(
-            set(_base_himo), key=lambda c: (int(_v_rank.get(int(c), 999)), int(c))
-        )
-    )
-    _add_only = [int(c) for c in _himo if int(c) not in set(_base_himo)]
-    _add_text = "・".join(str(int(c)) for c in _add_only) if _add_only else "なし"
-    _out.append(
-        f"※基本ヒモ={_base_text}／過去3着内率順位より今回V評価が上で追加={_add_text}（同順位は追加なし）。"
-    )
-
-    if _tri_head is not None and _tri_second is not None and _tri_thirds:
-        _src = _plan.get("promoted_exacta") or {}
-        _src_text = "→".join(str(int(x)) for x in _src.get("ticket", tuple()))
-        _third_text = "・".join(str(int(c)) for c in _tri_thirds)
-        _out.append(
-            f"※同ラインの想定的中率最上位 {_src_text} だけを1・2着固定し、残りのヒモ={_third_text}を3着へ展開。"
-        )
-    else:
-        _out.append("※軸と同ラインのヒモがないため、3連単化しません。")
-
     return _out
 
 def _v335br_hit_top_lines(
@@ -3116,7 +3095,7 @@ def _v335br_hit_top_lines(
 
     _label = str(_profile.get("label", "会場別マスタ"))
 
-    # v335bx：レース情報の直後に推奨購入を置き、検証用TOP3はその後へ回す。
+    # v335by：レース情報の直後に推奨購入を置き、検証用TOP3はその後へ回す。
     _out = []
     _out.extend(_v335bt_purchase_lines(_order, _profile))
     _out.append("")
@@ -3144,7 +3123,6 @@ def _v335br_hit_top_lines(
             )
         _out.append(f"  TOP{len(_rows)}合算想定的中率：{_sum_p*100:.2f}%")
 
-    _out.append("※オッズ・平均配当・過去の2車単/3連単H/Nは、このTOP3選出には使用していません。")
     _out.append("※想定的中率はヴェロビ内部指標から作るモデル値で、実測的中率として校正済みではありません。")
     return _out
 
