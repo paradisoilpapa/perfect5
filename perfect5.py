@@ -1,3 +1,12 @@
+# v335cf（候補選定インデント整理版）:
+# ・購入ロジックはv335ceから変更しない。候補選定欄の表示だけを整理。
+# ・集計母数を「※候補選定 過去Nレース集計」の見出しへ移動。
+# ・候補選定各行のコロン位置が揃うよう全角空白で調整。
+# v335ce（フォーメーション表示・順位％削除版）:
+# ・購入ロジックはv335cdから変更しない。軸固定・足切り・V順位・ゆがみ順位の判定はそのまま。
+# ・2車単は展開済み買い目ではなくフォーメーション表記（例: 5-346）で表示する。
+# ・3連単は展開済み3点ではなく12-13-123型のフォーメーション表記（例: 36-35-365）で表示する。
+# ・過去車番別2着内率順位の各車％表示を削除し、順位だけを表示する。軸の1着想定％は従来どおり残す。
 # v335cd（足切り候補・2車単V順・3連単ゆがみ順位版）:
 # ・軸はヴェロビ最終着順予想1位に固定。想定的中率モデルで軸を変更しない。
 # ・過去の車番別2着内率順位と今回V評価順位を比較し、「V順位<=過去順位」の車を足切り通過候補とする。
@@ -3108,10 +3117,10 @@ def _v335bt_purchase_lines(final_order, profile):
     v335cd note用推奨購入:
       1) 軸はヴェロビ最終着順予想1位に固定
       2) V順位<=過去2着内率順位の車を足切り通過候補にする（上昇+据え置き）
-      3) 2車単は、通過候補のうち軸以外を元のV順位順で軸→ヒモ
+      3) 2車単は、通過候補のうち軸以外を元のV順位順で軸-ヒモのフォーメーション表示
       4) ゆがみポイント=過去順位-V順位
       5) 3連単だけは、通過候補をゆがみポイント降順・同点V順位順で並べ、
-         上位3車から12-13-123の3点を生成
+         上位3車から12-13-123のフォーメーションを生成
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
     if len(_order) < 2 or not isinstance(profile, dict):
@@ -3152,17 +3161,18 @@ def _v335bt_purchase_lines(final_order, profile):
         _out.append(f"軸：{int(_axis)}")
 
     if _himo:
+        # 読者向けは買い目展開ではなくフォーメーションで簡潔に表示。
         _out.append(
-            "2車単：" + "/".join(f"{int(_axis)}→{int(_car)}" for _car in _himo)
+            f"2車単：{int(_axis)}-" + "".join(str(int(_car)) for _car in _himo)
         )
     else:
         _out.append("2車単：なし")
 
-    if _tri_tickets:
+    if len(_tri_top3) >= 3 and _tri_tickets:
+        # 12-13-123 を実車番へ置換したフォーメーション表示。
+        _a, _b, _c = [int(x) for x in _tri_top3[:3]]
         _out.append(
-            "3連単：" + "/".join(
-                f"{int(a)}→{int(b)}→{int(c)}" for a, b, c in _tri_tickets
-            )
+            f"3連単：{_a}{_b}-{_a}{_c}-{_a}{_b}{_c}"
         )
     else:
         _out.append("3連単：なし")
@@ -3189,10 +3199,8 @@ def _v335bt_purchase_lines(final_order, profile):
             _n_text = "—"
 
         if _hist_order:
-            _hist_text = " → ".join(
-                f"{int(c)}（{float(_rate_map[int(c)])*100:.1f}%）"
-                for c in _hist_order
-            )
+            # 順位表示は車番だけ。各車の％は読者向けには表示しない。
+            _hist_text = " → ".join(str(int(c)) for c in _hist_order)
         else:
             _hist_text = "算出不可"
 
@@ -3207,10 +3215,10 @@ def _v335bt_purchase_lines(final_order, profile):
         )
 
         _out.append("")
-        _out.append("※候補選定")
-        _out.append(f"過去{_n_text}レース集計・車番別2着内率順位：{_hist_text}")
-        _out.append(f"今回V評価順位：{_v_text}")
-        _out.append(f"足切り通過候補：{_pass_text}")
+        _out.append(f"※候補選定 過去{_n_text}レース集計")
+        _out.append(f"車番別2着内率順位：{_hist_text}")
+        _out.append(f"今回V評価順位　　：{_v_text}")
+        _out.append(f"足切り通過候補　　：{_pass_text}")
         _out.append(f"3連単用ゆがみ順位：{_warp_text}")
         _out.append("※足切りはV評価順位が過去2着内率順位以上（同順位を含む）の車を残します。")
         _out.append("※3連単のゆがみポイントは『過去順位－V評価順位』。同点はV評価順位を優先します。")
