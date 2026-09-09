@@ -1,3 +1,8 @@
+# v335bz（読者向けTOP3表示簡潔版）:
+# ・v335byから表示だけを整理。予想・軸固定・ヒモ追加・3連単展開・確率計算ロジックは変更しない。
+# ・【想定的中率TOP3】見出しから会場/開催区分/級別/車立て/サイドバー入力のラベルを削除。
+# ・読者向け表示から計算基準説明とTOP3合算想定的中率を削除。
+# ・2車単TOP3と3連単TOP3の間に空行を入れ、検証値だけを読みやすく表示する。
 # v335bx（軸固定・3連単ヒモ展開・表示整理版）:
 # ・軸はv335bwどおり、ヴェロビ最終着順予想1位に固定。想定的中率モデルで軸を変更しない。
 # ・同ラインのヒモがある場合は、想定的中率最上位の1組だけを「軸→同ライン車」の1・2着固定にする。
@@ -3093,16 +3098,16 @@ def _v335br_hit_top_lines(
             "この会場条件の車番別・決まり手データをサイドバーへ入力してください",
         ]
 
-    _label = str(_profile.get("label", "会場別マスタ"))
-
-    # v335by：レース情報の直後に推奨購入を置き、検証用TOP3はその後へ回す。
+    # v335bz：読者向けに必要な情報だけ表示。計算ロジックは変更しない。
     _out = []
     _out.extend(_v335bt_purchase_lines(_order, _profile))
     _out.append("")
-    _out.append(f"【想定的中率TOP3｜{_label}】")
-    _out.append("基準：序盤=ライン勢力比（軽補正）／最終=個人KOスコア＋車番別着率＋脚質×会場決まり手")
+    _out.append("【想定的中率TOP3】")
+    _out.append("")
 
-    for _kind in ("2車単", "3連単"):
+    for _kind_idx, _kind in enumerate(("2車単", "3連単")):
+        if _kind_idx > 0:
+            _out.append("")
         _rows, _p1, _p2, _p3 = _v335br_hit_top_rows(
             _order, _profile, _kind, top_n=top_n
         )
@@ -3111,18 +3116,16 @@ def _v335br_hit_top_lines(
             continue
 
         _out.append(f"{_kind}：想定的中率TOP{len(_rows)}")
-        _sum_p = 0.0
         for _idx, _row in enumerate(_rows, start=1):
             _ticket_text = "→".join(str(int(x)) for x in _row.get("ticket", tuple()))
             _vr_text = "→".join(str(int(x)) for x in _row.get("v_ranks", tuple()))
             _hp = float(_row.get("hit_prob", 0.0))
-            _sum_p += _hp
             _out.append(
                 f"  {_idx}. {_ticket_text}｜V評価{_vr_text}"
                 f"｜想定的中率{_hp*100:.2f}%"
             )
-        _out.append(f"  TOP{len(_rows)}合算想定的中率：{_sum_p*100:.2f}%")
 
+    _out.append("")
     _out.append("※想定的中率はヴェロビ内部指標から作るモデル値で、実測的中率として校正済みではありません。")
     return _out
 
