@@ -1,3 +1,9 @@
+# v335cb（2車単・上振れヒモ・軸1着想定表示版）:
+# ・v335caの2車単特化ロジックは変更しない。軸はヴェロビ最終着順予想1位で固定。
+# ・読者向け【想定的中率TOP3】表示を完全に削除。
+# ・推奨購入の軸に、その軸車の1着想定確率だけを併記する。
+# ・1着想定確率は既存の着順別個人確率p1_mapを使用し、想定的中率ロジック自体は変更しない。
+# ・会場データ未入力時の表示からTOP3表記を削除。
 # v335ca（2車単・評価上振れヒモ特化版）:
 # ・軸はv335bzどおり、ヴェロビ最終着順予想1位に固定。軸は変更しない。
 # ・推奨購入は2車単だけに特化し、3連単への置換・展開を停止。
@@ -5,7 +11,7 @@
 # ・2車単ヒモは、会場車番別の過去3着内率順位より今回V評価順位が上の車だけを採用する。
 # ・同順位は採用しない。軸自身は除外。該当車がなければ「2車単：なし」と表示。
 # ・同ラインか別ラインかはヒモ採用条件にしない。同ライン3番手以降でも上振れ条件を満たせば2車単に残す。
-# ・読者向け【想定的中率TOP3】も2車単だけ表示し、3連単TOP3は表示しない。
+# ・v335ca時点では読者向け【想定的中率TOP3】を2車単だけ表示していた（v335cbで廃止）。
 # ・ライン軽補正、KOスコア、車番別着率、脚質×会場決まり手の想定的中率計算自体は変更しない。
 # v335bz（読者向けTOP3表示簡潔版）:
 # ・v335byから表示だけを整理。予想・軸固定・ヒモ追加・3連単展開・確率計算ロジックは変更しない。
@@ -3024,8 +3030,19 @@ def _v335bt_purchase_lines(final_order, profile):
         key=lambda c: (int(_v_rank.get(int(c), 999)), int(c)),
     )
 
+    # 読者向けには軸の1着想定確率だけを表示する。
+    # 2車単TOP3などの詳細確率は出さない。
+    try:
+        _p1_map = _v335br_position_probability_map(profile, _order, 1)
+        _axis_p1 = float((_p1_map or {}).get(int(_axis), 0.0) or 0.0)
+    except Exception:
+        _axis_p1 = 0.0
+
     _out = ["【推奨購入】"]
-    _out.append(f"軸：{int(_axis)}")
+    if _axis_p1 > 0.0:
+        _out.append(f"軸：{int(_axis)}（1着想定{_axis_p1*100:.1f}%）")
+    else:
+        _out.append(f"軸：{int(_axis)}")
 
     if _himo:
         _out.append(
@@ -3044,7 +3061,10 @@ def _v335br_hit_top_lines(
     field_n=None,
     top_n=3,
 ):
-    """note用：2車単推奨購入を先に表示し、その後に2車単の想定的中率TOP3を検証表示する。"""
+    """
+    v335cb note用：読者向けは推奨購入だけを表示する。
+    想定的中率TOP3は表示せず、軸の1着想定確率だけを推奨購入欄へ併記する。
+    """
     _order = tuple(int(x) for x in (final_order or tuple()))
     _field_n = int(field_n or len(_order) or 0)
     _profile = _v335bp_get_venue_profile(
@@ -3056,39 +3076,14 @@ def _v335br_hit_top_lines(
 
     if not _profile:
         return [
-            "【想定的中率TOP3｜会場データ】",
-            "この会場条件の車番別・決まり手データをサイドバーへ入力してください",
+            "【推奨購入】",
+            "会場データ未入力のため算出不可",
         ]
 
-    # v335bz：読者向けに必要な情報だけ表示。計算ロジックは変更しない。
-    _out = []
-    _out.extend(_v335bt_purchase_lines(_order, _profile))
+    _out = list(_v335bt_purchase_lines(_order, _profile))
     _out.append("")
-    _out.append("【想定的中率TOP3】")
-    _out.append("")
-
-    # v335ca：読者向け検証表示も2車単だけに特化。
-    _kind = "2車単"
-    _rows, _p1, _p2, _p3 = _v335br_hit_top_rows(
-        _order, _profile, _kind, top_n=top_n
-    )
-    if not _rows:
-        _out.append(f"{_kind}：算出不可")
-    else:
-        _out.append(f"{_kind}：想定的中率TOP{len(_rows)}")
-        for _idx, _row in enumerate(_rows, start=1):
-            _ticket_text = "→".join(str(int(x)) for x in _row.get("ticket", tuple()))
-            _vr_text = "→".join(str(int(x)) for x in _row.get("v_ranks", tuple()))
-            _hp = float(_row.get("hit_prob", 0.0))
-            _out.append(
-                f"  {_idx}. {_ticket_text}｜V評価{_vr_text}"
-                f"｜想定的中率{_hp*100:.2f}%"
-            )
-
-    _out.append("")
-    _out.append("※想定的中率はヴェロビ内部指標から作るモデル値で、実測的中率として校正済みではありません。")
+    _out.append("※1着想定はヴェロビ内部指標によるモデル値です。")
     return _out
-
 
 def _v335bq_finish_strength_map(final_order):
     """
@@ -3653,7 +3648,7 @@ _V335BU_ACTIVE_MANUAL_PROFILE = {
     "N": int(vk_sample_count),
     "kimarite": dict(VENUE_KIMARITE_STATS),
     "car_stats": dict(_v335bu_car_stats),
-    # 旧ROI系関数との互換だけ維持。新TOP3選出では使わない。
+    # 旧ROI系関数との互換だけ維持。読者向け2車単推奨では使わない。
     "exacta_rows": tuple(),
     "trifecta_rows": tuple(),
 }
@@ -3669,7 +3664,7 @@ st.sidebar.caption(
     f"｜信頼係数 {_vk_rel_preview:.2f}"
 )
 st.sidebar.caption(
-    "この入力値を【想定的中率TOP3】の車番別着率・会場決まり手へ使用します。"
+    "この入力値を軸の1着想定と2車単ヒモ判定に使用します。"
 )
 
 globals()["VENUE_KIMARITE_STATS"] = VENUE_KIMARITE_STATS
