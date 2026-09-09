@@ -1,3 +1,4 @@
+# v335cn: 候補選定表示を簡潔化（購入ロジックはv335cmのまま）
 # v335cm（V順位基礎点＋ゆがみ補正・2車単3点3連単4点版）:
 # ・軸はヴェロビ最終着順予想1位に固定。軸選定・最終着順予想ロジックは変更しない。
 # ・2位以下はV最終着順予想を基準に、基本ポイント 5/4/3/2/1/0 を付与する。
@@ -3311,21 +3312,11 @@ def _v335bt_purchase_lines(final_order, profile):
             for c in _adjusted_himo_order
         )
 
-        _detail_text = " / ".join(
-            f"{int(c)}={int(_base_point.get(int(c), 0))}"
-            f"{int(_warp_point.get(int(c), 0)):+d}"
-            f"→{int(_total_point.get(int(c), 0))}P"
-            for c in _adjusted_himo_order
-        )
-
         _out.append("")
-        _out.append(f"※ヒモ順位調整 過去{_n_text}レース集計")
+        _out.append(f"※候補選定 過去{_n_text}レース集計")
         _out.append(f"車番別2着内率順位　：{_hist_text}")
         _out.append(f"今回V評価順位　　　：{_v_text}")
         _out.append(f"調整後ヒモ順位　　 ：{_adjusted_text}")
-        _out.append(f"ポイント内訳　　　 ：{_detail_text}")
-        _out.append("※基本PはV評価2位から5・4・3・2・1・0。ゆがみPは『過去2着内率順位－V評価順位』、総合Pは基本P＋ゆがみPです。同点は元のV評価順位上位を優先します。")
-        _out.append("※2車単は調整後ヒモ順位の上位3車、3連単は軸1着固定で2列目上位2車・3列目上位3車を使用します。")
     except Exception:
         pass
 
