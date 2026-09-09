@@ -1,3 +1,10 @@
+# v335cl（3連単3列目据え置き以上限定版）:
+# ・2車単ロジックはv335ckから変更しない。軸はV最終着順予想1位固定、ゆがみ優先＋最低2点保証。
+# ・3連単1列目・2列目ロジックもv335ckから変更しない。
+# ・3連単3列目へ追加する1車は、2列目以外の残り車から「ゆがみポイント>=0（据え置きまたは上昇）」に限定し、その中でV評価最上位を採用する。
+# ・3列目追加候補がない場合は、3列目を2列目2車だけにして「◎-12-12」型2点とする。
+# ・下落車（ゆがみポイント<0）は3列目へ復活させない。
+# ・軸固定、足切り、想定的中率計算、表示形式は変更しない。
 # v335ck（3連単V配列優先・ゆがみ1車必須版）:
 # ・2車単ロジックはv335cjから変更しない。軸はV最終着順予想1位固定、ゆがみ優先＋最低2点保証。
 # ・3連単はまずV最終着順予想の軸以外上位2車を2列目へ採用する。
@@ -3158,7 +3165,8 @@ def _v335bt_purchase_lines(final_order, profile):
          ・まずV評価上位2車を2列目にする
          ・その2車にゆがみ車が1車でもあれば配列を維持
          ・2車ともゆがみなしの場合だけ、V評価下位側を最上位ゆがみ車へ差し替える
-      5) 3列目は確定した2列目2車＋残るV評価上位1車
+      5) 3列目は確定した2列目2車＋残りからゆがみポイント>=0のV評価最上位1車
+         ・該当車がなければ2列目2車だけで「◎-12-12」型2点
       6) 2車単・3連単の各実買い目に既存モデルの順序付き想定的中率を表示する
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
@@ -3249,25 +3257,33 @@ def _v335bt_purchase_lines(final_order, profile):
                 _tri_second_sel[1] = _warp_required
 
         if len(_tri_second_sel) >= 2:
-            # 3列目へ追加する1車は、確定した2列目以外でV評価最上位の車。
+            # 3列目へ追加する1車は、確定した2列目以外のうち
+            # ゆがみポイント>=0（据え置きまたは上昇）に限定し、
+            # その中でV評価最上位の車を採用する。
             _third_add = next(
                 (
                     int(c) for c in _v_all_himo
                     if int(c) not in set(_tri_second_sel)
+                    and int(_point.get(int(c), -999)) >= 0
                 ),
                 None,
             )
+
+            _tri_second = sorted(
+                list(dict.fromkeys(int(c) for c in _tri_second_sel)),
+                key=lambda c: (int(_v_rank.get(int(c), 999)), int(c)),
+            )
+
+            # 追加候補がなければ、3列目は2列目2車だけ（◎-12-12型2点）。
             if _third_add is not None:
-                _tri_second = sorted(
-                    list(dict.fromkeys(int(c) for c in _tri_second_sel)),
-                    key=lambda c: (int(_v_rank.get(int(c), 999)), int(c)),
-                )
                 _tri_third = sorted(
                     list(dict.fromkeys(
                         [int(c) for c in _tri_second_sel] + [int(_third_add)]
                     )),
                     key=lambda c: (int(_v_rank.get(int(c), 999)), int(c)),
                 )
+            else:
+                _tri_third = list(_tri_second)
 
     # 既存v335brモデルの着順別個人確率を1回だけ作る。
     try:
@@ -3408,7 +3424,7 @@ def _v335bt_purchase_lines(final_order, profile):
         _out.append(f"3連単2列目候補　　 ：{_tri_second_text}")
         _out.append(f"3連単3列目候補　　 ：{_tri_third_text}")
         _out.append("※2車単はゆがみ車を優先し、2点未満の場合はV評価上位から補完して最低2点を組みます。")
-        _out.append("※3連単は軸を1着固定。まずV評価上位2車を2列目にし、その中にゆがみ車がなければV評価下位側1車を最上位ゆがみ車へ差し替えます。3列目は次のV評価上位1車を加えます。")
+        _out.append("※3連単は軸を1着固定。まずV評価上位2車を2列目にし、その中にゆがみ車がなければV評価下位側1車を最上位ゆがみ車へ差し替えます。3列目の追加車は据え置き以上（ゆがみP>=0）のV評価上位から選び、該当なしなら2列目2車だけで組みます。")
     except Exception:
         pass
 
