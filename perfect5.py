@@ -1,3 +1,14 @@
+# v335cm（V順位基礎点＋ゆがみ補正・2車単3点3連単4点版）:
+# ・軸はヴェロビ最終着順予想1位に固定。軸選定・最終着順予想ロジックは変更しない。
+# ・2位以下はV最終着順予想を基準に、基本ポイント 5/4/3/2/1/0 を付与する。
+# ・ゆがみポイント=過去車番別2着内率順位-V評価順位。
+# ・総合ポイント=基本ポイント+ゆがみポイント。
+# ・2位以下を総合ポイント降順で再順位し、同点は元のV評価順位上位を優先する。
+# ・2車単は軸→調整順位上位3車の3点固定。
+# ・3連単は軸1着固定、2列目=調整順位上位2車、3列目=調整順位上位3車の4点固定。
+# ・3連単的中時は2着車が必ず2車単ヒモに含まれるため、W的中構造を維持する。
+# ・各2車単/3連単の想定的中率表示は既存v335brモデルをそのまま使用する。
+# ・旧「足切り通過」「最低2点補完」「3列目据え置き以上限定」は購入選定には使用しない。
 # v335cl（3連単3列目据え置き以上限定版）:
 # ・2車単ロジックはv335ckから変更しない。軸はV最終着順予想1位固定、ゆがみ優先＋最低2点保証。
 # ・3連単1列目・2列目ロジックもv335ckから変更しない。
@@ -3153,137 +3164,66 @@ def _v335cd_trifecta_12_13_123(cars3):
 
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335cj note用推奨購入:
-      1) 軸はヴェロビ最終着順予想1位に固定（3連単も必ず1着固定）
-      2) ゆがみポイント=過去2着内率順位-V評価順位
-      3) 2車単はゆがみポイント>0のヒモを優先
-         ・ゆがみヒモが2車以上: そのゆがみヒモをすべて購入
-         ・1車: V評価上位から1車補完
-         ・0車: V評価2位・3位を採用
-         → 2車単は最低2点を必ず組む
-      4) 3連単は「軸-2車-3車」の配列を維持
-         ・まずV評価上位2車を2列目にする
-         ・その2車にゆがみ車が1車でもあれば配列を維持
-         ・2車ともゆがみなしの場合だけ、V評価下位側を最上位ゆがみ車へ差し替える
-      5) 3列目は確定した2列目2車＋残りからゆがみポイント>=0のV評価最上位1車
-         ・該当車がなければ2列目2車だけで「◎-12-12」型2点
-      6) 2車単・3連単の各実買い目に既存モデルの順序付き想定的中率を表示する
+    v335cm note用推奨購入:
+      1) 軸はヴェロビ最終着順予想1位に固定
+      2) 2位以下の基本P = 5,4,3,2,1,0
+      3) ゆがみP = 過去車番別2着内率順位 - V評価順位
+      4) 総合P = 基本P + ゆがみP
+      5) 総合P降順、同点は元V順位上位で2位以下を再順位
+      6) 2車単 = 軸-調整順位上位3車（3点）
+      7) 3連単 = 軸-調整順位上位2車-上位3車（4点）
+      8) 各実買い目に既存モデルの順序付き想定的中率を表示
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
-    if len(_order) < 2 or not isinstance(profile, dict):
+    if len(_order) < 4 or not isinstance(profile, dict):
         return ["【推奨購入】", "算出不可"]
 
     # 大前提：軸はヴェロビ最終着順予想1位に固定。
     _axis = int(_order[0])
 
-    # 足切り通過候補 = 上昇 + 据え置き。下落車のみ除外。
-    _passed, _hist_rank, _v_rank, _point = _v335cd_pass_candidates(_order, profile)
-    _passed_himo = [int(c) for c in _passed if int(c) != _axis]
+    # 過去2着内率順位とV順位。
+    _hist_rank, _rate_map, _n_map = _v335cc_historical_quinella_data(profile, _order)
+    _v_rank = {int(c): int(i) for i, c in enumerate(_order, start=1)}
 
-    # V評価順の全ヒモ候補（補完用。足切り落ちもここでは補完対象にできる）。
-    _v_all_himo = [int(c) for c in _order if int(c) != _axis]
+    # 2位以下の基本ポイント：V2位=5 ... V7位=0
+    _base_point = {}
+    for _c in _order[1:]:
+        _vr = int(_v_rank.get(int(_c), 999))
+        _base_point[int(_c)] = max(0, 7 - _vr)
 
-    # -------------------------------------------------
-    # 2車単：ゆがみ優先＋最低2点保証。
-    # -------------------------------------------------
-    _warp_himo = [
-        int(c) for c in _passed_himo
-        if int(_point.get(int(c), 0)) > 0
-    ]
+    # ゆがみポイント = 過去順位 - V順位。
+    # 過去順位が取れない場合は0補正（V順位のみで評価）。
+    _warp_point = {}
+    for _c in _order[1:]:
+        _hr = _hist_rank.get(int(_c))
+        _vr = int(_v_rank.get(int(_c), 999))
+        if _hr is None:
+            _warp_point[int(_c)] = 0
+        else:
+            _warp_point[int(_c)] = int(_hr) - int(_vr)
 
-    # まずゆがみヒモを採用。
-    _himo = list(_warp_himo)
+    # 総合ポイント = 基本P + ゆがみP。
+    _total_point = {
+        int(_c): int(_base_point.get(int(_c), 0)) + int(_warp_point.get(int(_c), 0))
+        for _c in _order[1:]
+    }
 
-    # 2点未満ならV評価上位から補完。
-    if len(_himo) < 2:
-        for _c in _v_all_himo:
-            if int(_c) in _himo:
-                continue
-            _himo.append(int(_c))
-            if len(_himo) >= 2:
-                break
-
-    # 表示は元のV評価順位へ戻す。
-    _himo = sorted(
-        list(dict.fromkeys(int(c) for c in _himo)),
-        key=lambda c: (int(_v_rank.get(int(c), 999)), int(c)),
-    )
-
-    # ゆがみ強度順（3連単2列目へ最低1車を入れるための順位）。
-    _warp_himo_order = sorted(
-        [int(c) for c in _warp_himo],
+    # 2位以下を総合P降順。同点は元V順位上位。
+    _adjusted_himo_order = sorted(
+        [int(c) for c in _order[1:]],
         key=lambda c: (
-            -int(_point.get(int(c), -999)),
+            -int(_total_point.get(int(c), -999)),
             int(_v_rank.get(int(c), 999)),
             int(c),
         ),
     )
 
-    # -------------------------------------------------
-    # 3連単：軸-2車-3車。
-    # ゆがみあり → 2列目に最低1車ゆがみ。
-    # ゆがみなし → V評価上位で ◎-12-123。
-    # -------------------------------------------------
-    _tri_second = []
-    _tri_third = []
+    # 2車単：調整順位上位3車。
+    _himo = [int(c) for c in _adjusted_himo_order[:3]]
 
-    # まず足切り通過候補を優先し、不足時だけV評価順の全車から補完する。
-    _tri_pool = []
-    for _c in sorted(
-        _passed_himo,
-        key=lambda x: (int(_v_rank.get(int(x), 999)), int(x)),
-    ):
-        if int(_c) not in _tri_pool:
-            _tri_pool.append(int(_c))
-    for _c in _v_all_himo:
-        if int(_c) not in _tri_pool:
-            _tri_pool.append(int(_c))
-
-    if len(_v_all_himo) >= 3:
-        # まずV最終着順予想の上位2車を、そのまま2列目候補にする。
-        _tri_second_sel = [int(c) for c in _v_all_himo[:2]]
-
-        # 2列目にゆがみ車が1車でも入っていれば、V配列を壊さない。
-        _second_has_warp = any(
-            int(_point.get(int(c), 0)) > 0
-            for c in _tri_second_sel
-        )
-
-        # 2列目が2車とも据え置き/下落で、別にゆがみ車が存在する場合だけ、
-        # V評価下位側（2番目）を最上位ゆがみ車へ差し替える。
-        if (not _second_has_warp) and _warp_himo_order:
-            _warp_required = int(_warp_himo_order[0])
-            if _warp_required not in _tri_second_sel:
-                _tri_second_sel[1] = _warp_required
-
-        if len(_tri_second_sel) >= 2:
-            # 3列目へ追加する1車は、確定した2列目以外のうち
-            # ゆがみポイント>=0（据え置きまたは上昇）に限定し、
-            # その中でV評価最上位の車を採用する。
-            _third_add = next(
-                (
-                    int(c) for c in _v_all_himo
-                    if int(c) not in set(_tri_second_sel)
-                    and int(_point.get(int(c), -999)) >= 0
-                ),
-                None,
-            )
-
-            _tri_second = sorted(
-                list(dict.fromkeys(int(c) for c in _tri_second_sel)),
-                key=lambda c: (int(_v_rank.get(int(c), 999)), int(c)),
-            )
-
-            # 追加候補がなければ、3列目は2列目2車だけ（◎-12-12型2点）。
-            if _third_add is not None:
-                _tri_third = sorted(
-                    list(dict.fromkeys(
-                        [int(c) for c in _tri_second_sel] + [int(_third_add)]
-                    )),
-                    key=lambda c: (int(_v_rank.get(int(c), 999)), int(c)),
-                )
-            else:
-                _tri_third = list(_tri_second)
+    # 3連単：2列目=上位2車、3列目=上位3車。
+    _tri_second = [int(c) for c in _adjusted_himo_order[:2]]
+    _tri_third = [int(c) for c in _adjusted_himo_order[:3]]
 
     # 既存v335brモデルの着順別個人確率を1回だけ作る。
     try:
@@ -3319,36 +3259,29 @@ def _v335bt_purchase_lines(final_order, profile):
     else:
         _out.append(f"軸：{int(_axis)}")
 
-    if _himo:
+    _out.append(
+        f"2車単：{int(_axis)}-" + "".join(str(int(_car)) for _car in _himo)
+    )
+    for _ticket in _exacta_tickets:
+        _prob = float(_exacta_probs.get(tuple(_ticket), 0.0) or 0.0)
         _out.append(
-            f"2車単：{int(_axis)}-" + "".join(str(int(_car)) for _car in _himo)
+            f"　　　　{int(_ticket[0])}-{int(_ticket[1])}（想定的中率{_prob*100:.1f}%）"
         )
-        for _ticket in _exacta_tickets:
-            _prob = float(_exacta_probs.get(tuple(_ticket), 0.0) or 0.0)
-            _out.append(
-                f"　　　　{int(_ticket[0])}-{int(_ticket[1])}（想定的中率{_prob*100:.1f}%）"
-            )
-    else:
-        _out.append("2車単：なし")
 
-    if _tri_second and _tri_third and _tri_tickets:
+    _out.append(
+        f"3連単：{int(_axis)}-"
+        + "".join(str(int(c)) for c in _tri_second)
+        + "-"
+        + "".join(str(int(c)) for c in _tri_third)
+    )
+    for _ticket in _tri_tickets:
+        _prob = float(_tri_probs.get(tuple(_ticket), 0.0) or 0.0)
         _out.append(
-            f"3連単：{int(_axis)}-"
-            + "".join(str(int(c)) for c in _tri_second)
-            + "-"
-            + "".join(str(int(c)) for c in _tri_third)
+            f"　　　　{int(_ticket[0])}-{int(_ticket[1])}-{int(_ticket[2])}（想定的中率{_prob*100:.1f}%）"
         )
-        for _ticket in _tri_tickets:
-            _prob = float(_tri_probs.get(tuple(_ticket), 0.0) or 0.0)
-            _out.append(
-                f"　　　　{int(_ticket[0])}-{int(_ticket[1])}-{int(_ticket[2])}（想定的中率{_prob*100:.1f}%）"
-            )
-    else:
-        _out.append("3連単：なし")
 
-    # 読者向け：過去順位・V順位・購入候補・3連単配列候補を表示。
+    # 読者向け：過去順位・V順位・ポイント調整結果。
     try:
-        _hist_rank2, _rate_map, _n_map = _v335cc_historical_quinella_data(profile, _order)
         _valid_cars = [int(c) for c in _order if _rate_map.get(int(c)) is not None]
         _hist_order = sorted(
             _valid_cars,
@@ -3367,64 +3300,32 @@ def _v335bt_purchase_lines(final_order, profile):
         else:
             _n_text = "—"
 
-        if _hist_order:
-            _hist_text = " → ".join(str(int(c)) for c in _hist_order)
-        else:
-            _hist_text = "算出不可"
-
+        _hist_text = (
+            " → ".join(str(int(c)) for c in _hist_order)
+            if _hist_order else "算出不可"
+        )
         _v_text = " → ".join(str(int(c)) for c in _order)
-        _passed_text = (
-            "・".join(str(int(c)) for c in _passed)
-            if _passed
-            else "なし"
+
+        _adjusted_text = " → ".join(
+            f"{int(c)}（{int(_total_point.get(int(c), 0))}P）"
+            for c in _adjusted_himo_order
         )
 
-        _buy_parts = []
-        _warp_set = set(int(c) for c in _warp_himo)
-        for _c in _himo:
-            if int(_c) in _warp_set:
-                _buy_parts.append(
-                    f"{int(_c)}（{int(_point.get(int(_c), 0)):+d}）"
-                )
-            else:
-                _buy_parts.append(f"{int(_c)}（V補完）")
-        _buy_text = "・".join(_buy_parts) if _buy_parts else "なし"
-
-        _tri_second_text = (
-            "・".join(
-                (
-                    f"{int(c)}（{int(_point.get(int(c), 0)):+d}）"
-                    if int(_point.get(int(c), 0)) > 0
-                    else f"{int(c)}"
-                )
-                for c in _tri_second
-            )
-            if _tri_second
-            else "なし"
-        )
-        _tri_third_text = (
-            "・".join(
-                (
-                    f"{int(c)}（{int(_point.get(int(c), 0)):+d}）"
-                    if int(_point.get(int(c), 0)) > 0
-                    else f"{int(c)}"
-                )
-                for c in _tri_third
-            )
-            if _tri_third
-            else "なし"
+        _detail_text = " / ".join(
+            f"{int(c)}={int(_base_point.get(int(c), 0))}"
+            f"{int(_warp_point.get(int(c), 0)):+d}"
+            f"→{int(_total_point.get(int(c), 0))}P"
+            for c in _adjusted_himo_order
         )
 
         _out.append("")
-        _out.append(f"※候補選定 過去{_n_text}レース集計")
+        _out.append(f"※ヒモ順位調整 過去{_n_text}レース集計")
         _out.append(f"車番別2着内率順位　：{_hist_text}")
         _out.append(f"今回V評価順位　　　：{_v_text}")
-        _out.append(f"足切り通過候補　　　：{_passed_text}")
-        _out.append(f"2車単ヒモ候補　　　：{_buy_text}")
-        _out.append(f"3連単2列目候補　　 ：{_tri_second_text}")
-        _out.append(f"3連単3列目候補　　 ：{_tri_third_text}")
-        _out.append("※2車単はゆがみ車を優先し、2点未満の場合はV評価上位から補完して最低2点を組みます。")
-        _out.append("※3連単は軸を1着固定。まずV評価上位2車を2列目にし、その中にゆがみ車がなければV評価下位側1車を最上位ゆがみ車へ差し替えます。3列目の追加車は据え置き以上（ゆがみP>=0）のV評価上位から選び、該当なしなら2列目2車だけで組みます。")
+        _out.append(f"調整後ヒモ順位　　 ：{_adjusted_text}")
+        _out.append(f"ポイント内訳　　　 ：{_detail_text}")
+        _out.append("※基本PはV評価2位から5・4・3・2・1・0。ゆがみPは『過去2着内率順位－V評価順位』、総合Pは基本P＋ゆがみPです。同点は元のV評価順位上位を優先します。")
+        _out.append("※2車単は調整後ヒモ順位の上位3車、3連単は軸1着固定で2列目上位2車・3列目上位3車を使用します。")
     except Exception:
         pass
 
