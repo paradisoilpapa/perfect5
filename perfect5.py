@@ -1,8 +1,17 @@
-# v335bv（ライン軽補正・上振れヒモ追加版）:
+# v335bx（軸固定・3連単ヒモ展開・表示整理版）:
+# ・軸はv335bwどおり、ヴェロビ最終着順予想1位に固定。想定的中率モデルで軸を変更しない。
+# ・同ラインのヒモがある場合は、想定的中率最上位の1組だけを「軸→同ライン車」の1・2着固定にする。
+# ・3連単3着は1車へ絞らず、選出済みの残りヒモすべてを展開する（例：1→7→346）。
+# ・2車単は同ライン化した1組を除く残りヒモを表示し、買い目区切りを「/」へ変更。
+# ・推奨購入から金額・各100円・合計金額・合計点数の指示表示を削除。
+# ・note用表示順を「レース名→想定隊列→最終着順予想→推奨購入→想定的中率TOP3」に整理。
+# ・上記以外の軸固定、上振れヒモ追加、ライン軽補正、想定的中率計算は変更しない。
+# v335bw（軸固定・ライン軽補正・上振れヒモ追加版）:
+# ・v335bvからの変更は「推奨購入の軸」だけ。軸はヴェロビ最終着順予想1位に固定し、想定的中率モデルで軸を変更しない。
 # ・v335buを土台に、単騎／短いラインがライン勢力比を1車で独占して個人確率が過大になる構造を修正。
 # ・ライン勢力比は「ラインへ確率質量を配る」用途をやめ、各個人評価へ0.85～1.15の軽い文脈補正として使用する。
 # ・個人の着順別評価は従来どおり、KOスコア＋車番別着率＋脚質×会場決まり手を同格の幾何平均で作る。
-# ・推奨購入は、2車単想定的中率1位の1着車を軸に固定し、その軸からの想定的中率上位3車を基本ヒモとする。
+# ・推奨購入は、ヴェロビ最終着順予想1位を軸に固定し、その軸からの想定的中率上位3車を基本ヒモとする。
 # ・さらに会場車番別の過去3着内率順位より、今回のヴェロビ最終評価順位が上の車をヒモ追加する。同順位は追加しない。
 # ・最終ヒモはヴェロビ最終評価順で表示。過去最下位かつ今回も最下位の車は「同順位」なので自動追加しない。
 # ・軸と同ラインのヒモがある場合、その中で想定的中率が最上位の1組だけを3連単1点へ置換する。
@@ -2897,30 +2906,110 @@ def _v335bt_promote_same_line_exacta(exacta_rows, p3_map):
     }
 
 
+
+def _v335bx_expand_same_line_exacta(exacta_rows, p3_map):
+    """
+    v335bx:
+      ・選出済みの軸→ヒモの中で、軸と同ラインの想定的中率最上位1組だけを3連単化。
+      ・1着=軸、2着=同ライン車を固定。
+      ・3着は、選出済みの残りヒモすべてを展開する。
+      ・3着の表示順は、その1・2着を除いた条件付き3着確率の高い順。
+    """
+    _rows = list(exacta_rows or [])
+    _same = []
+    for _idx, _row in enumerate(_rows):
+        if _v335bt_same_line_pair((_row or {}).get("ticket", tuple())):
+            _same.append((_idx, _row))
+
+    if not _same:
+        return {
+            "exacta_rows": _rows,
+            "promoted_exacta": None,
+            "trifecta_head": None,
+            "trifecta_second": None,
+            "trifecta_thirds": [],
+            "trifecta_rows": [],
+        }
+
+    _same.sort(key=lambda t: (-float((t[1] or {}).get("hit_prob", 0.0)), int(t[0])))
+    _promote_idx, _promoted = _same[0]
+    _ticket2 = tuple(int(x) for x in (_promoted or {}).get("ticket", tuple()))
+    if len(_ticket2) != 2:
+        return {
+            "exacta_rows": _rows,
+            "promoted_exacta": None,
+            "trifecta_head": None,
+            "trifecta_second": None,
+            "trifecta_thirds": [],
+            "trifecta_rows": [],
+        }
+
+    _head, _second = int(_ticket2[0]), int(_ticket2[1])
+    _remain = [r for i, r in enumerate(_rows) if int(i) != int(_promote_idx)]
+
+    # 3着は「残りの選出済みヒモ」に限定する。
+    _third_candidates = []
+    _seen = set()
+    for _row in _remain:
+        _tk = tuple(int(x) for x in (_row or {}).get("ticket", tuple()))
+        if len(_tk) != 2 or int(_tk[0]) != _head:
+            continue
+        _car = int(_tk[1])
+        if _car in (_head, _second) or _car in _seen:
+            continue
+        _seen.add(_car)
+        try:
+            _p3_cond = float(_v335br_conditional_pick_prob(p3_map, _car, {_head, _second}))
+        except Exception:
+            _p3_cond = 0.0
+        _third_candidates.append((_car, _p3_cond))
+
+    _third_candidates.sort(key=lambda t: (-float(t[1]), int(t[0])))
+    _src_prob = float((_promoted or {}).get("hit_prob", 0.0))
+    _tri_rows = [
+        {
+            "ticket": (_head, _second, int(_car)),
+            "hit_prob": _src_prob * float(_p3_cond),
+            "source_exacta_hit_prob": _src_prob,
+            "third_cond_prob": float(_p3_cond),
+        }
+        for _car, _p3_cond in _third_candidates
+    ]
+
+    return {
+        "exacta_rows": _remain,
+        "promoted_exacta": _promoted,
+        "trifecta_head": _head,
+        "trifecta_second": _second,
+        "trifecta_thirds": [int(c) for c, _ in _third_candidates],
+        "trifecta_rows": _tri_rows,
+    }
+
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335bv note用推奨購入:
-      1) 全2車単の想定的中率1位の「1着車」を軸に固定
+    v335bx note用推奨購入:
+      1) ヴェロビ最終着順予想1位を軸に固定（想定的中率モデルでは軸を変更しない）
       2) その軸→相手の想定的中率上位3車を基本ヒモ
       3) 過去3着内率順位より今回V評価順位が上の車を追加（同順位は追加しない）
       4) ヒモは今回V評価順で表示
-      5) 軸と同ラインのヒモがあれば、想定的中率最上位の1組だけ3連単へ置換
+      5) 軸と同ラインのヒモがあれば、想定的中率最上位の1組だけ1・2着固定で3連単化
+      6) 3連単3着は、選出済みの残りヒモすべてを展開
+      7) 金額・合計点数は表示しない
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
     if len(_order) < 2 or not isinstance(profile, dict):
         return ["【推奨購入】", "算出不可"]
 
-    # 全2車単を一度だけ算出。TOP1から軸を決め、その軸の相手上位3車を取る。
+    # 全2車単を一度だけ算出。軸はヴェロビ最終着順予想1位に固定し、その軸の相手上位3車を取る。
     _all_exacta, _p1, _p2, _p3 = _v335br_hit_top_rows(
         _order, profile, "2車単", top_n=max(1, len(_order) * (len(_order) - 1))
     )
     if not _all_exacta:
         return ["【推奨購入】", "算出不可"]
 
-    _top_ticket = tuple(int(x) for x in (_all_exacta[0] or {}).get("ticket", tuple()))
-    if len(_top_ticket) != 2:
-        return ["【推奨購入】", "算出不可"]
-    _axis = int(_top_ticket[0])
+    # 軸はヴェロビ最終着順予想1位を固定。
+    # 想定的中率モデルはヒモ選定にのみ使い、軸は上書きしない。
+    _axis = int(_order[0])
 
     _axis_rows_all = [
         r for r in _all_exacta
@@ -2954,9 +3043,11 @@ def _v335bt_purchase_lines(final_order, profile):
     if not _selected_rows:
         return ["【推奨購入】", "算出不可"]
 
-    _plan = _v335bt_promote_same_line_exacta(_selected_rows, _p3)
+    _plan = _v335bx_expand_same_line_exacta(_selected_rows, _p3)
     _ex_rows = list(_plan.get("exacta_rows", []) or [])
-    _tri = _plan.get("trifecta_row")
+    _tri_head = _plan.get("trifecta_head")
+    _tri_second = _plan.get("trifecta_second")
+    _tri_thirds = [int(c) for c in (_plan.get("trifecta_thirds", []) or [])]
 
     _out = ["【推奨購入】"]
     _out.append(f"軸：{int(_axis)}")
@@ -2966,30 +3057,34 @@ def _v335bt_purchase_lines(final_order, profile):
         for r in _ex_rows
     ]
     if _ex_texts:
-        _out.append("2車単：" + "・".join(_ex_texts) + "（各100円）")
+        _out.append("2車単：" + "/".join(_ex_texts))
     else:
         _out.append("2車単：なし")
 
-    if _tri is not None:
-        _tri_text = "→".join(str(int(x)) for x in _tri.get("ticket", tuple()))
-        _out.append("3連単：" + _tri_text + "（100円）")
+    if _tri_head is not None and _tri_second is not None and _tri_thirds:
+        _third_text = "".join(str(int(c)) for c in _tri_thirds)
+        _out.append(f"3連単：{int(_tri_head)}→{int(_tri_second)}→{_third_text}")
     else:
         _out.append("3連単：なし")
 
-    _points = len(_ex_texts) + (1 if _tri is not None else 0)
-    _out.append(f"計{int(_points)}点／{int(_points)*100}円")
-
-    _base_text = "・".join(str(int(c)) for c in sorted(set(_base_himo), key=lambda c: (int(_v_rank.get(int(c), 999)), int(c))))
+    _base_text = "・".join(
+        str(int(c)) for c in sorted(
+            set(_base_himo), key=lambda c: (int(_v_rank.get(int(c), 999)), int(c))
+        )
+    )
     _add_only = [int(c) for c in _himo if int(c) not in set(_base_himo)]
     _add_text = "・".join(str(int(c)) for c in _add_only) if _add_only else "なし"
     _out.append(
         f"※基本ヒモ={_base_text}／過去3着内率順位より今回V評価が上で追加={_add_text}（同順位は追加なし）。"
     )
 
-    if _tri is not None:
+    if _tri_head is not None and _tri_second is not None and _tri_thirds:
         _src = _plan.get("promoted_exacta") or {}
         _src_text = "→".join(str(int(x)) for x in _src.get("ticket", tuple()))
-        _out.append(f"※同ラインの想定的中率最上位 {_src_text} だけを3連単1点へ置換。")
+        _third_text = "・".join(str(int(c)) for c in _tri_thirds)
+        _out.append(
+            f"※同ラインの想定的中率最上位 {_src_text} だけを1・2着固定し、残りのヒモ={_third_text}を3着へ展開。"
+        )
     else:
         _out.append("※軸と同ラインのヒモがないため、3連単化しません。")
 
@@ -3003,7 +3098,7 @@ def _v335br_hit_top_lines(
     field_n=None,
     top_n=3,
 ):
-    """note用：ライン展開→個人決着モデルの2車単/3連単 想定的中率TOP3。"""
+    """note用：推奨購入を先に表示し、その後に2車単/3連単 想定的中率TOP3を検証表示する。"""
     _order = tuple(int(x) for x in (final_order or tuple()))
     _field_n = int(field_n or len(_order) or 0)
     _profile = _v335bp_get_venue_profile(
@@ -3020,7 +3115,12 @@ def _v335br_hit_top_lines(
         ]
 
     _label = str(_profile.get("label", "会場別マスタ"))
-    _out = [f"【想定的中率TOP3｜{_label}】"]
+
+    # v335bx：レース情報の直後に推奨購入を置き、検証用TOP3はその後へ回す。
+    _out = []
+    _out.extend(_v335bt_purchase_lines(_order, _profile))
+    _out.append("")
+    _out.append(f"【想定的中率TOP3｜{_label}】")
     _out.append("基準：序盤=ライン勢力比（軽補正）／最終=個人KOスコア＋車番別着率＋脚質×会場決まり手")
 
     for _kind in ("2車単", "3連単"):
@@ -3046,8 +3146,6 @@ def _v335br_hit_top_lines(
 
     _out.append("※オッズ・平均配当・過去の2車単/3連単H/Nは、このTOP3選出には使用していません。")
     _out.append("※想定的中率はヴェロビ内部指標から作るモデル値で、実測的中率として校正済みではありません。")
-    _out.append("")
-    _out.extend(_v335bt_purchase_lines(_order, _profile))
     return _out
 
 
