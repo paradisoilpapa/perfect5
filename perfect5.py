@@ -1,3 +1,9 @@
+# v335ct（開催日KO・V1対V2限定版）:
+# ・開催日KOの軸入れ替え査定は「元V1位 vs 元V2位」だけに限定。
+# ・元V2が自力先頭／単騎でなければ、V3以下を代替候補として探さない。
+# ・元V1または元V2が対象外なら開催日KOによる軸変更なし。
+# ・ゆがみ、2車単3点、3連単非表示、開催日KO最終順位表示は変更しない。
+
 # v335cs（推奨3連単表示削除版）:
 # ・v335crの予想／開催日KO／ゆがみ／2車単ロジックは変更しない。
 # ・【推奨購入】から3連単の表示だけを外す。
@@ -3280,41 +3286,39 @@ def _v335bt_purchase_lines(final_order, profile):
             return float(_base * max(0.01, 1.0 + _adj))
 
         _original_axis = int(_pre_knock_order[0])
-        if _v335cp_role(_original_axis) in ("head", "single"):
-            _axis_pos = 0
-            # 元◎より下の自力先頭／単騎だけを順位順に抽出。番手・3番手とは戦わせない。
-            _eligible_challengers = [
-                int(c) for c in _pre_knock_order[1:]
-                if _v335cp_role(int(c)) in ("head", "single")
-            ]
-            # 最大2戦。元◎が負けた時だけ次戦へ進み、2敗で3位下限。
-            for _challenger in _eligible_challengers[:2]:
-                _axis_base = _v335cq_base_score(_original_axis)
-                _chal_base = _v335cq_base_score(_challenger)
-                _axis_adj = _v335cq_fatigue_adj(_original_axis)
-                _chal_adj = _v335cq_fatigue_adj(_challenger)
-                _axis_sc = _v335cq_compare_score(_original_axis)
-                _chal_sc = _v335cq_compare_score(_challenger)
-                _lost = bool(_chal_sc > _axis_sc)
-                _knock_log.append({
-                    "axis": int(_original_axis), "challenger": int(_challenger),
-                    "axis_base": float(_axis_base), "challenger_base": float(_chal_base),
-                    "axis_fatigue": float(_axis_adj), "challenger_fatigue": float(_chal_adj),
-                    "axis_score": float(_axis_sc), "challenger_score": float(_chal_sc),
-                    "lost": bool(_lost),
-                })
-                if not _lost:
-                    break
-                # 挑戦者だけを元◎の直前へ。既に勝った候補同士（2vs3）は再比較しない。
-                _target_pos = int(_knock_order.index(int(_challenger)))
-                _knock_order.pop(_target_pos)
-                _knock_order.insert(_axis_pos, int(_challenger))
-                _axis_pos += 1
+
+        # v335ct：軸の入れ替え査定は「元のV1位 vs 元のV2位」だけ。
+        # V2が対象外でも、V3以下の自力先頭／単騎を代替候補として探さない。
+        _original_v2 = int(_order[1]) if len(_order) >= 2 else None
+        if (
+            _original_v2 is not None
+            and _v335cp_role(_original_axis) in ("head", "single")
+            and _v335cp_role(_original_v2) in ("head", "single")
+        ):
+            _axis_base = _v335cq_base_score(_original_axis)
+            _chal_base = _v335cq_base_score(_original_v2)
+            _axis_adj = _v335cq_fatigue_adj(_original_axis)
+            _chal_adj = _v335cq_fatigue_adj(_original_v2)
+            _axis_sc = _v335cq_compare_score(_original_axis)
+            _chal_sc = _v335cq_compare_score(_original_v2)
+            _lost = bool(_chal_sc > _axis_sc)
+            _knock_log.append({
+                "axis": int(_original_axis), "challenger": int(_original_v2),
+                "axis_base": float(_axis_base), "challenger_base": float(_chal_base),
+                "axis_fatigue": float(_axis_adj), "challenger_fatigue": float(_chal_adj),
+                "axis_score": float(_axis_sc), "challenger_score": float(_chal_sc),
+                "lost": bool(_lost),
+            })
+            if _lost:
+                # V2を先頭へ移す。V3以下を新たな軸候補にはしない。
+                if int(_original_v2) in _knock_order:
+                    _knock_order.remove(int(_original_v2))
+                _knock_order.insert(0, int(_original_v2))
     except Exception:
         _knock_order = list(_pre_knock_order)
         _knock_log = []
 
-    # ノックダウン査定後の1位を軸にする。元1位は最大3位までしか下がらない。
+    # 開催日KO査定後の1位を軸にする。軸入れ替え候補は元V2だけ。
     _axis = int(_knock_order[0])
     _post_himo_order = [int(c) for c in _knock_order[1:]]
 
