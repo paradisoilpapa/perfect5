@@ -8382,9 +8382,10 @@ try:
         }
 
         # ======================================================
-        # H主導ライン3番手以降：
+        # H主導ライン実3番手：
         # 3着内率40%以上なら、
         # 「その戦法の表示1着候補ライン」と同じ場合だけ4番手以内へ移動
+        # ※4番手以降にはこの保護を適用しない
         # ======================================================
         try:
             def _display_promote_gid(_car_no):
@@ -8444,18 +8445,22 @@ try:
                 except Exception:
                     return _seq
 
-            # H主導ラインの3番手以降で、3着内率40%以上の車だけ対象
+            # v335ct:
+            # H主導ラインの位置補正は「実際の3番手」だけを対象にする。
+            # 旧処理は _h_members[2:] だったため、4番手以降まで thirdplus として
+            # 同じ4番手以内昇格の対象になり、1256 の 6 が 5 を飛び越える余地があった。
+            # 4番手以降はこの旧・3番手保護を適用せず、通常の個人評価で順位を決める。
             _promote_targets = []
 
             if home_lead_gid is not None and isinstance(line_def, dict):
                 _h_members = [int(x) for x in line_def.get(home_lead_gid, [])]
 
                 if len(_h_members) >= 3:
-                    for _car3 in _h_members[2:]:
-                        _p3 = _display_promote_top3_rate(_car3)
+                    _car3 = int(_h_members[2])
+                    _p3 = _display_promote_top3_rate(_car3)
 
-                        if _p3 is not None and float(_p3) >= 0.40:
-                            _promote_targets.append(int(_car3))
+                    if _p3 is not None and float(_p3) >= 0.40:
+                        _promote_targets.append(int(_car3))
 
             # 各戦法の「表示上の1着候補ライン」と同じ場合だけ、4番手以内へ移動
             for _car3 in _promote_targets:
