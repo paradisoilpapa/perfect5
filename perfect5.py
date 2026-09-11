@@ -1,3 +1,11 @@
+# v335cp（自力・単騎ノックダウン査定版）:
+# ・ゆがみ調整後の順位を土台に、元1位だけを自力先頭／単騎同士で再査定する。
+# ・比較は元1位 vs 下位候補の順。元1位が負けた場合だけ次候補と比較し、最大3位まで降格する。
+# ・2位と3位など、元1位を含まない候補同士は再比較しない。
+# ・番手／3番手以降は開催日疲労の直接補正対象・ノックダウン比較対象にしない。ライン構成は変更しない。
+# ・比較スコアは既存KO使用スコアを利用する。KO使用スコアには自力先頭／単騎だけの開催日疲労補正が反映される。
+# ・ノックダウン後1位を購入軸とし、残る上位3車を2車単ヒモ、上位2/3車を3連単2/3列目に使う。
+# ・ゆがみポイント、V順位基礎点、会場データ、想定的中率計算そのものは変更しない。
 # v335co（出走数変更でも会場入力保持版）:
 # ・会場データ入力のStreamlitキーから出走数(n_cars)を外し、出走数変更で入力値がリセットされないよう修正。
 # ・保持単位は競輪場×開催区分×級別。出走数を増減しても、既存車番のN/1着/2着/3着と決まり手入力を保持する。
@@ -3172,7 +3180,7 @@ def _v335cd_trifecta_12_13_123(cars3):
 def _v335bt_purchase_lines(final_order, profile):
     """
     v335cm note用推奨購入:
-      1) 軸はヴェロビ最終着順予想1位に固定
+      1) V最終1位を初期軸とし、ゆがみ後に自力・単騎限定ノックダウン査定
       2) 2位以下の基本P = 5,4,3,2,1,0
       3) ゆがみP = 過去車番別2着内率順位 - V評価順位
       4) 総合P = 基本P + ゆがみP
@@ -3185,7 +3193,7 @@ def _v335bt_purchase_lines(final_order, profile):
     if len(_order) < 4 or not isinstance(profile, dict):
         return ["【推奨購入】", "算出不可"]
 
-    # 大前提：軸はヴェロビ最終着順予想1位に固定。
+    # 初期軸はヴェロビ最終着順予想1位。v335cpで最後に限定再査定する。
     _axis = int(_order[0])
 
     # 過去2着内率順位とV順位。
@@ -3225,12 +3233,62 @@ def _v335bt_purchase_lines(final_order, profile):
         ),
     )
 
-    # 2車単：調整順位上位3車。
-    _himo = [int(c) for c in _adjusted_himo_order[:3]]
+    # v335cp：ゆがみ調整後に「元1位」だけを自力先頭／単騎同士でノックダウン査定。
+    # 元1位が負けた場合だけ次候補と比較し、最大3位まで。2位vs3位等は再比較しない。
+    _pre_knock_order = [int(_axis)] + [int(c) for c in _adjusted_himo_order]
+    _knock_order = list(_pre_knock_order)
+    _knock_log = []
+    try:
+        _line_def = globals().get("line_def", {}) or {}
+        _ko_map = globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {}
 
-    # 3連単：2列目=上位2車、3列目=上位3車。
-    _tri_second = [int(c) for c in _adjusted_himo_order[:2]]
-    _tri_third = [int(c) for c in _adjusted_himo_order[:3]]
+        def _v335cp_role(_car):
+            try:
+                return str(role_in_line(int(_car), _line_def))
+            except Exception:
+                return "single"
+
+        def _v335cp_score(_car):
+            try:
+                return float(_ko_map.get(int(_car), _ko_map.get(str(int(_car)), 0.0)) or 0.0)
+            except Exception:
+                return 0.0
+
+        _original_axis = int(_pre_knock_order[0])
+        # 査定対象は自力先頭／単騎のみ。元1位が番手・3番手なら順位は触らない。
+        if _v335cp_role(_original_axis) in ("head", "single"):
+            _axis_pos = 0
+            # 下限は総合3位。1vs2で負ければ1vs3へ進み、そこで終了。
+            for _target_pos in (1, 2):
+                _challenger = int(_knock_order[_target_pos])
+                if _v335cp_role(_challenger) not in ("head", "single"):
+                    # 番手／3番手は比較対象外。ただし総合3位までの次候補は確認する。
+                    continue
+                _axis_sc = _v335cp_score(_original_axis)
+                _chal_sc = _v335cp_score(_challenger)
+                _lost = bool(_chal_sc > _axis_sc)
+                _knock_log.append((_original_axis, _challenger, _axis_sc, _chal_sc, _lost))
+                if _lost:
+                    _knock_order[_axis_pos], _knock_order[_target_pos] = (
+                        _knock_order[_target_pos], _knock_order[_axis_pos]
+                    )
+                    _axis_pos = int(_target_pos)
+                else:
+                    break
+    except Exception:
+        _knock_order = list(_pre_knock_order)
+        _knock_log = []
+
+    # ノックダウン査定後の1位を軸にする。元1位は最大3位までしか下がらない。
+    _axis = int(_knock_order[0])
+    _post_himo_order = [int(c) for c in _knock_order[1:]]
+
+    # 2車単：査定後順位の軸→上位3車。
+    _himo = [int(c) for c in _post_himo_order[:3]]
+
+    # 3連単：査定後順位の2列目=上位2車、3列目=上位3車。
+    _tri_second = [int(c) for c in _post_himo_order[:2]]
+    _tri_third = [int(c) for c in _post_himo_order[:3]]
 
     # 既存v335brモデルの着順別個人確率を1回だけ作る。
     try:
@@ -3323,6 +3381,9 @@ def _v335bt_purchase_lines(final_order, profile):
         _out.append(f"車番別2着内率順位　：{_hist_text}")
         _out.append(f"今回V評価順位　　　：{_v_text}")
         _out.append(f"調整後ヒモ順位　　 ：{_adjusted_text}")
+        if _knock_log:
+            _knock_text = " → ".join(str(int(c)) for c in _knock_order)
+            _out.append(f"開催日査定後順位　 ：{_knock_text}")
     except Exception:
         pass
 
@@ -5138,6 +5199,11 @@ for no in active_cars:
 
     # 周回疲労の暴走防止
     laps_adj = clamp(laps_adj, -0.22, 0.18)
+
+    # v335cp：開催日疲労は自力先頭／単騎だけを直接査定する。
+    # 番手・3番手以降は触らず、ライン内の追走評価を開催日疲労で動かさない。
+    if role not in ("head", "single"):
+        laps_adj = 0.0
 
     # =====================================================
     # コメント補正
