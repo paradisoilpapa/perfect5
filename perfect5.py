@@ -1,3 +1,8 @@
+# v335cr（開催日KO最終順位表示版）:
+# ・v335cqの開催日KOロジック／購入ロジックは変更しない。
+# ・検証用に、開催日KO処理後の全車最終順位を毎レース表示する。
+# ・表示名は「開催日KO最終順位」。査定対象がなくても順位を表示し、処理結果を確認できるようにする。
+
 # v335cq：開催日疲労を本体KOから分離し、自力先頭・単騎の最終ノックダウン査定へ移動。元◎は最大3位まで。
 # v335cp（自力・単騎ノックダウン査定版）:
 # ・ゆがみ調整後の順位を土台に、元1位だけを自力先頭／単騎同士で再査定する。
@@ -3413,8 +3418,9 @@ def _v335bt_purchase_lines(final_order, profile):
                     f"開催日査定　　　　 ：{int(_k.get('axis'))} vs {int(_k.get('challenger'))} "
                     f"= {float(_k.get('axis_score')):.6f} vs {float(_k.get('challenger_score')):.6f}（{_result}）"
                 )
-            _knock_text = " → ".join(str(int(c)) for c in _knock_order)
-            _out.append(f"開催日査定後順位　 ：{_knock_text}")
+        # v335cr：開催日KO後の全車順位を毎レース表示。購入軸との整合チェック用。
+        _knock_text = " → ".join(str(int(c)) for c in _knock_order)
+        _out.append(f"開催日KO最終順位　 ：{_knock_text}")
     except Exception:
         pass
 
