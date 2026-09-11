@@ -1,3 +1,8 @@
+# v335cs（推奨3連単表示削除版）:
+# ・v335crの予想／開催日KO／ゆがみ／2車単ロジックは変更しない。
+# ・【推奨購入】から3連単の表示だけを外す。
+# ・内部の3連単計算ロジックは検証用として残す。
+
 # v335cr（開催日KO最終順位表示版）:
 # ・v335cqの開催日KOロジック／購入ロジックは変更しない。
 # ・検証用に、開催日KO処理後の全車最終順位を毎レース表示する。
@@ -3363,17 +3368,6 @@ def _v335bt_purchase_lines(final_order, profile):
             f"　　　　{int(_ticket[0])}-{int(_ticket[1])}（想定的中率{_prob*100:.1f}%）"
         )
 
-    _out.append(
-        f"3連単：{int(_axis)}-"
-        + "".join(str(int(c)) for c in _tri_second)
-        + "-"
-        + "".join(str(int(c)) for c in _tri_third)
-    )
-    for _ticket in _tri_tickets:
-        _prob = float(_tri_probs.get(tuple(_ticket), 0.0) or 0.0)
-        _out.append(
-            f"　　　　{int(_ticket[0])}-{int(_ticket[1])}-{int(_ticket[2])}（想定的中率{_prob*100:.1f}%）"
-        )
 
     # 読者向け：過去順位・V順位・ポイント調整結果。
     try:
