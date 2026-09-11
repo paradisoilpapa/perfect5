@@ -1,3 +1,11 @@
+# v335cw（開催日KO V2位置制限解除版）:
+# ・開催日KOは、元V1が自力先頭／単騎のときに元V1 vs 元V2を比較する。
+# ・元V2は番手・3番手等を含めライン位置を問わず比較対象にする。
+# ・番手差しを開催日KOで査定できるよう修正。
+# ・軸候補は元V2まで。V3以下の探索はしない。
+# ・v335cvの開催日保持、8・9番車実績保持を維持。
+# ・V順位、ゆがみ、ヒモ順位、2車単3点、確率モデル等は変更しない。
+
 # v335cv（開催日＋8・9番車実績保持修正版）:
 # ・v335cuの開催日保持を維持。
 # ・9車入力後に7車等へ切り替えても、非表示になる8・9番車のN/1着/2着/3着をshadow stateへ保持。
@@ -3303,10 +3311,13 @@ def _v335bt_purchase_lines(final_order, profile):
         # v335ct：軸の入れ替え査定は「元のV1位 vs 元のV2位」だけ。
         # V2が対象外でも、V3以下の自力先頭／単騎を代替候補として探さない。
         _original_v2 = int(_order[1]) if len(_order) >= 2 else None
+        # v335cw：
+        # 元V1が自力先頭／単騎なら、元V2はライン位置を問わず開催日KO比較する。
+        # 番手差しを査定対象から外さない。
+        # 軸候補は従来どおり元V2まで。V3以下は探索しない。
         if (
             _original_v2 is not None
             and _v335cp_role(_original_axis) in ("head", "single")
-            and _v335cp_role(_original_v2) in ("head", "single")
         ):
             _axis_base = _v335cq_base_score(_original_axis)
             _chal_base = _v335cq_base_score(_original_v2)
