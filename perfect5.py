@@ -1,3 +1,4 @@
+# v335cq：開催日疲労を本体KOから分離し、自力先頭・単騎の最終ノックダウン査定へ移動。元◎は最大3位まで。
 # v335cp（自力・単騎ノックダウン査定版）:
 # ・ゆがみ調整後の順位を土台に、元1位だけを自力先頭／単騎同士で再査定する。
 # ・比較は元1位 vs 下位候補の順。元1位が負けた場合だけ次候補と比較し、最大3位まで降格する。
@@ -3248,33 +3249,57 @@ def _v335bt_purchase_lines(final_order, profile):
             except Exception:
                 return "single"
 
-        def _v335cp_score(_car):
+        _fatigue_adj_map = globals().get("FATIGUE_KNOCKDOWN_ADJ_MAP", {}) or {}
+
+        def _v335cq_base_score(_car):
             try:
                 return float(_ko_map.get(int(_car), _ko_map.get(str(int(_car)), 0.0)) or 0.0)
             except Exception:
                 return 0.0
 
+        def _v335cq_fatigue_adj(_car):
+            try:
+                return float(_fatigue_adj_map.get(int(_car), _fatigue_adj_map.get(str(int(_car)), 0.0)) or 0.0)
+            except Exception:
+                return 0.0
+
+        def _v335cq_compare_score(_car):
+            # 基準KOスコア × 開催日疲労係数。疲労値は従来laps_adjを流用。
+            _base = _v335cq_base_score(_car)
+            _adj = _v335cq_fatigue_adj(_car)
+            return float(_base * max(0.01, 1.0 + _adj))
+
         _original_axis = int(_pre_knock_order[0])
-        # 査定対象は自力先頭／単騎のみ。元1位が番手・3番手なら順位は触らない。
         if _v335cp_role(_original_axis) in ("head", "single"):
             _axis_pos = 0
-            # 下限は総合3位。1vs2で負ければ1vs3へ進み、そこで終了。
-            for _target_pos in (1, 2):
-                _challenger = int(_knock_order[_target_pos])
-                if _v335cp_role(_challenger) not in ("head", "single"):
-                    # 番手／3番手は比較対象外。ただし総合3位までの次候補は確認する。
-                    continue
-                _axis_sc = _v335cp_score(_original_axis)
-                _chal_sc = _v335cp_score(_challenger)
+            # 元◎より下の自力先頭／単騎だけを順位順に抽出。番手・3番手とは戦わせない。
+            _eligible_challengers = [
+                int(c) for c in _pre_knock_order[1:]
+                if _v335cp_role(int(c)) in ("head", "single")
+            ]
+            # 最大2戦。元◎が負けた時だけ次戦へ進み、2敗で3位下限。
+            for _challenger in _eligible_challengers[:2]:
+                _axis_base = _v335cq_base_score(_original_axis)
+                _chal_base = _v335cq_base_score(_challenger)
+                _axis_adj = _v335cq_fatigue_adj(_original_axis)
+                _chal_adj = _v335cq_fatigue_adj(_challenger)
+                _axis_sc = _v335cq_compare_score(_original_axis)
+                _chal_sc = _v335cq_compare_score(_challenger)
                 _lost = bool(_chal_sc > _axis_sc)
-                _knock_log.append((_original_axis, _challenger, _axis_sc, _chal_sc, _lost))
-                if _lost:
-                    _knock_order[_axis_pos], _knock_order[_target_pos] = (
-                        _knock_order[_target_pos], _knock_order[_axis_pos]
-                    )
-                    _axis_pos = int(_target_pos)
-                else:
+                _knock_log.append({
+                    "axis": int(_original_axis), "challenger": int(_challenger),
+                    "axis_base": float(_axis_base), "challenger_base": float(_chal_base),
+                    "axis_fatigue": float(_axis_adj), "challenger_fatigue": float(_chal_adj),
+                    "axis_score": float(_axis_sc), "challenger_score": float(_chal_sc),
+                    "lost": bool(_lost),
+                })
+                if not _lost:
                     break
+                # 挑戦者だけを元◎の直前へ。既に勝った候補同士（2vs3）は再比較しない。
+                _target_pos = int(_knock_order.index(int(_challenger)))
+                _knock_order.pop(_target_pos)
+                _knock_order.insert(_axis_pos, int(_challenger))
+                _axis_pos += 1
     except Exception:
         _knock_order = list(_pre_knock_order)
         _knock_log = []
@@ -3382,6 +3407,12 @@ def _v335bt_purchase_lines(final_order, profile):
         _out.append(f"今回V評価順位　　　：{_v_text}")
         _out.append(f"調整後ヒモ順位　　 ：{_adjusted_text}")
         if _knock_log:
+            for _k in _knock_log:
+                _result = "元◎負け" if bool(_k.get("lost")) else "元◎維持"
+                _out.append(
+                    f"開催日査定　　　　 ：{int(_k.get('axis'))} vs {int(_k.get('challenger'))} "
+                    f"= {float(_k.get('axis_score')):.6f} vs {float(_k.get('challenger_score')):.6f}（{_result}）"
+                )
             _knock_text = " → ".join(str(int(c)) for c in _knock_order)
             _out.append(f"開催日査定後順位　 ：{_knock_text}")
     except Exception:
@@ -5166,6 +5197,8 @@ def _line_follow_trust_bonus_for_car(_no, _role, _is_girls_like=False):
     except Exception:
         return 0.0
 
+FATIGUE_KNOCKDOWN_ADJ_MAP = {}
+
 for no in active_cars:
     no = int(no)
     role = role_in_line(no, line_def)
@@ -5200,10 +5233,9 @@ for no in active_cars:
     # 周回疲労の暴走防止
     laps_adj = clamp(laps_adj, -0.22, 0.18)
 
-    # v335cp：開催日疲労は自力先頭／単騎だけを直接査定する。
-    # 番手・3番手以降は触らず、ライン内の追走評価を開催日疲労で動かさない。
-    if role not in ("head", "single"):
-        laps_adj = 0.0
+    # v335cq：開催日疲労は本体KOへ直接混ぜず、最後の自力・単騎比較でだけ使用。
+    FATIGUE_KNOCKDOWN_ADJ_MAP[int(no)] = float(laps_adj) if role in ("head", "single") else 0.0
+    laps_adj = 0.0
 
     # =====================================================
     # コメント補正
