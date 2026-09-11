@@ -1,3 +1,16 @@
+# v335cv（開催日＋8・9番車実績保持修正版）:
+# ・v335cuの開催日保持を維持。
+# ・9車入力後に7車等へ切り替えても、非表示になる8・9番車のN/1着/2着/3着をshadow stateへ保持。
+# ・再び9車へ戻したとき、8・9番車を0へ戻さず直前の入力値を復元。
+# ・表示は現在の出走数まで。非該当車番を予想計算へ混入させない。
+# ・予想本体、V順位、ゆがみ、開催日KO、軸、ヒモ、2車単3点、決まり手入力は変更しない。
+
+# v335cu（開催日保持修正版）:
+# ・出走数を7車以下⇔8～9車へ切り替えても、開催日の実日数を保持する。
+# ・3日目は「3日目（最終日）」⇔「3日目」と表示だけ変換し、初日へ戻さない。
+# ・8～9車の4・5日目から7車以下へ切替時だけ、存在する最大の3日目へ丸める。
+# ・予想本体、V順位、ゆがみ、開催日KO、軸、ヒモ、2車単3点、会場データ保持は変更しない。
+
 # v335ct（開催日KO・V1対V2限定版）:
 # ・開催日KOの軸入れ替え査定は「元V1位 vs 元V2位」だけに限定。
 # ・元V2が自力先頭／単騎でなければ、V3以下を代替候補として探さない。
@@ -3841,6 +3854,34 @@ def _v335co_migrate_sidebar_state(_suffix):
         st.session_state[_new_key] = st.session_state[_old_key]
     return _new_key
 
+# v335cv：
+# Streamlitは「その実行で描画されなかったwidget key」を後で破棄するため、
+# n_carsを9→7へ切り替えると8・9番車のwidget state自体が消える。
+# widgetとは別のshadow keyへ1～9番車の入力値を退避し、
+# 再び該当車番が表示されたときに復元する。
+def _v335cv_shadow_key(_suffix):
+    return f"{_v335bu_key_prefix}_shadow_{str(_suffix)}"
+
+def _v335cv_snapshot_car_stats():
+    for _car_no in range(1, 10):
+        for _field in ("N", "1", "2", "3"):
+            _suffix = f"car{int(_car_no)}_{_field}"
+            _widget_key = f"{_v335bu_key_prefix}_{_suffix}"
+            _shadow_key = _v335cv_shadow_key(_suffix)
+            # 車数変更直後のrerunでは、非表示になる8・9番車の旧widget値も
+            # この時点ではまだsession_stateに残っているため、先に退避する。
+            if _widget_key in st.session_state:
+                st.session_state[_shadow_key] = st.session_state[_widget_key]
+
+def _v335cv_restore_car_state(_suffix):
+    _widget_key = _v335co_migrate_sidebar_state(_suffix)
+    _shadow_key = _v335cv_shadow_key(_suffix)
+    if _widget_key not in st.session_state and _shadow_key in st.session_state:
+        st.session_state[_widget_key] = st.session_state[_shadow_key]
+    return _widget_key
+
+_v335cv_snapshot_car_stats()
+
 # 既存の埋込マスタがある条件だけ、初回入力の初期値として利用。
 # 今後の会場追加はこのDBへ書かず、サイドバー入力だけで運用できる。
 _v335bu_seed_profile = _V335BP_VENUE_PROFILE_DB.get(_v335bu_profile_key, {}) or {}
@@ -3963,7 +4004,7 @@ with st.sidebar.expander("② 車番別｜N・1着・2着・3着", expanded=True
                 min_value=0, max_value=100000,
                 value=int(_seed_n),
                 step=1,
-                key=_v335co_migrate_sidebar_state(f"car{int(_car)}_N"),
+                key=_v335cv_restore_car_state(f"car{int(_car)}_N"),
             )
         with _c1:
             _h1 = st.number_input(
@@ -3971,7 +4012,7 @@ with st.sidebar.expander("② 車番別｜N・1着・2着・3着", expanded=True
                 min_value=0, max_value=100000,
                 value=int(_seed_1),
                 step=1,
-                key=_v335co_migrate_sidebar_state(f"car{int(_car)}_1"),
+                key=_v335cv_restore_car_state(f"car{int(_car)}_1"),
             )
         with _c2:
             _h2 = st.number_input(
@@ -3979,7 +4020,7 @@ with st.sidebar.expander("② 車番別｜N・1着・2着・3着", expanded=True
                 min_value=0, max_value=100000,
                 value=int(_seed_2),
                 step=1,
-                key=_v335co_migrate_sidebar_state(f"car{int(_car)}_2"),
+                key=_v335cv_restore_car_state(f"car{int(_car)}_2"),
             )
         with _c3:
             _h3 = st.number_input(
@@ -3987,7 +4028,7 @@ with st.sidebar.expander("② 車番別｜N・1着・2着・3着", expanded=True
                 min_value=0, max_value=100000,
                 value=int(_seed_3),
                 step=1,
-                key=_v335co_migrate_sidebar_state(f"car{int(_car)}_3"),
+                key=_v335cv_restore_car_state(f"car{int(_car)}_3"),
             )
 
         _n = int(_n)
@@ -4264,7 +4305,48 @@ else:
         "5日目（最終日）": "最終日",
     }
 
-day_label = st.sidebar.selectbox("開催日", day_options, 0)
+# v335cu：出走数を切り替えても開催日の「実日数」を保持する。
+# 7車以下と8～9車では3日目の表示名が異なるため、
+# 表示文字列ではなく 1～5 の日数で引き継ぐ。
+# 例：7車「3日目（最終日）」→8車「3日目」、
+#     8車「3日目」→7車「3日目（最終日）」。
+# 7車以下へ切替時に4・5日目だった場合だけ、存在する最大の3日目へ丸める。
+_day_widget_key = "velobi_day_label"
+
+def _v335cu_day_number(_label):
+    _s = str(_label or "")
+    if _s.startswith("5日目"):
+        return 5
+    if _s.startswith("4日目"):
+        return 4
+    if _s.startswith("3日目"):
+        return 3
+    if _s.startswith("2日目"):
+        return 2
+    return 1
+
+_prev_day_label = st.session_state.get(_day_widget_key, None)
+_prev_day_no = _v335cu_day_number(_prev_day_label)
+
+# 現在の出走数で存在する範囲へだけ丸める。
+_target_day_no = min(int(_prev_day_no), int(schedule_total_days))
+
+_day_label_by_no = {
+    int(day_index_map[_label]): str(_label)
+    for _label in day_options
+}
+_target_day_label = _day_label_by_no.get(int(_target_day_no), str(day_options[0]))
+
+# options変更でStreamlitが初日に戻す前に、有効な同日ラベルへ置換する。
+if st.session_state.get(_day_widget_key) != _target_day_label:
+    st.session_state[_day_widget_key] = _target_day_label
+
+day_label = st.sidebar.selectbox(
+    "開催日",
+    day_options,
+    index=day_options.index(_target_day_label),
+    key=_day_widget_key,
+)
 day_index = int(day_index_map[day_label])
 day_stage = str(day_stage_map[day_label])
 
