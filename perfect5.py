@@ -1,3 +1,8 @@
+# v335cy（単騎位置疲労修正版）:
+# ・位置疲労の順序を「先頭 ＞ 番手 ＞ 単騎 ＞ 3番手以降」に修正。
+# ・単騎は番手と3番手以降の中間値だけに変更。
+# ・それ以外のロジック・係数・買目・V順位・ゆがみ・開催日KO条件は変更しない。
+
 # v335cx（開催日KO・位置疲労補正版）:
 # ・開催日KOの疲労査定に、脚質疲労とは別に「当日のライン位置による負荷」を加える。
 # ・位置負荷は開催進行で強め、初日は極小、2日目→3日目→4日目→最終日の順に拡大する。
@@ -5340,11 +5345,11 @@ for no in active_cars:
     # v335cx：開催日KO専用の位置疲労を追加。
     # 脚質疲労とは分離し、開催が進むほど先頭の位置負荷を強くする。
     _v335cx_position_fatigue = {
-        "初日":   {"head": -0.005, "single": -0.003, "second":  0.000, "thirdplus": 0.000},
-        "2日目":  {"head": -0.025, "single": -0.015, "second": -0.005, "thirdplus": 0.000},
-        "3日目":  {"head": -0.050, "single": -0.030, "second": -0.010, "thirdplus": 0.000},
-        "4日目":  {"head": -0.070, "single": -0.040, "second": -0.015, "thirdplus": 0.000},
-        "最終日": {"head": -0.090, "single": -0.050, "second": -0.020, "thirdplus": 0.000},
+        "初日":   {"head": -0.005, "single":  0.000, "second":  0.000, "thirdplus": 0.000},
+        "2日目":  {"head": -0.025, "single": -0.003, "second": -0.005, "thirdplus": 0.000},
+        "3日目":  {"head": -0.050, "single": -0.005, "second": -0.010, "thirdplus": 0.000},
+        "4日目":  {"head": -0.070, "single": -0.008, "second": -0.015, "thirdplus": 0.000},
+        "最終日": {"head": -0.090, "single": -0.010, "second": -0.020, "thirdplus": 0.000},
     }
     position_adj = float(
         _v335cx_position_fatigue.get(
