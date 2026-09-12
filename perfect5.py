@@ -1,3 +1,10 @@
+# v335cx（開催日KO・位置疲労補正版）:
+# ・開催日KOの疲労査定に、脚質疲労とは別に「当日のライン位置による負荷」を加える。
+# ・位置負荷は開催進行で強め、初日は極小、2日目→3日目→4日目→最終日の順に拡大する。
+# ・先頭の負荷を最大、単騎を次点、番手を小さく、3番手以降は0とする。
+# ・既存の脚質疲労、V1 vs V2限定、V2の位置制限なし、V3以下を探索しない仕様は維持。
+# ・V順位、ゆがみ、ヒモ順位、2車単3点、確率モデル、会場入力保持、開催日保持は変更しない。
+
 # v335cw（開催日KO V2位置制限解除版）:
 # ・開催日KOは、元V1が自力先頭／単騎のときに元V1 vs 元V2を比較する。
 # ・元V2は番手・3番手等を含めライン位置を問わず比較対象にする。
@@ -5330,8 +5337,28 @@ for no in active_cars:
     # 周回疲労の暴走防止
     laps_adj = clamp(laps_adj, -0.22, 0.18)
 
-    # v335cq：開催日疲労は本体KOへ直接混ぜず、最後の自力・単騎比較でだけ使用。
-    FATIGUE_KNOCKDOWN_ADJ_MAP[int(no)] = float(laps_adj) if role in ("head", "single") else 0.0
+    # v335cx：開催日KO専用の位置疲労を追加。
+    # 脚質疲労とは分離し、開催が進むほど先頭の位置負荷を強くする。
+    _v335cx_position_fatigue = {
+        "初日":   {"head": -0.005, "single": -0.003, "second":  0.000, "thirdplus": 0.000},
+        "2日目":  {"head": -0.025, "single": -0.015, "second": -0.005, "thirdplus": 0.000},
+        "3日目":  {"head": -0.050, "single": -0.030, "second": -0.010, "thirdplus": 0.000},
+        "4日目":  {"head": -0.070, "single": -0.040, "second": -0.015, "thirdplus": 0.000},
+        "最終日": {"head": -0.090, "single": -0.050, "second": -0.020, "thirdplus": 0.000},
+    }
+    position_adj = float(
+        _v335cx_position_fatigue.get(
+            str(day_stage), _v335cx_position_fatigue["2日目"]
+        ).get(str(role), 0.0)
+    )
+
+    # 既存脚質疲労は従来どおり先頭・単騎だけ。
+    style_fatigue_adj = float(laps_adj) if role in ("head", "single") else 0.0
+
+    # 開催日KO用疲労 = 既存脚質疲労 + 位置疲労。
+    FATIGUE_KNOCKDOWN_ADJ_MAP[int(no)] = float(
+        clamp(style_fatigue_adj + position_adj, -0.22, 0.18)
+    )
     laps_adj = 0.0
 
     # =====================================================
