@@ -1,3 +1,9 @@
+# v335cz（開催日KO・V1位置制限解除版）:
+# ・元V1のライン位置による開催日KOの比較制限を解除。
+# ・元V1が先頭・番手・3番手以降・単騎のいずれでも、元V2とのみ比較する。
+# ・V3以下は探索しない。
+# ・位置疲労係数、脚質疲労、V順位、ゆがみ、ヒモ順位、2車単3点、確率モデルは変更しない。
+
 # v335cy（単騎位置疲労修正版）:
 # ・位置疲労の順序を「先頭 ＞ 番手 ＞ 単騎 ＞ 3番手以降」に修正。
 # ・単騎は番手と3番手以降の中間値だけに変更。
@@ -3327,10 +3333,7 @@ def _v335bt_purchase_lines(final_order, profile):
         # 元V1が自力先頭／単騎なら、元V2はライン位置を問わず開催日KO比較する。
         # 番手差しを査定対象から外さない。
         # 軸候補は従来どおり元V2まで。V3以下は探索しない。
-        if (
-            _original_v2 is not None
-            and _v335cp_role(_original_axis) in ("head", "single")
-        ):
+        if _original_v2 is not None:
             _axis_base = _v335cq_base_score(_original_axis)
             _chal_base = _v335cq_base_score(_original_v2)
             _axis_adj = _v335cq_fatigue_adj(_original_axis)
