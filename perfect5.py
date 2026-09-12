@@ -1,3 +1,9 @@
+# v335da（開催日査定表示診断版）:
+# ・開催日KOの計算ロジックは変更しない。
+# ・開催日査定の例外を握り潰さず、画面にエラー内容を表示する。
+# ・V1/V2が存在するのに比較ログが生成されない場合も診断表示する。
+# ・V順位、位置疲労、脚質疲労、ゆがみ、ヒモ順位、2車単3点、確率モデルは変更しない。
+
 # v335cz（開催日KO・V1位置制限解除版）:
 # ・元V1のライン位置による開催日KOの比較制限を解除。
 # ・元V1が先頭・番手・3番手以降・単騎のいずれでも、元V2とのみ比較する。
@@ -3294,6 +3300,7 @@ def _v335bt_purchase_lines(final_order, profile):
     _pre_knock_order = [int(_axis)] + [int(c) for c in _adjusted_himo_order]
     _knock_order = list(_pre_knock_order)
     _knock_log = []
+    _knock_error = None
     try:
         _line_def = globals().get("line_def", {}) or {}
         _ko_map = globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {}
@@ -3353,9 +3360,10 @@ def _v335bt_purchase_lines(final_order, profile):
                 if int(_original_v2) in _knock_order:
                     _knock_order.remove(int(_original_v2))
                 _knock_order.insert(0, int(_original_v2))
-    except Exception:
+    except Exception as _e:
         _knock_order = list(_pre_knock_order)
         _knock_log = []
+        _knock_error = f"{type(_e).__name__}: {_e}"
 
     # 開催日KO査定後の1位を軸にする。軸入れ替え候補は元V2だけ。
     _axis = int(_knock_order[0])
@@ -3454,6 +3462,13 @@ def _v335bt_purchase_lines(final_order, profile):
                 _out.append(
                     f"開催日査定　　　　 ：{int(_k.get('axis'))} vs {int(_k.get('challenger'))} "
                     f"= {float(_k.get('axis_score')):.6f} vs {float(_k.get('challenger_score')):.6f}（{_result}）"
+                )
+        elif len(_order) >= 2:
+            if _knock_error:
+                _out.append(f"開催日査定エラー　 ：{_knock_error}")
+            else:
+                _out.append(
+                    f"開催日査定診断　　 ：{int(_order[0])} vs {int(_order[1])} の比較ログ未生成"
                 )
         # v335cr：開催日KO後の全車順位を毎レース表示。購入軸との整合チェック用。
         _knock_text = " → ".join(str(int(c)) for c in _knock_order)
