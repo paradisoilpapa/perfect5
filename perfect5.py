@@ -1,3 +1,9 @@
+# v335db（開催日KO二重フィルター版）:
+# ・第1フィルター：従来どおり開催日疲労込み比較で元V2が元V1を上回れば、元V2へ軸変更する。
+# ・第2フィルター：第1フィルターで逆転しなかった場合だけ、開催日査定スコア比 V2/V1 が90％以下なら元V2へ軸変更する。
+# ・軸候補は元V2まで。V3以下は探索しない。
+# ・V順位、位置疲労、脚質疲労、ゆがみ、ヒモ順位、2車単3点、確率モデルは変更しない。
+
 # v335da（開催日査定表示診断版）:
 # ・開催日KOの計算ロジックは変更しない。
 # ・開催日査定の例外を握り潰さず、画面にエラー内容を表示する。
@@ -3347,16 +3353,41 @@ def _v335bt_purchase_lines(final_order, profile):
             _chal_adj = _v335cq_fatigue_adj(_original_v2)
             _axis_sc = _v335cq_compare_score(_original_axis)
             _chal_sc = _v335cq_compare_score(_original_v2)
-            _lost = bool(_chal_sc > _axis_sc)
+            # v335db：開催日KOは二重フィルター。
+            # 第1フィルター：従来どおり、疲労込み比較でV2がV1を上回れば逆転。
+            _fatigue_lost = bool(_chal_sc > _axis_sc)
+
+            # 第2フィルター：第1フィルターで逆転しなかった場合のみ、
+            # 開催日査定スコア比 V2/V1 が90％以下ならV2へ逆転。
+            # V1スコアが0以下の場合は比率判定を行わない。
+            _v2_v1_ratio = (
+                float(_chal_sc / _axis_sc)
+                if float(_axis_sc) > 0.0 else None
+            )
+            _ratio_lost = bool(
+                (not _fatigue_lost)
+                and (_v2_v1_ratio is not None)
+                and (_v2_v1_ratio <= 0.90)
+            )
+            _lost = bool(_fatigue_lost or _ratio_lost)
+            _knock_reason = (
+                "疲労逆転" if _fatigue_lost
+                else ("比率90%以下逆転" if _ratio_lost else "維持")
+            )
+
             _knock_log.append({
                 "axis": int(_original_axis), "challenger": int(_original_v2),
                 "axis_base": float(_axis_base), "challenger_base": float(_chal_base),
                 "axis_fatigue": float(_axis_adj), "challenger_fatigue": float(_chal_adj),
                 "axis_score": float(_axis_sc), "challenger_score": float(_chal_sc),
+                "v2_v1_ratio": _v2_v1_ratio,
+                "fatigue_lost": bool(_fatigue_lost),
+                "ratio_lost": bool(_ratio_lost),
+                "knock_reason": str(_knock_reason),
                 "lost": bool(_lost),
             })
             if _lost:
-                # V2を先頭へ移す。V3以下を新たな軸候補にはしない。
+                # 軸候補は元V2だけ。V3以下は探索しない。
                 if int(_original_v2) in _knock_order:
                     _knock_order.remove(int(_original_v2))
                 _knock_order.insert(0, int(_original_v2))
@@ -3463,6 +3494,11 @@ def _v335bt_purchase_lines(final_order, profile):
                     f"開催日査定　　　　 ：{int(_k.get('axis'))} vs {int(_k.get('challenger'))} "
                     f"= {float(_k.get('axis_score')):.6f} vs {float(_k.get('challenger_score')):.6f}（{_result}）"
                 )
+                _ratio = _k.get("v2_v1_ratio")
+                if _ratio is not None:
+                    _out.append(
+                        f"V2/V1比率　　　　 ：{float(_ratio) * 100.0:.2f}%（{str(_k.get('knock_reason', '維持'))}）"
+                    )
         elif len(_order) >= 2:
             if _knock_error:
                 _out.append(f"開催日査定エラー　 ：{_knock_error}")
