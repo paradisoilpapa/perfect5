@@ -1,3 +1,8 @@
+# v335de（軸ライン最優先・次候補ライン復元版）:
+# ・ヒモ選定を「軸確定 → 軸と同一ラインを最優先 → 次の候補ライン」の原則へ戻す。
+# ・軸がラインの前・中・後ろのどこでも、同一ライン車を元の隊列順で保護する。
+# ・4車以上ラインは従来どおりヒモ上位3内で同一ライン最大2車。
+# ・開催日KO、V1/V2限定、80-90%比率条件、位置疲労・脚質疲労、V順位、ゆがみ、確率モデル、2車単3点は変更しない。
 # v335dd（開催日査定表示修正・比率80-90版）:
 # ・開催日査定の「元◎勝敗」表示は第1フィルター（疲労込み査定スコア比較）だけを表示し、第2比率フィルターの最終軸変更と混同しない。
 # ・第2フィルターは、第1フィルターで逆転しなかった場合のみ V2/V1 が80%以上90%以下の範囲でV2へ逆転する。
@@ -3412,13 +3417,13 @@ def _v335bt_purchase_lines(final_order, profile):
     _axis = int(_knock_order[0])
     _post_himo_order = [int(c) for c in _knock_order[1:]]
 
-    # v335dc：軸確定後のヒモだけ、想定隊列の縦ラインを復元する。
-    # ・査定後ヒモ順位を上から走査し、初めて現れた車の「後ろのライン車」を直後へ連結する。
-    # ・軸車はヒモから除外する。
-    # ・3車以下ラインは後続をそのまま復元する。
-    # ・4車以上ラインは、同一ラインからのヒモ採用を上位2車までに制限し、
-    #   残り枠は査定後順位に戻って最上位の他ライン車で埋める。
-    # ・V順位、開催日KO二重フィルター、ゆがみ、確率モデル、2車単3点は変更しない。
+    # v335de：軸確定後は「軸とそのライン」を最優先し、その次に候補ラインを復元する。
+    # ・軸がラインの前・中・後ろのどこにいても、軸と同一ラインの他車をライン順で先に確保する。
+    # ・その後、開催日KO後順位で未採用の最上位車を「次の候補ライン」の起点として、
+    #   その車を含むライン全体を元の想定隊列順で復元する。
+    # ・単騎はそのまま1車として扱う。
+    # ・4車以上ラインは、ヒモ上位3車の中に同一ラインを最大2車までとし、残り枠は他ラインへ渡す。
+    # ・V順位、開催日KO二重フィルター、80-90%比率条件、ゆがみ、確率モデル、2車単3点は変更しない。
     def _v335dc_restore_himo_lines(_base_order, _axis_car, _line_def_map):
         _base = [int(c) for c in (_base_order or []) if int(c) != int(_axis_car)]
         _line_def_local = _line_def_map if isinstance(_line_def_map, dict) else {}
@@ -3434,31 +3439,44 @@ def _v335bt_purchase_lines(final_order, profile):
 
         _restored = []
         _seen = {int(_axis_car)}
-        _long_line_count = {}
+        _top3_line_count = {}
 
-        def _can_add(_car):
-            _car = int(_car)
-            if _car in _seen:
-                return False
-            _members = _car_line.get(_car, [_car])
+        def _line_key(_car):
+            _members = _car_line.get(int(_car), [int(_car)])
+            return tuple(int(x) for x in _members)
+
+        def _can_enter_top3(_car):
+            if len(_restored) >= 3:
+                return True
+            _members = _car_line.get(int(_car), [int(_car)])
             if len(_members) >= 4:
                 _key = tuple(int(x) for x in _members)
-                if int(_long_line_count.get(_key, 0)) >= 2:
-                    return False
+                return int(_top3_line_count.get(_key, 0)) < 2
             return True
 
         def _add(_car):
             _car = int(_car)
-            if not _can_add(_car):
+            if _car in _seen:
                 return False
-            _members = _car_line.get(_car, [_car])
+            if not _can_enter_top3(_car):
+                return False
             _restored.append(_car)
             _seen.add(_car)
-            if len(_members) >= 4:
-                _key = tuple(int(x) for x in _members)
-                _long_line_count[_key] = int(_long_line_count.get(_key, 0)) + 1
+            if len(_restored) <= 3:
+                _members = _car_line.get(_car, [_car])
+                if len(_members) >= 4:
+                    _key = tuple(int(x) for x in _members)
+                    _top3_line_count[_key] = int(_top3_line_count.get(_key, 0)) + 1
             return True
 
+        # ① 軸ラインを最優先。軸の位置に関係なく、同一ラインの他車を元のライン順で確保。
+        _axis_members = _car_line.get(int(_axis_car), [int(_axis_car)])
+        for _member in _axis_members:
+            if int(_member) != int(_axis_car):
+                _add(int(_member))
+
+        # ② 残ったKO順位の最上位車から「次の候補ライン」を順に復元。
+        #    ここでも前後では切らず、その車が属するライン全体を元の隊列順で扱う。
         for _car in _base:
             _car = int(_car)
             if _car in _seen:
@@ -3469,17 +3487,11 @@ def _v335bt_purchase_lines(final_order, profile):
                 _add(_car)
                 continue
 
-            try:
-                _idx = _members.index(_car)
-            except ValueError:
-                _idx = 0
+            for _member in _members:
+                if int(_member) != int(_axis_car):
+                    _add(int(_member))
 
-            # 評価された車を起点に、その後ろだけをライン順で復元する。
-            for _member in _members[_idx:]:
-                _add(int(_member))
-
-        # 4車以上ラインの上限で飛ばした車も、順位情報自体は失わない。
-        # ただしヒモ上位3車には入れず、末尾へ戻す。
+        # 4車以上ラインの上限で上位3から外した車も、診断順位からは失わない。
         for _car in _base:
             if int(_car) not in _seen:
                 _restored.append(int(_car))
