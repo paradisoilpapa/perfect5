@@ -1,3 +1,8 @@
+# v335dd（開催日査定表示修正・比率80-90版）:
+# ・開催日査定の「元◎勝敗」表示は第1フィルター（疲労込み査定スコア比較）だけを表示し、第2比率フィルターの最終軸変更と混同しない。
+# ・第2フィルターは、第1フィルターで逆転しなかった場合のみ V2/V1 が80%以上90%以下の範囲でV2へ逆転する。
+# ・第1フィルターの疲労逆転、V1/V2限定、V3以下非探索、位置疲労・脚質疲労・V順位・ゆがみ・ライン復元ヒモ・2車単3点・確率モデルは変更しない。
+
 # v335dc（ヒモ・ライン縦関係復元版）:
 # ・v335dbの開催日KO二重フィルターと軸決定は変更しない。
 # ・軸確定後のヒモだけ、査定後順位を起点に想定隊列の後続ライン車を直後へ復元する。
@@ -3364,8 +3369,8 @@ def _v335bt_purchase_lines(final_order, profile):
             # 第1フィルター：従来どおり、疲労込み比較でV2がV1を上回れば逆転。
             _fatigue_lost = bool(_chal_sc > _axis_sc)
 
-            # 第2フィルター：第1フィルターで逆転しなかった場合のみ、
-            # 開催日査定スコア比 V2/V1 が90％以下ならV2へ逆転。
+            # v335dd 第2フィルター：第1フィルターで逆転しなかった場合のみ、
+            # 開催日査定スコア比 V2/V1 が80％以上90％以下ならV2へ逆転。
             # V1スコアが0以下の場合は比率判定を行わない。
             _v2_v1_ratio = (
                 float(_chal_sc / _axis_sc)
@@ -3374,12 +3379,12 @@ def _v335bt_purchase_lines(final_order, profile):
             _ratio_lost = bool(
                 (not _fatigue_lost)
                 and (_v2_v1_ratio is not None)
-                and (_v2_v1_ratio <= 0.90)
+                and (0.80 <= _v2_v1_ratio <= 0.90)
             )
             _lost = bool(_fatigue_lost or _ratio_lost)
             _knock_reason = (
                 "疲労逆転" if _fatigue_lost
-                else ("比率90%以下逆転" if _ratio_lost else "維持")
+                else ("比率80-90%逆転" if _ratio_lost else "維持")
             )
 
             _knock_log.append({
@@ -3579,7 +3584,9 @@ def _v335bt_purchase_lines(final_order, profile):
         _out.append(f"調整後ヒモ順位　　 ：{_adjusted_text}")
         if _knock_log:
             for _k in _knock_log:
-                _result = "元◎負け" if bool(_k.get("lost")) else "元◎維持"
+                # v335dd：開催日査定欄は第1フィルターの純粋な査定勝敗を表示する。
+                # 第2比率フィルターによる軸変更はV2/V1比率欄の理由で別表示する。
+                _result = "元◎負け" if bool(_k.get("fatigue_lost")) else "元◎維持"
                 _out.append(
                     f"開催日査定　　　　 ：{int(_k.get('axis'))} vs {int(_k.get('challenger'))} "
                     f"= {float(_k.get('axis_score')):.6f} vs {float(_k.get('challenger_score')):.6f}（{_result}）"
