@@ -1,3 +1,10 @@
+# v335dc（ヒモ・ライン縦関係復元版）:
+# ・v335dbの開催日KO二重フィルターと軸決定は変更しない。
+# ・軸確定後のヒモだけ、査定後順位を起点に想定隊列の後続ライン車を直後へ復元する。
+# ・3車以下ラインは後続を縦順で復元。4車以上ラインは同一ラインからヒモ上位3枠へ最大2車まで。
+# ・2車単は復元後ヒモ上位3車の3点固定。V順位、位置疲労、脚質疲労、ゆがみ、確率モデルは変更しない。
+# ・検証用に「ライン復元ヒモ順位」を表示する。
+
 # v335db（開催日KO二重フィルター版）:
 # ・第1フィルター：従来どおり開催日疲労込み比較で元V2が元V1を上回れば、元V2へ軸変更する。
 # ・第2フィルター：第1フィルターで逆転しなかった場合だけ、開催日査定スコア比 V2/V1 が90％以下なら元V2へ軸変更する。
@@ -3400,12 +3407,95 @@ def _v335bt_purchase_lines(final_order, profile):
     _axis = int(_knock_order[0])
     _post_himo_order = [int(c) for c in _knock_order[1:]]
 
-    # 2車単：査定後順位の軸→上位3車。
-    _himo = [int(c) for c in _post_himo_order[:3]]
+    # v335dc：軸確定後のヒモだけ、想定隊列の縦ラインを復元する。
+    # ・査定後ヒモ順位を上から走査し、初めて現れた車の「後ろのライン車」を直後へ連結する。
+    # ・軸車はヒモから除外する。
+    # ・3車以下ラインは後続をそのまま復元する。
+    # ・4車以上ラインは、同一ラインからのヒモ採用を上位2車までに制限し、
+    #   残り枠は査定後順位に戻って最上位の他ライン車で埋める。
+    # ・V順位、開催日KO二重フィルター、ゆがみ、確率モデル、2車単3点は変更しない。
+    def _v335dc_restore_himo_lines(_base_order, _axis_car, _line_def_map):
+        _base = [int(c) for c in (_base_order or []) if int(c) != int(_axis_car)]
+        _line_def_local = _line_def_map if isinstance(_line_def_map, dict) else {}
 
-    # 3連単：査定後順位の2列目=上位2車、3列目=上位3車。
-    _tri_second = [int(c) for c in _post_himo_order[:2]]
-    _tri_third = [int(c) for c in _post_himo_order[:3]]
+        _car_line = {}
+        for _g, _members_raw in _line_def_local.items():
+            try:
+                _members = [int(x) for x in (_members_raw or [])]
+            except Exception:
+                continue
+            for _x in _members:
+                _car_line[int(_x)] = list(_members)
+
+        _restored = []
+        _seen = {int(_axis_car)}
+        _long_line_count = {}
+
+        def _can_add(_car):
+            _car = int(_car)
+            if _car in _seen:
+                return False
+            _members = _car_line.get(_car, [_car])
+            if len(_members) >= 4:
+                _key = tuple(int(x) for x in _members)
+                if int(_long_line_count.get(_key, 0)) >= 2:
+                    return False
+            return True
+
+        def _add(_car):
+            _car = int(_car)
+            if not _can_add(_car):
+                return False
+            _members = _car_line.get(_car, [_car])
+            _restored.append(_car)
+            _seen.add(_car)
+            if len(_members) >= 4:
+                _key = tuple(int(x) for x in _members)
+                _long_line_count[_key] = int(_long_line_count.get(_key, 0)) + 1
+            return True
+
+        for _car in _base:
+            _car = int(_car)
+            if _car in _seen:
+                continue
+
+            _members = _car_line.get(_car)
+            if not _members:
+                _add(_car)
+                continue
+
+            try:
+                _idx = _members.index(_car)
+            except ValueError:
+                _idx = 0
+
+            # 評価された車を起点に、その後ろだけをライン順で復元する。
+            for _member in _members[_idx:]:
+                _add(int(_member))
+
+        # 4車以上ラインの上限で飛ばした車も、順位情報自体は失わない。
+        # ただしヒモ上位3車には入れず、末尾へ戻す。
+        for _car in _base:
+            if int(_car) not in _seen:
+                _restored.append(int(_car))
+                _seen.add(int(_car))
+
+        return _restored
+
+    _line_def_for_himo = globals().get("line_def", {}) or {}
+    _line_restored_himo_order = _v335dc_restore_himo_lines(
+        _post_himo_order,
+        _axis,
+        _line_def_for_himo,
+    )
+
+    # 2車単：ライン復元後の軸→上位3車。点数は従来どおり3点固定。
+    _himo = [int(c) for c in _line_restored_himo_order[:3]]
+
+    # 内部3連単計算も、ヒモ候補の並びだけ同じ復元順位へ合わせる。
+    # note推奨表示は従来どおり2車単のみ。
+    _tri_second = [int(c) for c in _line_restored_himo_order[:2]]
+    _tri_third = [int(c) for c in _line_restored_himo_order[:3]]
 
     # 既存v335brモデルの着順別個人確率を1回だけ作る。
     try:
@@ -3509,6 +3599,8 @@ def _v335bt_purchase_lines(final_order, profile):
         # v335cr：開催日KO後の全車順位を毎レース表示。購入軸との整合チェック用。
         _knock_text = " → ".join(str(int(c)) for c in _knock_order)
         _out.append(f"開催日KO最終順位　 ：{_knock_text}")
+        _line_himo_text = " → ".join(str(int(c)) for c in _line_restored_himo_order)
+        _out.append(f"ライン復元ヒモ順位 ：{_line_himo_text}")
     except Exception:
         pass
 
@@ -4594,7 +4686,7 @@ globals()["eff_laps"]  = int(eff_laps)
 st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き：統合版）⭐")
 st.caption(f"風補正モード: {WIND_MODE}固定（屋外は風速＋ホーム基準風向を常時反映／前橋・小倉はドーム無風固定）")
 
-st.subheader("v300・2026/08/06更新")
+st.subheader("v335dc（ヒモ・ライン縦関係復元版）")
 if "race_no_main" not in st.session_state:
     st.session_state["race_no_main"] = 1
 c1, c2, c3 = st.columns([6,2,2])
