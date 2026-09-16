@@ -1,17 +1,26 @@
-# v335dq（v335dfベース・現行5点買い統合版）:
-# ・原本はユーザー指定のv335df。v335dg以降のヒモ選抜変更は持ち込まない。
-# ・v335dfの順位生成を維持：調整後ヒモ順位→開催日KOで軸確定→軸ライン1車保護→残りはKO上位。
-# ・購入用確定順位は「最終軸＋v335dfライン復元ヒモ順位」の全車順とする。
-# ・現行買い方だけを採用：2車単1→3／1→4、3連単1→2→3／1→2→4／1→2→5、計5点。
-# ・note上部の最終着順予想も購入用確定順位と一致させ、ライン復元ヒモ順位との食い違いをなくす。
-# ・開催日KO、V1/V2限定、80-90%比率条件、位置/脚質疲労、V順位、ゆがみ、確率モデルはv335dfから変更しない。
-# v335df（軸ライン1車保護＋KO上位2車版）:
-# ・ヒモ3車は「軸ラインからKO最上位1車を必ず確保＋残り2車は開催日KO最終順位上位」で決定。
-# ・2車ラインは相方がKO4位以下でも必ず1車保護。
-# ・3車以上ラインも軸以外の同ライン車からKO順位最上位の1車だけ保護。
-# ・軸が単騎ならライン保護なしでKO上位3車。
-# ・次候補ラインの丸ごと復元、上流/下流連結、4車ライン特例はヒモ選定から撤去。
-# ・開催日KO、V1/V2限定、80-90%比率条件、位置/脚質疲労、V順位、ゆがみ、確率モデル、2車単3点は変更しない。
+# v335dr（v335df基準・現行5点買い完全版）
+# ・実行可能な完全版を土台に、順位生成はv335df仕様へ固定。
+# ・開催日KO後、軸ラインからKO順位最上位1車を必ず保護し、残りはKO順位上位から採用。
+# ・購入用最終順位＝「開催日KO確定軸＋v335dfライン復元ヒモ順位」。
+# ・2車単：最終順位1位→3位／4位。
+# ・3連単：最終順位1位→2位→3位／4位／5位。合計5点。
+# ・V1/V2開催日KO、疲労補正、80-90%比率、ゆがみ、確率モデルは変更しない。
+# v335dh（3段階選抜・2車単3点固定版）
+# ・v335dgを原本に、2車単ヒモ選抜だけを3段階選抜へ変更。
+# ・第1選考：調整後総合Pが0以上を通過。3車未満ならマイナスP側から総合P上位を補充して3車確保。
+# ・第2選考：第1選考候補を、既存の加重2車複評価表「総合点」で並べて上位3車を暫定採用。
+# ・第3選考：第1選考候補が4車以上ある場合、第2選考3車のうち「的中点1位」を除外し、総合点4位を繰り上げて最終3車とする。
+# ・第1選考候補が3車しかない場合は、3車固定を優先し、的中点1位を残してその3車を最終採用する。
+# ・軸決定、V1/V2限定、開催日KO、疲労補正、80～90%比率、V順位、ゆがみ、加重評価計算、確率モデル、内部3連単計算は変更しない。
+# v335dg（マイナスP除外・2車単可変ヒモ版）
+# ・v335df2を原本に、2車単のヒモ購入条件だけを変更。
+# ・軸決定（V1/V2限定、開催日KO、疲労逆転、80-90%比率）は変更しない。
+# ・軸確定後、軸以外の全車を対象に「調整後ヒモ順位」で表示している総合Pを判定し、0P以上はすべて購入、マイナスPだけ除外する。
+# ・2車単は3点固定を廃止し、条件通過車数に応じた可変点数とする。
+# ・ラインによる強制保護は購入条件に使用しない。既存のV順位、ゆがみ計算、KO、確率モデルは変更しない。
+# v335df2（軸ライン1車保護＋KO上位2車・構造修正版）
+# v335deを原本に、ヒモ選定関数だけを置換。
+# 軸KO、V1/V2限定、80-90%比率、疲労補正、V順位、確率モデル等は変更しない。
 # v335de（軸ライン最優先・次候補ライン復元版）:
 # ・ヒモ選定を「軸確定 → 軸と同一ラインを最優先 → 次の候補ライン」の原則へ戻す。
 # ・軸がラインの前・中・後ろのどこでも、同一ライン車を元の隊列順で保護する。
@@ -3278,54 +3287,44 @@ def _v335cd_trifecta_12_13_123(cars3):
 
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335dq / v335dfベースの現行5点推奨購入。
+    v335dr: v335dfの順位生成をそのまま使い、購入だけ現行5点へ変更。
 
-    順位生成はv335dfをそのまま維持する。
-      1) V最終1位を初期軸
-      2) 2位以下を基本P＋ゆがみPで調整
-      3) その調整順位を土台に既存の開催日KO（V1 vs V2限定）で最終軸を確定
-      4) v335dfどおり、軸ラインからKO最上位1車を必ず保護
-      5) 残りは開催日KO順位上位から採用し、全ヒモ順位を確定
+    順位生成:
+      1) 元V順位からゆがみ調整ヒモ順位を作る
+      2) 既存の開催日KOでV1/V2の軸査定
+      3) v335df仕様で、確定軸の同ライン1車を必ず保護
+      4) 残りはKO順位上位から採用し、全ヒモ順位を確定
+      5) 購入用最終順位 = 軸 + ライン復元ヒモ順位
 
-    買い方だけを現行方式へ変更する。
-      ・購入用確定順位 = 最終軸 + v335dfライン復元ヒモ順位
-      ・2車単 = 1位→3位、1位→4位
-      ・3連単 = 1位→2位→3位／4位／5位
-      ・計5点固定
+    購入:
+      2車単 = 1→3, 1→4
+      3連単 = 1→2→3, 1→2→4, 1→2→5
+      合計5点
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
     if len(_order) < 5 or not isinstance(profile, dict):
         return ["【推奨購入】", "算出不可"]
 
-    # 初期軸はヴェロビ最終着順予想1位。
     _axis = int(_order[0])
-
-    # 過去2着内率順位とV順位（v335df既存）。
     _hist_rank, _rate_map, _n_map = _v335cc_historical_quinella_data(profile, _order)
     _v_rank = {int(c): int(i) for i, c in enumerate(_order, start=1)}
 
-    # 2位以下の基本ポイント：V2位=5 ... V7位=0（v335df既存）。
     _base_point = {}
     for _c in _order[1:]:
         _vr = int(_v_rank.get(int(_c), 999))
         _base_point[int(_c)] = max(0, 7 - _vr)
 
-    # ゆがみポイント = 過去順位 - V順位（v335df既存）。
     _warp_point = {}
     for _c in _order[1:]:
         _hr = _hist_rank.get(int(_c))
         _vr = int(_v_rank.get(int(_c), 999))
-        if _hr is None:
-            _warp_point[int(_c)] = 0
-        else:
-            _warp_point[int(_c)] = int(_hr) - int(_vr)
+        _warp_point[int(_c)] = 0 if _hr is None else int(_hr) - int(_vr)
 
     _total_point = {
         int(_c): int(_base_point.get(int(_c), 0)) + int(_warp_point.get(int(_c), 0))
         for _c in _order[1:]
     }
 
-    # v335dfどおり、2位以下を総合P降順。同点は元V順位上位。
     _adjusted_himo_order = sorted(
         [int(c) for c in _order[1:]],
         key=lambda c: (
@@ -3335,7 +3334,7 @@ def _v335bt_purchase_lines(final_order, profile):
         ),
     )
 
-    # v335df既存：調整後ヒモ順位を土台に開催日KO。
+    # v335df既存仕様：ゆがみ調整後順位をKO母体にする。
     _pre_knock_order = [int(_axis)] + [int(c) for c in _adjusted_himo_order]
     _knock_order = list(_pre_knock_order)
     _knock_log = []
@@ -3344,39 +3343,32 @@ def _v335bt_purchase_lines(final_order, profile):
         _ko_map = globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {}
         _fatigue_adj_map = globals().get("FATIGUE_KNOCKDOWN_ADJ_MAP", {}) or {}
 
-        def _v335cq_base_score(_car):
+        def _base_score(_car):
             try:
                 return float(_ko_map.get(int(_car), _ko_map.get(str(int(_car)), 0.0)) or 0.0)
             except Exception:
                 return 0.0
 
-        def _v335cq_fatigue_adj(_car):
+        def _fatigue_adj(_car):
             try:
                 return float(_fatigue_adj_map.get(int(_car), _fatigue_adj_map.get(str(int(_car)), 0.0)) or 0.0)
             except Exception:
                 return 0.0
 
-        def _v335cq_compare_score(_car):
-            _base = _v335cq_base_score(_car)
-            _adj = _v335cq_fatigue_adj(_car)
-            return float(_base * max(0.01, 1.0 + _adj))
+        def _compare_score(_car):
+            return float(_base_score(_car) * max(0.01, 1.0 + _fatigue_adj(_car)))
 
         _original_axis = int(_pre_knock_order[0])
-        # v335df既存：比較相手は元V2だけ。V3以下は探索しない。
         _original_v2 = int(_order[1]) if len(_order) >= 2 else None
         if _original_v2 is not None:
-            _axis_base = _v335cq_base_score(_original_axis)
-            _chal_base = _v335cq_base_score(_original_v2)
-            _axis_adj = _v335cq_fatigue_adj(_original_axis)
-            _chal_adj = _v335cq_fatigue_adj(_original_v2)
-            _axis_sc = _v335cq_compare_score(_original_axis)
-            _chal_sc = _v335cq_compare_score(_original_v2)
-
+            _axis_base = _base_score(_original_axis)
+            _chal_base = _base_score(_original_v2)
+            _axis_adj = _fatigue_adj(_original_axis)
+            _chal_adj = _fatigue_adj(_original_v2)
+            _axis_sc = _compare_score(_original_axis)
+            _chal_sc = _compare_score(_original_v2)
             _fatigue_lost = bool(_chal_sc > _axis_sc)
-            _v2_v1_ratio = (
-                float(_chal_sc / _axis_sc)
-                if float(_axis_sc) > 0.0 else None
-            )
+            _v2_v1_ratio = float(_chal_sc / _axis_sc) if float(_axis_sc) > 0.0 else None
             _ratio_lost = bool(
                 (not _fatigue_lost)
                 and (_v2_v1_ratio is not None)
@@ -3387,12 +3379,15 @@ def _v335bt_purchase_lines(final_order, profile):
                 "疲労逆転" if _fatigue_lost
                 else ("比率80-90%逆転" if _ratio_lost else "維持")
             )
-
             _knock_log.append({
-                "axis": int(_original_axis), "challenger": int(_original_v2),
-                "axis_base": float(_axis_base), "challenger_base": float(_chal_base),
-                "axis_fatigue": float(_axis_adj), "challenger_fatigue": float(_chal_adj),
-                "axis_score": float(_axis_sc), "challenger_score": float(_chal_sc),
+                "axis": int(_original_axis),
+                "challenger": int(_original_v2),
+                "axis_base": float(_axis_base),
+                "challenger_base": float(_chal_base),
+                "axis_fatigue": float(_axis_adj),
+                "challenger_fatigue": float(_chal_adj),
+                "axis_score": float(_axis_sc),
+                "challenger_score": float(_chal_sc),
                 "v2_v1_ratio": _v2_v1_ratio,
                 "fatigue_lost": bool(_fatigue_lost),
                 "ratio_lost": bool(_ratio_lost),
@@ -3408,11 +3403,10 @@ def _v335bt_purchase_lines(final_order, profile):
         _knock_log = []
         _knock_error = f"{type(_e).__name__}: {_e}"
 
-    # 開催日KO後の軸とヒモ順位。
     _axis = int(_knock_order[0])
-    _post_himo_order = [int(c) for c in _knock_order[1:] if int(c) != int(_axis)]
+    _post_himo_order = [int(c) for c in _knock_order[1:]]
 
-    # v335df本来のライン保護。
+    # v335df本体：軸ライン1車を必ず保護し、残りはKO上位。
     def _v335df_restore_himo_lines(_base_order, _axis_car, _line_def_map):
         _axis_local = int(_axis_car)
         _base = [int(c) for c in (_base_order or []) if int(c) != _axis_local]
@@ -3428,20 +3422,19 @@ def _v335bt_purchase_lines(final_order, profile):
                 _car_line[int(_x)] = list(_members)
 
         _selected = []
-        # ① 軸ラインからKO順位最上位の1車を必ず確保。
         _axis_members = [
             int(x) for x in _car_line.get(_axis_local, [_axis_local])
-            if int(x) != _axis_local and int(x) in _base
+            if int(x) != _axis_local
         ]
         if _axis_members:
             _ko_pos = {int(c): i for i, c in enumerate(_base)}
             _axis_partner = min(
                 _axis_members,
-                key=lambda c: (_ko_pos.get(int(c), 10**9), int(c))
+                key=lambda c: (_ko_pos.get(int(c), 10**9), int(c)),
             )
             _selected.append(int(_axis_partner))
 
-        # ② 残り2枠はKO上位。
+        # v335df：最初の3ヒモは「保護1車＋KO上位」で確定。
         for _car in _base:
             _car = int(_car)
             if _car not in _selected:
@@ -3449,47 +3442,33 @@ def _v335bt_purchase_lines(final_order, profile):
             if len(_selected) >= 3:
                 break
 
-        # ③ 4位以下も診断／現行5点の5位候補用にKO順で後ろへ連結。
+        # 4位以下も購入順位を一意にするためKO順で後置。
         for _car in _base:
             _car = int(_car)
             if _car not in _selected:
                 _selected.append(_car)
-
         return _selected
 
     _line_def_for_himo = globals().get("line_def", {}) or {}
     _line_restored_himo_order = _v335df_restore_himo_lines(
-        _post_himo_order,
-        _axis,
-        _line_def_for_himo,
+        _post_himo_order, _axis, _line_def_for_himo
     )
 
-    # v335dq：購入順位はv335dfのライン保護後順位そのもの。
-    _purchase_order = [int(_axis)] + [
-        int(c) for c in _line_restored_himo_order if int(c) != int(_axis)
+    # ここが唯一の購入順位。表示・買い目とも同じ順位を使用する。
+    _purchase_order = [int(_axis)] + [int(c) for c in _line_restored_himo_order]
+    globals()["V335DR_FINAL_PURCHASE_ORDER"] = tuple(_purchase_order)
+
+    if len(_purchase_order) < 5:
+        return ["【推奨購入】", "購入用最終順位5位まで不足のため算出不可"]
+
+    _r1, _r2, _r3, _r4, _r5 = [int(x) for x in _purchase_order[:5]]
+    _exacta_tickets = [(_r1, _r3), (_r1, _r4)]
+    _trifecta_tickets = [
+        (_r1, _r2, _r3),
+        (_r1, _r2, _r4),
+        (_r1, _r2, _r5),
     ]
-    # 念のため欠落車があれば元順位から末尾補完。
-    for _c in _order:
-        _c = int(_c)
-        if _c not in _purchase_order:
-            _purchase_order.append(_c)
 
-    globals()["V335DQ_FINAL_PURCHASE_ORDER"] = tuple(_purchase_order)
-    globals()["V335DQ_LINE_RESTORED_HIMO_ORDER"] = tuple(_line_restored_himo_order)
-
-    _purchase_ready = len(_purchase_order) >= 5
-    _exacta_tickets = []
-    _trifecta_tickets = []
-    if _purchase_ready:
-        _r1, _r2, _r3, _r4, _r5 = [int(x) for x in _purchase_order[:5]]
-        _exacta_tickets = [(_r1, _r3), (_r1, _r4)]
-        _trifecta_tickets = [
-            (_r1, _r2, _r3),
-            (_r1, _r2, _r4),
-            (_r1, _r2, _r5),
-        ]
-
-    # 既存v335brモデルで各買い目の想定的中率を算出。
     try:
         _p1_map = _v335br_position_probability_map(profile, _order, 1)
         _p2_map = _v335br_position_probability_map(profile, _order, 2)
@@ -3514,26 +3493,20 @@ def _v335bt_purchase_lines(final_order, profile):
     else:
         _out.append(f"軸：{int(_axis)}")
 
-    if not _purchase_ready:
-        _out.append("2車単・3連単：購入用確定順位5位まで不足のため算出不可")
-    else:
-        _r1, _r2, _r3, _r4, _r5 = [int(x) for x in _purchase_order[:5]]
-        _out.append(f"2車単：{_r1}-{_r3}{_r4}")
-        for _t in _exacta_tickets:
-            _prob = float(_exacta_probs.get(tuple(_t), 0.0) or 0.0)
-            _out.append(f"　　　　{_t[0]}-{_t[1]}（想定的中率{_prob*100:.1f}%）")
+    _out.append(f"2車単：{_r1}-{_r3}{_r4}")
+    for _t in _exacta_tickets:
+        _p = float(_exacta_probs.get(tuple(_t), 0.0) or 0.0)
+        _out.append(f"　　　　{_t[0]}-{_t[1]}（想定的中率{_p*100:.1f}%）")
 
-        _out.append(f"3連単：{_r1}-{_r2}-{_r3}{_r4}{_r5}")
-        for _t in _trifecta_tickets:
-            _prob = float(_trifecta_probs.get(tuple(_t), 0.0) or 0.0)
-            _out.append(f"　　　　{_t[0]}-{_t[1]}-{_t[2]}（想定的中率{_prob*100:.1f}%）")
+    _out.append(f"3連単：{_r1}-{_r2}-{_r3}{_r4}{_r5}")
+    for _t in _trifecta_tickets:
+        _p = float(_trifecta_probs.get(tuple(_t), 0.0) or 0.0)
+        _out.append(f"　　　　{_t[0]}-{_t[1]}-{_t[2]}（想定的中率{_p*100:.1f}%）")
 
-    # 読者向け候補選定表示。
     try:
         _valid_cars = [int(c) for c in _order if _rate_map.get(int(c)) is not None]
         _n_vals = [
-            float(_n_map.get(int(c)))
-            for c in _valid_cars
+            float(_n_map.get(int(c))) for c in _valid_cars
             if _n_map.get(int(c)) is not None
         ]
         if _n_vals:
@@ -3565,7 +3538,7 @@ def _v335bt_purchase_lines(final_order, profile):
                 _ratio = _k.get("v2_v1_ratio")
                 if _ratio is not None:
                     _out.append(
-                        f"V2/V1比率　　　　 ：{float(_ratio) * 100.0:.2f}%（{str(_k.get('knock_reason', '維持'))}）"
+                        f"V2/V1比率　　　　 ：{float(_ratio)*100.0:.2f}%（{str(_k.get('knock_reason','維持'))}）"
                     )
         elif len(_order) >= 2:
             if _knock_error:
@@ -3579,7 +3552,6 @@ def _v335bt_purchase_lines(final_order, profile):
 
     return _out
 
-
 def _v335br_hit_top_lines(
     final_order,
     track_name=None,
@@ -3588,7 +3560,10 @@ def _v335br_hit_top_lines(
     field_n=None,
     top_n=3,
 ):
-    """v335dq note用：v335df順位生成＋現行5点買いを表示。"""
+    """
+    v335cg note用：読者向けは推奨購入＋候補選定根拠を表示する。
+    想定的中率TOP3は表示せず、軸の1着想定確率だけを推奨購入欄へ併記する。
+    """
     _order = tuple(int(x) for x in (final_order or tuple()))
     _field_n = int(field_n or len(_order) or 0)
     _profile = _v335bp_get_venue_profile(
@@ -3597,13 +3572,2856 @@ def _v335br_hit_top_lines(
         race_class_name=race_class_name,
         field_n=_field_n,
     )
+
     if not _profile:
-        return ["【推奨購入】", "会場データ未入力のため算出不可"]
+        return [
+            "【推奨購入】",
+            "会場データ未入力のため算出不可",
+        ]
 
     _out = list(_v335bt_purchase_lines(_order, _profile))
     _out.append("")
     _out.append("※1着想定・買目想定的中率はヴェロビ内部指標によるモデル値です。")
     return _out
+
+def _v335bq_finish_strength_map(final_order):
+    """
+    現在入力の x1/x2/x3/x_out から各車の「1着/2着/3着の強さ」を作る。
+    0回や少数回のゼロ固定を避けるため、各着区分へ0.5回だけ平滑化する。
+    最終着順評価はここでは確率へ直接掛けず、候補を上位から探索する順番に使う。
+    """
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    _x1 = globals().get("x1", {}) or {}
+    _x2 = globals().get("x2", {}) or {}
+    _x3 = globals().get("x3", {}) or {}
+    _xo = globals().get("x_out", {}) or {}
+
+    _out = {}
+    _valid_n = 0
+    for _car in _order:
+        try:
+            _n1 = float(_x1.get(_car, _x1.get(str(_car), 0)) or 0)
+            _n2 = float(_x2.get(_car, _x2.get(str(_car), 0)) or 0)
+            _n3 = float(_x3.get(_car, _x3.get(str(_car), 0)) or 0)
+            _no = float(_xo.get(_car, _xo.get(str(_car), 0)) or 0)
+            _total = _n1 + _n2 + _n3 + _no
+            if _total > 0:
+                _valid_n += 1
+            # Jeffreys型の軽い平滑化：4区分それぞれ+0.5回
+            _den = float(_total + 2.0)
+            _out[int(_car)] = {
+                "p1_strength": (_n1 + 0.5) / _den,
+                "p2_strength": (_n2 + 0.5) / _den,
+                "p3_strength": (_n3 + 0.5) / _den,
+                "sample_n": int(round(_total)),
+            }
+        except Exception:
+            continue
+    return _out, int(_valid_n)
+
+
+def _v335bq_ticket_hit_probability(ticket, strength_map):
+    """
+    着順を条件付きで順に割り当てる近似確率。
+      2車単 a→b   = P1(a) × P2(b | a除外)
+      3連単 a→b→c = 上記 × P3(c | a,b除外)
+    各着の強さは同一レース内で正規化するため、合計確率が暴走しにくい。
+    """
+    _ticket = tuple(int(x) for x in (ticket or tuple()))
+    _cars = tuple(int(x) for x in strength_map.keys())
+    if len(_ticket) not in (2, 3) or len(set(_ticket)) != len(_ticket):
+        return None
+    if any(_car not in strength_map for _car in _ticket):
+        return None
+
+    try:
+        _a = int(_ticket[0])
+        _den1 = sum(float(strength_map[c]["p1_strength"]) for c in _cars)
+        if _den1 <= 0:
+            return None
+        _p = float(strength_map[_a]["p1_strength"]) / _den1
+
+        _b = int(_ticket[1])
+        _den2 = sum(
+            float(strength_map[c]["p2_strength"])
+            for c in _cars if int(c) != _a
+        )
+        if _den2 <= 0:
+            return None
+        _p *= float(strength_map[_b]["p2_strength"]) / _den2
+
+        if len(_ticket) == 3:
+            _c = int(_ticket[2])
+            _den3 = sum(
+                float(strength_map[c]["p3_strength"])
+                for c in _cars if int(c) not in {_a, _b}
+            )
+            if _den3 <= 0:
+                return None
+            _p *= float(strength_map[_c]["p3_strength"]) / _den3
+
+        return max(0.0, min(1.0, float(_p)))
+    except Exception:
+        return None
+
+
+def _v335bq_dynamic_value_rows(final_order, profile, kind):
+    """
+    会場マスタの全出目をV評価上位から順に並べ、
+    着率ベース想定回収率100％超だけを返す。
+    """
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    if not _order or not isinstance(profile, dict):
+        return [], 0
+
+    _strength_map, _valid_n = _v335bq_finish_strength_map(_order)
+    if _valid_n <= 0:
+        return [], 0
+
+    _rank = {int(car): idx for idx, car in enumerate(_order, start=1)}
+    _key = "exacta_rows" if str(kind) == "2車単" else "trifecta_rows"
+    _rows = []
+
+    for _raw in tuple(profile.get(_key, tuple()) or tuple()):
+        try:
+            _ticket, _H, _avg = _raw
+            _ticket = tuple(int(x) for x in _ticket)
+            if any(x not in _rank for x in _ticket):
+                continue
+            _p = _v335bq_ticket_hit_probability(_ticket, _strength_map)
+            if _p is None:
+                continue
+            _avg = float(_avg)
+            _expected_roi = float(_p) * _avg  # 100円購入時のROI％
+            _v_ranks = tuple(int(_rank[x]) for x in _ticket)
+            # 「評価1位から順番に組む」ため、まず上位何位まで使うか、次に順位合計で並べる。
+            _priority = (
+                max(_v_ranks),
+                sum(_v_ranks),
+                tuple(_v_ranks),
+                -int(_H),
+            )
+            _rows.append({
+                "kind": str(kind),
+                "ticket": _ticket,
+                "H": int(_H),
+                "avg_pay": _avg,
+                "hit_prob": float(_p),
+                "expected_roi": float(_expected_roi),
+                "v_ranks": _v_ranks,
+                "priority": _priority,
+            })
+        except Exception:
+            continue
+
+    _rows.sort(key=lambda r: r.get("priority"))
+    _over100 = [r for r in _rows if float(r.get("expected_roi", 0.0)) > 100.0]
+    return _over100, int(_valid_n)
+
+
+def _v335bq_dynamic_value_lines(
+    final_order,
+    track_name=None,
+    race_time_name=None,
+    race_class_name=None,
+    field_n=None,
+    max_each=3,
+):
+    """note用：V評価順に探索し、想定回収率100％超を2車単/3連単各最大3点表示。"""
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    _field_n = int(field_n or len(_order) or 0)
+    _profile = _v335bp_get_venue_profile(
+        track_name=track_name,
+        race_time_name=race_time_name,
+        race_class_name=race_class_name,
+        field_n=_field_n,
+    )
+
+    if not _profile:
+        return [
+            "【想定回収率100％超｜会場別マスタ】",
+            "この会場×開催区分×級別×車立ては基準データ未登録",
+        ]
+
+    _label = str(_profile.get("label", "会場別マスタ"))
+    _out = [f"【想定回収率100％超｜{_label}】"]
+    _out.append("基準：V評価上位から順に候補化→現在入力の実着率で想定的中率→会場平均配当で想定回収率")
+
+    _any_data = False
+    _total_selected = 0
+    for _kind in ("2車単", "3連単"):
+        _rows, _valid_n = _v335bq_dynamic_value_rows(_order, _profile, _kind)
+        if _valid_n <= 0:
+            _out.append(f"{_kind}：着順実績未入力のため算出不可")
+            continue
+        _any_data = True
+        _selected = list(_rows[:max(0, int(max_each))])
+        _total_selected += len(_selected)
+        if not _selected:
+            _out.append(f"{_kind}：100％超なし（見送り）")
+            continue
+
+        _out.append(f"{_kind}：{len(_selected)}点")
+        for _idx, _row in enumerate(_selected, start=1):
+            _ticket_text = "→".join(str(int(x)) for x in _row.get("ticket", tuple()))
+            _vr_text = "→".join(str(int(x)) for x in _row.get("v_ranks", tuple()))
+            _out.append(
+                f"  {_idx}. {_ticket_text}｜V評価{_vr_text}"
+                f"｜想定的中率{float(_row.get('hit_prob', 0.0))*100:.2f}%"
+                f"｜平均{float(_row.get('avg_pay', 0.0)):.0f}円"
+                f"｜想定回収率{float(_row.get('expected_roi', 0.0)):.1f}%"
+            )
+
+    if _any_data:
+        _out.append(f"合計：{_total_selected}点（各券種最大{int(max_each)}点、100％超だけ）")
+        _out.append("※想定的中率は現在入力の1着/2着/3着実績を順序付きに正規化した試算値です。")
+        _out.append("※評価順位パターン自体の過去的中率ではありません。100％超が少なければ無理に点数を埋めません。")
+    return _out
+
+
+def _v335bp_relative_order_ok(ticket, velo_top3):
+    """TOP3に重なった車だけを抜き出し、実車券の相対順序と矛盾しないか確認。"""
+    _ticket = tuple(int(x) for x in (ticket or tuple()))
+    _top3 = tuple(int(x) for x in (velo_top3 or tuple()))
+    _overlap_set = set(_ticket) & set(_top3)
+    if len(_overlap_set) < 2:
+        return False
+    _ticket_overlap = tuple(x for x in _ticket if x in _overlap_set)
+    _velo_overlap = tuple(x for x in _top3 if x in _overlap_set)
+    return _ticket_overlap == _velo_overlap
+
+
+def _v335bp_real_number_match_grade(kind, ticket, final_order):
+    """実車券をヴェロビ最終順位へ照合し、金/銀/—を返す。"""
+    _ticket = tuple(int(x) for x in (ticket or tuple()))
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    _top3 = _order[:3]
+
+    if str(kind) == "2車単":
+        if len(_order) >= 2 and tuple(_order[:2]) == _ticket:
+            return "金"
+        if (
+            len(_ticket) == 2
+            and all(x in _top3 for x in _ticket)
+            and _v335bp_relative_order_ok(_ticket, _top3)
+        ):
+            return "銀"
+        return "—"
+
+    if str(kind) == "3連単":
+        if len(_order) >= 3 and tuple(_order[:3]) == _ticket:
+            return "金"
+        _overlap_n = sum(1 for x in _ticket if x in _top3)
+        if _overlap_n >= 2 and _v335bp_relative_order_ok(_ticket, _top3):
+            return "銀"
+        return "—"
+
+    return "—"
+
+
+def _v335bp_real_number_value_lines(
+    final_order,
+    track_name=None,
+    race_time_name=None,
+    race_class_name=None,
+    field_n=None,
+):
+    """note用：会場別ROI100％超の実車券を、ヴェロビ最終順位へ後から照合する。"""
+    _order = tuple(int(x) for x in (final_order or tuple()))
+    _field_n = int(field_n or len(_order) or 0)
+    _profile = _v335bp_get_venue_profile(
+        track_name=track_name,
+        race_time_name=race_time_name,
+        race_class_name=race_class_name,
+        field_n=_field_n,
+    )
+
+    if not _profile:
+        return [
+            "【実車期待値照合｜会場別マスタ】",
+            "この会場×開催区分×級別×車立ては基準データ未登録",
+        ]
+
+    _label = str(_profile.get("label", "会場別マスタ"))
+    _rows = _v335bp_expected_value_candidates(_profile, threshold=100.0)
+    _out = [f"【実車期待値照合｜{_label}】"]
+
+    if not _rows:
+        _out.append("推定ROI100％超の実車買い目なし")
+        return _out
+
+    _pos = {int(car): idx for idx, car in enumerate(_order, start=1)}
+    _ranked = []
+    for _row in _rows:
+        _ticket = tuple(int(x) for x in (_row.get("ticket", tuple()) or tuple()))
+        if any(x < 1 or x > _field_n for x in _ticket):
+            continue
+        _grade = _v335bp_real_number_match_grade(
+            _row.get("kind"), _ticket, _order
+        )
+        _v_ranks = tuple(int(_pos.get(x, 99)) for x in _ticket)
+        _ranked.append({**dict(_row), "grade": _grade, "v_ranks": _v_ranks})
+
+    _ranked.sort(
+        key=lambda r: (-float(r.get("roi", 0.0)), -int(r.get("H", 0)))
+    )
+
+    for _idx, _row in enumerate(_ranked, start=1):
+        _ticket = tuple(int(x) for x in _row.get("ticket", tuple()))
+        _ticket_text = "→".join(str(x) for x in _ticket)
+        _vr_text = "→".join(
+            str(int(x)) if int(x) < 99 else "外"
+            for x in _row.get("v_ranks", tuple())
+        )
+        _out.append(
+            f"{_idx}位【{_row.get('grade', '—')}】{_row.get('kind')} {_ticket_text}"
+            f"｜推定ROI{float(_row.get('roi', 0.0)):.1f}%"
+            f"・H{int(_row.get('H', 0))}/{int(_row.get('N', 0))}"
+            f"・平均{float(_row.get('avg_pay', 0.0)):.0f}円"
+            f"｜V評価{_vr_text}"
+        )
+
+    _grade_score = {"金": 2, "銀": 1, "—": 0}
+    _matched = [
+        r for r in _ranked
+        if _grade_score.get(str(r.get("grade")), 0) > 0
+    ]
+    _matched.sort(
+        key=lambda r: (
+            -_grade_score.get(str(r.get("grade")), 0),
+            -float(r.get("roi", 0.0)),
+            -int(r.get("H", 0)),
+        )
+    )
+    _buy = _matched[:3]
+
+    if _buy:
+        _buy_text = "・".join(
+            f"{r.get('grade')}:{r.get('kind')} "
+            + "→".join(str(int(x)) for x in r.get("ticket", tuple()))
+            for r in _buy
+        )
+        _out.append(f"購入候補（金/銀から最大3点）：{_buy_text}")
+    else:
+        _out.append("購入候補：なし（金/銀なし＝見送り）")
+
+    _out.append(
+        "※ROIは出目回数×平均配当÷母数の概算。買い目は実車番固定で並べ替えません。"
+    )
+    return _out
+
+if track in _V335X_RECOMMEND_A_TRACKS:
+    st.sidebar.success("推奨A｜本命会場｜A型バンク＋回収率80％以上")
+elif track in _V335X_RECOMMEND_B_TRACKS:
+    st.sidebar.info("推奨B｜実績優良｜A型外でも回収率80％以上")
+elif track in _V335X_RECOMMEND_C_TRACKS:
+    st.sidebar.warning("推奨C｜様子見｜回収率50〜79.9％")
+elif track in _V335X_RECOMMEND_D_TRACKS:
+    st.sidebar.error("推奨D｜慎重｜回収率50％未満")
+elif track in _V335X_UNCLASSIFIED_TRACKS:
+    st.sidebar.error("推奨D｜未判定｜8〜9月実績不足")
+else:
+    st.sidebar.warning("推奨D｜未判定｜会場分類データなし")
+
+# 旧参照との互換用。v335bcでは会場による券種分岐を行わない。
+def _v335ac_track_purchase_mode(track_name=None):
+    _name = str(track_name or globals().get("track") or "").strip()
+    return {
+        "mode": "trifecta",
+        "hits": tuple(),
+        "hit_count": 0,
+        "bank_length": (KEIRIN_DATA.get(_name, {}) or {}).get("bank_length"),
+        "straight": (KEIRIN_DATA.get(_name, {}) or {}).get("straight_length"),
+        "angle": (KEIRIN_DATA.get(_name, {}) or {}).get("bank_angle"),
+        "valid": _name in KEIRIN_DATA,
+    }
+
+_v335ac_mode_info = _v335ac_track_purchase_mode(track)
+V335AO_FUZZY_VENUES = set()
+
+def _v335ao_is_fuzzy_venue(track_name=None):
+    return False
+
+st.sidebar.markdown("### 🏟️ 会場データ｜想定的中率用")
+
+# v335co：コードへ会場マスタを増やさず、ここで入力。
+# 会場データの入力状態は「競輪場×開催区分×級別」で保持する。
+# 出走数(n_cars)はウィジェットkeyに含めない。
+# これにより出走数を変更しても、決まり手・車番別N/1着/2着/3着を保持する。
+_v335bu_class_key = _v335bp_profile_class_key(race_class)
+_v335bu_profile_key = (str(track), str(race_time), str(_v335bu_class_key), int(n_cars))
+
+# 現行の安定キー：n_carsを含めない。
+_v335bu_key_prefix = (
+    f"v335bu_{str(track)}_{str(race_time)}_{str(_v335bu_class_key)}"
+)
+
+# v335cn以前の旧キー：n_carsを含む。既存セッションの入力値を失わないため移行元としてだけ使う。
+_v335bu_legacy_key_prefix = (
+    f"v335bu_{str(track)}_{str(race_time)}_{str(_v335bu_class_key)}_{int(n_cars)}"
+)
+
+def _v335co_migrate_sidebar_state(_suffix):
+    """旧n_cars依存キーの値を、新しい安定キーへ初回だけ移行する。"""
+    _new_key = f"{_v335bu_key_prefix}_{str(_suffix)}"
+    _old_key = f"{_v335bu_legacy_key_prefix}_{str(_suffix)}"
+    if _new_key not in st.session_state and _old_key in st.session_state:
+        st.session_state[_new_key] = st.session_state[_old_key]
+    return _new_key
+
+# v335cv：
+# Streamlitは「その実行で描画されなかったwidget key」を後で破棄するため、
+# n_carsを9→7へ切り替えると8・9番車のwidget state自体が消える。
+# widgetとは別のshadow keyへ1～9番車の入力値を退避し、
+# 再び該当車番が表示されたときに復元する。
+def _v335cv_shadow_key(_suffix):
+    return f"{_v335bu_key_prefix}_shadow_{str(_suffix)}"
+
+def _v335cv_snapshot_car_stats():
+    for _car_no in range(1, 10):
+        for _field in ("N", "1", "2", "3"):
+            _suffix = f"car{int(_car_no)}_{_field}"
+            _widget_key = f"{_v335bu_key_prefix}_{_suffix}"
+            _shadow_key = _v335cv_shadow_key(_suffix)
+            # 車数変更直後のrerunでは、非表示になる8・9番車の旧widget値も
+            # この時点ではまだsession_stateに残っているため、先に退避する。
+            if _widget_key in st.session_state:
+                st.session_state[_shadow_key] = st.session_state[_widget_key]
+
+def _v335cv_restore_car_state(_suffix):
+    _widget_key = _v335co_migrate_sidebar_state(_suffix)
+    _shadow_key = _v335cv_shadow_key(_suffix)
+    if _widget_key not in st.session_state and _shadow_key in st.session_state:
+        st.session_state[_widget_key] = st.session_state[_shadow_key]
+    return _widget_key
+
+_v335cv_snapshot_car_stats()
+
+# 既存の埋込マスタがある条件だけ、初回入力の初期値として利用。
+# 今後の会場追加はこのDBへ書かず、サイドバー入力だけで運用できる。
+_v335bu_seed_profile = _V335BP_VENUE_PROFILE_DB.get(_v335bu_profile_key, {}) or {}
+_v335bu_seed_k = dict(_v335bu_seed_profile.get("kimarite", {}) or {})
+_v335bu_seed_cars = dict(_v335bu_seed_profile.get("car_stats", {}) or {})
+
+with st.sidebar.expander("① 決まり手｜1着・2着", expanded=True):
+    st.caption("％で入力。1着＝逃・差・捲／2着＝逃・差・捲・マーク")
+
+    _k1, _k2, _k3 = st.columns(3)
+    with _k1:
+        vk_win_escape = st.number_input(
+            "1着 逃%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("win_escape", 0.0) or 0.0),
+            step=0.1,
+            key=_v335co_migrate_sidebar_state("win_escape"),
+        )
+    with _k2:
+        vk_win_sashi = st.number_input(
+            "1着 差%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("win_sashi", 0.0) or 0.0),
+            step=0.1,
+            key=_v335co_migrate_sidebar_state("win_sashi"),
+        )
+    with _k3:
+        vk_win_makuri = st.number_input(
+            "1着 捲%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("win_makuri", 0.0) or 0.0),
+            step=0.1,
+            key=_v335co_migrate_sidebar_state("win_makuri"),
+        )
+
+    _k4, _k5, _k6, _k7 = st.columns(4)
+    with _k4:
+        vk_sec_escape = st.number_input(
+            "2着 逃%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("sec_escape", 0.0) or 0.0),
+            step=0.1,
+            key=_v335co_migrate_sidebar_state("sec_escape"),
+        )
+    with _k5:
+        vk_sec_sashi = st.number_input(
+            "2着 差%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("sec_sashi", 0.0) or 0.0),
+            step=0.1,
+            key=_v335co_migrate_sidebar_state("sec_sashi"),
+        )
+    with _k6:
+        vk_sec_makuri = st.number_input(
+            "2着 捲%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("sec_makuri", 0.0) or 0.0),
+            step=0.1,
+            key=_v335co_migrate_sidebar_state("sec_makuri"),
+        )
+    with _k7:
+        vk_sec_mark = st.number_input(
+            "2着 マ%",
+            min_value=0.0, max_value=100.0,
+            value=float(_v335bu_seed_k.get("sec_mark", 0.0) or 0.0),
+            step=0.1,
+            key=_v335co_migrate_sidebar_state("sec_mark"),
+        )
+
+    vk_sample_count = st.number_input(
+        "決まり手の母数N",
+        min_value=0,
+        max_value=100000,
+        value=int(_v335bu_seed_k.get(
+            "sample_count",
+            _v335bu_seed_profile.get("N", 0),
+        ) or 0),
+        step=1,
+        key=_v335co_migrate_sidebar_state("kimarite_n"),
+    )
+
+VENUE_KIMARITE_STATS = {
+    "enabled": True,
+    "win_escape": float(vk_win_escape),
+    "win_sashi": float(vk_win_sashi),
+    "win_makuri": float(vk_win_makuri),
+    "sec_escape": float(vk_sec_escape),
+    "sec_sashi": float(vk_sec_sashi),
+    "sec_makuri": float(vk_sec_makuri),
+    "sec_mark": float(vk_sec_mark),
+    "sample_count": int(vk_sample_count),
+}
+
+with st.sidebar.expander("② 車番別｜N・1着・2着・3着", expanded=True):
+    st.caption(
+        "各車番について4項目だけ入力。着外・勝率・2連対率・3連対率は自動計算します。"
+    )
+
+    _v335bu_car_stats = {}
+    _v335bu_complete_cars = 0
+
+    for _car in range(1, int(n_cars) + 1):
+        _seed_row = dict(
+            _v335bu_seed_cars.get(
+                int(_car),
+                _v335bu_seed_cars.get(str(int(_car)), {}),
+            ) or {}
+        )
+        _seed_finish = tuple(_seed_row.get("finish", tuple()) or tuple())
+        _seed_n = int(_seed_row.get("N", 0) or 0)
+        _seed_1 = int(_seed_finish[0]) if len(_seed_finish) >= 1 else 0
+        _seed_2 = int(_seed_finish[1]) if len(_seed_finish) >= 2 else 0
+        _seed_3 = int(_seed_finish[2]) if len(_seed_finish) >= 3 else 0
+
+        st.caption(f"**{int(_car)}番車**")
+        _cN, _c1, _c2, _c3 = st.columns(4)
+        with _cN:
+            _n = st.number_input(
+                f"{int(_car)}番 N",
+                min_value=0, max_value=100000,
+                value=int(_seed_n),
+                step=1,
+                key=_v335cv_restore_car_state(f"car{int(_car)}_N"),
+            )
+        with _c1:
+            _h1 = st.number_input(
+                f"{int(_car)}番 1着",
+                min_value=0, max_value=100000,
+                value=int(_seed_1),
+                step=1,
+                key=_v335cv_restore_car_state(f"car{int(_car)}_1"),
+            )
+        with _c2:
+            _h2 = st.number_input(
+                f"{int(_car)}番 2着",
+                min_value=0, max_value=100000,
+                value=int(_seed_2),
+                step=1,
+                key=_v335cv_restore_car_state(f"car{int(_car)}_2"),
+            )
+        with _c3:
+            _h3 = st.number_input(
+                f"{int(_car)}番 3着",
+                min_value=0, max_value=100000,
+                value=int(_seed_3),
+                step=1,
+                key=_v335cv_restore_car_state(f"car{int(_car)}_3"),
+            )
+
+        _n = int(_n)
+        _h1, _h2, _h3 = int(_h1), int(_h2), int(_h3)
+        _sum3 = _h1 + _h2 + _h3
+
+        if _n > 0 and _sum3 > _n:
+            st.warning(
+                f"{int(_car)}番車：1着+2着+3着={_sum3} が N={_n} を超えています。"
+            )
+
+        _out = max(0, _n - _sum3)
+        _win_rate = (100.0 * _h1 / _n) if _n > 0 else 0.0
+        _quinella_rate = (100.0 * (_h1 + _h2) / _n) if _n > 0 else 0.0
+        _trio_rate = (100.0 * _sum3 / _n) if _n > 0 else 0.0
+
+        if _n > 0:
+            _v335bu_complete_cars += 1
+
+        _v335bu_car_stats[int(_car)] = {
+            "win_rate": float(_win_rate),
+            "quinella_rate": float(_quinella_rate),
+            "trio_rate": float(_trio_rate),
+            "N": int(_n),
+            "finish": (int(_h1), int(_h2), int(_h3), int(_out)),
+        }
+
+    st.caption(
+        f"入力済み：{int(_v335bu_complete_cars)}/{int(n_cars)}車 "
+        "（N=0の車は想定的中率計算で中立扱い）"
+    )
+
+# サイドバー入力から、現行の想定的中率モデルが読むprofileをその場で構築。
+_v335bu_label_class = (
+    "A級＋A級チャレンジ"
+    if _v335bu_class_key == "A級系"
+    else str(_v335bu_class_key)
+)
+_V335BU_ACTIVE_MANUAL_PROFILE = {
+    "_profile_key": tuple(_v335bu_profile_key),
+    "label": (
+        f"{str(track)}｜{str(race_time)}｜{_v335bu_label_class}｜"
+        f"{int(n_cars)}車｜サイドバー入力"
+    ),
+    "source_note": "v335bu sidebar manual input",
+    "N": int(vk_sample_count),
+    "kimarite": dict(VENUE_KIMARITE_STATS),
+    "car_stats": dict(_v335bu_car_stats),
+    # 旧ROI系関数との互換だけ維持。読者向け2車単推奨では使わない。
+    "exacta_rows": tuple(),
+    "trifecta_rows": tuple(),
+}
+globals()["_V335BU_ACTIVE_MANUAL_PROFILE"] = _V335BU_ACTIVE_MANUAL_PROFILE
+
+_vk_role_bonus_preview, _vk_rel_preview, _vk_detail_preview = _calc_venue_kimarite_role_bonus_map(
+    VENUE_KIMARITE_STATS
+)
+st.sidebar.caption(
+    "決まり手補正："
+    f"先頭 {_fmt_signed_pt(_vk_role_bonus_preview.get('head', 0.0))} / "
+    f"番手 {_fmt_signed_pt(_vk_role_bonus_preview.get('second', 0.0))} "
+    f"｜信頼係数 {_vk_rel_preview:.2f}"
+)
+st.sidebar.caption(
+    "この入力値を軸の1着想定と2車単ヒモ判定に使用します。"
+)
+
+globals()["VENUE_KIMARITE_STATS"] = VENUE_KIMARITE_STATS
+st.session_state["VENUE_KIMARITE_STATS"] = VENUE_KIMARITE_STATS
+
+# v247: 2車複で先行採用する「軸の同ライン相手」の最低妙味点。# v247: 2車複で先行採用する「軸の同ライン相手」の最低妙味点。
+# 固定ルールにはせず、検証しながらサイドバーで変更できるようにする。
+with st.sidebar.expander("🎯 2車複｜同ライン妙味基準", expanded=True):
+    NIFUKU_SAME_LINE_MYOUMI_MIN = st.number_input(
+        "同ライン相手の最低妙味点",
+        min_value=0.0,
+        max_value=10.0,
+        value=float(st.session_state.get("nifuku_same_line_myoumi_min", 7.0)),
+        step=0.1,
+        format="%.1f",
+        key="nifuku_same_line_myoumi_min",
+    )
+    st.caption(
+        "基準以上の同ライン相手を妙味点順で先に採用。"
+        "3点未満は他ラインの総合点上位で補完し、基準未満の同ライン相手は復活させません。"
+    )
+
+globals()["NIFUKU_SAME_LINE_MYOUMI_MIN"] = float(NIFUKU_SAME_LINE_MYOUMI_MIN)
+
+st.sidebar.caption("開催区分は会場マスタ選択と、風速・風向・降水量の取得時刻に使用します。")
+race_day = st.sidebar.date_input("日付（風取得用）", value=date.today())
+
+# 競輪場固定マスタを先に解決する。ドーム場はウィジェット生成前に無風へ固定する。
+info_xy = VELODROME_MASTER.get(track) or {}
+is_indoor_venue = bool(info_xy.get("indoor", False))
+
+if is_indoor_venue:
+    st.session_state.pop("_wind_api_pending", None)
+    st.session_state["wind_speed_input"] = 0.0
+    st.session_state["wind_speed"] = 0.0
+    st.session_state["wind_dir_input"] = "無風"
+    st.session_state.pop("wind_api_absolute_deg", None)
+    st.session_state.pop("wind_api_relative_deg", None)
+    st.session_state.pop("wind_api_time", None)
+else:
+    # API取得後の値は、次のrerun開始時にウィジェットへ反映する。
+    # ウィジェット生成後に同じsession_stateキーを書き換える例外を避けるための処理。
+    _pending_wind = st.session_state.pop("_wind_api_pending", None)
+    if isinstance(_pending_wind, dict):
+        st.session_state["wind_speed_input"] = float(_pending_wind["speed_ms"])
+        st.session_state["wind_speed"] = float(_pending_wind["speed_ms"])
+        st.session_state["wind_dir_input"] = str(_pending_wind["relative_dir"])
+        st.session_state["wind_api_absolute_deg"] = float(_pending_wind["absolute_deg"])
+        st.session_state["wind_api_relative_deg"] = float(_pending_wind["relative_deg"])
+        st.session_state["wind_api_time"] = str(_pending_wind["time"])
+
+if "wind_dir_input" not in st.session_state:
+    st.session_state["wind_dir_input"] = "無風"
+if "wind_speed_input" not in st.session_state:
+    st.session_state["wind_speed_input"] = float(st.session_state.get("wind_speed", 3.0))
+
+wind_dir = st.sidebar.selectbox(
+    "風向（ホームから見た方向）",
+    WIND_DIRECTION_OPTIONS,
+    key="wind_dir_input",
+    disabled=is_indoor_venue,
+)
+wind_speed = st.sidebar.number_input(
+    "風速(m/s)",
+    min_value=0.0,
+    max_value=60.0,
+    step=0.1,
+    key="wind_speed_input",
+    disabled=is_indoor_venue,
+)
+st.session_state["wind_speed"] = float(wind_speed)
+
+# 風・現在降水量と、実際の路面乾湿を分離する。
+# 「濡れ」を手動指定してもAPI降水量は書き換えないため、雨が止んだ後の濡れ路面を
+# 降雨中として会場styleへ二重反映しない。
+ROAD_SURFACE_OPTIONS = ["自動判定", "乾燥", "濡れ"]
+road_surface_mode = st.sidebar.selectbox(
+    "路面状態",
+    ROAD_SURFACE_OPTIONS,
+    key="road_surface_mode",
+    help="自動判定はAPI降水量0.3mm/h以上で濡れ。雨上がり等は実際の路面に合わせて選択してください。",
+)
+_surface_precip = float(st.session_state.get("precipitation", 0.0) or 0.0)
+_api_wet = bool(_surface_precip >= 0.3)
+if road_surface_mode == "濡れ":
+    _effective_wet = True
+elif road_surface_mode == "乾燥":
+    _effective_wet = False
+else:
+    _effective_wet = _api_wet
+
+st.session_state["api_is_wet"] = bool(_api_wet)
+st.session_state["is_wet"] = bool(_effective_wet)
+st.sidebar.caption(
+    f"路面判定：{'濡れ' if _effective_wet else '乾燥'}"
+    f"（選択={road_surface_mode}／API降水={_surface_precip:.1f}mm/h）"
+)
+
+with st.sidebar.expander("🌀 風速＋風向をAPIで自動取得（Open-Meteo）", expanded=False):
+    flash = st.session_state.pop("_wind_api_flash", None)
+    if flash:
+        st.success(str(flash))
+
+    st.caption("基準時刻：モ=8時 / デ=11時 / ナ=18時 / ミ=22時（JST）")
+    st.caption("風向は『風が吹いてくる方位』を、ホーム側から見た上下左右へ変換します。")
+
+    home_azimuth = info_xy.get("home_azimuth")
+
+    if is_indoor_venue:
+        st.info(f"{track}はドーム場のため、風向『無風』・風速0.0m/sで固定します。外気APIの風は評価へ入れません。")
+    elif track == "手入力":
+        st.info("手入力では固定方位と座標を使用しません。風速・風向を上の入力欄へ直接入力してください。")
+    else:
+        if home_azimuth is not None:
+            st.info(
+                f"固定ホーム正面方位：{float(home_azimuth):.1f}° "
+                f"（{absolute_wind_compass_label(home_azimuth)}向き・コード内固定マスタ／"
+                f"監査日{VELODROME_MASTER_REVISION}）"
+            )
+            st.caption(
+                f"天候取得座標：{float(info_xy['lat']):.6f}, "
+                f"{float(info_xy['lon']):.6f}"
+            )
+
+        coords_ready = info_xy.get("lat") is not None and info_xy.get("lon") is not None
+        direction_ready = home_azimuth is not None
+        api_disabled = not coords_ready or not direction_ready
+
+        if not coords_ready:
+            st.error(f"{track}の緯度・経度が未登録です。")
+        if not direction_ready:
+            st.error(f"{track}の固定ホーム正面方位が未登録です。API風向は反映しません。")
+
+        if st.button(
+            "APIで取得→風速＋風向に反映",
+            use_container_width=True,
+            disabled=api_disabled,
+        ):
+            try:
+                target = build_openmeteo_target_dt(race_day, race_time)
+                data = fetch_openmeteo_hour(info_xy["lat"], info_xy["lon"], target)
+                relative_dir, relative_deg = wind_from_degree_to_home_direction(
+                    data["deg"], home_azimuth
+                )
+
+                precip = float(data.get("precipitation", 0.0) or 0.0)
+                weather_code = data.get("weather_code", None)
+                speed_ms = round(float(data["speed_ms"]), 2)
+
+                st.session_state["precipitation"] = precip
+                st.session_state["weather_code"] = weather_code
+                st.session_state["api_is_wet"] = bool(precip >= 0.3)
+                st.session_state["_wind_api_pending"] = {
+                    "speed_ms": speed_ms,
+                    "relative_dir": relative_dir,
+                    "absolute_deg": float(data["deg"]),
+                    "relative_deg": float(relative_deg),
+                    "time": data["time"].isoformat(),
+                }
+                st.session_state["_wind_api_flash"] = (
+                    f"{track} {data['time']:%Y-%m-%d %H:%M}｜"
+                    f"風速 {speed_ms:.1f}m/s｜"
+                    f"絶対風向 {data['deg']:.0f}°（{absolute_wind_compass_label(data['deg'])}）→ "
+                    f"ホーム基準『{relative_dir}』｜降水 {precip:.1f}mm/h｜"
+                    f"時刻差 {data['diff_min']:.0f}分"
+                )
+                st.rerun()
+            except Exception as exc:
+                st.error(f"取得に失敗：{exc}")
+
+
+straight_length = st.sidebar.number_input("みなし直線(m)", 30.0, 80.0, float(info["straight_length"]), 0.1)
+bank_angle      = st.sidebar.number_input("バンク角(°)", 20.0, 45.0, float(info["bank_angle"]), 0.1)
+bank_length     = st.sidebar.number_input("周長(m)", 300.0, 500.0, float(info["bank_length"]), 0.1)
+st.session_state["bank_length"] = float(bank_length)
+
+base_laps = st.sidebar.number_input("周回（通常4）", 1, 10, 4, 1)
+
+# v291：出走数に応じて通常開催の日程を自動切替する。
+# 7車以下は通常3日制、8～9車は長期開催用の5日制として扱う。
+if int(n_cars) <= 7:
+    schedule_total_days = 3
+    day_options = ["初日", "2日目", "3日目（最終日）"]
+    day_index_map = {
+        "初日": 1,
+        "2日目": 2,
+        "3日目（最終日）": 3,
+    }
+    day_stage_map = {
+        "初日": "初日",
+        "2日目": "2日目",
+        "3日目（最終日）": "最終日",
+    }
+else:
+    schedule_total_days = 5
+    day_options = ["初日", "2日目", "3日目", "4日目", "5日目（最終日）"]
+    day_index_map = {
+        "初日": 1,
+        "2日目": 2,
+        "3日目": 3,
+        "4日目": 4,
+        "5日目（最終日）": 5,
+    }
+    day_stage_map = {
+        "初日": "初日",
+        "2日目": "2日目",
+        "3日目": "3日目",
+        "4日目": "4日目",
+        "5日目（最終日）": "最終日",
+    }
+
+# v335cu：出走数を切り替えても開催日の「実日数」を保持する。
+# 7車以下と8～9車では3日目の表示名が異なるため、
+# 表示文字列ではなく 1～5 の日数で引き継ぐ。
+# 例：7車「3日目（最終日）」→8車「3日目」、
+#     8車「3日目」→7車「3日目（最終日）」。
+# 7車以下へ切替時に4・5日目だった場合だけ、存在する最大の3日目へ丸める。
+_day_widget_key = "velobi_day_label"
+
+def _v335cu_day_number(_label):
+    _s = str(_label or "")
+    if _s.startswith("5日目"):
+        return 5
+    if _s.startswith("4日目"):
+        return 4
+    if _s.startswith("3日目"):
+        return 3
+    if _s.startswith("2日目"):
+        return 2
+    return 1
+
+_prev_day_label = st.session_state.get(_day_widget_key, None)
+_prev_day_no = _v335cu_day_number(_prev_day_label)
+
+# 現在の出走数で存在する範囲へだけ丸める。
+_target_day_no = min(int(_prev_day_no), int(schedule_total_days))
+
+_day_label_by_no = {
+    int(day_index_map[_label]): str(_label)
+    for _label in day_options
+}
+_target_day_label = _day_label_by_no.get(int(_target_day_no), str(day_options[0]))
+
+# options変更でStreamlitが初日に戻す前に、有効な同日ラベルへ置換する。
+if st.session_state.get(_day_widget_key) != _target_day_label:
+    st.session_state[_day_widget_key] = _target_day_label
+
+day_label = st.sidebar.selectbox(
+    "開催日",
+    day_options,
+    index=day_options.index(_target_day_label),
+    key=_day_widget_key,
+)
+day_index = int(day_index_map[day_label])
+day_stage = str(day_stage_map[day_label])
+
+# v335al：開催日に関係なく、バンク形状で追加券種を判定する。
+# 2車単は三連複TOP5再順位の1-234・3点を全レース共通で使う。
+if _v335ac_mode_info.get("valid", False):
+    _v335ac_hits = list(_v335ac_mode_info.get("hits", tuple()) or tuple())
+    _v335ac_hit_count = int(_v335ac_mode_info.get("hit_count", 0) or 0)
+    if _v335ac_hit_count >= 2:
+        st.sidebar.success(f"{'＋'.join(_v335ac_hits)}　{_v335ac_hit_count}該当により3連単")
+    elif _v335ac_hit_count == 1:
+        st.sidebar.info(f"{_v335ac_hits[0]}のみ該当　三連複")
+    else:
+        st.sidebar.info("該当なし　三連複")
+    st.sidebar.caption(
+        f"判定値：{float(_v335ac_mode_info['bank_length']):.0f}m／"
+        f"みなし{float(_v335ac_mode_info['straight']):.1f}m／"
+        f"角{float(_v335ac_mode_info['angle']):.1f}°"
+    )
+else:
+    st.sidebar.warning("バンク形状データ不足｜券種判定不可")
+
+if int(n_cars) <= 7:
+    st.sidebar.caption("7車以下：3日目を最終日補正として処理")
+else:
+    st.sidebar.caption("8～9車：5日目を最終日補正として処理")
+
+# 経過日数は実際の日数、係数はday_stage（初日／中日／最終日）で評価する。
+eff_laps = int(base_laps) + int(day_index)
+
+# v335bp：級別は会場マスタ判定のためサイドバー上部で選択済み。
+
+is_girls_like = race_class in ("ガールズ", "アドバンス")
+
+# === 会場styleを「得意会場平均」を基準に再定義
+zL, zTH, dC = venue_z_terms(straight_length, bank_angle, bank_length)
+style_raw = venue_mix(zL, zTH, dC)
+
+# 天候による自動バイアス補正
+precip = float(st.session_state.get("precipitation", 0.0) or 0.0)
+
+if precip >= 5.0:
+    weather_override = 0.6
+elif precip >= 2.0:
+    weather_override = 0.4
+elif precip >= 0.3:
+    weather_override = 0.2
+else:
+    weather_override = 0.0
+
+# v292：主観入力となる手動会場バイアスは使用しない。
+# 当日の会場style補正は、API降水量から作る天候自動補正だけを反映する。
+override = clamp(weather_override, -2.0, 2.0)
+
+st.sidebar.caption(
+    f"天候自動補正：{weather_override:+.1f}（手動会場バイアスなし）"
+)
+
+style = clamp(style_raw + 0.25 * override, -1.0, +1.0)
+
+
+
+CLASS_FACTORS = {
+    "Ｓ級":           {"spread":1.00, "line":1.00},
+    "Ａ級":           {"spread":0.90, "line":0.85},
+    "Ａ級チャレンジ": {"spread":0.80, "line":0.70},
+    "ガールズ":       {"spread":0.85, "line":1.00},
+    "アドバンス":     {"spread":0.85, "line":1.00},
+}
+cf = CLASS_FACTORS[race_class]
+
+DAY_FACTOR = {
+    "初日": 1.00,
+    "2日目": 1.00,
+    "3日目": 0.99,
+    "4日目": 0.98,
+    "最終日": 0.96,
+}
+# 7車以下の3日目、8～9車の5日目はday_stage="最終日"となり最大補正を使う。
+day_factor = DAY_FACTOR[day_stage]
+
+cap_base = clamp(0.06 + 0.02*style, 0.04, 0.08)
+line_factor_eff = cf["line"] * day_factor
+cap_SB_eff = cap_base * day_factor
+# v293: 開催区分は天候取得時刻の指定だけに使用する。
+# モーニング／デイ／ナイター／ミッドナイトで評価係数は変えない。
+
+# ===== 日程・級別・頭数で“周回疲労の効き”を薄くシフト（出力には出さない） =====
+DAY_SHIFT = {
+    "初日": -0.5,
+    "2日目": 0.0,
+    "3日目": +0.2,
+    "4日目": +0.4,
+    "最終日": +0.8,
+}
+CLASS_SHIFT = {
+    "Ｓ級": 0.0,
+    "Ａ級": +0.10,
+    "Ａ級チャレンジ": +0.20,
+    "ガールズ": -0.10,
+    "アドバンス": -0.10,
+}
+HEADCOUNT_SHIFT = {5: -0.20, 6: -0.10, 7: -0.05, 8: 0.0, 9: +0.10}
+
+def fatigue_extra(
+    eff_laps: int,
+    day_stage: str,
+    n_cars: int,
+    race_class: str,
+    day_index: int | None = None,
+    schedule_total_days: int | None = None,
+) -> float:
+    """
+    v291：実経過日数で疲労を作りつつ、開催途中で3.0へ早期到達しないよう
+    開催進行に応じた上限を掛ける。最終日は必ず上限3.0。
+    """
+    d = float(DAY_SHIFT.get(day_stage, 0.0))
+    c = float(CLASS_SHIFT.get(race_class, 0.0))
+    h = float(HEADCOUNT_SHIFT.get(int(n_cars), 0.0))
+    raw = max(0.0, (float(eff_laps) - 2.0) + d + c + h)
+
+    try:
+        idx = max(1, int(day_index if day_index is not None else 1))
+        total = max(2, int(schedule_total_days if schedule_total_days is not None else 3))
+        progress = clamp((idx - 1) / (total - 1), 0.0, 1.0)
+    except Exception:
+        progress = 1.0 if str(day_stage) == "最終日" else 0.0
+
+    # 初日上限2.60から最終日3.00へ緩やかに上げる。
+    stage_cap = 2.60 + 0.40 * float(progress)
+    if str(day_stage) == "最終日":
+        stage_cap = 3.00
+
+    return float(clamp(raw, 0.0, stage_cap))
+
+# === PATCH-L200:（以下そのまま） ==========================================
+# ...（あなたの last200_bonus 以降は変更なし）
+
+fatigue_value = fatigue_extra(
+    eff_laps, day_stage, n_cars, race_class, day_index, schedule_total_days
+)
+
+globals()["fatigue_value"] = float(fatigue_value)
+globals()["fatigue_extra_value"] = float(fatigue_value)
+
+# sidebarの直後あたり（straight_length/style/wind_speedが確定した後）
+globals()["straight_length"] = float(straight_length)
+globals()["bank_length"]     = float(bank_length)
+globals()["bank_angle"]      = float(bank_angle)
+globals()["style"]           = float(style)
+globals()["wind_speed"]      = float(wind_speed)
+globals()["wind_dir"]        = str(wind_dir)
+globals()["eff_wind_speed"]  = float(wind_speed)
+globals()["eff_wind_dir"]    = str(wind_dir)
+globals()["race_class"]      = str(race_class)
+globals()["n_cars"]          = int(n_cars)
+globals()["day_label"] = str(day_label)
+globals()["day_stage"] = str(day_stage)
+globals()["day_index"] = int(day_index)
+globals()["schedule_total_days"] = int(schedule_total_days)
+globals()["eff_laps"]  = int(eff_laps)
+    
+
+
+# ==============================
+# メイン：入力
+# ==============================
+st.title("⭐ ヴェロビ（級別×日程ダイナミクス / 5〜9車・買い目付き：統合版）⭐")
+st.caption(f"風補正モード: {WIND_MODE}固定（屋外は風速＋ホーム基準風向を常時反映／前橋・小倉はドーム無風固定）")
+
+st.subheader("v335dc（ヒモ・ライン縦関係復元版）")
+if "race_no_main" not in st.session_state:
+    st.session_state["race_no_main"] = 1
+c1, c2, c3 = st.columns([6,2,2])
+with c1:
+    race_no_input = st.number_input("R", min_value=1, max_value=12, step=1,
+                                    value=int(st.session_state["race_no_main"]),
+                                    key="race_no_input")
+with c2:
+    prev_clicked = st.button("◀ 前のR", use_container_width=True)
+with c3:
+    next_clicked = st.button("次のR ▶", use_container_width=True)
+if prev_clicked:
+    st.session_state["race_no_main"] = max(1, int(race_no_input) - 1); st.rerun()
+elif next_clicked:
+    st.session_state["race_no_main"] = min(12, int(race_no_input) + 1); st.rerun()
+else:
+    st.session_state["race_no_main"] = int(race_no_input)
+race_no = int(st.session_state["race_no_main"])
+
+# ==============================
+# メイン入力：通常入力 → 反映ボタンで計算用データを固定
+# ※スコア計算ロジックは元コードから変更しない
+# ==============================
+
+# ライン構成（最大7：単騎も1ライン）
+line_inputs_live = [
+    st.text_input("ライン1（例：123）", key="line_1", max_chars=9),
+    st.text_input("ライン2（例：456）", key="line_2", max_chars=9),
+    st.text_input("ライン3（例：789）", key="line_3", max_chars=9),
+    st.text_input("ライン4（任意）", key="line_4", max_chars=9),
+    st.text_input("ライン5（任意）", key="line_5", max_chars=9),
+    st.text_input("ライン6（任意）", key="line_6", max_chars=9),
+    st.text_input("ライン7（任意）", key="line_7", max_chars=9),
+    st.text_input("ライン8（任意）", key="line_8", max_chars=9),
+    st.text_input("ライン9（任意）", key="line_9", max_chars=9),
+]
+n_cars = int(n_cars)
+lines_live = [extract_car_list(x, n_cars) for x in line_inputs_live if str(x).strip()]
+line_def_live, car_to_group_live = build_line_maps(lines_live)
+active_cars_live = sorted({c for lst in lines_live for c in lst}) if lines_live else list(range(1, n_cars+1))
+
+# v179：単騎ラインも含めた認識確認
+if lines_live:
+    st.caption(
+        f"ライン認識：{_format_lines_for_check(lines_live)} "
+        f"｜入力済み車番：{''.join(str(x) for x in active_cars_live)} "
+        f"（{len(active_cars_live)}/{int(n_cars)}車）"
+    )
+
+# 5〜9車対応：ライン入力漏れチェック（単騎も1車としてカウント）
+if len(active_cars_live) != int(n_cars):
+    st.warning(
+        f"出走数{n_cars}に対して、ライン入力済みは{len(active_cars_live)}車です。"
+        " ライン入力漏れを確認してください。"
+    )
+
+# -----------------------------------------
+# 市場印入力（計算反映前）
+# ※全体妙味と加重妙味評価に使うため、反映ボタンより前に置く
+# ※出走表を見たまま入力できるように「車番ごとに印を選ぶ」形式にする
+# ※内部では従来通り market_honmei_raw / market_taikou_raw / market_tan_raw / market_batsu_raw に変換する
+# -----------------------------------------
+st.caption("市場印入力（計算反映前）")
+st.caption("各車番ごとに外部印を選択してください（未選択は —）。")
+
+_market_mark_options_live = ["—", "◎", "〇", "△", "×"]
+
+# 旧UIで選んでいた値が残っている場合は、初期表示に引き継ぐ
+_old_mark_by_car_live = {}
+_old_pairs_live = [
+    ("◎", st.session_state.get(f"market_honmei_car_r{race_no}", "—")),
+    ("〇", st.session_state.get(f"market_taikou_car_r{race_no}", "—")),
+    ("△", st.session_state.get(f"market_tan_car_r{race_no}", "—")),
+    ("×", st.session_state.get(f"market_batsu_car_r{race_no}", "—")),
+]
+for _mk, _car in _old_pairs_live:
+    if str(_car) != "—":
+        _old_mark_by_car_live[str(_car)] = _mk
+
+market_mark_by_car_live = {}
+
+# 1行目：見出し
+_header_cols = st.columns([0.9, 1, 1, 1, 1, 1])
+_header_cols[0].markdown("**車番**")
+for _i, _label in enumerate(_market_mark_options_live, start=1):
+    _header_cols[_i].markdown(f"**{_label}**")
+
+# 車番ごとに印を選択
+for no in sorted(active_cars_live):
+    no_str = str(no)
+    default_mark = _old_mark_by_car_live.get(no_str, "—")
+    default_idx = _market_mark_options_live.index(default_mark) if default_mark in _market_mark_options_live else 0
+
+    row_cols = st.columns([0.9, 5])
+    row_cols[0].markdown(f"**{no}番**")
+    with row_cols[1]:
+        market_mark_by_car_live[no] = st.radio(
+            f"{no}番の市場印",
+            _market_mark_options_live,
+            index=default_idx,
+            horizontal=True,
+            key=f"market_mark_by_car_r{race_no}_{no}",
+            label_visibility="collapsed",
+        )
+
+# 車番→印を、従来形式（印→車番）へ変換
+_mark_to_cars_live = {"◎": [], "〇": [], "△": [], "×": []}
+for no in sorted(active_cars_live):
+    mk = market_mark_by_car_live.get(no, "—")
+    if mk in _mark_to_cars_live:
+        _mark_to_cars_live[mk].append(str(no))
+
+_duplicate_marks_live = [mk for mk, cars in _mark_to_cars_live.items() if len(cars) >= 2]
+if _duplicate_marks_live:
+    st.warning(
+        "同じ印が複数の車番に入っています。"
+        "各印は1車だけにしてください。計算上は車番昇順で先頭の車を採用します。"
+    )
+
+market_honmei_raw_live = _mark_to_cars_live["◎"][0] if _mark_to_cars_live["◎"] else "—"
+market_taikou_raw_live = _mark_to_cars_live["〇"][0] if _mark_to_cars_live["〇"] else "—"
+market_tan_raw_live    = _mark_to_cars_live["△"][0] if _mark_to_cars_live["△"] else "—"
+market_batsu_raw_live  = _mark_to_cars_live["×"][0] if _mark_to_cars_live["×"] else "—"
+
+_market_selected_live = [
+    ("◎", market_honmei_raw_live),
+    ("〇", market_taikou_raw_live),
+    ("△", market_tan_raw_live),
+    ("×", market_batsu_raw_live),
+]
+_market_summary_live = "　".join(
+    f"{mk}{car}" for mk, car in _market_selected_live if str(car) != "—"
+)
+st.caption(f"入力印：{_market_summary_live if _market_summary_live else 'なし'}")
+
+# ←←← ここに入れる
+def input_float_text(label: str, key: str, placeholder: str = ""):
+    s = st.text_input(label, value=st.session_state.get(key, ""), key=key, placeholder=placeholder)
+    ss = unicodedata.normalize("NFKC", str(s)).replace(",", "").strip()
+    if ss == "":
+        return None
+    if not re.fullmatch(r"[+-]?\d+(\.\d+)?", ss):
+        st.warning(f"{label} は数値で入力してください（入力値: {s}）")
+        return None
+    return float(ss)
+
+# →→→ ここまで
+
+st.subheader("個人データ（直近4か月：回数）")
+cols = st.columns(len(active_cars_live))
+ratings_live, S_live, H_live, B_live = {}, {}, {}, {}
+
+k_esc_live, k_mak_live, k_sashi_live, k_mark_live = {}, {}, {}, {}
+x1_live, x2_live, x3_live, x_out_live = {}, {}, {}, {}
+
+for i, no in enumerate(active_cars_live):
+    with cols[i]:
+        st.markdown(f"**{no}番**")
+        ratings_live[no] = input_float_text("得点（空欄可）", key=f"pt_{no}", placeholder="例: 55.0")
+        S_live[no] = st.number_input("S", 0, 99, 0, key=f"s_{no}")
+        H_live[no] = st.number_input("H", 0, 99, 0, key=f"h_{no}")
+        B_live[no] = st.number_input("B", 0, 99, 0, key=f"b_{no}")
+        k_esc_live[no]   = st.number_input("逃", 0, 99, 0, key=f"ke_{no}")
+        k_mak_live[no]   = st.number_input("捲", 0, 99, 0, key=f"km_{no}")
+        k_sashi_live[no] = st.number_input("差", 0, 99, 0, key=f"ks_{no}")
+        k_mark_live[no]  = st.number_input("マ", 0, 99, 0, key=f"kk_{no}")
+        x1_live[no]  = st.number_input("1着", 0, 99, 0, key=f"x1_{no}")
+        x2_live[no]  = st.number_input("2着", 0, 99, 0, key=f"x2_{no}")
+        x3_live[no]  = st.number_input("3着", 0, 99, 0, key=f"x3_{no}")
+        x_out_live[no]= st.number_input("着外", 0, 99, 0, key=f"xo_{no}")
+
+# =====================================================
+# コメントチェック表
+#   前検コメントを見て手動チェック
+#   自力：自力 / 自力基本 / 自分で 等
+#   自力自在：自力自在 / 何でもやる / 前々自力 等
+#   自在：自在 / 流れで / 位置取り 等
+#   前へ：前へ / 前受け / 前々へ 等（最終ホーム想定ラインの位置決めだけに反映）
+#   番手：○○君 / ○○へ / 任せる / 近畿勢 等
+#   単騎：一人で / 単騎で / 決めず 等（ライン入力上の単騎とは別のコメント補助）
+#   補充出走：追加あっせん・補充（所属ライン／単騎の2車換算勢力だけを軽く減額）
+#   競り：競り対象の車番にチェックし、競り相手を選択
+#   後位信頼：3番手以降の明確追走/地区まとめ/流動を手動評価
+# =====================================================
+st.subheader("コメントチェック")
+st.caption("前へ＝最終ホーム想定+0.75（同一ライン1回）／補充出走＝ライン2車換算勢力×0.98（同一ライン1回）")
+
+jiryoku_comment_live = {}
+jiryoku_jizai_comment_live = {}
+jizai_comment_live = {}
+target_comment_live = {}
+single_comment_live = {}
+front_comment_live = {}
+supplement_comment_live = {}
+seri_comment_live = {}
+seri_target_live = {}
+line_follow_trust_live = {}
+
+comment_cols = st.columns(len(active_cars_live))
+
+for i, no in enumerate(active_cars_live):
+    no = int(no)
+    with comment_cols[i]:
+        st.markdown(f"**{no}番**")
+
+        jiryoku_comment_live[no] = st.checkbox(
+            "自力",
+            value=False,
+            key=f"jiryoku_comment_r{race_no}_{no}"
+        )
+
+        jiryoku_jizai_comment_live[no] = st.checkbox(
+            "自力自在",
+            value=False,
+            key=f"jiryoku_jizai_comment_r{race_no}_{no}"
+        )
+
+        jizai_comment_live[no] = st.checkbox(
+            "自在",
+            value=False,
+            key=f"jizai_comment_r{race_no}_{no}"
+        )
+
+        front_comment_live[no] = st.checkbox(
+            "前へ",
+            value=False,
+            key=f"front_comment_r{race_no}_{no}"
+        )
+
+        target_comment_live[no] = st.checkbox(
+            "番手",
+            value=False,
+            key=f"target_comment_r{race_no}_{no}"
+        )
+
+        single_comment_live[no] = st.checkbox(
+            "単騎",
+            value=False,
+            key=f"single_comment_r{race_no}_{no}"
+        )
+
+        supplement_comment_live[no] = st.checkbox(
+            "補充出走",
+            value=False,
+            key=f"supplement_comment_r{race_no}_{no}"
+        )
+
+        seri_comment_live[no] = st.checkbox(
+            "競り",
+            value=False,
+            key=f"seri_comment_r{race_no}_{no}"
+        )
+
+        _seri_target_options = ["—"] + [int(x) for x in active_cars_live if int(x) != int(no)]
+        _seri_target_sel = st.selectbox(
+            "競り相手",
+            options=_seri_target_options,
+            index=0,
+            key=f"seri_target_r{race_no}_{no}"
+        )
+        seri_target_live[no] = None if _seri_target_sel == "—" else int(_seri_target_sel)
+
+        # v125: 後位信頼はselectboxではなくチェックボックス式。
+        # 単騎コメントは後位信頼ではなく、上の「単騎」チェックで独立管理する。
+        # 複数チェック時は、リスクが強い順に 流動 > 地区まとめ > 明確追走 で採用する。
+        _old_line_follow_key = f"line_follow_trust_r{race_no}_{no}"
+        _old_line_follow_val = str(st.session_state.get(_old_line_follow_key, "通常") or "通常")
+
+        st.caption("後位信頼")
+        _lft_clear = st.checkbox(
+            "明確",
+            value=(_old_line_follow_val == "明確追走"),
+            key=f"line_follow_clear_r{race_no}_{no}"
+        )
+        _lft_district = st.checkbox(
+            "地区",
+            value=(_old_line_follow_val == "地区まとめ"),
+            key=f"line_follow_district_r{race_no}_{no}"
+        )
+        _lft_flow = st.checkbox(
+            "流動",
+            value=(_old_line_follow_val == "流動"),
+            key=f"line_follow_flow_r{race_no}_{no}"
+        )
+
+        _lft_checked_count = sum([
+            bool(_lft_clear),
+            bool(_lft_district),
+            bool(_lft_flow),
+        ])
+        if _lft_checked_count >= 2:
+            st.caption("※複数時は強リスク側を採用")
+
+        if _lft_flow:
+            line_follow_trust_live[no] = "流動"
+        elif _lft_district:
+            line_follow_trust_live[no] = "地区まとめ"
+        elif _lft_clear:
+            line_follow_trust_live[no] = "明確追走"
+        else:
+            line_follow_trust_live[no] = "通常"
+
+st.markdown("---")
+
+apply_input = st.button(
+    "入力を反映して計算する",
+    type="primary",
+    use_container_width=True,
+    key="apply_input_main"
+)
+
+if apply_input:
+    st.session_state["race_snapshot"] = {
+        "line_inputs": list(line_inputs_live),
+        "lines": [list(x) for x in lines_live],
+        "line_def": {g: list(mem) for g, mem in line_def_live.items()},
+        "car_to_group": dict(car_to_group_live),
+        "active_cars": list(active_cars_live),
+
+        "market_honmei_raw": market_honmei_raw_live,
+        "market_taikou_raw": market_taikou_raw_live,
+        "market_tan_raw": market_tan_raw_live,
+        "market_batsu_raw": market_batsu_raw_live,
+        # v20: 車番ごとの外部印をそのまま保存する。
+        # ここを保存しないと、後段で印→車番の圧縮値から復元するため、
+        # 表示上の車番と印がズレる原因になる。
+        "market_mark_by_car": {int(k): str(v) for k, v in market_mark_by_car_live.items()},
+
+        "ratings": dict(ratings_live),
+        "S": dict(S_live),
+        "H": dict(H_live),
+        "B": dict(B_live),
+
+        "k_esc": dict(k_esc_live),
+        "k_mak": dict(k_mak_live),
+        "k_sashi": dict(k_sashi_live),
+        "k_mark": dict(k_mark_live),
+
+        "x1": dict(x1_live),
+        "x2": dict(x2_live),
+        "x3": dict(x3_live),
+        "x_out": dict(x_out_live),
+
+        "jiryoku_comment": dict(jiryoku_comment_live),
+        "jiryoku_jizai_comment": dict(jiryoku_jizai_comment_live),
+        "jizai_comment": dict(jizai_comment_live),
+        "target_comment": dict(target_comment_live),
+        "single_comment": dict(single_comment_live),
+        "front_comment": dict(front_comment_live),
+        "supplement_comment": dict(supplement_comment_live),
+        "seri_comment": dict(seri_comment_live),
+        "seri_target": dict(seri_target_live),
+        "line_follow_trust": dict(line_follow_trust_live),
+    }
+
+snapshot = st.session_state.get("race_snapshot")
+
+if snapshot is None:
+    st.info("入力後、『入力を反映して計算する』を押すと本計算します。")
+    st.stop()
+
+# ==============================
+# ここから下は、反映済みデータだけで計算する
+# ==============================
+
+line_inputs = snapshot["line_inputs"]
+lines = snapshot["lines"]
+line_def = snapshot["line_def"]
+car_to_group = snapshot["car_to_group"]
+active_cars = snapshot["active_cars"]
+
+ratings = snapshot["ratings"]
+S = snapshot["S"]
+H = snapshot["H"]
+B = snapshot["B"]
+
+k_esc = snapshot["k_esc"]
+k_mak = snapshot["k_mak"]
+k_sashi = snapshot["k_sashi"]
+k_mark = snapshot["k_mark"]
+
+x1 = snapshot["x1"]
+x2 = snapshot["x2"]
+x3 = snapshot["x3"]
+x_out = snapshot["x_out"]
+
+jiryoku_comment = snapshot.get("jiryoku_comment", {})
+jiryoku_jizai_comment = snapshot.get("jiryoku_jizai_comment", {})
+jizai_comment = snapshot.get("jizai_comment", {})
+target_comment = snapshot.get("target_comment", {})
+single_comment = snapshot.get("single_comment", {})
+front_comment = snapshot.get("front_comment", {})
+supplement_comment = snapshot.get("supplement_comment", {})
+seri_comment = snapshot.get("seri_comment", {})
+seri_target = snapshot.get("seri_target", {})
+line_follow_trust = snapshot.get("line_follow_trust", {})
+
+globals()["jiryoku_comment"] = jiryoku_comment
+globals()["jiryoku_jizai_comment"] = jiryoku_jizai_comment
+globals()["jizai_comment"] = jizai_comment
+globals()["target_comment"] = target_comment
+globals()["single_comment"] = single_comment
+globals()["front_comment"] = front_comment
+globals()["supplement_comment"] = supplement_comment
+globals()["seri_comment"] = seri_comment
+globals()["seri_target"] = seri_target
+globals()["line_follow_trust"] = line_follow_trust
+
+st.caption(
+    "反映済みデータで計算中："
+    f"車番={active_cars} ／ "
+    f"ライン={'　'.join(''.join(map(str, ln)) for ln in lines) if lines else 'なし'}"
+)
+
+# 反映済みデータの整合チェック
+if len(active_cars) != int(n_cars):
+    st.error(
+        f"出走数{n_cars}に対して、反映済みラインは{len(active_cars)}車です。"
+        f" 反映済み車番: {active_cars}"
+    )
+    st.stop()
+
+dup_check = []
+for lst in lines:
+    dup_check.extend(lst)
+
+dups = sorted([x for x in set(dup_check) if dup_check.count(x) >= 2])
+
+if dups:
+    st.error(f"同じ車番が複数ラインに入っています: {dups}")
+    st.stop()
+
+ratings_val = {no: (float(ratings[no]) if ratings[no] is not None else 55.0) for no in active_cars}
+
+# =====================================================
+# 混戦度判定：競走得点1位と2位の差
+# ※ active_cars / ratings_val が確定した後で実行する
+# =====================================================
+race_compact = calc_race_compactness(ratings_val, active_cars)
+race_compact_label = race_compact.get("label", "未判定")
+race_compact_gap = race_compact.get("top_gap", None)
+
+globals()["race_compact_label"] = race_compact_label
+globals()["race_compact_gap"] = race_compact_gap
+globals()["race_compact"] = race_compact
+
+# v297：想定隊列はS＋車番から独自生成する。H主導ラインは別計算で維持する。
+home_line_scores = calc_velobi_queue_scores(line_def, S, active_cars)
+home_line_order = make_velobi_queue_order(line_def, S, active_cars)
+home_line_text = format_home_line_order(line_def, home_line_order)
+velobi_queue_position_bonus = calc_velobi_queue_position_bonus(line_def, home_line_order, active_cars)
+globals()["velobi_queue_position_bonus"] = dict(velobi_queue_position_bonus)
+
+home_top_gid = home_line_order[0] if home_line_order else None
+home_second_gid = home_line_order[1] if len(home_line_order) >= 2 else None
+globals()["home_top_gid"] = home_top_gid
+globals()["home_second_gid"] = home_second_gid
+
+# H主導ライン判定（独自想定隊列とは分離）
+# Hスコアが低すぎる場合は「主導なし」とする
+home_lead_scores = calc_home_line_scores(line_def, H, B, active_cars)
+home_lead_order = make_home_line_order(line_def, H, B, active_cars)
+home_lead_gid = home_lead_order[0] if home_lead_order else None
+home_top_score = float(home_lead_scores.get(home_lead_gid, 0.0)) if home_lead_gid is not None else 0.0
+
+if home_lead_gid is not None and home_top_score >= 1.0:
+    home_top_line = format_home_line_order(line_def, [home_lead_gid])
+else:
+    home_lead_gid = None
+    home_top_line = "主導なし"
+
+globals()["home_lead_gid"] = home_lead_gid
+
+
+
+# 1～3着・着外を一つの確率分布として扱うクラス別事前分布。
+# 各行は必ず合計1.0。styleは1着と着外の間だけを同量移動させ、総和を維持する。
+FORM_CLASS_PRIOR = globals().get("FORM_CLASS_PRIOR", {
+    "GIRLS":     (0.18, 0.24, 0.10, 0.48),
+    "S":         (0.22, 0.26, 0.12, 0.40),
+    "CHALLENGE": (0.18, 0.22, 0.12, 0.48),
+    "A":         (0.20, 0.25, 0.12, 0.43),
+})
+
+# 事前分布の仮想走数。実走数によって段階的に変えず、同一クラスは同じ強さで縮約する。
+FORM_PRIOR_STRENGTH = globals().get("FORM_PRIOR_STRENGTH", {
+    "GIRLS": 6.0, "S": 8.0, "CHALLENGE": 8.0, "A": 8.0,
+})
+
+def _form_class_key(cls: str) -> str:
+    s = str(cls or "")
+    if "ガール" in s: return "GIRLS"
+    if "Ｓ級" in s or "S級" in s: return "S"
+    if "チャレンジ" in s: return "CHALLENGE"
+    return "A"
+
+def prior_by_class(cls, style_adj):
+    key = _form_class_key(cls)
+    raw = list(FORM_CLASS_PRIOR.get(key, FORM_CLASS_PRIOR["A"]))
+    raw = [max(0.0, float(x)) for x in raw[:4]]
+    while len(raw) < 4:
+        raw.append(0.0)
+    total = float(sum(raw))
+    if total <= 1e-12:
+        raw = [0.20, 0.25, 0.12, 0.43]
+        total = 1.0
+    p1, p2, p3, pout = [x / total for x in raw]
+
+    shift = clamp(0.010 * float(style_adj), -0.03, 0.03)
+    shift = clamp(shift, -p1 + 1e-9, pout - 1e-9)
+    p1 += shift
+    pout -= shift
+
+    probs = np.asarray([p1, p2, p3, pout], dtype=float)
+    probs = np.maximum(probs, 0.0)
+    probs /= float(np.sum(probs))
+    return tuple(float(x) for x in probs)
+
+def form_prior_strength(cls: str) -> float:
+    key = _form_class_key(cls)
+    return max(0.0, float(FORM_PRIOR_STRENGTH.get(key, 8.0)))
+
+# === 1～3着＋着外をディリクレ縮約し、合計1.0のFormへ反映 ===
+p1_eff, p2_eff, p3_eff, pout_eff = {}, {}, {}, {}
+form_sample_confidence = {}
+
+_form_prior = prior_by_class(race_class, style)
+_form_n0 = form_prior_strength(race_class)
+
+for no in active_cars:
+    n = x1[no] + x2[no] + x3[no] + x_out[no]
+    denom = float(n) + float(_form_n0)
+    if denom <= 1e-12:
+        probs = np.asarray(_form_prior, dtype=float)
+    else:
+        observed = np.asarray([x1[no], x2[no], x3[no], x_out[no]], dtype=float)
+        probs = (observed + float(_form_n0) * np.asarray(_form_prior, dtype=float)) / denom
+
+    probs = np.maximum(probs, 0.0)
+    probs /= float(np.sum(probs))
+    p1_eff[no], p2_eff[no], p3_eff[no], pout_eff[no] = [float(x) for x in probs]
+
+    # 不確実性は能力減点へ混ぜず、観測用の信頼度として分離する。
+    form_sample_confidence[no] = (
+        float(n) / (float(n) + float(_form_n0))
+        if (float(n) + float(_form_n0)) > 1e-12 else 0.0
+    )
+
+globals()["FORM_SAMPLE_CONFIDENCE"] = dict(form_sample_confidence)
+
+# ★Form：1〜3着を評価、着外は減点（ここが効く）
+Form = {
+    no: (3.0*p1_eff[no] + 2.0*p2_eff[no] + 1.0*p3_eff[no] - 1.2*pout_eff[no])
+    for no in active_cars
+}
+
+# === Form 偏差値化（平均50, SD10）
+form_list = [Form[n] for n in active_cars]
+form_T, mu_form, sd_form, _ = t_score_from_finite(np.array(form_list))
+form_T_map = {n: float(form_T[i]) for i, n in enumerate(active_cars)}
+
+
+# --- 脚質プロフィール（会場適性：得意会場平均基準のstyleを掛ける）
+prof_base, prof_escape, prof_sashi, prof_oikomi = {}, {}, {}, {}
+for no in active_cars:
+    tot = k_esc[no]+k_mak[no]+k_sashi[no]+k_mark[no]
+    if tot==0: esc=mak=sashi=mark = 0.25
+    else:
+        esc=k_esc[no]/tot; mak=k_mak[no]/tot; sashi=k_sashi[no]/tot; mark=k_mark[no]/tot
+    prof_escape[no]=esc; prof_sashi[no]=sashi; prof_oikomi[no]=mark
+    base = esc*BASE_BY_KAKU["逃"] + mak*BASE_BY_KAKU["捲"] + sashi*BASE_BY_KAKU["差"] + mark*BASE_BY_KAKU["マ"]
+    vmix = style
+    venue_bonus = 0.06 * vmix * ( +1.00*esc + 0.40*mak - 0.60*sashi - 0.25*mark )
+    prof_base[no] = base + clamp(venue_bonus, -0.06, +0.06)
+
+# ==============================
+# level_rating_scale 保険定義
+# ==============================
+if "level_rating_scale" not in globals():
+    level_rating_scale = 1.0
+
+# ======== 個人補正（得点/脚質上位/着順分布） ========
+ratings_sorted = sorted(active_cars, key=lambda n: ratings_val[n], reverse=True)
+ratings_rank = {no: i+1 for i,no in enumerate(ratings_sorted)}
+def tenscore_bonus(no):
+    r = ratings_rank[no]
+    top_n = min(3, len(active_cars))
+    bottom_n = min(3, len(active_cars))
+    if r <= top_n: return +0.03
+    if r >= len(active_cars)-bottom_n+1: return -0.02
+    return 0.0
+def topk_bonus(k_dict, topn=3, val=0.02):
+    order = sorted(k_dict.items(), key=lambda x:(x[1], -x[0]), reverse=True)
+    grant = set([no for i,(no,v) in enumerate(order) if i<topn])
+    return {no:(val if no in grant else 0.0) for no in k_dict}
+esc_bonus   = topk_bonus(k_esc,   topn=3, val=0.02)
+mak_bonus   = topk_bonus(k_mak,   topn=3, val=0.02)
+sashi_bonus = topk_bonus(k_sashi, topn=3, val=0.015)
+mark_bonus  = topk_bonus(k_mark,  topn=3, val=0.01)
+def finish_bonus(no):
+    tot = x1[no]+x2[no]+x3[no]+x_out[no]
+    if tot == 0: return 0.0
+    in3 = (x1[no]+x2[no]+x3[no]) / tot
+    out = x_out[no] / tot
+    bonus = 0.0
+    if in3 > 0.50: bonus += 0.03
+    if out > 0.70: bonus -= 0.03
+    if out < 0.40: bonus += 0.02
+    return bonus
+extra_bonus = {}
+for no in active_cars:
+    total = (tenscore_bonus(no) +
+             esc_bonus.get(no,0.0) + mak_bonus.get(no,0.0) +
+             sashi_bonus.get(no,0.0) + mark_bonus.get(no,0.0) +
+             finish_bonus(no))
+    extra_bonus[no] = clamp(total, -0.10, +0.10)
+
+# ===== 会場個性を“個人スコア”に浸透：bank系補正（差し替え案） =====
+
+def bank_character_bonus(bank_angle, straight_length, prof_escape, prof_sashi, bank_length=None):
+    pe = float(prof_escape or 0.0)
+    ps = float(prof_sashi  or 0.0)
+
+    # bank_lengthが渡っていない場合の扱いを決める（例：0.0扱い or venue既定値）
+    bl = float(bank_length or 0.0)
+
+    zL, zTH, dC = venue_z_terms(straight_length, bank_angle, bl)
+
+    raw = 0.06*zTH - 0.05*zL - 0.03*dC
+    # ±0.08への張り付きを避けつつ、従来の最大補正幅は超えない。
+    base = 0.08 * float(np.tanh(raw / 0.08))
+    out  = base * pe - 0.5 * base * ps
+    return round(out, 3)
+
+
+def bank_length_adjust(bank_length, prof_oikomi):
+    po = float(prof_oikomi or 0.0)
+    L  = float(bank_length or 0.0)
+    dC = (+0.4 if L >= 480 else 0.0 if L >= 380 else -0.4)
+
+    # 500mで後位・マーク型を機械的に減点していた処理を解除する。
+    # 333m側の既存加点は、今回の修正範囲外として維持する。
+    out = 0.0 if L >= 480 else 0.03 * (-dC) * po
+    return round(out, 3)
+
+
+
+# --- 安定度（上で一度だけ縮約した着順分布を使用） ---
+STAB_W_IN3  = 0.18   # 3着内の寄与
+STAB_W_OUT  = 0.22   # 着外のペナルティ
+STAB_PRIOR_IN3 = 0.55
+STAB_PRIOR_OUT = 0.45
+
+def stability_score(no: int) -> float:
+    in3 = (
+        float(p1_eff.get(no, 0.0))
+        + float(p2_eff.get(no, 0.0))
+        + float(p3_eff.get(no, 0.0))
+    )
+    out_ = float(pout_eff.get(no, 1.0 - in3))
+
+    bonus = 0.0
+    bonus += STAB_W_IN3 * (in3 - STAB_PRIOR_IN3) * 2.0
+    bonus -= STAB_W_OUT * (out_ - STAB_PRIOR_OUT) * 2.0
+    return clamp(bonus, -0.45, +0.45)
+
+# ===== SBなし合計（環境補正 + 得点微補正 + 個人補正 + 周回疲労 + 安定度） =====
+tens_list = [ratings_val[no] for no in active_cars]
+t_corr = tenscore_correction(tens_list) if active_cars else []
+tens_corr = {no:t_corr[i] for i,no in enumerate(active_cars)} if active_cars else {}
+
+
+# ==============================
+# L200_RAW（観測用）を先に作る：ここでは laps_adj 等は一切計算しない
+# ==============================
+_wind_func = wind_adjust
+eff_wind_dir   = globals().get("eff_wind_dir",   wind_dir)
+eff_wind_speed = globals().get("eff_wind_speed", wind_speed)
+
+L200_RAW = {}
+for no in active_cars:
+    role = role_in_line(no, line_def)
+
+    # --- L200（残脚）生値を計算：ENV合計には“入れない”観測用 ---
+    l200 = l200_adjust(
+        role=role,
+        straight_length=straight_length,
+        bank_length=bank_length,
+        race_class=race_class,
+        prof_escape=float(prof_escape[no]),
+        prof_sashi=float(prof_sashi[no]),
+        prof_oikomi=float(prof_oikomi[no]),
+        is_wet=st.session_state.get("is_wet", False)
+    )
+    L200_RAW[int(no)] = float(l200)
+
+
+# ==============================
+# rows（本体計算）ここで laps_adj を計算して使う（2重計算しない）
+# ==============================
+rows = []
+
+# H：最終ホーム地力補正マップ
+H_Z = calc_h_score_map(H, active_cars)
+
+_wind_func = wind_adjust
+eff_wind_dir   = globals().get("eff_wind_dir", wind_dir)
+eff_wind_speed = globals().get("eff_wind_speed", wind_speed)
+
+# =====================================================
+# コメント補正用：競り相手・後位信頼の前処理
+# =====================================================
+jiryoku_comment_map = globals().get("jiryoku_comment", {}) or {}
+jiryoku_jizai_comment_map = globals().get("jiryoku_jizai_comment", {}) or {}
+jizai_comment_map   = globals().get("jizai_comment", {}) or {}
+target_comment_map  = globals().get("target_comment", {}) or {}
+single_comment_map  = globals().get("single_comment", {}) or {}
+# v292：以下2つは個人スコアには直接加減しない。
+front_comment_map = globals().get("front_comment", {}) or {}
+supplement_comment_map = globals().get("supplement_comment", {}) or {}
+seri_comment_map    = globals().get("seri_comment", {}) or {}
+seri_target_map     = globals().get("seri_target", {}) or {}
+line_follow_trust_map = globals().get("line_follow_trust", {}) or {}
+
+seri_incoming_map = {}
+try:
+    for _src, _dst in (seri_target_map or {}).items():
+        try:
+            _s = int(_src)
+            if _dst is None or str(_dst).strip() in ("", "None", "—"):
+                continue
+            _d = int(_dst)
+            if _s == _d:
+                continue
+            seri_incoming_map.setdefault(_d, []).append(_s)
+        except Exception:
+            continue
+except Exception:
+    seri_incoming_map = {}
+
+def _line_follow_trust_bonus_for_car(_no, _role, _is_girls_like=False):
+    """
+    3番手以降の追走信頼補正。
+    ・「〇〇君へ」等の明確追走は3着内・ライン決着を少し救う。
+    ・「関東勢へ」等の地区まとめや「流動」は、裏切り/切替リスクとして減点。
+    ・3番手以降だけに効かせ、番手評価を歪ませない。
+    """
+    try:
+        if str(_role) != "thirdplus":
+            return 0.0
+        label = str(line_follow_trust_map.get(int(_no), "通常") or "通常")
+        mp = {
+            "明確追走": 0.050,
+            "通常": 0.000,
+            "地区まとめ": -0.025,
+            "流動": -0.080,
+            "単騎寄り": -0.120,
+        }
+        v = float(mp.get(label, 0.0))
+        if _is_girls_like:
+            v *= 0.50
+        return round(clamp(v, -0.120, 0.050), 3)
+    except Exception:
+        return 0.0
+
+FATIGUE_KNOCKDOWN_ADJ_MAP = {}
+
+for no in active_cars:
+    no = int(no)
+    role = role_in_line(no, line_def)
+
+    # =====================================================
+    # 周回疲労（DAY×頭数×級別を反映）
+    # =====================================================
+    extra = fatigue_extra(
+        eff_laps, day_stage, n_cars, race_class, day_index, schedule_total_days
+    )
+    extra = min(extra, 3.0)   # 応急上限（暴走止め）
+
+    fatigue_scale = (
+        1.0  if race_class == "Ｓ級" else
+        1.1  if race_class == "Ａ級" else
+        1.2  if race_class == "Ａ級チャレンジ" else
+        1.05
+    )
+
+    # =====================================================
+    # 周回疲労補正
+    # =====================================================
+    laps_adj = (
+        -0.10 * extra * (1.0 if float(prof_escape[no]) > 0.5 else 0.0)
+        + 0.05 * extra * (1.0 if float(prof_oikomi[no]) > 0.4 else 0.0)
+    ) * fatigue_scale
+
+    # ガールズは周回疲労を弱める
+    if is_girls_like:
+        laps_adj *= 0.3
+
+    # 周回疲労の暴走防止
+    laps_adj = clamp(laps_adj, -0.22, 0.18)
+
+    # v335cx：開催日KO専用の位置疲労を追加。
+    # 脚質疲労とは分離し、開催が進むほど先頭の位置負荷を強くする。
+    _v335cx_position_fatigue = {
+        "初日":   {"head": -0.005, "single":  0.000, "second":  0.000, "thirdplus": 0.000},
+        "2日目":  {"head": -0.025, "single": -0.003, "second": -0.005, "thirdplus": 0.000},
+        "3日目":  {"head": -0.050, "single": -0.005, "second": -0.010, "thirdplus": 0.000},
+        "4日目":  {"head": -0.070, "single": -0.008, "second": -0.015, "thirdplus": 0.000},
+        "最終日": {"head": -0.090, "single": -0.010, "second": -0.020, "thirdplus": 0.000},
+    }
+    position_adj = float(
+        _v335cx_position_fatigue.get(
+            str(day_stage), _v335cx_position_fatigue["2日目"]
+        ).get(str(role), 0.0)
+    )
+
+    # 既存脚質疲労は従来どおり先頭・単騎だけ。
+    style_fatigue_adj = float(laps_adj) if role in ("head", "single") else 0.0
+
+    # 開催日KO用疲労 = 既存脚質疲労 + 位置疲労。
+    FATIGUE_KNOCKDOWN_ADJ_MAP[int(no)] = float(
+        clamp(style_fatigue_adj + position_adj, -0.22, 0.18)
+    )
+    laps_adj = 0.0
+
+    # =====================================================
+    # コメント補正
+    #   自力：本人をプラス補正
+    #   番手：本人ではなく、前の自力先頭をライン連動で格上げ
+    #   競り：競り対象者を減点
+    # =====================================================
+    is_jiryoku_comment = bool(jiryoku_comment_map.get(int(no), False))
+    is_jiryoku_jizai_comment = bool(jiryoku_jizai_comment_map.get(int(no), False))
+    is_jizai_comment   = bool(jizai_comment_map.get(int(no), False))
+    is_single_comment  = bool(single_comment_map.get(int(no), False))
+    is_seri_comment    = bool(seri_comment_map.get(int(no), False))
+    seri_opponents = []
+    try:
+        _sel_target = seri_target_map.get(int(no), None)
+        if _sel_target is not None and str(_sel_target).strip() not in ("", "None", "—"):
+            seri_opponents.append(int(_sel_target))
+    except Exception:
+        pass
+    try:
+        seri_opponents.extend([int(x) for x in seri_incoming_map.get(int(no), [])])
+    except Exception:
+        pass
+    seri_opponents = [int(x) for x in dict.fromkeys(seri_opponents) if int(x) != int(no)]
+
+        # -----------------------------------------------------
+    # 自力・自力自在・自在コメント補正
+    #   3つは原則どれか1つ。
+    #   自力自在チェック、または自力＋自在の同時チェックは内部的に「自力自在」として扱う。
+    #   大きく順位を作り替えず、軸判定・ステップ判定の補助に留める。
+    # -----------------------------------------------------
+    if is_jiryoku_jizai_comment or (is_jiryoku_comment and is_jizai_comment):
+        move_style = "自力自在"
+    elif is_jiryoku_comment:
+        move_style = "自力"
+    elif is_jizai_comment:
+        move_style = "自在"
+    else:
+        move_style = ""
+
+    jiryoku_comment_bonus = 0.0
+    jizai_comment_bonus = 0.0
+
+    if move_style == "自力":
+        # 主導力寄り。旧自力補正より少し抑え、コメントだけで順位が動きすぎないようにする。
+        jiryoku_comment_bonus = 0.105
+        if role == "head":
+            jiryoku_comment_bonus += 0.015
+        try:
+            h_line = line_def.get(home_lead_gid, []) if home_lead_gid is not None else []
+            if h_line and int(h_line[0]) == int(no):
+                jiryoku_comment_bonus += 0.025
+        except Exception:
+            pass
+        if is_girls_like:
+            jiryoku_comment_bonus *= 0.60
+
+    elif move_style == "自力自在":
+        # 主導力と対応力を分割。自力単独より安定寄り、自在単独より主導力あり。
+        jiryoku_comment_bonus = 0.065
+        jizai_comment_bonus = 0.035
+        if role == "head":
+            jiryoku_comment_bonus += 0.010
+        if role in ("head", "single"):
+            jizai_comment_bonus += 0.005
+        try:
+            h_line = line_def.get(home_lead_gid, []) if home_lead_gid is not None else []
+            if h_line and int(h_line[0]) == int(no):
+                jiryoku_comment_bonus += 0.015
+        except Exception:
+            pass
+        if is_girls_like:
+            jiryoku_comment_bonus *= 0.60
+            jizai_comment_bonus *= 0.60
+
+    elif move_style == "自在":
+        # 自在は1着固定力ではなく、崩れにくさ・位置取りの安定として軽く加点する。
+        jizai_comment_bonus = 0.065
+        if role in ("head", "single"):
+            jizai_comment_bonus += 0.010
+        if is_girls_like:
+            jizai_comment_bonus *= 0.60
+
+    jiryoku_comment_bonus = clamp(jiryoku_comment_bonus, 0.0, 0.145)
+    jizai_comment_bonus = clamp(jizai_comment_bonus, 0.0, 0.080)
+
+    # -----------------------------------------------------
+    # 単騎コメント補正
+    #   ライン入力上の単騎とは別に、「一人で」「単騎で」「決めず」を明示する補助。
+    #   強く減点せず、ライン保護・軸信頼の過信を少し抑える。
+    # -----------------------------------------------------
+    single_comment_bonus = 0.0
+    if is_single_comment:
+        single_comment_bonus = -0.010
+        if role != "single":
+            single_comment_bonus -= 0.010
+        if move_style in ("自力", "自力自在", "自在"):
+            single_comment_bonus *= 0.50
+        if is_girls_like:
+            single_comment_bonus *= 0.50
+    single_comment_bonus = clamp(single_comment_bonus, -0.020, 0.0)
+
+    # -----------------------------------------------------
+    # ライン連動補正
+    #   後ろの選手が「番手・目標」チェックありなら、
+    #   その前のライン先頭を少し格上げする。
+    #   例：42で2が「小原君」なら、4を少し救う。
+    # -----------------------------------------------------
+    line_cushion_bonus = 0.0
+
+    try:
+        gid = car_to_group.get(int(no), None)
+        members = line_def.get(gid, []) if gid is not None else []
+
+        # 自分がそのラインの先頭かどうか
+        is_line_head = bool(members and int(members[0]) == int(no))
+
+        if is_line_head:
+            behind_members = [int(x) for x in members[1:]]
+
+            has_target_behind = any(
+                bool(target_comment_map.get(int(x), False))
+                for x in behind_members
+            )
+
+            if has_target_behind:
+                # 番手・後位が前を指名しているなら、先頭車を少し救う
+                line_cushion_bonus = 0.040
+
+                # H主導ラインの先頭なら、ライン成立度を少し上乗せ
+                try:
+                    h_line = line_def.get(home_lead_gid, []) if home_lead_gid is not None else []
+                    if h_line and int(h_line[0]) == int(no):
+                        line_cushion_bonus += 0.020
+                except Exception:
+                    pass
+
+    except Exception:
+        line_cushion_bonus = 0.0
+
+    line_cushion_bonus = clamp(line_cushion_bonus, 0.0, 0.060)
+
+    # -----------------------------------------------------
+    # 競り補正
+    #   ライン入力は崩さず、競り当事者を減点する。
+    #   ・自分が競りチェックあり
+    #   ・または他車から競り相手として指定されている
+    #   このどちらかなら競り当事者として扱う。
+    #   さらに、競り相手同士で基礎点が低い側は追加減点する。
+    # -----------------------------------------------------
+    seri_penalty = 0.0
+
+    is_seri_involved = bool(is_seri_comment or seri_opponents)
+
+    if is_seri_involved:
+        seri_penalty = -0.100
+
+        try:
+            my_base = float(prof_base.get(int(no), 0.0))
+            opp_bases = [
+                float(prof_base.get(int(x), 0.0))
+                for x in seri_opponents
+                if int(x) in prof_base
+            ]
+            if opp_bases:
+                best_opp = max(opp_bases)
+                # 弱い側はより競り負け・脚消耗しやすいので追加減点
+                if my_base + 1e-9 < best_opp:
+                    seri_penalty -= 0.050
+                else:
+                    seri_penalty -= 0.020
+        except Exception:
+            pass
+
+        # 番手で競る場合は、ライン連動が壊れやすい
+        if role == "second":
+            seri_penalty -= 0.030
+
+        # ガールズは基本的に競りの意味が薄いので弱め
+        if is_girls_like:
+            seri_penalty *= 0.50
+
+    seri_penalty = clamp(seri_penalty, -0.180, 0.0)
+
+    # -----------------------------------------------------
+    # 3番手以降の追走信頼補正
+    # -----------------------------------------------------
+    line_follow_trust_bonus = _line_follow_trust_bonus_for_car(no, role, is_girls_like)
+
+    # =====================================================
+    # 環境・個人補正（既存）
+    # =====================================================
+    wind     = _wind_func(eff_wind_dir, float(eff_wind_speed or 0.0), role, float(prof_escape[no]))
+    bank_b   = bank_character_bonus(bank_angle, straight_length, prof_escape[no], prof_sashi[no], bank_length)
+    length_b = bank_length_adjust(bank_length, prof_oikomi[no])
+    indiv    = extra_bonus.get(no, 0.0)
+    stab     = stability_score(no)  # 安定度
+    h_bonus  = h_home_bonus(no, role, H_Z)
+
+    l200 = l200_adjust(
+        role, straight_length, bank_length, race_class,
+        float(prof_escape[no]), float(prof_sashi[no]), float(prof_oikomi[no]),
+        is_wet=st.session_state.get("is_wet", False)
+    )
+    queue_pos_bonus = float(velobi_queue_position_bonus.get(int(no), 0.0) or 0.0)
+
+    # =====================================================
+    # 合計スコア
+    # =====================================================
+    total_raw = (
+        prof_base[no]
+        + wind
+        + cf["spread"] * level_rating_scale * tens_corr.get(no, 0.0)
+        + bank_b
+        + length_b
+        + laps_adj
+        + indiv
+        + stab
+        + h_bonus
+        + l200
+        + queue_pos_bonus
+        + jiryoku_comment_bonus
+        + jizai_comment_bonus
+        + single_comment_bonus
+        + line_cushion_bonus
+        + seri_penalty
+        + line_follow_trust_bonus
+    )
+
+    rows.append([
+        no, role,
+        round(prof_base[no], 3),
+        round(wind, 3),
+        round(cf["spread"] * level_rating_scale * tens_corr.get(no, 0.0), 3),
+        round(bank_b, 3),
+        round(length_b, 3),
+        round(laps_adj, 3),
+        round(indiv, 3),
+        round(stab, 3),
+        round(h_bonus, 3),
+        round(l200, 3),
+        round(queue_pos_bonus, 3),
+        round(jiryoku_comment_bonus, 3),
+        round(jizai_comment_bonus, 3),
+        round(single_comment_bonus, 3),
+        round(line_cushion_bonus, 3),
+        round(seri_penalty, 3),
+        round(line_follow_trust_bonus, 3),
+        float(total_raw)
+    ])
+
+df = pd.DataFrame(rows, columns=[
+    "車番", "役割", "脚質基準(会場)", "風補正", "得点補正", "バンク補正",
+    "周長補正", "周回補正", "個人補正", "安定度", "H補正", "ラスト200", "想定隊列位置補正",
+    "自力コメント補正", "自在コメント補正", "単騎コメント補正", "ライン連動補正", "競り補正", "後位信頼補正",
+    "合計_SBなし_raw",
+])
+
+# ===== [PATCH] dfの型を確定させ、SBなし母集団(v_wo/v_final)を必ず作る =====
+# 1) dfが空のときも落とさない
+if df is None or len(df) == 0:
+    st.warning("DEBUG: df（SBなし内訳）が空です。rowsが生成されていない可能性。")
+    v_wo = {int(no): 0.0 for no in active_cars}
+else:
+    # 2) 車番を必ずintにする（★最重要：ここがズレると全部emptyになる）
+    df["車番"] = df["車番"].astype(int)
+
+    # 3) v_wo を df から必ず生成（全車キー保証）
+    v_wo = {int(r["車番"]): float(r["合計_SBなし_raw"]) for _, r in df.iterrows()}
+    for no in active_cars:
+        ino = int(no)
+        if ino not in v_wo:
+            v_wo[ino] = 0.0
+
+# 4) v_final は最低でも v_wo を引き継ぐ（KOが走らない/空でも落ちない）
+v_final = dict(v_wo)
+
+# 5) df_sorted_pure をここで確定（アンカー選定が安定）
+df_sorted_pure = pd.DataFrame({
+    "車番": sorted([int(k) for k in v_final.keys()]),
+    "合計_SBなし": [float(v_final[int(k)]) for k in sorted([int(k) for k in v_final.keys()])]
+}).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
+
+
+    
+
+
+# === ここは df = pd.DataFrame(...) の直後に貼るだけ ===
+
+# --- fallback: note_sections が無い環境でも落ちないように ---
+ns = globals().get("note_sections", None)
+if not isinstance(ns, list):
+    ns = []
+    globals()["note_sections"] = ns
+note_sections = ns
+
+
+# ❶ バンク分類を“みなし直線/周長”から決定（33 / 400 / 500）
+def _bank_str_from_lengths(bank_length: float) -> str:
+    try:
+        bl = float(bank_length)
+    except:
+        bl = 400.0
+    if bl <= 340.0:   # 333系
+        return "33"
+    elif bl >= 480.0: # 500系
+        return "500"
+    return "400"
+
+# ❷ 会場の“有利脚質”セット
+# ❸ 役割の日本語化（lineの並びから）
+def _role_jp(no: int, line_def: dict) -> str:
+    r = role_in_line(no, line_def)
+    return {"head":"先頭","second":"番手","thirdplus":"三番手","single":"単騎"}.get(r, "単騎")
+
+
+# ❹ 入力の“逃/捲/差/マ”から、その選手の実脚質を決定（同点時はライン位置でブレない決め方）
+def _dominant_style(no: int) -> str:
+    vec = [("逃げ", k_esc.get(no,0)), ("まくり", k_mak.get(no,0)),
+           ("差し", k_sashi.get(no,0)), ("マーク", k_mark.get(no,0))]
+    m = max(v for _,v in vec)
+    cand = [s for s,v in vec if v == m and m > 0]
+    if cand:
+        # タイブレーク：先頭>番手>三番手>単騎 を優先（先行気味→差し→マークの順）
+        pr = {"先頭":3,"番手":2,"三番手":1,"単騎":0}
+        role = role_in_line(no, line_def)
+        role_pr = {"head":"先頭","second":"番手","thirdplus":"三番手","single":"単騎"}.get(role,"単騎")
+        if "逃げ" in cand: return "逃げ"
+        # 残りはライン位置で“差し”優先、その次に“マーク”
+        if "差し" in cand and pr.get(role_pr,0) >= 2: return "差し"
+        if "マーク" in cand: return "マーク"
+        return cand[0]
+    # 出走履歴ゼロなら位置で決める
+    role = role_in_line(no, line_def)
+    return {"head":"逃げ","second":"差し","thirdplus":"マーク","single":"まくり"}.get(role,"まくり")
+
+# ❺ Rider 構造体（このファイル上部で既に宣言済みなら再定義不要）
+@dataclass
+class Rider:
+    num: int; hensa: float; line_id: int; role: str; style: str
+
+# ❻ 偏差値（Tスコア）を “合計_SBなし_raw” から作る（なければ Form で代用）
+# ❻ 安定版：偏差値（Tスコア）を安全に作る
+def _hensa_map_from_df(df: pd.DataFrame) -> dict[int,float]:
+    col = "合計_SBなし_raw" if "合計_SBなし_raw" in df.columns else None
+
+    # 生値ベクトルを取る（欠損があればフォールバックして補完）
+    base = []
+    for no in active_cars:
+        try:
+            v = float(df.loc[df["車番"]==no, col].values[0]) if col else float(form_T_map[no])
+        except:
+            v = float(form_T_map[no])  # fallback（=従来 Form 偏差値）
+        base.append(v)
+
+    base = np.array(base, dtype=float)
+
+    # === 分散チェック：標準偏差が小さすぎる場合の暴走回避 ===
+    sd = np.std(base)
+    if sd < 1e-6:   # ← 安定化の本丸
+        # 全員ほぼ同じ → 差が「無い」ので偏差値の差も付けない
+        return {no: 50.0 for no in active_cars}
+
+    # 通常の偏差値化
+    T = 50 + 10 * (base - np.mean(base)) / sd
+
+    # 浮動誤差対策で丸め
+    T = np.clip(T, 20, 80)
+
+    return {no: float(T[i]) for i,no in enumerate(active_cars)}
+
+
+# ❼ RIDERS を“実データ”で構築（脚質は ❹、偏差値は ❻）
+bank_str = _bank_str_from_lengths(bank_length)
+hensa_map = _hensa_map_from_df(df)
+RIDERS = []
+for no in active_cars:
+    # ラインIDは“そのラインの先頭車番”を代表IDに
+    gid = None
+    for g, mem in line_def.items():
+        if no in mem:
+            gid = mem[0]; break
+    if gid is None: gid = no
+    RIDERS.append(
+        Rider(
+            num=int(no),
+            hensa=float(hensa_map[no]),
+            line_id=int(gid),
+            role=_role_jp(no, line_def),
+            style=_dominant_style(no),
+        )
+    )
+
+# ❽ フォーメーション（本命−2−全）：1列目=有利脚質内の偏差値最大
+
+# 印（◎→▲→偏差値補完）
+mu = float(df["合計_SBなし_raw"].mean()) if not df.empty else 0.0
+df["合計_SBなし"] = mu + 1.0 * (df["合計_SBなし_raw"] - mu)
+
+# --- SBなし(母集団) を df から「全車ぶん必ず」作る（None防止） ---
+sb_map = {int(r["車番"]): float(r.get("合計_SBなし", 0.0)) for _, r in df.iterrows()}
+
+# df が空 / sb_map が空のときは、全車0で母集団を作る（5車・欠番・SB未入力でも止めない）
+if not sb_map:
+    sb_map = {int(no): 0.0 for no in active_cars}
+    
+
+# === [PATCH-A] 安定度をENVから分離し、各柱をレース内z化（SD固定） ===
+SD_FORM = 0.28
+SD_ENV  = 0.20
+SD_STAB = 0.12
+SD_L200 = float(globals().get("SD_L200", 0.22))  # ← 追加。まず0.22〜0.30で様子見
+
+# 安定度（raw）と、ENVのベース（= 合計_SBなし_raw から安定度だけ除いたもの）
+STAB_RAW = {int(df.loc[i, "車番"]): float(df.loc[i, "安定度"]) for i in df.index}
+ENV_BASE = {
+    int(df.loc[i, "車番"]): (
+        float(df.loc[i, "合計_SBなし_raw"])
+        - float(df.loc[i, "安定度"])
+        - float(df.loc[i, "ラスト200"])
+    )
+    for i in df.index
+}
+
+# ENV → z
+_env_arr = np.array([float(ENV_BASE.get(n, np.nan)) for n in active_cars], dtype=float)
+_mask = np.isfinite(_env_arr)
+if int(_mask.sum()) >= 2:
+    mu_env = float(np.mean(_env_arr[_mask])); sd_env = float(np.std(_env_arr[_mask]))
+else:
+    mu_env, sd_env = 0.0, 1.0
+_den_env = (sd_env if sd_env > 1e-12 else 1.0)
+ENV_Z = {int(n): (float(ENV_BASE.get(n, mu_env)) - mu_env) / _den_env for n in active_cars}
+
+# FORM（すでに form_T_map は作ってある前提） → z
+FORM_Z = {int(n): (float(form_T_map.get(n, 50.0)) - 50.0) / 10.0 for n in active_cars}
+
+# STAB（安定度 raw） → z
+_stab_arr = np.array([float(STAB_RAW.get(n, np.nan)) for n in active_cars], dtype=float)
+_m2 = np.isfinite(_stab_arr)
+if int(_m2.sum()) >= 2:
+    mu_st = float(np.mean(_stab_arr[_m2])); sd_st = float(np.std(_stab_arr[_m2]))
+else:
+    mu_st, sd_st = 0.0, 1.0
+_den_st = (sd_st if sd_st > 1e-12 else 1.0)
+STAB_Z = {int(n): (float(STAB_RAW.get(n, mu_st)) - mu_st) / _den_st for n in active_cars}
+
+# L200（残脚）→ z
+_l200_arr = np.array([float(L200_RAW.get(n, np.nan)) for n in active_cars], dtype=float)
+_m3 = np.isfinite(_l200_arr)
+if int(_m3.sum()) >= 2:
+    mu_l2 = float(np.mean(_l200_arr[_m3])); sd_l2 = float(np.std(_l200_arr[_m3]))
+else:
+    mu_l2, sd_l2 = 0.0, 1.0
+_den_l2 = (sd_l2 if sd_l2 > 1e-12 else 1.0)
+L200_Z = {int(n): (float(L200_RAW.get(n, mu_l2)) - mu_l2) / _den_l2 for n in active_cars}
+
+# ===== KO方式（印に混ぜず：展開・ケンで利用） =====
+
+# 0) SBなし(母集団) を df から確実に作る（全車）
+sb_map = {int(k): float(v) for k, v in zip(df["車番"].astype(int), df["合計_SBなし"].astype(float))}
+
+# ★必須：dfが空でも全車0で母集団を作る
+if not sb_map:
+    sb_map = {int(no): 0.0 for no in active_cars}
+
+# 1) key 欠損チェック
+missing = [int(n) for n in active_cars if int(n) not in sb_map]
+if missing:
+    st.error(f"SBなし(母集団) が欠損してる車番: {missing} / sb_map.keys={sorted(sb_map.keys())}")
+    # st.stop()
+
+# 2) 値が None/NaN チェック
+bad = [
+    int(n) for n in active_cars
+    if (int(n) in sb_map) and (
+        sb_map[int(n)] is None or
+        (isinstance(sb_map[int(n)], float) and np.isnan(sb_map[int(n)]))
+    )
+]
+if bad:
+    st.error(f"SBなし(母集団) の値が None/NaN: {bad} / values={[sb_map[int(n)] for n in bad]}")
+    # st.stop()
+
+# 3) KO入力に使う母集団（全車）
+v_wo = dict(sb_map)
+
+# 4) 以降 KO
+_is_girls = is_girls_like
+head_scale = KO_HEADCOUNT_SCALE.get(int(n_cars), 1.0)
+ko_scale_raw = (KO_GIRLS_SCALE if _is_girls else 1.0) * head_scale
+KO_SCALE_MAX = 0.45
+ko_scale = min(ko_scale_raw, KO_SCALE_MAX)
+
+if ko_scale > 0.0 and line_def and len(line_def) >= 1 and v_wo:
+    # --- KO順序（_ko_order が落ちる/不正でも必ずフォールバックで作る） ---
+    try:
+        ko_order = _ko_order(
+            v_wo, line_def, S, B,
+            line_factor=line_factor_eff,
+            gap_delta=KO_GAP_DELTA
+        )
+    except Exception as e:
+        # Streamlitで原因を見たいならコメント解除
+        # st.warning(f"_ko_order fallback: {type(e).__name__}: {e}")
+        ko_order = None
+
+    # ★重要：ko_order が None/空/欠損でも「全車」を必ず含める
+    ko_order = [int(c) for c in (ko_order or []) if int(c) in v_wo]
+    rest = [int(c) for c in v_wo.keys() if int(c) not in set(ko_order)]
+    rest = sorted(rest, key=lambda c: float(v_wo[int(c)]), reverse=True)
+    ko_order = ko_order + rest  # ← 全車を必ず含める（ここが最重要）
+
+    # ここ以降は ko_order が必ず全車になるので安全
+    vals = [float(v_wo[c]) for c in v_wo.keys()]
+    mu0  = float(np.mean(vals))
+    sd0  = float(np.std(vals) + 1e-12)
+    KO_STEP_SIGMA_LOCAL = max(0.25, KO_STEP_SIGMA * 0.7)
+    step = KO_STEP_SIGMA_LOCAL * sd0
+    # ★new_scores は「全車のベース」から開始して KO で上書き
+    new_scores = dict(v_wo)
+
+    for rank, car in enumerate(ko_order, start=1):
+        rank_adjust = step * (len(ko_order) - rank)
+        blended = (1.0 - ko_scale) * float(v_wo[int(car)]) + ko_scale * (
+            mu0 + rank_adjust - (len(ko_order)/2.0 - 0.5)*step
+        )
+        new_scores[int(car)] = float(blended)
+
+    v_final = dict(new_scores)
+
+else:
+    # KOしない時も「全車保持」
+    if v_wo:
+        ko_order = sorted(v_wo.keys(), key=lambda c: float(v_wo[c]), reverse=True)
+        v_final = dict(v_wo)
+    else:
+        ko_order = []
+        v_final = {}
+
+# --- 純SBなしランキング（KOまで／格上げ前）
+df_sorted_pure = (pd.DataFrame({
+    "車番": sorted([int(k) for k in v_final.keys()]),
+    "合計_SBなし": [round(float(v_final[int(c)]), 6) for c in sorted([int(k) for k in v_final.keys()])]
+}).sort_values("合計_SBなし", ascending=False).reset_index(drop=True))
+
+
+# ===== 印用（既存の安全弁を維持） =====
+FINISH_WEIGHT   = globals().get("FINISH_WEIGHT", 6.0)
+FINISH_WEIGHT_G = globals().get("FINISH_WEIGHT_G", 3.0)
+POS_BONUS  = globals().get("POS_BONUS", {0: 0.0, 1: -0.6, 2: -0.9, 3: -1.2, 4: -1.4})
+POS_WEIGHT = globals().get("POS_WEIGHT", 1.0)
+SMALL_Z_RATING = globals().get("SMALL_Z_RATING", 0.01)
+FINISH_CLIP = globals().get("FINISH_CLIP", 4.0)
+TIE_EPSILON  = globals().get("TIE_EPSILON", 0.8)
+
+# --- p2のZ化など（従来どおり） ---
+p2_list = [float(p2_eff.get(n, 0.0)) for n in active_cars]
+if len(p2_list) >= 1:
+    mu_p2  = float(np.mean(p2_list))
+    sd_p2  = float(np.std(p2_list) + 1e-12)
+else:
+    mu_p2, sd_p2 = 0.0, 1.0
+p2z_map = {n: (float(p2_eff.get(n, 0.0)) - mu_p2) / sd_p2 for n in active_cars}
+p1_eff_safe = {n: float(p1_eff.get(n, 0.0)) if 'p1_eff' in globals() and p1_eff is not None else 0.0 for n in active_cars}
+p2only_map = {n: max(0.0, float(p2_eff.get(n, 0.0)) - float(p1_eff_safe.get(n, 0.0))) for n in active_cars}
+zt = zscore_list([ratings_val[n] for n in active_cars]) if active_cars else []
+zt_map = {n: float(zt[i]) for i, n in enumerate(active_cars)} if active_cars else {}
+
+
+# === [PATCH-1] ENV/FORM をレース内で z 化し、目標SDを掛ける（anchor_score の前に置く） ===
+SD_FORM = 0.28   # Balanced 既定
+SD_ENV  = 0.20
+
+# ENV = v_final（風・会場・周回疲労・個人補正・安定度 等を含む“Form以外”）
+# ENV = v_final を int キー前提に揃える
+_env_arr = np.array([float(v_final.get(int(n), np.nan)) for n in active_cars], dtype=float)
+
+_mask = np.isfinite(_env_arr)
+if int(_mask.sum()) >= 2:
+    mu_env = float(np.mean(_env_arr[_mask]))
+    sd_env = float(np.std(_env_arr[_mask]))
+else:
+    mu_env, sd_env = 0.0, 1.0
+
+_den = sd_env if sd_env > 1e-12 else 1.0
+ENV_Z = {int(n): (float(v_final.get(int(n), mu_env)) - mu_env) / _den for n in active_cars}
+
+
+# FORM = form_T_map（T=50, SD=10）→ z 化
+FORM_Z = {int(n): (float(form_T_map.get(n, 50.0)) - 50.0) / 10.0 for n in active_cars}
+
+
+# --- ここで必ず定義してから使う（NameError防止） ---
+line_sb_enable = bool(globals().get("line_sb_enable", (race_class != "ガールズ")))
+
+def _pos_idx(no: int) -> int:
+    g = car_to_group.get(no)
+    if g is None or g not in line_def:
+        return 4  # 単騎/不明は最後方（POS_BONUS[4]）
+
+    grp = line_def[g]  # 例: [5,2,6] みたいな並び
+    try:
+        return max(0, grp.index(no))
+    except ValueError:
+        return 4  # グループに居ないなら最後方扱い
+
+
+bonus_init, _ = compute_lineSB_bonus(
+    line_def, S, B,
+    line_factor=line_factor_eff,
+    exclude=None, cap=cap_SB_eff,
+    enable=line_sb_enable
+)
+
+def anchor_score(no: int) -> float:
+    role = role_in_line(no, line_def)
+    sb = float(
+        bonus_init.get(car_to_group.get(no, None), 0.0)
+        * (pos_coeff(role, 1.0) if line_sb_enable else 0.0)
+    )
+    pos_term = (POS_WEIGHT * POS_BONUS.get(_pos_idx(no), 0.0)) if line_sb_enable else 0.0
+    env_term  = SD_ENV  * float(ENV_Z.get(int(no), 0.0))
+    form_term = SD_FORM * float(FORM_Z.get(int(no), 0.0))
+    stab_term = SD_STAB * float(STAB_Z.get(int(no), 0.0))
+    l200_term = SD_L200 * float(L200_Z.get(int(no), 0.0))
+    tiny      = SMALL_Z_RATING * float(zt_map.get(int(no), 0.0))
+    return env_term + form_term + stab_term + l200_term + sb + pos_term + tiny
+
+
+
+# ===== ◎候補抽出（既存ロジック維持）
+cand_sorted = sorted(active_cars, key=lambda n: anchor_score(n), reverse=True)
+C = cand_sorted[:min(3, len(cand_sorted))]
+ratings_sorted2 = sorted(active_cars, key=lambda n: ratings_val[n], reverse=True)
+ratings_rank2 = {n: i+1 for i,n in enumerate(ratings_sorted2)}
+ALLOWED_MAX_RANK = globals().get("ALLOWED_MAX_RANK", 5)
+
+guarantee_top_rating = True
+if guarantee_top_rating and (race_class == "ガールズ") and len(ratings_sorted2) >= 1:
+    top_rating_car = ratings_sorted2[0]
+    if top_rating_car not in C:
+        C = [top_rating_car] + [c for c in C if c != top_rating_car]
+        C = C[:min(3, len(cand_sorted))]
+
+ANCHOR_CAND_SB_TOPK   = globals().get("ANCHOR_CAND_SB_TOPK", 5)
+ANCHOR_REQUIRE_TOP_SB = globals().get("ANCHOR_REQUIRE_TOP_SB", 3)
+
+# ===== ANCHOR 選定（SBなし母集団ベース）+ 安全弁 + DEBUG =====
+ANCHOR_CAND_SB_TOPK   = globals().get("ANCHOR_CAND_SB_TOPK", 5)
+ANCHOR_REQUIRE_TOP_SB = globals().get("ANCHOR_REQUIRE_TOP_SB", 3)
+
+# --- DEBUG（必要ならOFFにできる） ---
+DBG_ANCHOR = bool(globals().get("DBG_ANCHOR", True))
+
+# df_sorted_pure が空なら、active_cars を母集団として使う（落下防止）
+df_pure_empty = (df_sorted_pure is None) or (len(df_sorted_pure) == 0)
+
+if df_pure_empty:
+    base_order = [int(x) for x in list(active_cars)[:]]  # 1..7
+else:
+    # 念のため int 化
+    base_order = df_sorted_pure["車番"].astype(int).tolist()
+
+# rank_pure（SBなしランキング順位）
+rank_pure = {int(no): i + 1 for i, no in enumerate(base_order)}
+
+# 候補プール：C の中で SBなし上位K位
+cand_pool = [int(c) for c in C if rank_pure.get(int(c), 999) <= ANCHOR_CAND_SB_TOPK]
+
+# もし空なら、SBなし上位K位から直接作る
+if not cand_pool:
+    cand_pool = [int(no) for no in base_order[:min(ANCHOR_CAND_SB_TOPK, len(base_order))]]
+
+# 最終フォールバック（どれも無い場合）
+fallback_no = int(active_cars[0]) if active_cars else 1
+
+# anchor_no_pre（まずは候補プール内で anchor_score 最大）
+if cand_pool:
+    anchor_no_pre = max(cand_pool, key=lambda x: anchor_score(int(x)))
+else:
+    anchor_no_pre = fallback_no
+
+anchor_no = anchor_no_pre
+
+# 同点圏（TIE_EPSILON以内）なら ratings_rank2 で決める
+top2 = sorted(cand_pool, key=lambda x: anchor_score(int(x)), reverse=True)[:2]
+if len(top2) >= 2:
+    s1 = float(anchor_score(int(top2[0])))
+    s2 = float(anchor_score(int(top2[1])))
+    if (s1 - s2) < TIE_EPSILON:
+        better_by_rating = min(top2, key=lambda x: ratings_rank2.get(int(x), 999))
+        anchor_no = int(better_by_rating)
+
+# SBなし上位N位縛り
+if rank_pure.get(int(anchor_no), 999) > ANCHOR_REQUIRE_TOP_SB:
+    pool = [int(c) for c in cand_pool if rank_pure.get(int(c), 999) <= ANCHOR_REQUIRE_TOP_SB]
+    if pool:
+        anchor_no = max(pool, key=lambda x: anchor_score(int(x)))
+    else:
+        anchor_no = int(base_order[0]) if base_order else fallback_no
+
+    st.caption(
+        f"※ ◎は『SBなし 上位{ANCHOR_REQUIRE_TOP_SB}位以内』縛りで {anchor_no_pre}→{anchor_no} に調整。"
+    )
+
+
+
+# ===== confidence 算出（anchor_score のギャップ/分散）=====
+role_map = {int(no): role_in_line(int(no), line_def) for no in active_cars}
+
+cand_scores = [float(anchor_score(int(no))) for no in C] if len(C) >= 2 else [0.0, 0.0]
+cand_scores_sorted = sorted(cand_scores, reverse=True)
+conf_gap = float(cand_scores_sorted[0] - cand_scores_sorted[1]) if len(cand_scores_sorted) >= 2 else 0.0
+
+# v_final が空のときは spread=0 で落ちないように（confidenceは混戦寄りになる）
+spread = float(np.std(list(v_final.values()))) if isinstance(v_final, dict) and len(v_final) >= 2 else 0.0
+norm = conf_gap / (spread if spread > 1e-6 else 1.0)
+confidence = "優位" if norm >= 1.0 else ("互角" if norm >= 0.5 else "混戦")
+
+# ===== 格上げ（v_final が空でも落ちないように）=====
+if not isinstance(v_final, dict) or len(v_final) == 0:
+    # downstream を落とさないための最小母集団（全車0）
+    v_final = {int(no): 0.0 for no in active_cars}
+
+score_adj_map = apply_anchor_line_bonus(v_final, car_to_group, role_map, int(anchor_no), confidence)
+
+df_sorted_wo = pd.DataFrame({
+    "車番": [int(c) for c in active_cars],
+    "合計_SBなし": [
+        round(float(score_adj_map.get(int(c), v_final.get(int(c), float("-inf")))), 6)
+        for c in active_cars
+    ]
+}).sort_values("合計_SBなし", ascending=False).reset_index(drop=True)
+
+velobi_wo = list(zip(
+    df_sorted_wo["車番"].astype(int).tolist(),
+    df_sorted_wo["合計_SBなし"].round(3).tolist()
+))
+# ==============================
+# ★ レース内T偏差値 → 印 → 買い目 → note出力（2車系対応＋会場個性浸透版）
+# ==============================
+
+HEN_DEC_PLACES = 1
+
+# ====== ユーティリティ ======
+def coerce_score_map(d, n_cars: int) -> dict[int, float]:
+    out: dict[int, float] = {}
+    t = str(type(d)).lower()
+    if "pandas.core.frame" in t:
+        df_ = d
+        car_col = "車番" if "車番" in df_.columns else None
+        if car_col is None:
+            for c in df_.columns:
+                if np.issubdtype(df_[c].dtype, np.integer):
+                    car_col = c; break
+        score_col = None
+        for cand in ["合計_SBなし","SBなし","スコア","score","SB_wo","SB"]:
+            if cand in df_.columns:
+                score_col = cand; break
+        if score_col is None:
+            for c in df_.columns:
+                if c == car_col: continue
+                if np.issubdtype(df_[c].dtype, np.number):
+                    score_col = c; break
+        if car_col is not None and score_col is not None:
+            for _, r in df_.iterrows():
+                try:
+                    i = int(r[car_col]); x = float(r[score_col])
+                except Exception:
+                    continue
+                out[i] = x
+    elif "pandas.core.series" in t:
+        for k, v in d.to_dict().items():
+            try:
+                i = int(k); x = float(v)
+            except Exception:
+                continue
+            out[i] = x
+    elif hasattr(d, "items"):
+        for k, v in d.items():
+            try:
+                i = int(k); x = float(v)
+            except Exception:
+                continue
+            out[i] = x
+    elif isinstance(d, (list, tuple, np.ndarray)):
+        arr = list(d)
+        if len(arr) == n_cars and all(not isinstance(x,(list,tuple,dict)) for x in arr):
+            for idx, v in enumerate(arr, start=1):
+                try: out[idx] = float(v)
+                except Exception: out[idx] = np.nan
+        else:
+            for it in arr:
+                if isinstance(it,(list,tuple)) and len(it) >= 2:
+                    try:
+                        i = int(it[0]); x = float(it[1])
+                        out[i] = x
+                    except Exception:
+                        continue
+    for i in range(1, int(n_cars)+1):
+        out.setdefault(i, np.nan)
+    return out
+
+
+# ====== ここから処理本体 ======
+
+# 1) 母集団車番
+try:
+    USED_IDS = sorted(int(i) for i in (active_cars if active_cars else range(1, n_cars+1)))
+except Exception:
+    USED_IDS = list(range(1, int(n_cars)+1))
+M = len(USED_IDS)
+
+# 2) SBなしのソース（df優先→velobi_wo）
+score_map_from_df = coerce_score_map(globals().get("df_sorted_wo", None), n_cars)
+score_map_vwo     = coerce_score_map(globals().get("velobi_wo", None),   n_cars)
+SB_BASE_MAP = score_map_from_df if any(np.isfinite(list(score_map_from_df.values()))) else score_map_vwo
+
+# 偏差値母集団は「SBなし（KO適用後＆格上げ前後どちらか）」に固定
+SB_BASE_MAP = {int(i): float(score_adj_map.get(int(i), v_final.get(int(i), np.nan))) for i in USED_IDS}
+
+
+
+# 3) スコア配列（スコア順表示と偏差値母集団を共用）
+xs_base_raw = np.array([SB_BASE_MAP.get(i, np.nan) for i in USED_IDS], dtype=float)
+
+# 4) 偏差値T（レース内：平均50・SD10、NaN→50）
+xs_race_t, mu_sb, sd_sb, k_finite = t_score_from_finite(xs_base_raw)
+
+
+missing = ~np.isfinite(xs_base_raw)
+if missing.any():
+    sb_for_sort = {i: SB_BASE_MAP.get(i, -1e18) for i in USED_IDS}
+    idxs = np.where(missing)[0].tolist()
+    idxs.sort(key=lambda ii: (-float(sb_for_sort.get(USED_IDS[ii], -1e18)), USED_IDS[ii]))
+    k = len(idxs); delta = 0.12; center = (k - 1)/2.0 if k > 1 else 0.0
+    for r, ii in enumerate(idxs):
+        xs_race_t[ii] = 50.0 + delta * (center - r)
+
+# 5) dict化・表示用
+race_t = {USED_IDS[idx]: float(round(xs_race_t[idx], HEN_DEC_PLACES)) for idx in range(M)}
+
+# === 5.5) クラス別ライン偏差値ボーナス（ライン間→ライン内：低T優先 3:2:1） ===
+# クラス別の総ポイント（Girlsは無効）
+CLASS_LINE_POOL = {
+    "Ｓ級":           21.0,
+    "Ａ級":           15.0,
+    "Ａ級チャレンジ":  9.0,
+    "ガールズ":        0.0,
+}
+pool_total = float(CLASS_LINE_POOL.get(race_class, 0.0))
+
+def _line_rank_weights(n_lines: int) -> list[float]:
+    # 2本: 3:2 / 3本: 5:4:3 / 4本以上: 6,5,4,3,2,1...
+    if n_lines <= 1: return [1.0]
+    if n_lines == 2: return [3.0, 2.0]
+    if n_lines == 3: return [5.0, 4.0, 3.0]
+    base = [6.0, 5.0, 4.0, 3.0, 2.0, 1.0]
+    if n_lines <= len(base): return base[:n_lines]
+    ext = base[:]
+    while len(ext) < n_lines:
+        ext.append(max(1.0, ext[-1]-1.0))
+    return ext[:n_lines]
+
+def _in_line_weights(members_sorted_lowT_first: list[int]) -> dict[int, float]:
+    # ライン内は「低T優先で 3:2:1、4人目以降0」→合計1に正規化
+    raw = [3.0, 2.0, 1.0]
+    w = {}
+    for i, car in enumerate(members_sorted_lowT_first):
+        w[int(car)] = (raw[i] if i < len(raw) else 0.0)
+    s = sum(w.values())
+    return {k: (v/s if s > 0 else 0.0) for k, v in w.items()}
+
+_lines = list((globals().get("line_def") or {}).values())
+if pool_total > 0.0 and _lines:
+    # ライン強度＝そのラインの race_t 平均
+    line_scores = []
+    for mem in _lines:
+        if not mem: 
+            continue
+        avg_t = float(np.mean([race_t.get(int(c), 50.0) for c in mem]))
+        line_scores.append((tuple(mem), avg_t))
+    # 強い順に並べてライン間ポイント配分
+    line_scores.sort(key=lambda x: (-x[1], x[0]))
+    rank_w = _line_rank_weights(len(line_scores))
+    sum_rank_w = float(sum(rank_w)) if rank_w else 1.0
+    line_share = {}
+    for (mem, _avg), wr in zip(line_scores, rank_w):
+        line_share[mem] = pool_total * (float(wr) / sum_rank_w)
+
+    # 各ラインの配分を「低T→高T」の順に 3:2:1 で割り振り
+    bonus_map = {int(i): 0.0 for i in USED_IDS}
+    for mem, share in line_share.items():
+        mem = list(mem)
+        mem_sorted_lowT = sorted(mem, key=lambda c: (race_t.get(int(c), 50.0), int(c)))
+        w_in = _in_line_weights(mem_sorted_lowT)  # 合計1
+        for car in mem_sorted_lowT:
+            bonus_map[int(car)] += share * w_in[int(car)]
+
+    # 偏差値に加算（xs_race_tが計算本体。race_tは表示用に丸め直す）
+    for idx, car in enumerate(USED_IDS):
+        add = float(bonus_map.get(int(car), 0.0))
+        xs_race_t[idx] = float(xs_race_t[idx]) + add
+        race_t[int(car)] = float(round(xs_race_t[idx], HEN_DEC_PLACES))
+# ← この後に既存の race_z 計算が続く
+
+
+
+# ==============================
+# 偏差値テーブル（SBなし母集団）＋欠損ガード
+# ==============================
+race_z = (xs_race_t - 50.0) / 10.0
+
+# --- SBなし(母集団) を map として確定（KO入力もここを使う） ---
+# USED_IDS と xs_base_raw は「同じ順番」で対応している前提
+sb_map = {}
+for cid, x in zip(USED_IDS, xs_base_raw):
+    try:
+        if x is None:
+            continue
+        xf = float(x)
+        if not np.isfinite(xf):
+            continue
+        sb_map[int(cid)] = xf
+    except Exception:
+        pass
+
+# --- 欠損チェック（None連発の犯人特定） ---
+missing = [int(n) for n in active_cars if int(n) not in sb_map]
+if missing:
+    st.error(f"SBなし(母集団) が欠損してる車番: {missing} / sb_map.keys={sorted(sb_map.keys())}")
+
+
+# zipで短くなってる可能性チェック
+if len(xs_base_raw) != len(USED_IDS):
+    st.error("xs_base_raw と USED_IDS の長さが一致していません。zip が途中で切れて欠損になります。")
+
+
+# --- 表（hen_df）を sb_map から作る：Noneは明示的にNoneで残す ---
+hen_df = pd.DataFrame({
+    "車": USED_IDS,
+    "SBなし(母集団)": [sb_map.get(int(cid), None) for cid in USED_IDS],
+    "偏差値T(レース内)": [race_t[int(cid)] for cid in USED_IDS],
+}).sort_values(["偏差値T(レース内)", "車"], ascending=[False, True]).reset_index(drop=True)
+
+st.markdown("### 偏差値（レース内T＝平均50・SD10｜SBなしと同一母集団）")
+st.caption(f"μ={mu_sb if np.isfinite(mu_sb) else 'nan'} / σ={sd_sb:.6f} / 有効件数k={k_finite}")
+st.dataframe(hen_df, use_container_width=True)
+
+# 7) 印（◎〇▲）＝ T↓ → SBなし↓ → 車番↑（βは除外）
+if "select_beta" not in globals():
+    def select_beta(cars): return None
+if "enforce_alpha_eligibility" not in globals():
+    def enforce_alpha_eligibility(m): return m
+
+# ===== βラベル付与（単なる順位ラベル） =====
+# ===== 印の採番（β廃止→無印で保持）========================================
+# 依存: USED_IDS, race_t, xs_base_raw, line_def, car_to_group が上で定義済み
+
+# スコアの補助（安定のため race_t 優先→同点は sb_base でタイブレーク）
+sb_base = {
+    int(USED_IDS[idx]): float(xs_base_raw[idx]) if np.isfinite(xs_base_raw[idx]) else float("-inf")
+    for idx in range(len(USED_IDS))
+}
 
 def _race_t_val(i: int) -> float:
     try:
@@ -11952,11 +14770,11 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             top_n=3,
         )
         if _hit_top_lines:
-            _v335dq_final_order = tuple(
-                int(x) for x in (globals().get("V335DQ_FINAL_PURCHASE_ORDER", tuple()) or tuple())
+            _purchase_final_order = tuple(
+                int(x) for x in (globals().get("V335DR_FINAL_PURCHASE_ORDER", tuple()) or tuple())
             )
-            if _v335dq_final_order and len(lines) >= 4:
-                lines[3] = f"最終着順予想　{' → '.join(str(int(x)) for x in _v335dq_final_order)}"
+            if _purchase_final_order and len(lines) >= 4:
+                lines[3] = f"最終着順予想　{' → '.join(str(int(x)) for x in _purchase_final_order)}"
             lines.append("")
             lines.extend(_hit_top_lines)
         return "\n".join(lines).strip() + "\n"
@@ -12310,19 +15128,19 @@ def _v281_format_fixed_flow_block(
             _official_count = int(five_point_plan.get("ticket_count", 0) or 0)
             _official_amount = int(five_point_plan.get("total_amount", 0) or 0)
             _validation_alt_count = int(five_point_plan.get("validation_ticket_count", 0) or 0)
-            _v335dq_detail_order = tuple(
-                int(x) for x in (five_point_plan.get("final_prediction_order", tuple()) or tuple())
-            )
-            _v335dq_detail_profile = _v335bp_get_venue_profile(
-                track_name=str(globals().get("track") or globals().get("place") or "").strip(),
-                race_time_name=str(globals().get("race_time", "") or "").strip(),
-                race_class_name=str(globals().get("race_class", "") or "").strip(),
-                field_n=len(_v335dq_detail_order),
-            )
-            if _v335dq_detail_order and _v335dq_detail_profile:
-                purchase_lines.extend(_v335bt_purchase_lines(_v335dq_detail_order, _v335dq_detail_profile))
-            else:
-                purchase_lines.extend(["【推奨購入】", "会場データ未入力のため算出不可"])
+            purchase_lines.extend([
+                "【推奨購入】",
+                "３連単",
+                f"{five_point_plan.get('trifecta_text', '算出不可')}（各100円）",
+                "【２車単】",
+                f"{five_point_plan.get('recommended_exacta_text', '算出不可')}（各100円）",
+                f"Aフォメ：{five_point_plan.get('common_exacta_rule_text', '3→12＋2車複1-2')}（2車単2点＋2車複1点）",
+                f"最終着順予想：{' → '.join(str(int(x)) for x in tuple(five_point_plan.get('final_prediction_order', tuple()) or tuple())) if tuple(five_point_plan.get('final_prediction_order', tuple()) or tuple()) else '算出不可'}",
+                f"計{_official_count}点／{_official_amount}円",
+                "【検証用・旧3連複】",
+                f"{five_point_plan.get('trio_text', 'なし')}（各100円）",
+                f"計{_validation_alt_count}点（推奨購入には含めない）",
+            ])
         else:
             purchase_lines.append("【推奨購入】着順予想1・2位または的中点1～5位が不足のため生成不可")
     else:
@@ -12414,6 +15232,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
     旧期待値推奨、34-12切替、三展開合成フォメ、VeloBi列フォメは参照しない。
     """
+    # v335dh：レース切替時に前レースの加重2車複評価を持ち越さない。
+    globals()["V335DH_WEIGHTED_PAIR_ROWS"] = []
     try:
         xs = []
         seen = set()
@@ -13415,6 +16235,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
             # v220: 2車複サマリーは、流れ別候補の最大ptではなく、
             #       流れ配分込みの車番別平均評価で的中期待を再計算した全通り評価から作る。
             _weighted_all_pair_rows = _make_weighted_overall_pair_rows(_weighted_car_hit_map, _weighted_car_myoumi_map)
+            # v335dh：compact note側の3段階ヒモ選抜で、既存の加重2車複評価結果をそのまま再利用する。
+            globals()["V335DH_WEIGHTED_PAIR_ROWS"] = [
+                dict(_r) for _r in (_weighted_all_pair_rows or [])
+                if isinstance(_r, dict)
+            ]
             if _weighted_all_pair_rows:
                 # v225:
                 # 2車複は軸を先に決めない。
