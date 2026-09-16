@@ -1,3 +1,9 @@
+# v335do（開催日KO順位・2車単＋3連単5点ミックス版）
+# ・v335dnを原本に、最終購入だけを5点へ変更。
+# ・開催日KO最終順位1位を頭に、2車単1→3／1→4の2点を購入。
+# ・同じKO順位1位→2位を1・2着固定し、3着3位／4位／5位の3連単3点を購入。
+# ・合計5点固定（2車単2点＋3連単3点）。
+# ・軸決定、開催日KO、V1/V2、疲労補正、80-90%比率、確率モデル、加重評価、詳細表示は変更しない。
 # v335dn（開催日KO順位・2車単＋3連単4点ミックス版）
 # ・v335dmを原本に、推奨購入の最終買い目だけを開催日KO最終順位基準の4点へ変更。
 # ・開催日KO最終順位を1→2→3→4→5→6→7としたとき、2車単は1→3／1→4の2点。
@@ -3303,11 +3309,11 @@ def _v335cd_trifecta_12_13_123(cars3):
 
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335dn note用推奨購入:
+    v335do note用推奨購入:
       1) V最終1位を初期軸とし、既存の開催日KOで最終順位を確定
       2) 開催日KO最終順位1位を頭として、2車単1→3／1→4を購入
-      3) 同じKO順位1位→2位を1・2着固定し、3着5位／6位の3連単2点を購入
-      4) 合計4点固定（2車単2点＋3連単2点）
+      3) 同じKO順位1位→2位を1・2着固定し、3着3位／4位／5位の3連単3点を購入
+      4) 合計5点固定（2車単2点＋3連単3点）
       5) 既存のポイント・加重評価・ライン復元は検証表示用として維持し、購入選定には使用しない
       6) note上部の最終着順予想は開催日KO後の最終順位を表示
       7) 各買い目の想定的中率は既存確率モデルをそのまま使用
@@ -3677,12 +3683,12 @@ def _v335bt_purchase_lines(final_order, profile):
     # v335dn以降、この旧4点ヒモは購入には使わず、内部検証計算としてのみ保持する。
     _himo = sorted([int(c) for c in _himo], key=_v335di_pair_sort_key)[:4]
 
-    # v335dn：実購入は開催日KO最終順位だけで固定4点を作る。
+    # v335do：実購入は開催日KO最終順位だけで固定5点を作る。
     # KO順位 1→2→3→4→5→6→7 に対し、
     #   2車単：1→3、1→4
-    #   3連単：1→2→5、1→2→6
-    # 6車未満ではこの4点構造を作れないため推奨購入は算出不可とする。
-    _ko_purchase_ready = len(_knock_order) >= 6
+    #   3連単：1→2→3、1→2→4、1→2→5
+    # 5車未満ではこの5点構造を作れないため推奨購入は算出不可とする。
+    _ko_purchase_ready = len(_knock_order) >= 5
     _purchase_exacta_himo = []
     _purchase_trifecta_tickets = []
     if _ko_purchase_ready:
@@ -3691,11 +3697,11 @@ def _v335bt_purchase_lines(final_order, profile):
         _ko3 = int(_knock_order[2])
         _ko4 = int(_knock_order[3])
         _ko5 = int(_knock_order[4])
-        _ko6 = int(_knock_order[5])
         _purchase_exacta_himo = [_ko3, _ko4]
         _purchase_trifecta_tickets = [
+            (_ko1, _ko2, _ko3),
+            (_ko1, _ko2, _ko4),
             (_ko1, _ko2, _ko5),
-            (_ko1, _ko2, _ko6),
         ]
 
     # 内部3連単計算は従来どおり3車までの既存ライン復元順位を維持する。
@@ -3713,7 +3719,7 @@ def _v335bt_purchase_lines(final_order, profile):
         _p1_map, _p2_map, _p3_map = {}, {}, {}
         _axis_p1 = 0.0
 
-    # v335dn：実際に買う2車単2点・3連単2点の想定的中率。
+    # v335do：実際に買う2車単2点・3連単3点の想定的中率。
     _exacta_tickets = [
         (int(_axis), int(c)) for c in _purchase_exacta_himo
     ] if _ko_purchase_ready else []
@@ -3777,7 +3783,7 @@ def _v335bt_purchase_lines(final_order, profile):
         _out.append(f"軸：{int(_axis)}")
 
     if not _ko_purchase_ready:
-        _out.append("2車単・3連単：開催日KO最終順位6位まで不足のため算出不可")
+        _out.append("2車単・3連単：開催日KO最終順位5位まで不足のため算出不可")
     else:
         _out.append(
             f"2車単：{int(_axis)}-" + "".join(str(int(_car)) for _car in _purchase_exacta_himo)
