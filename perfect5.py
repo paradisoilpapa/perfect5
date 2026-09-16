@@ -1,9 +1,15 @@
-# v335dh（3段階選抜・2車単3点固定版）
-# ・v335dgを原本に、2車単ヒモ選抜だけを3段階選抜へ変更。
+# v335dj（詳細加重2車単評価表版）
+# ・v335diの3段階選抜＋保険枠4点ロジックは変更しない。
+# ・詳細出力の【加重2車複評価表】を非表示にし、最終軸→各相手の【加重2車単評価表】を表示する。
+# ・2車単表は、既存の加重ペア評価（的中点・妙味点・総合点）に、順序付き想定的中率を併記する。
+# ・2車複の加重計算自体は第2・第3選考の内部材料として維持し、note用簡易出力には評価表を追加しない。
+# v335di（3段階選抜・的中点1位保険復活・2車単4点版）
+# ・v335dhを原本に、3段階選抜の妙味3車へ「第2選考時の的中点1位」を保険枠として1車復活し、原則4点とする。
 # ・第1選考：調整後総合Pが0以上を通過。3車未満ならマイナスP側から総合P上位を補充して3車確保。
 # ・第2選考：第1選考候補を、既存の加重2車複評価表「総合点」で並べて上位3車を暫定採用。
-# ・第3選考：第1選考候補が4車以上ある場合、第2選考3車のうち「的中点1位」を除外し、総合点4位を繰り上げて最終3車とする。
-# ・第1選考候補が3車しかない場合は、3車固定を優先し、的中点1位を残してその3車を最終採用する。
+# ・第3選考：第1選考候補が4車以上なら、第2選考3車の「的中点1位」を外し、総合点4位を繰り上げて妙味3車を作る。
+# ・保険枠：第3選考で外した的中点1位を1車だけ復活し、妙味3車＋保険1車の4点とする。候補不足時は残り評価上位から補充する。
+# ・note上部の「最終着順予想」は、購入判断に実際に使う開催日KO後の最終順位を表示する。元V順位は候補選定欄の「今回V評価順位」に残す。
 # ・軸決定、V1/V2限定、開催日KO、疲労補正、80～90%比率、V順位、ゆがみ、加重評価計算、確率モデル、内部3連単計算は変更しない。
 # v335dg（マイナスP除外・2車単可変ヒモ版）
 # ・v335df2を原本に、2車単のヒモ購入条件だけを変更。
@@ -3280,15 +3286,16 @@ def _v335cd_trifecta_12_13_123(cars3):
 
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335dh note用推奨購入:
+    v335di note用推奨購入:
       1) V最終1位を初期軸とし、既存の開催日KOで最終軸を確定
       2) 2位以下の基本P・ゆがみP・総合Pは既存計算を維持
       3) 第1選考：総合P>=0を通過。3車未満ならマイナスP側の評価上位を補充して3車確保
       4) 第2選考：第1選考候補を既存「加重2車複評価表」の総合点順に並べ、上位3車
-      5) 第3選考：候補4車以上なら暫定3車の的中点1位を外し、総合点4位を繰り上げ
-      6) 第1選考候補が3車のみなら的中点1位を残し、その3車を最終採用
-      7) 2車単は最終3車の3点固定
-      8) 内部3連単計算・各買い目の既存想定的中率計算は変更しない
+      5) 第3選考：候補4車以上なら暫定3車の的中点1位を外し、総合点4位を繰り上げて妙味3車
+      6) 保険枠：第3選考で外した的中点1位を1車だけ復活。未除外時は第2選考内の的中点1位を保険扱い
+      7) 妙味3車＋保険1車を基本に2車単4点。4車未満なら残り評価上位から補充
+      8) note上部の最終着順予想は開催日KO後の最終順位を表示
+      9) 内部3連単計算・各買い目の既存想定的中率計算は変更しない
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
     if len(_order) < 4 or not isinstance(profile, dict):
@@ -3432,6 +3439,8 @@ def _v335bt_purchase_lines(final_order, profile):
     # 開催日KO査定後の1位を軸にする。軸入れ替え候補は元V2だけ。
     _axis = int(_knock_order[0])
     _post_himo_order = [int(c) for c in _knock_order[1:]]
+    # v335di：note上部の「最終着順予想」に、購入判断で実際に使うKO後順位を渡す。
+    globals()["V335DI_KNOCK_FINAL_ORDER"] = tuple(int(c) for c in _knock_order)
 
     # v335de：軸確定後は「軸とそのライン」を最優先し、その次に候補ラインを復元する。
     # ・軸がラインの前・中・後ろのどこにいても、軸と同一ラインの他車をライン順で先に確保する。
@@ -3499,16 +3508,18 @@ def _v335bt_purchase_lines(final_order, profile):
         _line_def_for_himo,
     )
 
-    # v335dh：2車単ヒモを3段階で選抜し、最終3点固定とする。
+    # v335di：2車単ヒモは「妙味3車＋的中点1位の保険1車」で原則4点。
     # 第1選考：
     #   ・調整後総合Pが0以上の車を通過。
     #   ・3車未満なら、マイナスP側から総合P上位（同点は元V順位上位）を補充して3車確保。
     # 第2選考：
     #   ・第1選考候補を、既存「加重2車複評価表」の軸との総合点で並べ、上位3車を暫定採用。
     # 第3選考：
-    #   ・第1選考候補が4車以上ある場合、暫定3車のうち的中点1位を除外し、
-    #     加重2車複総合点4位を繰り上げて最終3車とする。
-    #   ・第1選考候補が3車しかない場合は3点固定を優先し、的中点1位を残す。
+    #   ・第1選考候補が4車以上なら、暫定3車のうち的中点1位を除外し、
+    #     加重2車複総合点4位を繰り上げて「妙味3車」を作る。
+    # 保険枠：
+    #   ・第3選考で外した的中点1位を1車だけ復活して4点化する。
+    #   ・候補3車しかない等で的中点1位が妙味3車内に残る場合は、残り評価上位から1車補充して4点を維持。
     # 開催日KOで元V2へ軸変更した場合、元V1は従来どおり総合P未定義のため0P扱い。
     # ライン保護／ライン復元は2車単の採否条件には使わない。
 
@@ -3540,7 +3551,7 @@ def _v335bt_purchase_lines(final_order, profile):
 
     # ---- 既存の加重2車複評価表を取得 ----
     # _make_note_final_summary_block() が先に計算し、compact note生成前にglobalへ保存する。
-    _weighted_pair_rows = list(globals().get("V335DH_WEIGHTED_PAIR_ROWS", []) or [])
+    _weighted_pair_rows = list(globals().get("V335DI_WEIGHTED_PAIR_ROWS", []) or [])
     _axis_pair_metric = {}
     for _r in _weighted_pair_rows:
         try:
@@ -3557,7 +3568,7 @@ def _v335bt_purchase_lines(final_order, profile):
         except Exception:
             pass
 
-    def _v335dh_pair_sort_key(_car):
+    def _v335di_pair_sort_key(_car):
         _m = _axis_pair_metric.get(int(_car))
         if _m is None:
             # 通常は全組合せに評価がある。欠損時だけ後順位へ回し、
@@ -3578,19 +3589,16 @@ def _v335bt_purchase_lines(final_order, profile):
 
     _stage1_weighted_order = sorted(
         [int(c) for c in _stage1_candidates],
-        key=_v335dh_pair_sort_key,
+        key=_v335di_pair_sort_key,
     )
 
     # ---- 第2選考：加重2車複総合点上位3車 ----
     _stage2_top3 = [int(c) for c in _stage1_weighted_order[:3]]
 
-    # ---- 第3選考：的中点1位を外し、総合点4位を繰上げ ----
-    _stage3_removed_hit_top = None
-    _stage3_promoted_total4 = None
-    _himo = list(_stage2_top3)
-
-    if len(_stage1_weighted_order) >= 4 and len(_stage2_top3) == 3:
-        _stage3_removed_hit_top = max(
+    # 第2選考3車の的中点1位。第3選考で外した場合も、最後に保険枠として復活させる。
+    _stage2_hit_top = None
+    if _stage2_top3:
+        _stage2_hit_top = max(
             _stage2_top3,
             key=lambda c: (
                 float((_axis_pair_metric.get(int(c), {}) or {}).get("hit_score", -1.0)),
@@ -3599,30 +3607,59 @@ def _v335bt_purchase_lines(final_order, profile):
                 -int(c),
             ),
         )
+
+    # ---- 第3選考：的中点1位を外し、総合点4位を繰上げて妙味3車 ----
+    _stage3_removed_hit_top = None
+    _stage3_promoted_total4 = None
+    _stage3_value3 = list(_stage2_top3)
+
+    if len(_stage1_weighted_order) >= 4 and len(_stage2_top3) == 3 and _stage2_hit_top is not None:
+        _stage3_removed_hit_top = int(_stage2_hit_top)
         _stage3_promoted_total4 = int(_stage1_weighted_order[3])
-        _himo = [
+        _stage3_value3 = [
             int(c) for c in _stage2_top3
             if int(c) != int(_stage3_removed_hit_top)
         ]
-        if int(_stage3_promoted_total4) not in _himo:
-            _himo.append(int(_stage3_promoted_total4))
-        # 最終表示順は加重2車複総合点順に戻す。
-        _himo = sorted(_himo, key=_v335dh_pair_sort_key)[:3]
+        if int(_stage3_promoted_total4) not in _stage3_value3:
+            _stage3_value3.append(int(_stage3_promoted_total4))
+        _stage3_value3 = sorted(_stage3_value3, key=_v335di_pair_sort_key)[:3]
 
-    # 評価表欠損等があっても2車単は3点固定を守る。
-    if len(_himo) < 3:
+    # 妙味3車が不足した場合は、第1選考順位→KO後順位の順で3車まで補充。
+    if len(_stage3_value3) < 3:
         for _c in _stage1_weighted_order:
-            if int(_c) not in _himo:
-                _himo.append(int(_c))
-            if len(_himo) >= 3:
+            if int(_c) not in _stage3_value3:
+                _stage3_value3.append(int(_c))
+            if len(_stage3_value3) >= 3:
                 break
-    if len(_himo) < 3:
+    if len(_stage3_value3) < 3:
         for _c in _post_himo_order:
+            if int(_c) not in _stage3_value3:
+                _stage3_value3.append(int(_c))
+            if len(_stage3_value3) >= 3:
+                break
+    _stage3_value3 = [int(c) for c in _stage3_value3[:3]]
+
+    # ---- 保険枠：第2選考時の的中点1位を1車だけ復活 ----
+    _insurance_hit_top = int(_stage2_hit_top) if _stage2_hit_top is not None else None
+    _himo = list(_stage3_value3)
+    if _insurance_hit_top is not None and int(_insurance_hit_top) not in _himo:
+        _himo.append(int(_insurance_hit_top))
+
+    # 的中点1位が妙味3車内に残っていて4車にならない場合は、
+    # 第1選考の次点→除外済み車を含む全残りの加重総合点順で1車補充する。
+    if len(_himo) < 4:
+        _all_remaining_weighted = sorted(
+            [int(c) for c in _post_himo_order if int(c) not in _himo],
+            key=_v335di_pair_sort_key,
+        )
+        for _c in _all_remaining_weighted:
             if int(_c) not in _himo:
                 _himo.append(int(_c))
-            if len(_himo) >= 3:
+            if len(_himo) >= 4:
                 break
-    _himo = [int(c) for c in _himo[:3]]
+
+    # 5車立て以上では原則4点。表示順は加重2車複総合点順。
+    _himo = sorted([int(c) for c in _himo], key=_v335di_pair_sort_key)[:4]
 
     # 内部3連単計算は従来どおり3車までの既存ライン復元順位を維持する。
     # note推奨表示は従来どおり2車単のみ。
@@ -3645,6 +3682,39 @@ def _v335bt_purchase_lines(final_order, profile):
         tuple(t): float(_v335br_ticket_probability(tuple(t), _p1_map, _p2_map, _p3_map))
         for t in _exacta_tickets
     }
+
+    # v335dj：詳細出力専用の「加重2車単評価表」データ。
+    # 表示対象は最終軸→軸以外の全車。
+    # 的中点・妙味点・総合点は、選抜で実際に使っている既存加重ペア評価をそのまま使用し、
+    # 2車単としての方向性は順序付き想定的中率を併記して確認する。
+    _v335dj_exacta_rows = []
+    for _c in _post_himo_order:
+        try:
+            _c = int(_c)
+            _m = dict(_axis_pair_metric.get(_c, {}) or {})
+            _prob = float(_v335br_ticket_probability((int(_axis), _c), _p1_map, _p2_map, _p3_map))
+            _v335dj_exacta_rows.append({
+                "disp": f"{int(_axis)}-{_c}",
+                "axis": int(_axis),
+                "himo": _c,
+                "hit_score": float(_m.get("hit_score", 0.0) or 0.0),
+                "myoumi_score": float(_m.get("myoumi_score", 0.0) or 0.0),
+                "total_pt": float(_m.get("total_pt", 0.0) or 0.0),
+                "hit_prob": _prob,
+            })
+        except Exception:
+            pass
+    _v335dj_exacta_rows = sorted(
+        _v335dj_exacta_rows,
+        key=lambda _r: (
+            float((_r or {}).get("total_pt", 0.0) or 0.0),
+            float((_r or {}).get("hit_score", 0.0) or 0.0),
+            float((_r or {}).get("myoumi_score", 0.0) or 0.0),
+            float((_r or {}).get("hit_prob", 0.0) or 0.0),
+        ),
+        reverse=True,
+    )
+    globals()["V335DJ_WEIGHTED_EXACTA_ROWS"] = [dict(_r) for _r in _v335dj_exacta_rows]
 
     _tri_tickets = []
     for _b in _tri_second:
@@ -3712,19 +3782,24 @@ def _v335bt_purchase_lines(final_order, profile):
 
         _stage1_text = " → ".join(str(int(c)) for c in _stage1_candidates) if _stage1_candidates else "なし"
         _stage2_text = " → ".join(str(int(c)) for c in _stage2_top3) if _stage2_top3 else "なし"
-        _stage3_text = " → ".join(str(int(c)) for c in _himo) if _himo else "なし"
+        _stage3_value_text = " → ".join(str(int(c)) for c in _stage3_value3) if _stage3_value3 else "なし"
+        _final4_text = " → ".join(str(int(c)) for c in _himo) if _himo else "なし"
 
-        # 既存の確認項目名は残しつつ、3段階の中身を追跡できるようにする。
+        # 3段階選抜と保険枠を分けて表示し、4点化の理由を追跡できるようにする。
         _out.append(f"マイナスP除外ヒモ　 ：{_stage1_text}")
         _out.append(f"第2選考・総合TOP3　：{_stage2_text}")
         if _stage3_removed_hit_top is not None and _stage3_promoted_total4 is not None:
             _out.append(
-                f"第3選考・的中1位除外：{int(_stage3_removed_hit_top)} → "
-                f"総合4位{int(_stage3_promoted_total4)}繰上げ"
+                f"第3選考・妙味3車　　：{_stage3_value_text}"
+                f"（的中1位{int(_stage3_removed_hit_top)}除外→総合4位{int(_stage3_promoted_total4)}繰上げ）"
             )
         else:
-            _out.append("第3選考・的中1位除外：なし（候補3車のため残す）")
-        _out.append(f"最終3車ヒモ　　　　：{_stage3_text}")
+            _out.append(f"第3選考・妙味3車　　：{_stage3_value_text}（候補不足のため的中1位維持）")
+        if _insurance_hit_top is not None:
+            _out.append(f"保険枠・的中1位復活 ：{int(_insurance_hit_top)}")
+        else:
+            _out.append("保険枠・的中1位復活 ：算出不可")
+        _out.append(f"最終4車ヒモ　　　　：{_final4_text}")
         if _knock_log:
             for _k in _knock_log:
                 # v335dd：開催日査定欄は第1フィルターの純粋な査定勝敗を表示する。
@@ -3785,6 +3860,7 @@ def _v335br_hit_top_lines(
 
     _out = list(_v335bt_purchase_lines(_order, _profile))
     _out.append("")
+    _out.append("※第3選考で外した的中点1位は、的中スパン短縮の保険枠として1点だけ復活し、原則4点とします。")
     _out.append("※1着想定・買目想定的中率はヴェロビ内部指標によるモデル値です。")
     return _out
 
@@ -14974,6 +15050,12 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             top_n=3,
         )
         if _hit_top_lines:
+            # v335di：上部の最終着順予想は、購入判断で実際に使った開催日KO後順位へ統一する。
+            _ko_final_order = tuple(
+                int(x) for x in (globals().get("V335DI_KNOCK_FINAL_ORDER", tuple()) or tuple())
+            )
+            if _ko_final_order and len(lines) >= 4:
+                lines[3] = f"最終着順予想　{' → '.join(str(int(x)) for x in _ko_final_order)}"
             lines.append("")
             lines.extend(_hit_top_lines)
         return "\n".join(lines).strip() + "\n"
@@ -15431,8 +15513,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
     旧期待値推奨、34-12切替、三展開合成フォメ、VeloBi列フォメは参照しない。
     """
-    # v335dh：レース切替時に前レースの加重2車複評価を持ち越さない。
-    globals()["V335DH_WEIGHTED_PAIR_ROWS"] = []
+    # v335di：レース切替時に前レースの加重2車複評価／KO最終順位を持ち越さない。
+    globals()["V335DI_WEIGHTED_PAIR_ROWS"] = []
+    globals()["V335DI_KNOCK_FINAL_ORDER"] = tuple()
+    globals()["V335DJ_WEIGHTED_EXACTA_ROWS"] = []
     try:
         xs = []
         seen = set()
@@ -16434,8 +16518,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
             # v220: 2車複サマリーは、流れ別候補の最大ptではなく、
             #       流れ配分込みの車番別平均評価で的中期待を再計算した全通り評価から作る。
             _weighted_all_pair_rows = _make_weighted_overall_pair_rows(_weighted_car_hit_map, _weighted_car_myoumi_map)
-            # v335dh：compact note側の3段階ヒモ選抜で、既存の加重2車複評価結果をそのまま再利用する。
-            globals()["V335DH_WEIGHTED_PAIR_ROWS"] = [
+            # v335di：compact note側の3段階＋保険枠ヒモ選抜で、既存の加重2車複評価結果をそのまま再利用する。
+            globals()["V335DI_WEIGHTED_PAIR_ROWS"] = [
                 dict(_r) for _r in (_weighted_all_pair_rows or [])
                 if isinstance(_r, dict)
             ]
@@ -17736,7 +17820,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 lines.append("")
 
             # v231:
-            # 加重2車複評価表はABCDを出さず、的中点・妙味点・総合点を小数点第一位で表示する。
+            # 旧加重2車複評価表の整形関数は内部互換のため残すが、v335djでは詳細表示しない。
             def _fmt_weighted_pair_table(_rows, _limit=21):
                 """
                 v237:
@@ -17845,9 +17929,6 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 if _score_lines:
                     _weighted_eval_lines = ["【総合加重単騎評価】"]
                     _weighted_eval_lines.extend(_score_lines)
-                    _weighted_eval_lines.append("")
-                    _weighted_eval_lines.append("【加重2車複評価表】")
-                    _weighted_eval_lines.extend(_fmt_weighted_pair_table(_overall_sorted_rows, _limit=21))
                     _weighted_eval_lines.append("")
                     _weighted_eval_lines.append("【加重3連複評価表】")
                     _weighted_eval_lines.extend(_fmt_weighted_trio_table(_weighted_trio_rows, _limit=35))
@@ -18078,6 +18159,46 @@ compact_note_text = _v334n_build_compact_note_text(
     globals().get("_weighted_trio_rows", []) or [],
     _compact_queue_source,
 )
+
+# v335dj：加重2車単評価表は「詳細出力」だけに表示する。note用簡易出力には追加しない。
+try:
+    _v335dj_rows = list(globals().get("V335DJ_WEIGHTED_EXACTA_ROWS", []) or [])
+    if _v335dj_rows:
+        def _v335dj_fmt_num(_v):
+            try:
+                return f"{float(_v):.1f}"
+            except Exception:
+                return "-"
+
+        _v335dj_lines = [
+            "【加重2車単評価表】",
+            "　買い目　　 的中点　 妙味点　 総合点　 想定的中率",
+        ]
+        for _r in _v335dj_rows:
+            try:
+                _disp = str((_r or {}).get("disp", "")).strip()
+                if not _disp:
+                    continue
+                _hit = _v335dj_fmt_num((_r or {}).get("hit_score", 0.0))
+                _myo = _v335dj_fmt_num((_r or {}).get("myoumi_score", 0.0))
+                _tot = _v335dj_fmt_num((_r or {}).get("total_pt", 0.0))
+                _prob = float((_r or {}).get("hit_prob", 0.0) or 0.0) * 100.0
+                _v335dj_lines.append(
+                    f"　{_disp:<3}　　　　{_hit:>3}　　　{_myo:>3}　　　{_tot:>3}　　　{_prob:>5.1f}%"
+                )
+            except Exception:
+                pass
+        _v335dj_block = "\n".join(_v335dj_lines).strip()
+        if _v335dj_block:
+            _marker = "【加重3連複評価表】"
+            if _marker in note_text:
+                note_text = note_text.replace(_marker, _v335dj_block + "\n\n" + _marker, 1)
+            elif "＜短評＞" in note_text:
+                note_text = note_text.replace("＜短評＞", _v335dj_block + "\n\n＜短評＞", 1)
+            else:
+                note_text = note_text.rstrip() + "\n\n" + _v335dj_block
+except Exception as _e:
+    st.caption(f"詳細・加重2車単評価表生成不可：{_e}")
 
 st.text_area("ここを選択してコピー", compact_note_text, height=460)
 
