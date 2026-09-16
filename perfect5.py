@@ -1,3 +1,7 @@
+# v335dl（note選考ログ整理版）
+# ・note用簡易出力から内部検証用の「マイナスP除外ヒモ／第2選考／第3選考／保険枠」4行を削除。
+# ・読者向けには「最終4車ヒモ」だけを残す。4点選抜ロジック自体は変更しない。
+# ・詳細確認側の加重2車単評価表、軸、開催日KO、V1/V2、疲労補正、80-90%比率、確率モデルは変更しない。
 # v335dk（note保険注意書き削除版）
 # ・v335djの4点選抜ロジック、詳細加重2車単評価表は変更しない。
 # ・note用簡易出力末尾の「第3選考で外した的中点1位は…原則4点」注意書きだけを削除。
@@ -3788,20 +3792,8 @@ def _v335bt_purchase_lines(final_order, profile):
         _stage3_value_text = " → ".join(str(int(c)) for c in _stage3_value3) if _stage3_value3 else "なし"
         _final4_text = " → ".join(str(int(c)) for c in _himo) if _himo else "なし"
 
-        # 3段階選抜と保険枠を分けて表示し、4点化の理由を追跡できるようにする。
-        _out.append(f"マイナスP除外ヒモ　 ：{_stage1_text}")
-        _out.append(f"第2選考・総合TOP3　：{_stage2_text}")
-        if _stage3_removed_hit_top is not None and _stage3_promoted_total4 is not None:
-            _out.append(
-                f"第3選考・妙味3車　　：{_stage3_value_text}"
-                f"（的中1位{int(_stage3_removed_hit_top)}除外→総合4位{int(_stage3_promoted_total4)}繰上げ）"
-            )
-        else:
-            _out.append(f"第3選考・妙味3車　　：{_stage3_value_text}（候補不足のため的中1位維持）")
-        if _insurance_hit_top is not None:
-            _out.append(f"保険枠・的中1位復活 ：{int(_insurance_hit_top)}")
-        else:
-            _out.append("保険枠・的中1位復活 ：算出不可")
+        # v335dl：note読者向けには内部の3段階選考ログを出さず、最終4車だけ表示する。
+        # 選抜計算そのもの（stage1/stage2/stage3/insurance）は変更しない。
         _out.append(f"最終4車ヒモ　　　　：{_final4_text}")
         if _knock_log:
             for _k in _knock_log:
