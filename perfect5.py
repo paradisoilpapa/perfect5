@@ -1,3 +1,7 @@
+# v335dm（note表示さらに整理版）
+# ・note用簡易出力から『車番別2着内率順位／最終4車ヒモ／開催日KO最終順位』の3行を削除。
+# ・今回V評価順位、調整後ヒモ順位、開催日査定、V2/V1比率、ライン復元ヒモ順位は維持。
+# ・4点選抜ロジック、詳細加重2車単評価表、軸、開催日KO、V1/V2、疲労補正、80-90%比率、確率モデルは変更しない。
 # v335dl（note選考ログ整理版）
 # ・note用簡易出力から内部検証用の「マイナスP除外ヒモ／第2選考／第3選考／保険枠」4行を削除。
 # ・読者向けには「最終4車ヒモ」だけを残す。4点選抜ロジック自体は変更しない。
@@ -3783,7 +3787,6 @@ def _v335bt_purchase_lines(final_order, profile):
 
         _out.append("")
         _out.append(f"※候補選定 過去{_n_text}レース集計")
-        _out.append(f"車番別2着内率順位　：{_hist_text}")
         _out.append(f"今回V評価順位　　　：{_v_text}")
         _out.append(f"調整後ヒモ順位　　 ：{_adjusted_text}")
 
@@ -3792,9 +3795,8 @@ def _v335bt_purchase_lines(final_order, profile):
         _stage3_value_text = " → ".join(str(int(c)) for c in _stage3_value3) if _stage3_value3 else "なし"
         _final4_text = " → ".join(str(int(c)) for c in _himo) if _himo else "なし"
 
-        # v335dl：note読者向けには内部の3段階選考ログを出さず、最終4車だけ表示する。
+        # v335dm：note読者向けには内部の3段階選考ログと重複表示を出さない。
         # 選抜計算そのもの（stage1/stage2/stage3/insurance）は変更しない。
-        _out.append(f"最終4車ヒモ　　　　：{_final4_text}")
         if _knock_log:
             for _k in _knock_log:
                 # v335dd：開催日査定欄は第1フィルターの純粋な査定勝敗を表示する。
@@ -3816,9 +3818,8 @@ def _v335bt_purchase_lines(final_order, profile):
                 _out.append(
                     f"開催日査定診断　　 ：{int(_order[0])} vs {int(_order[1])} の比較ログ未生成"
                 )
-        # v335cr：開催日KO後の全車順位を毎レース表示。購入軸との整合チェック用。
+        # v335dm：開催日KO後順位は上部の最終着順予想へ反映済み。ここでは内部保持のみ。
         _knock_text = " → ".join(str(int(c)) for c in _knock_order)
-        _out.append(f"開催日KO最終順位　 ：{_knock_text}")
         _line_himo_text = " → ".join(str(int(c)) for c in _line_restored_himo_order)
         _out.append(f"ライン復元ヒモ順位 ：{_line_himo_text}")
     except Exception:
