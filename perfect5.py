@@ -1,3 +1,9 @@
+# v335dg（マイナスP除外・2車単可変ヒモ版）
+# ・v335df2を原本に、2車単のヒモ購入条件だけを変更。
+# ・軸決定（V1/V2限定、開催日KO、疲労逆転、80-90%比率）は変更しない。
+# ・軸確定後、軸以外の全車を対象に「調整後ヒモ順位」で表示している総合Pを判定し、0P以上はすべて購入、マイナスPだけ除外する。
+# ・2車単は3点固定を廃止し、条件通過車数に応じた可変点数とする。
+# ・ラインによる強制保護は購入条件に使用しない。既存のV順位、ゆがみ計算、KO、確率モデルは変更しない。
 # v335df2（軸ライン1車保護＋KO上位2車・構造修正版）
 # v335deを原本に、ヒモ選定関数だけを置換。
 # 軸KO、V1/V2限定、80-90%比率、疲労補正、V順位、確率モデル等は変更しない。
@@ -3486,10 +3492,17 @@ def _v335bt_purchase_lines(final_order, profile):
         _line_def_for_himo,
     )
 
-    # 2車単：ライン復元後の軸→上位3車。点数は従来どおり3点固定。
-    _himo = [int(c) for c in _line_restored_himo_order[:3]]
+    # v335dg：2車単ヒモは3点固定を廃止。
+    # 軸確定後、軸以外の全車について「調整後ヒモ順位」で表示している総合Pを判定し、
+    # 0P以上（プラス／据え置き）はすべて購入、マイナスPだけを除外する。
+    # 開催日KOで元V2へ軸変更した場合、元V1は従来の総合P計算対象外なので0P扱いで残す。
+    # ライン保護／ライン復元は2車単の採否条件には使わない。
+    _himo = [
+        int(c) for c in _post_himo_order
+        if int(_total_point.get(int(c), 0)) >= 0
+    ]
 
-    # 内部3連単計算も、ヒモ候補の並びだけ同じ復元順位へ合わせる。
+    # 内部3連単計算は従来どおり3車までの既存ライン復元順位を維持する。
     # note推奨表示は従来どおり2車単のみ。
     _tri_second = [int(c) for c in _line_restored_himo_order[:2]]
     _tri_third = [int(c) for c in _line_restored_himo_order[:3]]
@@ -3574,6 +3587,8 @@ def _v335bt_purchase_lines(final_order, profile):
         _out.append(f"車番別2着内率順位　：{_hist_text}")
         _out.append(f"今回V評価順位　　　：{_v_text}")
         _out.append(f"調整後ヒモ順位　　 ：{_adjusted_text}")
+        _buy_himo_text = " → ".join(str(int(c)) for c in _himo) if _himo else "なし"
+        _out.append(f"マイナスP除外ヒモ　 ：{_buy_himo_text}")
         if _knock_log:
             for _k in _knock_log:
                 # v335dd：開催日査定欄は第1フィルターの純粋な査定勝敗を表示する。
