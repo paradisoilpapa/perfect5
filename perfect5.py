@@ -1,3 +1,9 @@
+# v335dn（開催日KO順位・2車単＋3連単4点ミックス版）
+# ・v335dmを原本に、推奨購入の最終買い目だけを開催日KO最終順位基準の4点へ変更。
+# ・開催日KO最終順位を1→2→3→4→5→6→7としたとき、2車単は1→3／1→4の2点。
+# ・3連単は1→2→5／1→2→6の2点。合計4点固定。
+# ・従来の3段階ヒモ選抜は購入判定には使用しない。既存のポイント計算・加重評価は検証表示用として維持。
+# ・軸決定、V1/V2限定、開催日KO、疲労補正、80-90%比率、V順位、ゆがみ、確率モデル、詳細加重2車単評価表は変更しない。
 # v335dm（note表示さらに整理版）
 # ・note用簡易出力から『車番別2着内率順位／最終4車ヒモ／開催日KO最終順位』の3行を削除。
 # ・今回V評価順位、調整後ヒモ順位、開催日査定、V2/V1比率、ライン復元ヒモ順位は維持。
@@ -3297,16 +3303,14 @@ def _v335cd_trifecta_12_13_123(cars3):
 
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335di note用推奨購入:
-      1) V最終1位を初期軸とし、既存の開催日KOで最終軸を確定
-      2) 2位以下の基本P・ゆがみP・総合Pは既存計算を維持
-      3) 第1選考：総合P>=0を通過。3車未満ならマイナスP側の評価上位を補充して3車確保
-      4) 第2選考：第1選考候補を既存「加重2車複評価表」の総合点順に並べ、上位3車
-      5) 第3選考：候補4車以上なら暫定3車の的中点1位を外し、総合点4位を繰り上げて妙味3車
-      6) 保険枠：第3選考で外した的中点1位を1車だけ復活。未除外時は第2選考内の的中点1位を保険扱い
-      7) 妙味3車＋保険1車を基本に2車単4点。4車未満なら残り評価上位から補充
-      8) note上部の最終着順予想は開催日KO後の最終順位を表示
-      9) 内部3連単計算・各買い目の既存想定的中率計算は変更しない
+    v335dn note用推奨購入:
+      1) V最終1位を初期軸とし、既存の開催日KOで最終順位を確定
+      2) 開催日KO最終順位1位を頭として、2車単1→3／1→4を購入
+      3) 同じKO順位1位→2位を1・2着固定し、3着5位／6位の3連単2点を購入
+      4) 合計4点固定（2車単2点＋3連単2点）
+      5) 既存のポイント・加重評価・ライン復元は検証表示用として維持し、購入選定には使用しない
+      6) note上部の最終着順予想は開催日KO後の最終順位を表示
+      7) 各買い目の想定的中率は既存確率モデルをそのまま使用
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
     if len(_order) < 4 or not isinstance(profile, dict):
@@ -3670,7 +3674,29 @@ def _v335bt_purchase_lines(final_order, profile):
                 break
 
     # 5車立て以上では原則4点。表示順は加重2車複総合点順。
+    # v335dn以降、この旧4点ヒモは購入には使わず、内部検証計算としてのみ保持する。
     _himo = sorted([int(c) for c in _himo], key=_v335di_pair_sort_key)[:4]
+
+    # v335dn：実購入は開催日KO最終順位だけで固定4点を作る。
+    # KO順位 1→2→3→4→5→6→7 に対し、
+    #   2車単：1→3、1→4
+    #   3連単：1→2→5、1→2→6
+    # 6車未満ではこの4点構造を作れないため推奨購入は算出不可とする。
+    _ko_purchase_ready = len(_knock_order) >= 6
+    _purchase_exacta_himo = []
+    _purchase_trifecta_tickets = []
+    if _ko_purchase_ready:
+        _ko1 = int(_knock_order[0])
+        _ko2 = int(_knock_order[1])
+        _ko3 = int(_knock_order[2])
+        _ko4 = int(_knock_order[3])
+        _ko5 = int(_knock_order[4])
+        _ko6 = int(_knock_order[5])
+        _purchase_exacta_himo = [_ko3, _ko4]
+        _purchase_trifecta_tickets = [
+            (_ko1, _ko2, _ko5),
+            (_ko1, _ko2, _ko6),
+        ]
 
     # 内部3連単計算は従来どおり3車までの既存ライン復元順位を維持する。
     # note推奨表示は従来どおり2車単のみ。
@@ -3687,11 +3713,17 @@ def _v335bt_purchase_lines(final_order, profile):
         _p1_map, _p2_map, _p3_map = {}, {}, {}
         _axis_p1 = 0.0
 
-    # 実際に買う各券の想定的中率。
-    _exacta_tickets = [(int(_axis), int(c)) for c in _himo]
+    # v335dn：実際に買う2車単2点・3連単2点の想定的中率。
+    _exacta_tickets = [
+        (int(_axis), int(c)) for c in _purchase_exacta_himo
+    ] if _ko_purchase_ready else []
     _exacta_probs = {
         tuple(t): float(_v335br_ticket_probability(tuple(t), _p1_map, _p2_map, _p3_map))
         for t in _exacta_tickets
+    }
+    _purchase_trifecta_probs = {
+        tuple(t): float(_v335br_ticket_probability(tuple(t), _p1_map, _p2_map, _p3_map))
+        for t in _purchase_trifecta_tickets
     }
 
     # v335dj：詳細出力専用の「加重2車単評価表」データ。
@@ -3744,14 +3776,27 @@ def _v335bt_purchase_lines(final_order, profile):
     else:
         _out.append(f"軸：{int(_axis)}")
 
-    _out.append(
-        f"2車単：{int(_axis)}-" + "".join(str(int(_car)) for _car in _himo)
-    )
-    for _ticket in _exacta_tickets:
-        _prob = float(_exacta_probs.get(tuple(_ticket), 0.0) or 0.0)
+    if not _ko_purchase_ready:
+        _out.append("2車単・3連単：開催日KO最終順位6位まで不足のため算出不可")
+    else:
         _out.append(
-            f"　　　　{int(_ticket[0])}-{int(_ticket[1])}（想定的中率{_prob*100:.1f}%）"
+            f"2車単：{int(_axis)}-" + "".join(str(int(_car)) for _car in _purchase_exacta_himo)
         )
+        for _ticket in _exacta_tickets:
+            _prob = float(_exacta_probs.get(tuple(_ticket), 0.0) or 0.0)
+            _out.append(
+                f"　　　　{int(_ticket[0])}-{int(_ticket[1])}（想定的中率{_prob*100:.1f}%）"
+            )
+
+        _out.append(
+            f"3連単：{int(_axis)}-{int(_knock_order[1])}-"
+            + "".join(str(int(_ticket[2])) for _ticket in _purchase_trifecta_tickets)
+        )
+        for _ticket in _purchase_trifecta_tickets:
+            _prob = float(_purchase_trifecta_probs.get(tuple(_ticket), 0.0) or 0.0)
+            _out.append(
+                f"　　　　{int(_ticket[0])}-{int(_ticket[1])}-{int(_ticket[2])}（想定的中率{_prob*100:.1f}%）"
+            )
 
 
     # 読者向け：過去順位・V順位・ポイント調整結果。
@@ -3793,7 +3838,7 @@ def _v335bt_purchase_lines(final_order, profile):
         _stage1_text = " → ".join(str(int(c)) for c in _stage1_candidates) if _stage1_candidates else "なし"
         _stage2_text = " → ".join(str(int(c)) for c in _stage2_top3) if _stage2_top3 else "なし"
         _stage3_value_text = " → ".join(str(int(c)) for c in _stage3_value3) if _stage3_value3 else "なし"
-        _final4_text = " → ".join(str(int(c)) for c in _himo) if _himo else "なし"
+        _legacy4_text = " → ".join(str(int(c)) for c in _himo) if _himo else "なし"
 
         # v335dm：note読者向けには内部の3段階選考ログと重複表示を出さない。
         # 選抜計算そのもの（stage1/stage2/stage3/insurance）は変更しない。
