@@ -1,3 +1,9 @@
+# v335du（買い目別総合点表示・読者向け整理版）
+# ・2車単／3連単の評価ロジック、順位生成、★判定はv335dtから変更しない。
+# ・推奨購入は対象3点を個別に展開し、各買い目の総合点を括弧内に小数1桁で表示する。
+# ・グループの平均総合点は従来どおり表示し、★判定は3点平均同士の比較を維持する。
+# ・「※候補選定 過去Nレース集計」は公開表示から削除する。
+# ・文末に、平均総合点がヴェロビ独自の的中点・妙味点から算出した各買い目総合点の平均である旨を説明する。
 # v335dt（2車単vs3連単・完全順序付き評価版）
 # ・3連複／2車複の総合点は推奨判定に一切使用しない。
 # ・2車単は評価2→1／1→3／1→4、3連単は評価1→2→3／4／5の各3点だけを比較。
@@ -3689,33 +3695,40 @@ def _v335bt_purchase_lines(final_order, profile):
     _exacta_mark = "★推奨" if _exacta_recommended else ("＝同点" if _is_tie else "")
     _trifecta_mark = "★推奨" if _trifecta_recommended else ("＝同点" if _is_tie else "")
 
+    def _fmt_ticket_with_score(_ticket, _score):
+        try:
+            _ticket_text = "-".join(str(int(x)) for x in (_ticket or tuple()))
+            if _score is None:
+                return f"{_ticket_text}（算出不可）"
+            return f"{_ticket_text}（{float(_score):.1f}）"
+        except Exception:
+            return "算出不可"
+
     _out.append(f"【2車単】{_exacta_mark}")
-    _out.append(f"{_r2}-{_r1}　{_r1}-{_r3}{_r4}")
+    _out.append(
+        "　".join(
+            _fmt_ticket_with_score(_ticket, _score)
+            for _ticket, _score in zip(_exacta_tickets, _exacta_scores)
+        )
+    )
     _out.append(
         f"平均総合点：{float(_exacta_avg):.2f}"
         if _exacta_avg is not None else "平均総合点：算出不可"
     )
     _out.append("")
     _out.append(f"【3連単】{_trifecta_mark}")
-    _out.append(f"{_r1}-{_r2}-{_r3}{_r4}{_r5}")
+    _out.append(
+        "　".join(
+            _fmt_ticket_with_score(_ticket, _score)
+            for _ticket, _score in zip(_trifecta_tickets, _trifecta_scores)
+        )
+    )
     _out.append(
         f"平均総合点：{float(_trifecta_avg):.2f}"
         if _trifecta_avg is not None else "平均総合点：算出不可"
     )
 
     try:
-        _valid_cars = [int(c) for c in _order if _rate_map.get(int(c)) is not None]
-        _n_vals = [
-            float(_n_map.get(int(c))) for c in _valid_cars
-            if _n_map.get(int(c)) is not None
-        ]
-        if _n_vals:
-            _n_min = int(round(min(_n_vals)))
-            _n_max = int(round(max(_n_vals)))
-            _n_text = str(_n_min) if _n_min == _n_max else f"{_n_min}～{_n_max}"
-        else:
-            _n_text = "—"
-
         _v_text = " → ".join(str(int(c)) for c in _order)
         _adjusted_text = " → ".join(
             f"{int(c)}（{int(_total_point.get(int(c), 0))}P）"
@@ -3724,7 +3737,6 @@ def _v335bt_purchase_lines(final_order, profile):
         _line_text = " → ".join(str(int(c)) for c in _line_restored_himo_order)
 
         _out.append("")
-        _out.append(f"※候補選定 過去{_n_text}レース集計")
         _out.append(f"今回V評価順位　　　：{_v_text}")
         _out.append(f"調整後ヒモ順位　　 ：{_adjusted_text}")
 
@@ -3781,7 +3793,7 @@ def _v335br_hit_top_lines(
 
     _out = list(_v335bt_purchase_lines(_order, _profile))
     _out.append("")
-    _out.append("※★推奨は2車単3点／3連単3点だけの完全順序付き平均総合点比較です。3連複・2車複評価と実オッズは使用しません。")
+    _out.append("※★推奨は2車単3点・3連単3点の平均総合点を比較したものです。平均総合点は、ヴェロビ独自の的中点・妙味点に基づいて算出した各買い目の総合点を平均したものです。実オッズは使用していません。")
     return _out
 
 def _v335bq_finish_strength_map(final_order):
