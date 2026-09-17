@@ -1,11 +1,11 @@
-# v335ds（2車単vs3連単・3点グループ平均総合点推奨版）
-# ・v335drを原本に、v335df基準の順位生成・開催日KO・ライン復元は変更しない。
-# ・2車単グループ：評価2位→1位＋評価1位→3位／4位の3点。
-# ・3連単グループ：評価1位→2位→3位／4位／5位の3点。
-# ・実オッズを使わない事前購入用として、両グループを各3点で同条件比較する。
-# ・総合点の的中側は、2車単42通り／3連単210通り（7車時）の順序付き想定的中率を券種内順位化して0～12点へ正規化。
-# ・妙味側は既存の流れ加重妙味単騎評価を各買い目構成車で平均し、既存どおり的中点との単純平均を総合点とする。
-# ・各グループ3点の平均総合点が高い側だけに★推奨を表示。個別買い目の点数・想定的中率は表示しない。
+# v335dt（2車単vs3連単・完全順序付き評価版）
+# ・3連複／2車複の総合点は推奨判定に一切使用しない。
+# ・2車単は評価2→1／1→3／1→4、3連単は評価1→2→3／4／5の各3点だけを比較。
+# ・的中点は券種別の順序付き想定的中率順位を0～12点化。
+# ・妙味点は既存の車別妙味評価×各着順への適合度で順序付き化し、券種内順位を0～10.8点化。
+# ・各3点の平均総合点（的中点＋妙味点の平均）を比較し、高い側だけ★推奨。
+# ・表示は該当する2車単3点／3連単3点と各グループ平均総合点だけ。全候補表は表示しない。
+# ・v335dfの順位生成、開催日KO、疲労補正、80-90%比率、ライン保護、確率モデルは変更しない。
 # ・V1/V2開催日KO、疲労補正、80-90%比率、ゆがみ、既存確率モデルは変更しない。
 # v335dh（3段階選抜・2車単3点固定版）
 # ・v335dgを原本に、2車単ヒモ選抜だけを3段階選抜へ変更。
@@ -3304,11 +3304,13 @@ def _v335bt_purchase_lines(final_order, profile):
       各3点
 
     ★判定:
-      ・券種ごとの全順序買い目について既存v335br想定的中率を算出。
-      ・同券種内の順位を0～12点へ正規化して「順序付き的中点」とする。
-      ・既存の流れ加重妙味単騎評価を構成車平均した「妙味点」と単純平均し、
-        順序付き総合点を作る。
-      ・各グループ3点の平均総合点が高い側だけを★推奨とする。
+      ・3連複／2車複の総合点は一切使わない。
+      ・券種ごとの全順序買い目について既存v335br想定的中率を算出し、
+        券種内順位を0～12点へ正規化して「順序付き的中点」とする。
+      ・既存の車別妙味評価に、1着／2着／3着それぞれの位置適合度を掛けて
+        券種ごとの順序付き妙味rawを作り、券種内順位を0～10.8点へ正規化する。
+      ・順序付き的中点と順序付き妙味点の平均を各買い目の総合点とし、
+        各グループ3点の平均総合点が高い側だけを★推奨とする。
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
     if len(_order) < 5 or not isinstance(profile, dict):
@@ -3550,30 +3552,92 @@ def _v335bt_purchase_lines(final_order, profile):
     _exacta_hit_score_map = _percentile_hit_score_map(_exacta_prob_map, 12.0)
     _trifecta_hit_score_map = _percentile_hit_score_map(_trifecta_prob_map, 12.0)
 
-    def _ordered_total_score(_ticket, _hit_score_map):
+    def _position_fit_map(_pos_map):
+        """各着順への適合度を車番間で0～1へ順位正規化。同率は平均順位。"""
+        try:
+            _items = [(int(c), float(v)) for c, v in dict(_pos_map or {}).items()]
+            _n = len(_items)
+            if _n <= 0:
+                return {}
+            if _n == 1:
+                return {_items[0][0]: 1.0}
+            _bucket = {}
+            for _car, _p in _items:
+                _bucket.setdefault(round(float(_p), 15), []).append(int(_car))
+            _result = {}
+            _rank_start = 1
+            for _p_key in sorted(_bucket.keys(), reverse=True):
+                _cars = list(_bucket.get(_p_key, []) or [])
+                _rank_end = _rank_start + len(_cars) - 1
+                _avg_rank = (float(_rank_start) + float(_rank_end)) / 2.0
+                _fit = 1.0 - ((float(_avg_rank) - 1.0) / float(_n - 1))
+                _fit = max(0.0, min(1.0, float(_fit)))
+                for _car in _cars:
+                    _result[int(_car)] = float(_fit)
+                _rank_start = _rank_end + 1
+            return _result
+        except Exception:
+            return {}
+
+    _fit1 = _position_fit_map(_p1_map)
+    _fit2 = _position_fit_map(_p2_map)
+    _fit3 = _position_fit_map(_p3_map)
+
+    def _ordered_myoumi_raw_map(_ticket_len):
+        """
+        順序付き妙味raw。3連複／2車複の点数は使わない。
+        各着順の車別妙味評価に、その車が当該着順へ来る適合度を掛ける。
+        したがって 1→2 と 2→1、1→2→3 と 2→1→3 は別評価になる。
+        """
+        _out_map = {}
+        _fit_maps = (_fit1, _fit2, _fit3)
+        try:
+            for _ticket in permutations(_order, int(_ticket_len)):
+                _ticket = tuple(int(x) for x in _ticket)
+                _vals = []
+                _valid = True
+                for _idx, _car in enumerate(_ticket):
+                    if int(_car) not in _weighted_myoumi_map:
+                        _valid = False
+                        break
+                    _fit_map = _fit_maps[_idx]
+                    if int(_car) not in _fit_map:
+                        _valid = False
+                        break
+                    _base_m = max(0.0, float(_weighted_myoumi_map.get(int(_car), 0.0) or 0.0))
+                    _fit = max(0.0, min(1.0, float(_fit_map.get(int(_car), 0.0) or 0.0)))
+                    _vals.append(_base_m * _fit)
+                if _valid and _vals:
+                    _out_map[_ticket] = sum(_vals) / float(len(_vals))
+        except Exception:
+            return {}
+        return _out_map
+
+    _exacta_myoumi_raw_map = _ordered_myoumi_raw_map(2)
+    _trifecta_myoumi_raw_map = _ordered_myoumi_raw_map(3)
+    _exacta_myoumi_score_map = _percentile_hit_score_map(_exacta_myoumi_raw_map, 10.8)
+    _trifecta_myoumi_score_map = _percentile_hit_score_map(_trifecta_myoumi_raw_map, 10.8)
+
+    def _ordered_total_score(_ticket, _hit_score_map, _myoumi_score_map):
         try:
             _ticket = tuple(int(x) for x in (_ticket or tuple()))
-            if not _ticket or _ticket not in _hit_score_map:
+            if not _ticket:
                 return None
-            _myoumi_vals = []
-            for _car in _ticket:
-                if int(_car) not in _weighted_myoumi_map:
-                    return None
-                _myoumi_vals.append(float(_weighted_myoumi_map.get(int(_car), 0.0) or 0.0))
-            if not _myoumi_vals:
+            if _ticket not in _hit_score_map or _ticket not in _myoumi_score_map:
                 return None
             _hit_score = float(_hit_score_map.get(_ticket, 0.0) or 0.0)
-            _myoumi_score = sum(_myoumi_vals) / float(len(_myoumi_vals))
-            _myoumi_score = max(0.0, min(10.8, float(_myoumi_score)))
+            _myoumi_score = float(_myoumi_score_map.get(_ticket, 0.0) or 0.0)
             return (max(0.0, _hit_score) + max(0.0, _myoumi_score)) / 2.0
         except Exception:
             return None
 
     _exacta_scores = [
-        _ordered_total_score(_t, _exacta_hit_score_map) for _t in _exacta_tickets
+        _ordered_total_score(_t, _exacta_hit_score_map, _exacta_myoumi_score_map)
+        for _t in _exacta_tickets
     ]
     _trifecta_scores = [
-        _ordered_total_score(_t, _trifecta_hit_score_map) for _t in _trifecta_tickets
+        _ordered_total_score(_t, _trifecta_hit_score_map, _trifecta_myoumi_score_map)
+        for _t in _trifecta_tickets
     ]
 
     def _group_avg(_scores):
@@ -3608,6 +3672,10 @@ def _v335bt_purchase_lines(final_order, profile):
         "trifecta_tickets": tuple(_trifecta_tickets),
         "exacta_scores": tuple(_exacta_scores),
         "trifecta_scores": tuple(_trifecta_scores),
+        "exacta_hit_scores": tuple(_exacta_hit_score_map.get(tuple(t)) for t in _exacta_tickets),
+        "trifecta_hit_scores": tuple(_trifecta_hit_score_map.get(tuple(t)) for t in _trifecta_tickets),
+        "exacta_myoumi_scores": tuple(_exacta_myoumi_score_map.get(tuple(t)) for t in _exacta_tickets),
+        "trifecta_myoumi_scores": tuple(_trifecta_myoumi_score_map.get(tuple(t)) for t in _trifecta_tickets),
         "exacta_avg": _exacta_avg,
         "trifecta_avg": _trifecta_avg,
         "recommended": (
@@ -3713,7 +3781,7 @@ def _v335br_hit_top_lines(
 
     _out = list(_v335bt_purchase_lines(_order, _profile))
     _out.append("")
-    _out.append("※★推奨は各3点の順序付き平均総合点比較です。実オッズは使用しません。")
+    _out.append("※★推奨は2車単3点／3連単3点だけの完全順序付き平均総合点比較です。3連複・2車複評価と実オッズは使用しません。")
     return _out
 
 def _v335bq_finish_strength_map(final_order):
@@ -17781,12 +17849,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                 if _score_lines:
                     _weighted_eval_lines = ["【総合加重単騎評価】"]
                     _weighted_eval_lines.extend(_score_lines)
-                    _weighted_eval_lines.append("")
-                    _weighted_eval_lines.append("【加重2車複評価表】")
-                    _weighted_eval_lines.extend(_fmt_weighted_pair_table(_overall_sorted_rows, _limit=21))
-                    _weighted_eval_lines.append("")
-                    _weighted_eval_lines.append("【加重3連複評価表】")
-                    _weighted_eval_lines.extend(_fmt_weighted_trio_table(_weighted_trio_rows, _limit=35))
+                    # v335dt：2車複／3連複の全候補評価表は表示しない。
+                    # 推奨比較はcompact note側の該当2車単3点／3連単3点だけで行う。
                     globals()["V289_WEIGHTED_EVAL_BLOCK"] = "\n".join(_weighted_eval_lines).strip()
         else:
             lines.append("【買目考察】")
