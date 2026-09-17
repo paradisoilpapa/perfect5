@@ -1,10 +1,12 @@
-# v335dr（v335df基準・現行5点買い完全版）
-# ・実行可能な完全版を土台に、順位生成はv335df仕様へ固定。
-# ・開催日KO後、軸ラインからKO順位最上位1車を必ず保護し、残りはKO順位上位から採用。
-# ・購入用最終順位＝「開催日KO確定軸＋v335dfライン復元ヒモ順位」。
-# ・2車単：最終順位1位→3位／4位。
-# ・3連単：最終順位1位→2位→3位／4位／5位。合計5点。
-# ・V1/V2開催日KO、疲労補正、80-90%比率、ゆがみ、確率モデルは変更しない。
+# v335ds（2車単vs3連単・3点グループ平均総合点推奨版）
+# ・v335drを原本に、v335df基準の順位生成・開催日KO・ライン復元は変更しない。
+# ・2車単グループ：評価2位→1位＋評価1位→3位／4位の3点。
+# ・3連単グループ：評価1位→2位→3位／4位／5位の3点。
+# ・実オッズを使わない事前購入用として、両グループを各3点で同条件比較する。
+# ・総合点の的中側は、2車単42通り／3連単210通り（7車時）の順序付き想定的中率を券種内順位化して0～12点へ正規化。
+# ・妙味側は既存の流れ加重妙味単騎評価を各買い目構成車で平均し、既存どおり的中点との単純平均を総合点とする。
+# ・各グループ3点の平均総合点が高い側だけに★推奨を表示。個別買い目の点数・想定的中率は表示しない。
+# ・V1/V2開催日KO、疲労補正、80-90%比率、ゆがみ、既存確率モデルは変更しない。
 # v335dh（3段階選抜・2車単3点固定版）
 # ・v335dgを原本に、2車単ヒモ選抜だけを3段階選抜へ変更。
 # ・第1選考：調整後総合Pが0以上を通過。3車未満ならマイナスP側から総合P上位を補充して3車確保。
@@ -3287,7 +3289,7 @@ def _v335cd_trifecta_12_13_123(cars3):
 
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335dr: v335dfの順位生成をそのまま使い、購入だけ現行5点へ変更。
+    v335ds: v335dfの順位生成をそのまま使い、3点グループ同士を平均総合点で比較する。
 
     順位生成:
       1) 元V順位からゆがみ調整ヒモ順位を作る
@@ -3296,10 +3298,17 @@ def _v335bt_purchase_lines(final_order, profile):
       4) 残りはKO順位上位から採用し、全ヒモ順位を確定
       5) 購入用最終順位 = 軸 + ライン復元ヒモ順位
 
-    購入:
-      2車単 = 1→3, 1→4
+    購入候補:
+      2車単 = 2→1, 1→3, 1→4
       3連単 = 1→2→3, 1→2→4, 1→2→5
-      合計5点
+      各3点
+
+    ★判定:
+      ・券種ごとの全順序買い目について既存v335br想定的中率を算出。
+      ・同券種内の順位を0～12点へ正規化して「順序付き的中点」とする。
+      ・既存の流れ加重妙味単騎評価を構成車平均した「妙味点」と単純平均し、
+        順序付き総合点を作る。
+      ・各グループ3点の平均総合点が高い側だけを★推奨とする。
     """
     _order = tuple(int(x) for x in (final_order or tuple()))
     if len(_order) < 5 or not isinstance(profile, dict):
@@ -3457,12 +3466,19 @@ def _v335bt_purchase_lines(final_order, profile):
     # ここが唯一の購入順位。表示・買い目とも同じ順位を使用する。
     _purchase_order = [int(_axis)] + [int(c) for c in _line_restored_himo_order]
     globals()["V335DR_FINAL_PURCHASE_ORDER"] = tuple(_purchase_order)
+    globals()["V335DS_FINAL_PURCHASE_ORDER"] = tuple(_purchase_order)
 
     if len(_purchase_order) < 5:
         return ["【推奨購入】", "購入用最終順位5位まで不足のため算出不可"]
 
     _r1, _r2, _r3, _r4, _r5 = [int(x) for x in _purchase_order[:5]]
-    _exacta_tickets = [(_r1, _r3), (_r1, _r4)]
+
+    # v335ds：両グループを3点で統一。
+    _exacta_tickets = [
+        (_r2, _r1),
+        (_r1, _r3),
+        (_r1, _r4),
+    ]
     _trifecta_tickets = [
         (_r1, _r2, _r3),
         (_r1, _r2, _r4),
@@ -3470,38 +3486,154 @@ def _v335bt_purchase_lines(final_order, profile):
     ]
 
     try:
+        # 既存の順序付き確率モデルは変更せず、そのまま評価に使用する。
         _p1_map = _v335br_position_probability_map(profile, _order, 1)
         _p2_map = _v335br_position_probability_map(profile, _order, 2)
         _p3_map = _v335br_position_probability_map(profile, _order, 3)
-        _axis_p1 = float((_p1_map or {}).get(int(_axis), 0.0) or 0.0)
     except Exception:
         _p1_map, _p2_map, _p3_map = {}, {}, {}
-        _axis_p1 = 0.0
 
-    _exacta_probs = {
-        tuple(t): float(_v335br_ticket_probability(tuple(t), _p1_map, _p2_map, _p3_map))
-        for t in _exacta_tickets
-    }
-    _trifecta_probs = {
-        tuple(t): float(_v335br_ticket_probability(tuple(t), _p1_map, _p2_map, _p3_map))
-        for t in _trifecta_tickets
+    def _ticket_prob_map(_ticket_len):
+        _out_map = {}
+        try:
+            for _ticket in permutations(_order, int(_ticket_len)):
+                _ticket = tuple(int(x) for x in _ticket)
+                _out_map[_ticket] = float(
+                    _v335br_ticket_probability(_ticket, _p1_map, _p2_map, _p3_map)
+                )
+        except Exception:
+            return {}
+        return _out_map
+
+    def _percentile_hit_score_map(_prob_map, _max_score=12.0):
+        """
+        券種内の絶対的中率差をそのまま比較せず、同券種内順位を0～12点へ正規化する。
+        これにより2車単と3連単の母数差による一方的な偏りを避ける。
+        同率は平均順位。
+        """
+        try:
+            _items = [(tuple(k), float(v)) for k, v in dict(_prob_map or {}).items()]
+            _n = len(_items)
+            if _n <= 0:
+                return {}
+            if _n == 1:
+                return {_items[0][0]: float(_max_score)}
+
+            _bucket = {}
+            for _ticket, _p in _items:
+                _key = round(float(_p), 15)
+                _bucket.setdefault(_key, []).append(_ticket)
+
+            _result = {}
+            _rank_start = 1
+            for _p_key in sorted(_bucket.keys(), reverse=True):
+                _tickets = list(_bucket.get(_p_key, []) or [])
+                _rank_end = _rank_start + len(_tickets) - 1
+                _avg_rank = (float(_rank_start) + float(_rank_end)) / 2.0
+                _score = float(_max_score) * (
+                    1.0 - ((float(_avg_rank) - 1.0) / float(_n - 1))
+                )
+                _score = max(0.0, min(float(_max_score), float(_score)))
+                for _ticket in _tickets:
+                    _result[tuple(_ticket)] = float(_score)
+                _rank_start = _rank_end + 1
+            return _result
+        except Exception:
+            return {}
+
+    _weighted_myoumi_map = dict(
+        globals().get("V335DS_WEIGHTED_CAR_MYOUMI_MAP", {}) or {}
+    )
+
+    _exacta_prob_map = _ticket_prob_map(2)
+    _trifecta_prob_map = _ticket_prob_map(3)
+    _exacta_hit_score_map = _percentile_hit_score_map(_exacta_prob_map, 12.0)
+    _trifecta_hit_score_map = _percentile_hit_score_map(_trifecta_prob_map, 12.0)
+
+    def _ordered_total_score(_ticket, _hit_score_map):
+        try:
+            _ticket = tuple(int(x) for x in (_ticket or tuple()))
+            if not _ticket or _ticket not in _hit_score_map:
+                return None
+            _myoumi_vals = []
+            for _car in _ticket:
+                if int(_car) not in _weighted_myoumi_map:
+                    return None
+                _myoumi_vals.append(float(_weighted_myoumi_map.get(int(_car), 0.0) or 0.0))
+            if not _myoumi_vals:
+                return None
+            _hit_score = float(_hit_score_map.get(_ticket, 0.0) or 0.0)
+            _myoumi_score = sum(_myoumi_vals) / float(len(_myoumi_vals))
+            _myoumi_score = max(0.0, min(10.8, float(_myoumi_score)))
+            return (max(0.0, _hit_score) + max(0.0, _myoumi_score)) / 2.0
+        except Exception:
+            return None
+
+    _exacta_scores = [
+        _ordered_total_score(_t, _exacta_hit_score_map) for _t in _exacta_tickets
+    ]
+    _trifecta_scores = [
+        _ordered_total_score(_t, _trifecta_hit_score_map) for _t in _trifecta_tickets
+    ]
+
+    def _group_avg(_scores):
+        try:
+            if len(_scores) != 3 or any(_v is None for _v in _scores):
+                return None
+            return sum(float(_v) for _v in _scores) / 3.0
+        except Exception:
+            return None
+
+    _exacta_avg = _group_avg(_exacta_scores)
+    _trifecta_avg = _group_avg(_trifecta_scores)
+
+    _exacta_recommended = bool(
+        _exacta_avg is not None
+        and _trifecta_avg is not None
+        and float(_exacta_avg) > float(_trifecta_avg)
+    )
+    _trifecta_recommended = bool(
+        _exacta_avg is not None
+        and _trifecta_avg is not None
+        and float(_trifecta_avg) > float(_exacta_avg)
+    )
+    _is_tie = bool(
+        _exacta_avg is not None
+        and _trifecta_avg is not None
+        and abs(float(_exacta_avg) - float(_trifecta_avg)) <= 1e-12
+    )
+
+    globals()["V335DS_GROUP_COMPARISON"] = {
+        "exacta_tickets": tuple(_exacta_tickets),
+        "trifecta_tickets": tuple(_trifecta_tickets),
+        "exacta_scores": tuple(_exacta_scores),
+        "trifecta_scores": tuple(_trifecta_scores),
+        "exacta_avg": _exacta_avg,
+        "trifecta_avg": _trifecta_avg,
+        "recommended": (
+            "2車単" if _exacta_recommended
+            else ("3連単" if _trifecta_recommended else ("同点" if _is_tie else "算出不可"))
+        ),
     }
 
     _out = ["【推奨購入】"]
-    if _axis_p1 > 0.0:
-        _out.append(f"軸：{int(_axis)}（1着想定{_axis_p1*100:.1f}%）")
-    else:
-        _out.append(f"軸：{int(_axis)}")
 
-    _out.append(f"2車単：{_r1}-{_r3}{_r4}")
-    for _t in _exacta_tickets:
-        _p = float(_exacta_probs.get(tuple(_t), 0.0) or 0.0)
-        _out.append(f"　　　　{_t[0]}-{_t[1]}（想定的中率{_p*100:.1f}%）")
+    _exacta_mark = "★推奨" if _exacta_recommended else ("＝同点" if _is_tie else "")
+    _trifecta_mark = "★推奨" if _trifecta_recommended else ("＝同点" if _is_tie else "")
 
-    _out.append(f"3連単：{_r1}-{_r2}-{_r3}{_r4}{_r5}")
-    for _t in _trifecta_tickets:
-        _p = float(_trifecta_probs.get(tuple(_t), 0.0) or 0.0)
-        _out.append(f"　　　　{_t[0]}-{_t[1]}-{_t[2]}（想定的中率{_p*100:.1f}%）")
+    _out.append(f"【2車単】{_exacta_mark}")
+    _out.append(f"{_r2}-{_r1}　{_r1}-{_r3}{_r4}")
+    _out.append(
+        f"平均総合点：{float(_exacta_avg):.2f}"
+        if _exacta_avg is not None else "平均総合点：算出不可"
+    )
+    _out.append("")
+    _out.append(f"【3連単】{_trifecta_mark}")
+    _out.append(f"{_r1}-{_r2}-{_r3}{_r4}{_r5}")
+    _out.append(
+        f"平均総合点：{float(_trifecta_avg):.2f}"
+        if _trifecta_avg is not None else "平均総合点：算出不可"
+    )
 
     try:
         _valid_cars = [int(c) for c in _order if _rate_map.get(int(c)) is not None]
@@ -3581,7 +3713,7 @@ def _v335br_hit_top_lines(
 
     _out = list(_v335bt_purchase_lines(_order, _profile))
     _out.append("")
-    _out.append("※1着想定・買目想定的中率はヴェロビ内部指標によるモデル値です。")
+    _out.append("※★推奨は各3点の順序付き平均総合点比較です。実オッズは使用しません。")
     return _out
 
 def _v335bq_finish_strength_map(final_order):
@@ -16198,6 +16330,9 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
             _weighted_car_hit_map = _weighted_car_hit_map_from_flows()
             _weighted_car_myoumi_map = _weighted_car_myoumi_map_from_flows()
+            # v335ds：compact noteの2車単vs3連単比較で、既存の流れ加重妙味を順序付き評価へ再利用する。
+            globals()["V335DS_WEIGHTED_CAR_HIT_MAP"] = dict(_weighted_car_hit_map or {})
+            globals()["V335DS_WEIGHTED_CAR_MYOUMI_MAP"] = dict(_weighted_car_myoumi_map or {})
             _nifuku_axis = None
             _nifuku_axis_rows_all = []
 
