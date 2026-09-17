@@ -1,4 +1,4 @@
-# v335du（買い目別総合点表示・読者向け整理版）
+# v335dv（買い目別総合点表示・読者向け整理版）
 # ・2車単／3連単の評価ロジック、順位生成、★判定はv335dtから変更しない。
 # ・推奨購入は対象3点を個別に展開し、各買い目の総合点を括弧内に小数1桁で表示する。
 # ・グループの平均総合点は従来どおり表示し、★判定は3点平均同士の比較を維持する。
@@ -3700,7 +3700,7 @@ def _v335bt_purchase_lines(final_order, profile):
             _ticket_text = "-".join(str(int(x)) for x in (_ticket or tuple()))
             if _score is None:
                 return f"{_ticket_text}（算出不可）"
-            return f"{_ticket_text}（{float(_score):.1f}）"
+            return f"{_ticket_text}（総合点{float(_score):.1f}）"
         except Exception:
             return "算出不可"
 
@@ -3793,7 +3793,8 @@ def _v335br_hit_top_lines(
 
     _out = list(_v335bt_purchase_lines(_order, _profile))
     _out.append("")
-    _out.append("※★推奨は2車単3点・3連単3点の平均総合点を比較したものです。平均総合点は、ヴェロビ独自の的中点・妙味点に基づいて算出した各買い目の総合点を平均したものです。実オッズは使用していません。")
+    _out.append("※★推奨は2車単3点・3連単3点の平均総合点を比較したものです。")
+    _out.append("※総合点・平均総合点は、ヴェロビ独自の的中点・妙味点に基づいて算出した各買い目の総合点です。実オッズは使用していません。")
     return _out
 
 def _v335bq_finish_strength_map(final_order):
