@@ -1,3 +1,10 @@
+# v335dx（合成ヒモ先行・最終1vs2版）
+# ・元V1をいったん1位固定のまま、軸以外6車の合成ヒモ順位を先に完成させる。
+# ・開催日査定は「元V1 vs 合成ヒモ1位」で最後に実施する。
+# ・元V1が負けた場合だけ1位と2位を入れ替え、元V1は2位までに留める。
+# ・購入順位では軸ライン1車の強制保護／ライン復元を使用しない。
+# ・2車単は2→1／1→3／1→4、3連単は1→2→3／4／5を最終評価順位から生成する。
+# ・2車単／3連単の順序付き総合点、3点平均、★判定ロジックはv335dvから変更しない。
 # v335dv（買い目別総合点表示・読者向け整理版）
 # ・2車単／3連単の評価ロジック、順位生成、★判定はv335dtから変更しない。
 # ・推奨購入は対象3点を個別に展開し、各買い目の総合点を括弧内に小数1桁で表示する。
@@ -3295,14 +3302,14 @@ def _v335cd_trifecta_12_13_123(cars3):
 
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335ds: v335dfの順位生成をそのまま使い、3点グループ同士を平均総合点で比較する。
+    v335dx: 合成ヒモ順位を先に完成させ、最後に元V1と合成ヒモ1位だけを開催日査定する。
 
     順位生成:
-      1) 元V順位からゆがみ調整ヒモ順位を作る
-      2) 既存の開催日KOでV1/V2の軸査定
-      3) v335df仕様で、確定軸の同ライン1車を必ず保護
-      4) 残りはKO順位上位から採用し、全ヒモ順位を確定
-      5) 購入用最終順位 = 軸 + ライン復元ヒモ順位
+      1) 元V1はいったん1位固定
+      2) 軸以外6車でゆがみ調整済みの合成ヒモ順位を完成
+      3) 元V1 vs 合成ヒモ1位を開催日KOで査定
+      4) 元V1が負けた場合だけ1位・2位を交換（元V1は2位まで）
+      5) ライン保護による強制順位変更は行わず、その最終順位を購入順位に使用
 
     購入候補:
       2車単 = 2→1, 1→3, 1→4
@@ -3351,7 +3358,8 @@ def _v335bt_purchase_lines(final_order, profile):
         ),
     )
 
-    # v335df既存仕様：ゆがみ調整後順位をKO母体にする。
+    # v335dx：元V1を固定したまま合成ヒモ順位を先に完成させ、
+    # 最後に「元V1 vs 合成ヒモ1位」だけを開催日KOで査定する。
     _pre_knock_order = [int(_axis)] + [int(c) for c in _adjusted_himo_order]
     _knock_order = list(_pre_knock_order)
     _knock_log = []
@@ -3376,14 +3384,14 @@ def _v335bt_purchase_lines(final_order, profile):
             return float(_base_score(_car) * max(0.01, 1.0 + _fatigue_adj(_car)))
 
         _original_axis = int(_pre_knock_order[0])
-        _original_v2 = int(_order[1]) if len(_order) >= 2 else None
-        if _original_v2 is not None:
+        _composite_himo1 = int(_adjusted_himo_order[0]) if _adjusted_himo_order else None
+        if _composite_himo1 is not None:
             _axis_base = _base_score(_original_axis)
-            _chal_base = _base_score(_original_v2)
+            _chal_base = _base_score(_composite_himo1)
             _axis_adj = _fatigue_adj(_original_axis)
-            _chal_adj = _fatigue_adj(_original_v2)
+            _chal_adj = _fatigue_adj(_composite_himo1)
             _axis_sc = _compare_score(_original_axis)
-            _chal_sc = _compare_score(_original_v2)
+            _chal_sc = _compare_score(_composite_himo1)
             _fatigue_lost = bool(_chal_sc > _axis_sc)
             _v2_v1_ratio = float(_chal_sc / _axis_sc) if float(_axis_sc) > 0.0 else None
             _ratio_lost = bool(
@@ -3398,7 +3406,7 @@ def _v335bt_purchase_lines(final_order, profile):
             )
             _knock_log.append({
                 "axis": int(_original_axis),
-                "challenger": int(_original_v2),
+                "challenger": int(_composite_himo1),
                 "axis_base": float(_axis_base),
                 "challenger_base": float(_chal_base),
                 "axis_fatigue": float(_axis_adj),
@@ -3412,9 +3420,14 @@ def _v335bt_purchase_lines(final_order, profile):
                 "lost": bool(_lost),
             })
             if _lost:
-                if int(_original_v2) in _knock_order:
-                    _knock_order.remove(int(_original_v2))
-                _knock_order.insert(0, int(_original_v2))
+                # 元V1は2位まで。合成ヒモ1位との2車だけを入れ替える。
+                _remaining_himo = [
+                    int(c) for c in _adjusted_himo_order
+                    if int(c) != int(_composite_himo1)
+                ]
+                _knock_order = [int(_composite_himo1), int(_original_axis)] + _remaining_himo
+            else:
+                _knock_order = [int(_original_axis)] + [int(c) for c in _adjusted_himo_order]
     except Exception as _e:
         _knock_order = list(_pre_knock_order)
         _knock_log = []
@@ -3423,56 +3436,9 @@ def _v335bt_purchase_lines(final_order, profile):
     _axis = int(_knock_order[0])
     _post_himo_order = [int(c) for c in _knock_order[1:]]
 
-    # v335df本体：軸ライン1車を必ず保護し、残りはKO上位。
-    def _v335df_restore_himo_lines(_base_order, _axis_car, _line_def_map):
-        _axis_local = int(_axis_car)
-        _base = [int(c) for c in (_base_order or []) if int(c) != _axis_local]
-        _line_def_local = _line_def_map if isinstance(_line_def_map, dict) else {}
-
-        _car_line = {}
-        for _g, _members_raw in _line_def_local.items():
-            try:
-                _members = [int(x) for x in (_members_raw or [])]
-            except Exception:
-                continue
-            for _x in _members:
-                _car_line[int(_x)] = list(_members)
-
-        _selected = []
-        _axis_members = [
-            int(x) for x in _car_line.get(_axis_local, [_axis_local])
-            if int(x) != _axis_local
-        ]
-        if _axis_members:
-            _ko_pos = {int(c): i for i, c in enumerate(_base)}
-            _axis_partner = min(
-                _axis_members,
-                key=lambda c: (_ko_pos.get(int(c), 10**9), int(c)),
-            )
-            _selected.append(int(_axis_partner))
-
-        # v335df：最初の3ヒモは「保護1車＋KO上位」で確定。
-        for _car in _base:
-            _car = int(_car)
-            if _car not in _selected:
-                _selected.append(_car)
-            if len(_selected) >= 3:
-                break
-
-        # 4位以下も購入順位を一意にするためKO順で後置。
-        for _car in _base:
-            _car = int(_car)
-            if _car not in _selected:
-                _selected.append(_car)
-        return _selected
-
-    _line_def_for_himo = globals().get("line_def", {}) or {}
-    _line_restored_himo_order = _v335df_restore_himo_lines(
-        _post_himo_order, _axis, _line_def_for_himo
-    )
-
-    # ここが唯一の購入順位。表示・買い目とも同じ順位を使用する。
-    _purchase_order = [int(_axis)] + [int(c) for c in _line_restored_himo_order]
+    # v335dx：購入順位ではラインによる強制保護・ライン復元を行わない。
+    # 合成ヒモ順位完成後の最終1vs2査定結果を、そのまま唯一の購入順位にする。
+    _purchase_order = [int(_axis)] + [int(c) for c in _post_himo_order]
     globals()["V335DR_FINAL_PURCHASE_ORDER"] = tuple(_purchase_order)
     globals()["V335DS_FINAL_PURCHASE_ORDER"] = tuple(_purchase_order)
 
@@ -3734,11 +3700,9 @@ def _v335bt_purchase_lines(final_order, profile):
             f"{int(c)}（{int(_total_point.get(int(c), 0))}P）"
             for c in _adjusted_himo_order
         )
-        _line_text = " → ".join(str(int(c)) for c in _line_restored_himo_order)
-
         _out.append("")
         _out.append(f"今回V評価順位　　　：{_v_text}")
-        _out.append(f"調整後ヒモ順位　　 ：{_adjusted_text}")
+        _out.append(f"合成ヒモ順位　　　 ：{_adjusted_text}")
 
         if _knock_log:
             for _k in _knock_log:
@@ -3750,15 +3714,15 @@ def _v335bt_purchase_lines(final_order, profile):
                 _ratio = _k.get("v2_v1_ratio")
                 if _ratio is not None:
                     _out.append(
-                        f"V2/V1比率　　　　 ：{float(_ratio)*100.0:.2f}%（{str(_k.get('knock_reason','維持'))}）"
+                        f"ヒモ1/元1比率　　 ：{float(_ratio)*100.0:.2f}%（{str(_k.get('knock_reason','維持'))}）"
                     )
         elif len(_order) >= 2:
             if _knock_error:
                 _out.append(f"開催日査定エラー　 ：{_knock_error}")
             else:
-                _out.append(f"開催日査定診断　　 ：{int(_order[0])} vs {int(_order[1])} の比較ログ未生成")
+                _diag_chal = int(_adjusted_himo_order[0]) if _adjusted_himo_order else int(_order[1])
+                _out.append(f"開催日査定診断　　 ：{int(_order[0])} vs {_diag_chal} の比較ログ未生成")
 
-        _out.append(f"ライン復元ヒモ順位 ：{_line_text}")
     except Exception:
         pass
 
