@@ -1,5 +1,6 @@
 # v335dy（3連単12/21選抜・対抗2車単版）
-# ・予想順位、合成ヒモ、開催日査定、疲労係数、80-90%逆転、確率モデルはv335dxから変更しない。
+# ・予想順位、合成ヒモ、開催日査定、疲労係数、確率モデルはv335dxから変更しない。
+# ・80-90%比率による第2フィルター逆転だけを廃止。比率値の表示は検証用に残す。
 # ・3連単は評価1→2→3/4/5 と 評価2→1→3/4/5 の3点平均総合点を比較し、高い側だけを候補採用する。
 # ・3連単2→1→345採用時は2車単1→2/3/4、3連単1→2→345採用時は2車単2→1/3/4とする。
 # ・採用した3連単3点と対抗2車単3点の平均総合点を比較し、高い側だけ★推奨とする。
@@ -3394,16 +3395,11 @@ def _v335bt_purchase_lines(final_order, profile):
             _chal_sc = _compare_score(_composite_himo1)
             _fatigue_lost = bool(_chal_sc > _axis_sc)
             _v2_v1_ratio = float(_chal_sc / _axis_sc) if float(_axis_sc) > 0.0 else None
-            _ratio_lost = bool(
-                (not _fatigue_lost)
-                and (_v2_v1_ratio is not None)
-                and (0.80 <= _v2_v1_ratio <= 0.90)
-            )
-            _lost = bool(_fatigue_lost or _ratio_lost)
-            _knock_reason = (
-                "疲労逆転" if _fatigue_lost
-                else ("比率80-90%逆転" if _ratio_lost else "維持")
-            )
+            # v335dz：80-90%比率による第2フィルター逆転を廃止。
+            # 開催日査定（疲労込み）で challenger > axis の場合だけ逆転する。
+            _ratio_lost = False
+            _lost = bool(_fatigue_lost)
+            _knock_reason = "疲労逆転" if _fatigue_lost else "維持"
             _knock_log.append({
                 "axis": int(_original_axis),
                 "challenger": int(_composite_himo1),
