@@ -1,10 +1,10 @@
+# v335dy（3連単12/21選抜・対抗2車単版）
+# ・予想順位、合成ヒモ、開催日査定、疲労係数、80-90%逆転、確率モデルはv335dxから変更しない。
+# ・3連単は評価1→2→3/4/5 と 評価2→1→3/4/5 の3点平均総合点を比較し、高い側だけを候補採用する。
+# ・3連単2→1→345採用時は2車単1→2/3/4、3連単1→2→345採用時は2車単2→1/3/4とする。
+# ・採用した3連単3点と対抗2車単3点の平均総合点を比較し、高い側だけ★推奨とする。
+# ・上記以外のロジック・係数・順位生成・評価計算は変更しない。
 # v335dx（合成ヒモ先行・最終1vs2版）
-# ・元V1をいったん1位固定のまま、軸以外6車の合成ヒモ順位を先に完成させる。
-# ・開催日査定は「元V1 vs 合成ヒモ1位」で最後に実施する。
-# ・元V1が負けた場合だけ1位と2位を入れ替え、元V1は2位までに留める。
-# ・購入順位では軸ライン1車の強制保護／ライン復元を使用しない。
-# ・2車単は2→1／1→3／1→4、3連単は1→2→3／4／5を最終評価順位から生成する。
-# ・2車単／3連単の順序付き総合点、3点平均、★判定ロジックはv335dvから変更しない。
 # v335dv（買い目別総合点表示・読者向け整理版）
 # ・2車単／3連単の評価ロジック、順位生成、★判定はv335dtから変更しない。
 # ・推奨購入は対象3点を個別に展開し、各買い目の総合点を括弧内に小数1桁で表示する。
@@ -3447,17 +3447,10 @@ def _v335bt_purchase_lines(final_order, profile):
 
     _r1, _r2, _r3, _r4, _r5 = [int(x) for x in _purchase_order[:5]]
 
-    # v335ds：両グループを3点で統一。
-    _exacta_tickets = [
-        (_r2, _r1),
-        (_r1, _r3),
-        (_r1, _r4),
-    ]
-    _trifecta_tickets = [
-        (_r1, _r2, _r3),
-        (_r1, _r2, _r4),
-        (_r1, _r2, _r5),
-    ]
+    # 最終フォーメーションだけを新仕様へ変更。
+    # 実際の買い目確定は、既存の順序付き総合点算出後に行う。
+    _exacta_tickets = []
+    _trifecta_tickets = []
 
     try:
         # 既存の順序付き確率モデルは変更せず、そのまま評価に使用する。
@@ -3603,15 +3596,6 @@ def _v335bt_purchase_lines(final_order, profile):
         except Exception:
             return None
 
-    _exacta_scores = [
-        _ordered_total_score(_t, _exacta_hit_score_map, _exacta_myoumi_score_map)
-        for _t in _exacta_tickets
-    ]
-    _trifecta_scores = [
-        _ordered_total_score(_t, _trifecta_hit_score_map, _trifecta_myoumi_score_map)
-        for _t in _trifecta_tickets
-    ]
-
     def _group_avg(_scores):
         try:
             if len(_scores) != 3 or any(_v is None for _v in _scores):
@@ -3619,6 +3603,63 @@ def _v335bt_purchase_lines(final_order, profile):
             return sum(float(_v) for _v in _scores) / 3.0
         except Exception:
             return None
+
+    def _ticket_scores(_tickets, _hit_map, _myoumi_map):
+        return [
+            _ordered_total_score(_t, _hit_map, _myoumi_map)
+            for _t in _tickets
+        ]
+
+    # 3連単は 1-2-345 / 2-1-345 の2候補だけを比較する。
+    _trifecta_12 = [
+        (_r1, _r2, _r3),
+        (_r1, _r2, _r4),
+        (_r1, _r2, _r5),
+    ]
+    _trifecta_21 = [
+        (_r2, _r1, _r3),
+        (_r2, _r1, _r4),
+        (_r2, _r1, _r5),
+    ]
+    _trifecta_12_scores = _ticket_scores(
+        _trifecta_12, _trifecta_hit_score_map, _trifecta_myoumi_score_map
+    )
+    _trifecta_21_scores = _ticket_scores(
+        _trifecta_21, _trifecta_hit_score_map, _trifecta_myoumi_score_map
+    )
+    _trifecta_12_avg = _group_avg(_trifecta_12_scores)
+    _trifecta_21_avg = _group_avg(_trifecta_21_scores)
+
+    # 平均総合点が高い3連単側を採用。同点時は1-2-345側を維持する。
+    _use_trifecta_21 = bool(
+        _trifecta_21_avg is not None
+        and _trifecta_12_avg is not None
+        and float(_trifecta_21_avg) > float(_trifecta_12_avg)
+    )
+
+    if _use_trifecta_21:
+        # 3連単 2-1-345 → 三連単軸2を二車単から消し、対抗は1-234。
+        _trifecta_tickets = list(_trifecta_21)
+        _exacta_tickets = [
+            (_r1, _r2),
+            (_r1, _r3),
+            (_r1, _r4),
+        ]
+    else:
+        # 3連単 1-2-345 → 三連単軸1を二車単から消し、対抗は2-134。
+        _trifecta_tickets = list(_trifecta_12)
+        _exacta_tickets = [
+            (_r2, _r1),
+            (_r2, _r3),
+            (_r2, _r4),
+        ]
+
+    _exacta_scores = _ticket_scores(
+        _exacta_tickets, _exacta_hit_score_map, _exacta_myoumi_score_map
+    )
+    _trifecta_scores = _ticket_scores(
+        _trifecta_tickets, _trifecta_hit_score_map, _trifecta_myoumi_score_map
+    )
 
     _exacta_avg = _group_avg(_exacta_scores)
     _trifecta_avg = _group_avg(_trifecta_scores)
