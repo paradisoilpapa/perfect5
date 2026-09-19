@@ -1,3 +1,7 @@
+# v335eb（圧縮買目 修正版）
+# 圧縮買目：3連単1→2型は2車複1-34＋2-46（4点）、2→1型は2車複2-346（3点）。
+# 圧縮買目では1→2/2→1の2車単を削除。6→2は2-6複へ吸収。
+# その他の既存ロジックは変更しない。
 # v335ea（圧縮買目 1→2＋2-146 追加版）
 # ・v335dzの既存ロジック、推奨購入、総合点、★判定、検証買い目は変更しない。
 # ・採用済み3連単の1・2着を2車単1点へ圧縮し、その2着側を軸に評価1・4・6を2車複3点で表示する。
@@ -3701,28 +3705,52 @@ def _v335bt_purchase_lines(final_order, profile):
         ),
     }
 
-    # v335ea：圧縮買目を表示する。
-    # 採用済み3連単の頭2車を2車単1点へ圧縮。
-    # その2着側を中心に、評価1・評価4・評価6を2車複3点で折り返し対応する。
-    # 例：広島1R 5→3採用、評価4=7、評価6=1
-    #     2車単 5-3 / 2車複 3-1.5.7
-    # 既存の推奨購入・総合点・★判定・検証買い目には一切影響させない。
+    # v335eb：圧縮買目（表示専用）
+    # 採用3連単が評価1→評価2型なら：
+    #   2車複 1-3, 1-4, 2-4, 2-6  （略記：1-34  2-46）
+    # 採用3連単が評価2→評価1型なら：
+    #   2車複 2-3, 2-4, 2-6       （略記：2-346）
+    # 1-2 / 2-1 の2車単は圧縮買目では購入しない。
+    # 検証の6→2は2-6複に吸収する。
+    # 既存の推奨購入・総合点・★判定・検証買い目には影響させない。
     _out = ["【圧縮買目】"]
     if _trifecta_tickets and len(_purchase_order) >= 6:
-        _compressed_head = int(_trifecta_tickets[0][0])
-        _compressed_center = int(_trifecta_tickets[0][1])
-        _compressed_r4 = int(_purchase_order[3])
-        _compressed_r6 = int(_purchase_order[5])
-        _compressed_pair_partners = sorted({
-            _compressed_head,
-            _compressed_r4,
-            _compressed_r6,
-        })
-        _out.append(f"2車単　{_compressed_head}-{_compressed_center}")
-        _out.append(
-            f"2車複　{_compressed_center}-"
-            + ".".join(str(int(x)) for x in _compressed_pair_partners)
-        )
+        _r1 = int(_purchase_order[0])
+        _r2 = int(_purchase_order[1])
+        _r3 = int(_purchase_order[2])
+        _r4 = int(_purchase_order[3])
+        _r6 = int(_purchase_order[5])
+
+        _tri_head = int(_trifecta_tickets[0][0])
+        _tri_second = int(_trifecta_tickets[0][1])
+
+        if _tri_head == _r1 and _tri_second == _r2:
+            # 1→2型：1-34 + 2-46
+            _compressed_pairs = [
+                (_r1, _r3),
+                (_r1, _r4),
+                (_r2, _r4),
+                (_r2, _r6),
+            ]
+        elif _tri_head == _r2 and _tri_second == _r1:
+            # 2→1型：2-346
+            _compressed_pairs = [
+                (_r2, _r3),
+                (_r2, _r4),
+                (_r2, _r6),
+            ]
+        else:
+            _compressed_pairs = []
+
+        if _compressed_pairs:
+            _out.append(
+                "2車複　" + "・".join(
+                    f"{int(a)}-{int(b)}" for a, b in _compressed_pairs
+                )
+            )
+            _out.append(f"計{len(_compressed_pairs)}点")
+        else:
+            _out.append("採用3連単の1・2着型を判定できないため算出不可")
     else:
         _out.append("評価6位まで不足のため算出不可")
 
