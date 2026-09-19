@@ -1,3 +1,7 @@
+# v335ee（圧縮買目・3連単頭2車を2車単化）
+# 3連単1→2型：2車単1→2 ＋ 2車複2-3・2-4・2-6＝4点。
+# 3連単2→1型：2車単2→1 ＋ 2車複1-3・1-4・2-4・2-6＝5点。
+# 推奨購入・★判定・総合点・検証買い目など既存ロジックは変更しない。
 # v335ed（圧縮買目・1-2複追加版）
 # 3連単1→2型：1-2複を残し、2-3・2-4・2-6を加える＝4点。
 # 3連単2→1型：1-2複を残し、1-3・1-4・2-4・2-6を加える＝5点。
@@ -3759,12 +3763,20 @@ def _v335bt_purchase_lines(final_order, profile):
             _compressed_pairs = []
 
         if _compressed_pairs:
+            # 3連単の頭2車は順序を維持して2車単1点へ圧縮。
+            _out.append(f"2車単　{_tri_head}-{_tri_second}")
+
+            # _compressed_pairs 内の1-2組は、上の2車単と重複するため除外。
+            _compressed_pairs = [
+                (a, b) for a, b in _compressed_pairs
+                if {int(a), int(b)} != {_r1, _r2}
+            ]
             _out.append(
                 "2車複　" + "・".join(
                     f"{int(a)}-{int(b)}" for a, b in _compressed_pairs
                 )
             )
-            _out.append(f"計{len(_compressed_pairs)}点")
+            _out.append(f"計{1 + len(_compressed_pairs)}点")
         else:
             _out.append("採用3連単の1・2着型を判定できないため算出不可")
     else:
