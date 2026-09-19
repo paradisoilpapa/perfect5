@@ -1,3 +1,7 @@
+# v335ea（圧縮買目 1→2＋2-146 追加版）
+# ・v335dzの既存ロジック、推奨購入、総合点、★判定、検証買い目は変更しない。
+# ・採用済み3連単の1・2着を2車単1点へ圧縮し、その2着側を軸に評価1・4・6を2車複3点で表示する。
+# ・圧縮買目は表示専用で、推奨購入・平均総合点・★判定には使用しない。
 # v335dz（検証買い目 6→2／2-46 追加版）
 # ・v335dyの予想順位・買い目・総合点・★推奨・開催日査定ロジックは変更しない。
 # ・購入用最終順位を基準に、検証専用として「2車単 評価6→2」「2車複 評価2-4／2-6」の3点を表示する。
@@ -3697,7 +3701,33 @@ def _v335bt_purchase_lines(final_order, profile):
         ),
     }
 
-    _out = ["【推奨購入】"]
+    # v335ea：圧縮買目を表示する。
+    # 採用済み3連単の頭2車を2車単1点へ圧縮。
+    # その2着側を中心に、評価1・評価4・評価6を2車複3点で折り返し対応する。
+    # 例：広島1R 5→3採用、評価4=7、評価6=1
+    #     2車単 5-3 / 2車複 3-1.5.7
+    # 既存の推奨購入・総合点・★判定・検証買い目には一切影響させない。
+    _out = ["【圧縮買目】"]
+    if _trifecta_tickets and len(_purchase_order) >= 6:
+        _compressed_head = int(_trifecta_tickets[0][0])
+        _compressed_center = int(_trifecta_tickets[0][1])
+        _compressed_r4 = int(_purchase_order[3])
+        _compressed_r6 = int(_purchase_order[5])
+        _compressed_pair_partners = sorted({
+            _compressed_head,
+            _compressed_r4,
+            _compressed_r6,
+        })
+        _out.append(f"2車単　{_compressed_head}-{_compressed_center}")
+        _out.append(
+            f"2車複　{_compressed_center}-"
+            + ".".join(str(int(x)) for x in _compressed_pair_partners)
+        )
+    else:
+        _out.append("評価6位まで不足のため算出不可")
+
+    _out.append("")
+    _out.append("【推奨購入】")
 
     _exacta_mark = "★推奨" if _exacta_recommended else ("＝同点" if _is_tie else "")
     _trifecta_mark = "★推奨" if _trifecta_recommended else ("＝同点" if _is_tie else "")
