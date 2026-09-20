@@ -3329,13 +3329,13 @@ def _v335cd_trifecta_12_13_123(cars3):
 
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335dx: 合成ヒモ順位を先に完成させ、最後に元V1と合成ヒモ1位だけを開催日査定する。
+    v335eg: 合成ヒモ順位とは分離し、開催日KOの軸候補は元V1と元V2だけに限定する。
 
     順位生成:
       1) 元V1はいったん1位固定
       2) 軸以外6車でゆがみ調整済みの合成ヒモ順位を完成
-      3) 元V1 vs 合成ヒモ1位を開催日KOで査定
-      4) 元V1が負けた場合だけ1位・2位を交換（元V1は2位まで）
+      3) 元V1 vs 元V2だけを開催日KOで査定
+      4) 元V1が負けた場合だけ元V2を軸へ変更（V3以下は軸候補にしない）
       5) ライン保護による強制順位変更は行わず、その最終順位を購入順位に使用
 
     購入候補:
@@ -3385,8 +3385,8 @@ def _v335bt_purchase_lines(final_order, profile):
         ),
     )
 
-    # v335dx：元V1を固定したまま合成ヒモ順位を先に完成させ、
-    # 最後に「元V1 vs 合成ヒモ1位」だけを開催日KOで査定する。
+    # v335eg：合成ヒモ順位はヒモ用として保持するが、
+    # 開催日KOの軸査定は過去仕様どおり「元V1 vs 元V2」だけに限定する。
     _pre_knock_order = [int(_axis)] + [int(c) for c in _adjusted_himo_order]
     _knock_order = list(_pre_knock_order)
     _knock_log = []
@@ -3411,14 +3411,16 @@ def _v335bt_purchase_lines(final_order, profile):
             return float(_base_score(_car) * max(0.01, 1.0 + _fatigue_adj(_car)))
 
         _original_axis = int(_pre_knock_order[0])
-        _composite_himo1 = int(_adjusted_himo_order[0]) if _adjusted_himo_order else None
-        if _composite_himo1 is not None:
+        # v335eg：開催日KOの軸候補は過去仕様どおり「元V2まで」に限定する。
+        # 合成ヒモ順位でV3以下が1位へ上がっても、軸挑戦者には昇格させない。
+        _original_v2 = int(_order[1]) if len(_order) >= 2 else None
+        if _original_v2 is not None:
             _axis_base = _base_score(_original_axis)
-            _chal_base = _base_score(_composite_himo1)
+            _chal_base = _base_score(_original_v2)
             _axis_adj = _fatigue_adj(_original_axis)
-            _chal_adj = _fatigue_adj(_composite_himo1)
+            _chal_adj = _fatigue_adj(_original_v2)
             _axis_sc = _compare_score(_original_axis)
-            _chal_sc = _compare_score(_composite_himo1)
+            _chal_sc = _compare_score(_original_v2)
             _fatigue_lost = bool(_chal_sc > _axis_sc)
             _v2_v1_ratio = float(_chal_sc / _axis_sc) if float(_axis_sc) > 0.0 else None
             # v335dz：80-90%比率による第2フィルター逆転を廃止。
@@ -3428,7 +3430,7 @@ def _v335bt_purchase_lines(final_order, profile):
             _knock_reason = "疲労逆転" if _fatigue_lost else "維持"
             _knock_log.append({
                 "axis": int(_original_axis),
-                "challenger": int(_composite_himo1),
+                "challenger": int(_original_v2),
                 "axis_base": float(_axis_base),
                 "challenger_base": float(_chal_base),
                 "axis_fatigue": float(_axis_adj),
@@ -3442,12 +3444,13 @@ def _v335bt_purchase_lines(final_order, profile):
                 "lost": bool(_lost),
             })
             if _lost:
-                # 元V1は2位まで。合成ヒモ1位との2車だけを入れ替える。
+                # 元V1が元V2に負けた場合だけ、軸を元V2へ変更する。
+                # V3以下は合成ヒモ1位でも軸にはしない。
                 _remaining_himo = [
                     int(c) for c in _adjusted_himo_order
-                    if int(c) != int(_composite_himo1)
+                    if int(c) != int(_original_v2)
                 ]
-                _knock_order = [int(_composite_himo1), int(_original_axis)] + _remaining_himo
+                _knock_order = [int(_original_v2), int(_original_axis)] + _remaining_himo
             else:
                 _knock_order = [int(_original_axis)] + [int(c) for c in _adjusted_himo_order]
     except Exception as _e:
@@ -3781,7 +3784,7 @@ def _v335bt_purchase_lines(final_order, profile):
             if _knock_error:
                 _out.append(f"開催日査定エラー　 ：{_knock_error}")
             else:
-                _diag_chal = int(_adjusted_himo_order[0]) if _adjusted_himo_order else int(_order[1])
+                _diag_chal = int(_order[1])
                 _out.append(f"開催日査定診断　　 ：{int(_order[0])} vs {_diag_chal} の比較ログ未生成")
 
     except Exception:
