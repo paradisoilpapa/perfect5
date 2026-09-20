@@ -3479,6 +3479,28 @@ def _v335bt_purchase_lines(final_order, profile):
         _knock_log = []
         _knock_error = f"{type(_e).__name__}: {_e}"
 
+    # v335ei：KO使用スコア最下位車は、購入用着順予想で最大3位まで。
+    # 1位・2位に残った場合だけ3位へ下げ、それ以外の順位は相対順を維持する。
+    # 3位以下にいる場合は一切動かさない。
+    try:
+        _ko_rank_map = globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {}
+        _ko_scores_for_cap = {
+            int(c): float(_ko_rank_map.get(int(c), _ko_rank_map.get(str(int(c)), 0.0)) or 0.0)
+            for c in _knock_order
+        }
+        if _ko_scores_for_cap:
+            _ko_min_for_cap = min(_ko_scores_for_cap.values())
+            _ko_last_cars = {
+                int(c) for c, sc in _ko_scores_for_cap.items()
+                if abs(float(sc) - float(_ko_min_for_cap)) <= 1e-12
+            }
+            for _last_car in list(_knock_order[:2]):
+                if int(_last_car) in _ko_last_cars:
+                    _knock_order.remove(int(_last_car))
+                    _knock_order.insert(min(2, len(_knock_order)), int(_last_car))
+    except Exception:
+        pass
+
     _axis = int(_knock_order[0])
     _post_himo_order = [int(c) for c in _knock_order[1:]]
 
