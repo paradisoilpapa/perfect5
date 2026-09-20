@@ -3672,9 +3672,10 @@ def _v335bt_purchase_lines(final_order, profile):
 
     def _group_avg(_scores):
         try:
-            if len(_scores) != 3 or any(_v is None for _v in _scores):
+            _scores = list(_scores or [])
+            if not _scores or any(_v is None for _v in _scores):
                 return None
-            return sum(float(_v) for _v in _scores) / 3.0
+            return sum(float(_v) for _v in _scores) / float(len(_scores))
         except Exception:
             return None
 
@@ -3684,8 +3685,8 @@ def _v335bt_purchase_lines(final_order, profile):
             for _t in _tickets
         ]
 
-    # v335ek：評価1軸の2つの3連単候補に、裏目2車単を各1点追加表示する。
-    # ★★★★～★の比較・平均総合点は従来どおり各3点だけで算出し、裏目2車単はランキング計算に含めない。
+    # v335el：評価1軸の2候補は、3連単3点＋裏目2車単1点＝計4点で平均総合点を算出する。
+    # 評価2軸／評価3軸の2車複は従来どおり各3点平均。
     # v335ej：推奨4候補をすべて3点固定で比較する。
     # 評価順位を実車番へ変換し、既存の買い目別総合点だけで平均総合点を算出する。
     # ①評価1軸 3連単 1-2-345
@@ -3720,8 +3721,19 @@ def _v335bt_purchase_lines(final_order, profile):
     _tri_13_scores = _ticket_scores(
         _tri_13, _trifecta_hit_score_map, _trifecta_myoumi_score_map
     )
-    _tri_12_avg = _group_avg(_tri_12_scores)
-    _tri_13_avg = _group_avg(_tri_13_scores)
+    # 評価1軸は追加2車単まで含めて4点平均にする。
+    _exacta_21 = (_r2, _r1)
+    _exacta_31 = (_r3, _r1)
+    _exacta_21_score = _ordered_total_score(
+        _exacta_21, _exacta_hit_score_map, _exacta_myoumi_score_map
+    )
+    _exacta_31_score = _ordered_total_score(
+        _exacta_31, _exacta_hit_score_map, _exacta_myoumi_score_map
+    )
+    _tri_12_bundle_scores = list(_tri_12_scores) + [_exacta_21_score]
+    _tri_13_bundle_scores = list(_tri_13_scores) + [_exacta_31_score]
+    _tri_12_avg = _group_avg(_tri_12_bundle_scores)
+    _tri_13_avg = _group_avg(_tri_13_bundle_scores)
 
     # 2車複は既存の「加重2車複評価表」の総合点をそのまま使う。
     # 新しい点数式や実オッズは加えない。
@@ -3781,6 +3793,12 @@ def _v335bt_purchase_lines(final_order, profile):
         "q3_tickets": tuple(_q3),
         "tri12_scores": tuple(_tri_12_scores),
         "tri13_scores": tuple(_tri_13_scores),
+        "tri12_exacta_ticket": tuple(_exacta_21),
+        "tri13_exacta_ticket": tuple(_exacta_31),
+        "tri12_exacta_score": _exacta_21_score,
+        "tri13_exacta_score": _exacta_31_score,
+        "tri12_bundle_scores": tuple(_tri_12_bundle_scores),
+        "tri13_bundle_scores": tuple(_tri_13_bundle_scores),
         "q2_scores": tuple(_q2_scores),
         "q3_scores": tuple(_q3_scores),
         "tri12_avg": _tri_12_avg,
@@ -3806,7 +3824,7 @@ def _v335bt_purchase_lines(final_order, profile):
         "評価3軸　2車複",
         f"{_q3_text}　{_stars('q3')}　平均総合点：{_avg_text(_q3_avg)}",
         "",
-        "※★★★★～★は、4つの推奨候補について各3点の平均総合点を比較した順位です。追加2車単は順位判定・平均総合点には含めません。",
+        "※★★★★～★は、評価1軸は3連単3点＋追加2車単1点の計4点、評価2・3軸は2車複各3点の平均総合点を比較した順位です。",
         "※総合点・平均総合点は、ヴェロビ独自の的中点・妙味点に基づいて算出した各買い目の総合点です。実オッズは使用していません。",
     ]
 
