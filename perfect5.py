@@ -1,3 +1,5 @@
+# v335ef（推奨購入4点固定・★本線版）
+# 2車単1点＋旧推奨2車単を2車複化した3点＝4点固定。採用3連単は「三連単を重ねるなら」で★本線表示。検証買い目は削除。
 # v335ee（圧縮買目・3連単頭2車を2車単化）
 # 3連単1→2型：2車単1→2 ＋ 2車複2-3・2-4・2-6＝4点。
 # 3連単2→1型：2車単2→1 ＋ 2車複1-3・1-4・2-4・2-6＝5点。
@@ -3717,109 +3719,41 @@ def _v335bt_purchase_lines(final_order, profile):
         ),
     }
 
-    # v335eb：圧縮買目（表示専用）
-    # 採用3連単が評価1→評価2型なら：
-    #   2車複 1-3, 1-4, 2-4, 2-6  （略記：1-34  2-46）
-    # 採用3連単が評価2→評価1型なら：
-    #   2車複 2-3, 2-4, 2-6       （略記：2-346）
-    # 1-2 / 2-1 の2車単は圧縮買目では購入しない。
-    # 検証の6→2は2-6複に吸収する。
-    # 既存の推奨購入・総合点・★判定・検証買い目には影響させない。
-    _out = ["【圧縮買目】"]
-    if _trifecta_tickets and len(_purchase_order) >= 6:
-        _r1 = int(_purchase_order[0])
-        _r2 = int(_purchase_order[1])
-        _r3 = int(_purchase_order[2])
-        _r4 = int(_purchase_order[3])
-        _r6 = int(_purchase_order[5])
-
+    # v335ef：推奨購入4点固定版
+    # ・採用3連単の頭2車を、順序維持の2車単1点として推奨購入へ採用。
+    # ・従来の推奨2車単3点は、同じ組み合わせの2車複3点へ変更。
+    # ・合計は 2車単1点＋2車複3点＝4点固定。
+    # ・採用3連単3点は「三連単を重ねるなら」として圧縮表示し、★本線とする。
+    # ・予想順位、3連単選抜、総合点計算など内部ロジックは変更しない。
+    _out = ["【推奨購入】"]
+    if _trifecta_tickets and _exacta_tickets:
         _tri_head = int(_trifecta_tickets[0][0])
         _tri_second = int(_trifecta_tickets[0][1])
 
-        if _tri_head == _r1 and _tri_second == _r2:
-            # 3連単 1→2型
-            # 対抗2車単は評価2軸（2→1・3・4）。
-            # 2→1は安値想定で削除、2→4は検証2-4複へ吸収、
-            # 検証6→2は2-6複へ吸収 → 2-346 の3点。
-            _compressed_pairs = [
-                (_r1, _r2),  # 3連単の上位2車を2車複で残す
-                (_r2, _r3),
-                (_r2, _r4),
-                (_r2, _r6),
-            ]
-        elif _tri_head == _r2 and _tri_second == _r1:
-            # 3連単 2→1型
-            # 対抗2車単は評価1軸（1→2・3・4）。
-            # 1→2は安値想定で削除。1→3・1→4を2車複化し、
-            # 検証2-4・2-6を加える → 1-34 + 2-46 の4点。
-            _compressed_pairs = [
-                (_r1, _r2),  # 3連単の上位2車を2車複で残す
-                (_r1, _r3),
-                (_r1, _r4),
-                (_r2, _r4),
-                (_r2, _r6),
-            ]
-        else:
-            _compressed_pairs = []
+        # 本線の2車単1点：採用3連単の1・2着を同方向で使用。
+        _out.append(f"2車単　{_tri_head}-{_tri_second}")
 
-        if _compressed_pairs:
-            # 3連単の頭2車は順序を維持して2車単1点へ圧縮。
-            _out.append(f"2車単　{_tri_head}-{_tri_second}")
-
-            # _compressed_pairs 内の1-2組は、上の2車単と重複するため除外。
-            _compressed_pairs = [
-                (a, b) for a, b in _compressed_pairs
-                if {int(a), int(b)} != {_r1, _r2}
-            ]
-            _out.append(
-                "2車複　" + "・".join(
-                    f"{int(a)}-{int(b)}" for a, b in _compressed_pairs
-                )
+        # 従来の推奨2車単3点を、同じ組み合わせの2車複3点へ変更。
+        _quinella_tickets = []
+        for _a, _b in _exacta_tickets:
+            _pair = (int(_a), int(_b))
+            if _pair not in _quinella_tickets and (_pair[1], _pair[0]) not in _quinella_tickets:
+                _quinella_tickets.append(_pair)
+        _out.append(
+            "2車複　" + "・".join(
+                f"{int(_a)}-{int(_b)}" for _a, _b in _quinella_tickets
             )
-            _out.append(f"計{1 + len(_compressed_pairs)}点")
-        else:
-            _out.append("採用3連単の1・2着型を判定できないため算出不可")
+        )
+        _out.append("")
+        _out.append("＊＊＊")
+        _out.append("")
+        _out.append("三連単を重ねるなら")
+
+        # 採用3連単3点を「頭-2着-3着候補」の圧縮表記にする。
+        _tri_thirds = "".join(str(int(_t[2])) for _t in _trifecta_tickets)
+        _out.append(f"{_tri_head}-{_tri_second}-{_tri_thirds}　★本線")
     else:
-        _out.append("評価6位まで不足のため算出不可")
-
-    _out.append("")
-    _out.append("【推奨購入】")
-
-    _exacta_mark = "★推奨" if _exacta_recommended else ("＝同点" if _is_tie else "")
-    _trifecta_mark = "★推奨" if _trifecta_recommended else ("＝同点" if _is_tie else "")
-
-    def _fmt_ticket_with_score(_ticket, _score):
-        try:
-            _ticket_text = "-".join(str(int(x)) for x in (_ticket or tuple()))
-            if _score is None:
-                return f"{_ticket_text}（算出不可）"
-            return f"{_ticket_text}（総合点{float(_score):.1f}）"
-        except Exception:
-            return "算出不可"
-
-    _out.append(f"【2車単】{_exacta_mark}")
-    _out.append(
-        "　".join(
-            _fmt_ticket_with_score(_ticket, _score)
-            for _ticket, _score in zip(_exacta_tickets, _exacta_scores)
-        )
-    )
-    _out.append(
-        f"平均総合点：{float(_exacta_avg):.2f}"
-        if _exacta_avg is not None else "平均総合点：算出不可"
-    )
-    _out.append("")
-    _out.append(f"【3連単】{_trifecta_mark}")
-    _out.append(
-        "　".join(
-            _fmt_ticket_with_score(_ticket, _score)
-            for _ticket, _score in zip(_trifecta_tickets, _trifecta_scores)
-        )
-    )
-    _out.append(
-        f"平均総合点：{float(_trifecta_avg):.2f}"
-        if _trifecta_avg is not None else "平均総合点：算出不可"
-    )
+        _out.append("買い目算出不可")
 
     try:
         _v_text = " → ".join(str(int(c)) for c in _order)
@@ -3853,22 +3787,6 @@ def _v335bt_purchase_lines(final_order, profile):
     except Exception:
         pass
 
-    # v335dz：検証専用買い目を表示する。
-    # 購入用最終順位の「評価6→評価2」を2車単、
-    # 「評価2-評価4」「評価2-評価6」を2車複として表示。
-    # 既存の推奨購入・総合点・★判定には一切使用しない。
-    _out.append("")
-    _out.append("【検証買い目】")
-    if len(_purchase_order) >= 6:
-        _vr2 = int(_purchase_order[1])
-        _vr4 = int(_purchase_order[3])
-        _vr6 = int(_purchase_order[5])
-        _out.append(f"2車単：{_vr6}→{_vr2}")
-        _out.append(f"2車複：{_vr2}-{_vr4}・{_vr2}-{_vr6}")
-        _out.append("計3点（推奨購入・★判定には含めない）")
-    else:
-        _out.append("評価6位まで不足のため算出不可")
-
     return _out
 
 def _v335br_hit_top_lines(
@@ -3899,9 +3817,6 @@ def _v335br_hit_top_lines(
         ]
 
     _out = list(_v335bt_purchase_lines(_order, _profile))
-    _out.append("")
-    _out.append("※★推奨は2車単3点・3連単3点の平均総合点を比較したものです。")
-    _out.append("※総合点・平均総合点は、ヴェロビ独自の的中点・妙味点に基づいて算出した各買い目の総合点です。実オッズは使用していません。")
     return _out
 
 def _v335bq_finish_strength_map(final_order):
