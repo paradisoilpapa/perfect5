@@ -3329,7 +3329,7 @@ def _v335cd_trifecta_12_13_123(cars3):
 
 def _v335bt_purchase_lines(final_order, profile):
     """
-    v335eg: 合成ヒモ順位とは分離し、開催日KOの軸候補は元V1と元V2だけに限定する。
+    v335eh: v335egのV1/V2限定を維持し、KO使用スコア最下位車を軸から除外する。
 
     順位生成:
       1) 元V1はいったん1位固定
@@ -3423,11 +3423,32 @@ def _v335bt_purchase_lines(final_order, profile):
             _chal_sc = _compare_score(_original_v2)
             _fatigue_lost = bool(_chal_sc > _axis_sc)
             _v2_v1_ratio = float(_chal_sc / _axis_sc) if float(_axis_sc) > 0.0 else None
+
+            # v335eh：KO使用スコア最下位車は軸にしない。
+            # 軸候補自体はv335egどおり元V1・元V2だけ。
+            # 元V2がKO最下位なら逆転禁止、元V1がKO最下位なら元V2へ強制変更する。
+            _field_cars = [int(c) for c in _order]
+            _field_scores = {int(c): float(_base_score(c)) for c in _field_cars}
+            _min_ko_score = min(_field_scores.values()) if _field_scores else None
+            _axis_is_ko_last = bool(
+                _min_ko_score is not None and abs(float(_axis_base) - float(_min_ko_score)) <= 1e-12
+            )
+            _chal_is_ko_last = bool(
+                _min_ko_score is not None and abs(float(_chal_base) - float(_min_ko_score)) <= 1e-12
+            )
+
             # v335dz：80-90%比率による第2フィルター逆転を廃止。
-            # 開催日査定（疲労込み）で challenger > axis の場合だけ逆転する。
             _ratio_lost = False
-            _lost = bool(_fatigue_lost)
-            _knock_reason = "疲労逆転" if _fatigue_lost else "維持"
+            if _axis_is_ko_last and not _chal_is_ko_last:
+                _lost = True
+                _knock_reason = "KO最下位除外"
+            elif _chal_is_ko_last and not _axis_is_ko_last:
+                _lost = False
+                _knock_reason = "KO最下位除外"
+            else:
+                # どちらもKO最下位でない場合だけ、従来どおり開催日査定で比較する。
+                _lost = bool(_fatigue_lost)
+                _knock_reason = "疲労逆転" if _fatigue_lost else "維持"
             _knock_log.append({
                 "axis": int(_original_axis),
                 "challenger": int(_original_v2),
