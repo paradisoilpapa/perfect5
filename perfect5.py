@@ -1,3 +1,5 @@
+# v335ej（4候補推奨ランク版）
+# 評価1軸3連単2型＋評価2/3軸2車複を各3点で比較し、平均総合点順に★★★★～★表示。その他ロジックは変更しない。
 # v335ef（推奨購入4点固定・★本線版）
 # 2車単1点＋旧推奨2車単を2車複化した3点＝4点固定。採用3連単は「三連単を重ねるなら」で★本線表示。検証買い目は削除。
 # v335ee（圧縮買目・3連単頭2車を2車単化）
@@ -3678,128 +3680,127 @@ def _v335bt_purchase_lines(final_order, profile):
             for _t in _tickets
         ]
 
-    # 3連単は 1-2-345 / 2-1-345 の2候補だけを比較する。
-    _trifecta_12 = [
+    # v335ej：推奨4候補をすべて3点固定で比較する。
+    # 評価順位を実車番へ変換し、既存の買い目別総合点だけで平均総合点を算出する。
+    # ①評価1軸 3連単 1-2-345
+    # ②評価1軸 3連単 1-3-245
+    # ③評価2軸 2車複 2-134
+    # ④評価3軸 2車複 3-124
+    # 平均総合点の高い順に ★★★★～★ を付与する。
+    _tri_12 = [
         (_r1, _r2, _r3),
         (_r1, _r2, _r4),
         (_r1, _r2, _r5),
     ]
-    _trifecta_21 = [
-        (_r2, _r1, _r3),
-        (_r2, _r1, _r4),
-        (_r2, _r1, _r5),
+    _tri_13 = [
+        (_r1, _r3, _r2),
+        (_r1, _r3, _r4),
+        (_r1, _r3, _r5),
     ]
-    _trifecta_12_scores = _ticket_scores(
-        _trifecta_12, _trifecta_hit_score_map, _trifecta_myoumi_score_map
-    )
-    _trifecta_21_scores = _ticket_scores(
-        _trifecta_21, _trifecta_hit_score_map, _trifecta_myoumi_score_map
-    )
-    _trifecta_12_avg = _group_avg(_trifecta_12_scores)
-    _trifecta_21_avg = _group_avg(_trifecta_21_scores)
+    _q2 = [
+        tuple(sorted((_r2, _r1))),
+        tuple(sorted((_r2, _r3))),
+        tuple(sorted((_r2, _r4))),
+    ]
+    _q3 = [
+        tuple(sorted((_r3, _r1))),
+        tuple(sorted((_r3, _r2))),
+        tuple(sorted((_r3, _r4))),
+    ]
 
-    # 平均総合点が高い3連単側を採用。同点時は1-2-345側を維持する。
-    _use_trifecta_21 = bool(
-        _trifecta_21_avg is not None
-        and _trifecta_12_avg is not None
-        and float(_trifecta_21_avg) > float(_trifecta_12_avg)
+    _tri_12_scores = _ticket_scores(
+        _tri_12, _trifecta_hit_score_map, _trifecta_myoumi_score_map
     )
+    _tri_13_scores = _ticket_scores(
+        _tri_13, _trifecta_hit_score_map, _trifecta_myoumi_score_map
+    )
+    _tri_12_avg = _group_avg(_tri_12_scores)
+    _tri_13_avg = _group_avg(_tri_13_scores)
 
-    if _use_trifecta_21:
-        # 3連単 2-1-345 → 三連単軸2を二車単から消し、対抗は1-234。
-        _trifecta_tickets = list(_trifecta_21)
-        _exacta_tickets = [
-            (_r1, _r2),
-            (_r1, _r3),
-            (_r1, _r4),
-        ]
-    else:
-        # 3連単 1-2-345 → 三連単軸1を二車単から消し、対抗は2-134。
-        _trifecta_tickets = list(_trifecta_12)
-        _exacta_tickets = [
-            (_r2, _r1),
-            (_r2, _r3),
-            (_r2, _r4),
-        ]
+    # 2車複は既存の「加重2車複評価表」の総合点をそのまま使う。
+    # 新しい点数式や実オッズは加えない。
+    _pair_total_map = {}
+    try:
+        for _row in (globals().get("V335DH_WEIGHTED_PAIR_ROWS", []) or []):
+            if not isinstance(_row, dict):
+                continue
+            _a = int(_row.get("a"))
+            _b = int(_row.get("b"))
+            _pair_total_map[tuple(sorted((_a, _b)))] = float(_row.get("total_pt", 0.0) or 0.0)
+    except Exception:
+        _pair_total_map = {}
 
-    _exacta_scores = _ticket_scores(
-        _exacta_tickets, _exacta_hit_score_map, _exacta_myoumi_score_map
-    )
-    _trifecta_scores = _ticket_scores(
-        _trifecta_tickets, _trifecta_hit_score_map, _trifecta_myoumi_score_map
-    )
+    def _quinella_group_scores(_tickets):
+        _vals = []
+        for _t in (_tickets or []):
+            _key = tuple(sorted(int(x) for x in _t))
+            _vals.append(_pair_total_map.get(_key, None))
+        return _vals
 
-    _exacta_avg = _group_avg(_exacta_scores)
-    _trifecta_avg = _group_avg(_trifecta_scores)
+    _q2_scores = _quinella_group_scores(_q2)
+    _q3_scores = _quinella_group_scores(_q3)
+    _q2_avg = _group_avg(_q2_scores)
+    _q3_avg = _group_avg(_q3_scores)
 
-    _exacta_recommended = bool(
-        _exacta_avg is not None
-        and _trifecta_avg is not None
-        and float(_exacta_avg) > float(_trifecta_avg)
+    _candidate_rows = [
+        {"key": "tri12", "avg": _tri_12_avg, "priority": 0},
+        {"key": "q2",    "avg": _q2_avg,     "priority": 1},
+        {"key": "tri13", "avg": _tri_13_avg, "priority": 2},
+        {"key": "q3",    "avg": _q3_avg,     "priority": 3},
+    ]
+    _rankable = [r for r in _candidate_rows if r.get("avg") is not None]
+    _rankable = sorted(
+        _rankable,
+        key=lambda r: (-float(r.get("avg", 0.0)), int(r.get("priority", 99))),
     )
-    _trifecta_recommended = bool(
-        _exacta_avg is not None
-        and _trifecta_avg is not None
-        and float(_trifecta_avg) > float(_exacta_avg)
-    )
-    _is_tie = bool(
-        _exacta_avg is not None
-        and _trifecta_avg is not None
-        and abs(float(_exacta_avg) - float(_trifecta_avg)) <= 1e-12
-    )
+    _star_map = {}
+    for _idx, _row in enumerate(_rankable):
+        _star_map[str(_row.get("key"))] = "★" * max(1, 4 - int(_idx))
+
+    def _avg_text(_v):
+        return "算出不可" if _v is None else f"{float(_v):.2f}"
+
+    def _stars(_key):
+        return _star_map.get(str(_key), "-")
+
+    _tri12_text = f"{_r1}-{_r2}-{_r3}{_r4}{_r5}"
+    _tri13_text = f"{_r1}-{_r3}-{_r2}{_r4}{_r5}"
+    _q2_text = f"{_r2}-{_r1}{_r3}{_r4}"
+    _q3_text = f"{_r3}-{_r1}{_r2}{_r4}"
 
     globals()["V335DS_GROUP_COMPARISON"] = {
-        "exacta_tickets": tuple(_exacta_tickets),
-        "trifecta_tickets": tuple(_trifecta_tickets),
-        "exacta_scores": tuple(_exacta_scores),
-        "trifecta_scores": tuple(_trifecta_scores),
-        "exacta_hit_scores": tuple(_exacta_hit_score_map.get(tuple(t)) for t in _exacta_tickets),
-        "trifecta_hit_scores": tuple(_trifecta_hit_score_map.get(tuple(t)) for t in _trifecta_tickets),
-        "exacta_myoumi_scores": tuple(_exacta_myoumi_score_map.get(tuple(t)) for t in _exacta_tickets),
-        "trifecta_myoumi_scores": tuple(_trifecta_myoumi_score_map.get(tuple(t)) for t in _trifecta_tickets),
-        "exacta_avg": _exacta_avg,
-        "trifecta_avg": _trifecta_avg,
-        "recommended": (
-            "2車単" if _exacta_recommended
-            else ("3連単" if _trifecta_recommended else ("同点" if _is_tie else "算出不可"))
-        ),
+        "tri12_tickets": tuple(_tri_12),
+        "tri13_tickets": tuple(_tri_13),
+        "q2_tickets": tuple(_q2),
+        "q3_tickets": tuple(_q3),
+        "tri12_scores": tuple(_tri_12_scores),
+        "tri13_scores": tuple(_tri_13_scores),
+        "q2_scores": tuple(_q2_scores),
+        "q3_scores": tuple(_q3_scores),
+        "tri12_avg": _tri_12_avg,
+        "tri13_avg": _tri_13_avg,
+        "q2_avg": _q2_avg,
+        "q3_avg": _q3_avg,
+        "stars": dict(_star_map),
+        "recommended": str(_rankable[0].get("key")) if _rankable else "算出不可",
     }
 
-    # v335ef：推奨購入4点固定版
-    # ・採用3連単の頭2車を、順序維持の2車単1点として推奨購入へ採用。
-    # ・従来の推奨2車単3点は、同じ組み合わせの2車複3点へ変更。
-    # ・合計は 2車単1点＋2車複3点＝4点固定。
-    # ・採用3連単3点は「三連単を重ねるなら」として圧縮表示し、★本線とする。
-    # ・予想順位、3連単選抜、総合点計算など内部ロジックは変更しない。
-    _out = ["【推奨購入】"]
-    if _trifecta_tickets and _exacta_tickets:
-        _tri_head = int(_trifecta_tickets[0][0])
-        _tri_second = int(_trifecta_tickets[0][1])
-
-        # 本線の2車単1点：採用3連単の1・2着を同方向で使用。
-        _out.append(f"2車単　{_tri_head}-{_tri_second}")
-
-        # 従来の推奨2車単3点を、同じ組み合わせの2車複3点へ変更。
-        _quinella_tickets = []
-        for _a, _b in _exacta_tickets:
-            _pair = (int(_a), int(_b))
-            if _pair not in _quinella_tickets and (_pair[1], _pair[0]) not in _quinella_tickets:
-                _quinella_tickets.append(_pair)
-        _out.append(
-            "2車複　" + "・".join(
-                f"{int(_a)}-{int(_b)}" for _a, _b in _quinella_tickets
-            )
-        )
-        _out.append("")
-        _out.append("＊＊＊")
-        _out.append("")
-        _out.append("三連単を重ねるなら")
-
-        # 採用3連単3点を「頭-2着-3着候補」の圧縮表記にする。
-        _tri_thirds = "".join(str(int(_t[2])) for _t in _trifecta_tickets)
-        _out.append(f"{_tri_head}-{_tri_second}-{_tri_thirds}　★本線")
-    else:
-        _out.append("買い目算出不可")
+    _out = [
+        "【推奨購入】",
+        "",
+        "評価1軸　3連単",
+        f"{_tri12_text}　{_stars('tri12')}　平均総合点：{_avg_text(_tri_12_avg)}",
+        f"{_tri13_text}　{_stars('tri13')}　平均総合点：{_avg_text(_tri_13_avg)}",
+        "",
+        "評価2軸　2車複",
+        f"{_q2_text}　{_stars('q2')}　平均総合点：{_avg_text(_q2_avg)}",
+        "",
+        "評価3軸　2車複",
+        f"{_q3_text}　{_stars('q3')}　平均総合点：{_avg_text(_q3_avg)}",
+        "",
+        "※★★★★～★は、4つの推奨候補について各3点の平均総合点を比較した順位です。",
+        "※総合点・平均総合点は、ヴェロビ独自の的中点・妙味点に基づいて算出した各買い目の総合点です。実オッズは使用していません。",
+    ]
 
     try:
         _v_text = " → ".join(str(int(c)) for c in _order)
