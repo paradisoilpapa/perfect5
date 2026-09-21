@@ -1,3 +1,7 @@
+# v335eq（最終着順予想・2車単3点版）
+# ・【推奨購入】を最終着順予想TOP3から作る2車単「13-23」型3点へ変更（表示例：15-25）。
+# ・表示は「2車単　15-25　計3点」＋「※最終着順予想の上位3車をもとに、本線＋展開ズレを想定した3点です。」に統一。
+# ・3連単/2車単の平均総合点比較・★表示は推奨購入から外す。V評価順位、合成ヒモ、開催日査定、その他予想ロジックは変更しない。
 # v335ep（3連単12表裏 vs 2車単12→34 比較版）
 # ・推奨比較を「3連単12-12-34（4点）」と「2車単12-34（4点）」の2候補へ変更。
 # ・各4点の平均総合点で比較。総合点計算式、V評価順位、軸・ヒモ、開催日KO、その他予想ロジックは変更しない。
@@ -3758,17 +3762,18 @@ def _v335bt_purchase_lines(final_order, profile):
         "recommended": str(_rankable[0].get("key")) if _rankable else "算出不可",
     }
 
+    # v335eq：推奨購入は「最終着順予想」TOP3だけから生成する。
+    # 順位1位=A、2位=B、3位=C として、2車単 A→B / A→C / C→B の3点。
+    # フォーメーション表示は AC-BC（例：1→2→5 なら 15-25）。
+    _pred1, _pred2, _pred3 = [int(x) for x in _order[:3]]
+    _final_exacta_text = f"{_pred1}{_pred3}-{_pred2}{_pred3}"
+
     _out = [
         "【推奨購入】",
         "",
-        f"3連単　{_stars('trifecta')}　平均総合点：{_avg_text(_trifecta_12_box_avg)}",
-        f"3連単　{_trifecta_text}",
+        f"2車単　{_final_exacta_text}　計3点",
         "",
-        f"2車単　{_stars('exacta')}　平均総合点：{_avg_text(_exacta_12_to_34_avg)}",
-        f"2車単　{_exacta_text}",
-        "",
-        "※3連単12-12-34の4点と、2車単12-34の4点について、平均総合点を比較した順位です。",
-        "※総合点・平均総合点は、ヴェロビ独自の的中点・妙味点に基づいて算出した各買い目の総合点です。実オッズは使用していません。",
+        "※最終着順予想の上位3車をもとに、本線＋展開ズレを想定した3点です。",
     ]
 
     try:
@@ -15021,11 +15026,8 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
             top_n=3,
         )
         if _hit_top_lines:
-            _purchase_final_order = tuple(
-                int(x) for x in (globals().get("V335DR_FINAL_PURCHASE_ORDER", tuple()) or tuple())
-            )
-            if _purchase_final_order and len(lines) >= 4:
-                lines[3] = f"最終着順予想　{' → '.join(str(int(x)) for x in _purchase_final_order)}"
+            # v335eq：表示する「最終着順予想」は専用順位そのものを維持する。
+            # 内部のV評価／開催日査定後購入順位で上書きしない。
             lines.append("")
             lines.extend(_hit_top_lines)
         return "\n".join(lines).strip() + "\n"
