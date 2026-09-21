@@ -1,4 +1,7 @@
-# v335en（評価1軸3点比較版）
+# v335eo（評価2・3軸共通項2車単版）
+# ・評価2軸は2車単 2→1＋2車複 2-34、評価3軸は2車単 3→1＋2車複 3-24の各3点。
+# ・評価1軸との共通項（2→1／3→1）を2車単で共有し、各3点の平均総合点で★★★★～★を比較。その他ロジックは変更しない。
+# v335eo（評価2・3軸共通項2車単版）
 # ・評価1軸①を「3連単 1-2-34＋2車単2-1」、評価1軸②を「3連単 1-3-24＋2車単3-1」へ変更。
 # ・評価1軸は3連単2点＋裏目2車単1点＝計3点の平均総合点で、評価2/3軸の2車複各3点と比較。
 # ・総合点計算式、V評価順位、軸・ヒモ、開催日KO、その他予想ロジックは変更しない。
@@ -3739,7 +3742,10 @@ def _v335bt_purchase_lines(final_order, profile):
     _tri_12_avg = _group_avg(_tri_12_bundle_scores)
     _tri_13_avg = _group_avg(_tri_13_bundle_scores)
 
-    # 2車複は既存の「加重2車複評価表」の総合点をそのまま使う。
+    # v335eo：評価2/3軸は、評価1軸との共通項だけ2車単にする。
+    # 評価2軸 = 2車単 2→1 ＋ 2車複 2-3 / 2-4（計3点）
+    # 評価3軸 = 2車単 3→1 ＋ 2車複 3-2 / 3-4（計3点）
+    # 2車複部分は既存の「加重2車複評価表」の総合点をそのまま使う。
     # 新しい点数式や実オッズは加えない。
     _pair_total_map = {}
     try:
@@ -3759,8 +3765,20 @@ def _v335bt_purchase_lines(final_order, profile):
             _vals.append(_pair_total_map.get(_key, None))
         return _vals
 
-    _q2_scores = _quinella_group_scores(_q2)
-    _q3_scores = _quinella_group_scores(_q3)
+    # 共通項 2=1 / 3=1 は、それぞれ既存の裏目2車単 2→1 / 3→1 に置換。
+    # 残り2点だけ2車複として評価する。
+    _q2_quinella = [
+        tuple(sorted((_r2, _r3))),
+        tuple(sorted((_r2, _r4))),
+    ]
+    _q3_quinella = [
+        tuple(sorted((_r3, _r2))),
+        tuple(sorted((_r3, _r4))),
+    ]
+    _q2_quinella_scores = _quinella_group_scores(_q2_quinella)
+    _q3_quinella_scores = _quinella_group_scores(_q3_quinella)
+    _q2_scores = [_exacta_21_score] + list(_q2_quinella_scores)
+    _q3_scores = [_exacta_31_score] + list(_q3_quinella_scores)
     _q2_avg = _group_avg(_q2_scores)
     _q3_avg = _group_avg(_q3_scores)
 
@@ -3787,8 +3805,8 @@ def _v335bt_purchase_lines(final_order, profile):
 
     _tri12_text = f"{_r1}-{_r2}-{_r3}{_r4}"
     _tri13_text = f"{_r1}-{_r3}-{_r2}{_r4}"
-    _q2_text = f"{_r2}-{_r1}{_r3}{_r4}"
-    _q3_text = f"{_r3}-{_r1}{_r2}{_r4}"
+    _q2_text = f"{_r2}-{_r3}{_r4}"
+    _q3_text = f"{_r3}-{_r2}{_r4}"
 
     globals()["V335DS_GROUP_COMPARISON"] = {
         "tri12_tickets": tuple(_tri_12),
@@ -3805,6 +3823,10 @@ def _v335bt_purchase_lines(final_order, profile):
         "tri13_bundle_scores": tuple(_tri_13_bundle_scores),
         "q2_scores": tuple(_q2_scores),
         "q3_scores": tuple(_q3_scores),
+        "q2_exacta_ticket": tuple(_exacta_21),
+        "q3_exacta_ticket": tuple(_exacta_31),
+        "q2_quinella_tickets": tuple(_q2_quinella),
+        "q3_quinella_tickets": tuple(_q3_quinella),
         "tri12_avg": _tri_12_avg,
         "tri13_avg": _tri_13_avg,
         "q2_avg": _q2_avg,
@@ -3823,12 +3845,12 @@ def _v335bt_purchase_lines(final_order, profile):
         f"3連単　{_tri13_text}　＋2車単　{_r3}-{_r1}",
         "",
         f"評価2軸　{_stars('q2')}　平均総合点：{_avg_text(_q2_avg)}",
-        f"2車複　{_q2_text}",
+        f"2車単　{_r2}-{_r1}　＋2車複　{_q2_text}",
         "",
         f"評価3軸　{_stars('q3')}　平均総合点：{_avg_text(_q3_avg)}",
-        f"2車複　{_q3_text}",
+        f"2車単　{_r3}-{_r1}　＋2車複　{_q3_text}",
         "",
-        "※★★★★～★は、評価1軸は3連単2点＋追加2車単1点の計3点、評価2・3軸は2車複各3点の平均総合点を比較した順位です。",
+        "※★★★★～★は、評価1軸は3連単2点＋追加2車単1点、評価2・3軸は共通項2車単1点＋2車複2点の各計3点について、平均総合点を比較した順位です。",
         "※総合点・平均総合点は、ヴェロビ独自の的中点・妙味点に基づいて算出した各買い目の総合点です。実オッズは使用していません。",
     ]
 
