@@ -1,3 +1,6 @@
+# v335ep（3連単12表裏 vs 2車単12→34 比較版）
+# ・推奨比較を「3連単12-12-34（4点）」と「2車単12-34（4点）」の2候補へ変更。
+# ・各4点の平均総合点で比較。総合点計算式、V評価順位、軸・ヒモ、開催日KO、その他予想ロジックは変更しない。
 # v335eo（評価2・3軸共通項2車単版）
 # ・評価2軸は2車単 2→1＋2車複 2-34、評価3軸は2車単 3→1＋2車複 3-24の各3点。
 # ・評価1軸との共通項（2→1／3→1）を2車単で共有し、各3点の平均総合点で★★★★～★を比較。その他ロジックは変更しない。
@@ -3695,98 +3698,36 @@ def _v335bt_purchase_lines(final_order, profile):
             for _t in _tickets
         ]
 
-    # v335en：推奨4候補をすべて3点固定で比較する。
-    # 評価1軸① = 3連単 1-2-34（2点）＋裏目2車単 2-1（1点）
-    # 評価1軸② = 3連単 1-3-24（2点）＋裏目2車単 3-1（1点）
-    # 評価2軸／評価3軸 = 2車複 各3点。
+    # v335ep：推奨比較を4点対4点の2候補に変更する。
+    # ①3連単 12-12-34 = 1-2-3 / 1-2-4 / 2-1-3 / 2-1-4
+    # ②2車単 12-34    = 1-3 / 1-4 / 2-3 / 2-4
     # 評価順位を実車番へ変換し、既存の買い目別総合点だけで平均総合点を算出する。
-    # ③評価2軸 2車複 2-134
-    # ④評価3軸 2車複 3-124
-    # 平均総合点の高い順に ★★★★～★ を付与する。
-    _tri_12 = [
+    # 総合点計算式、V評価順位、軸・ヒモ、開催日KO、その他予想ロジックは変更しない。
+    _trifecta_12_box = [
         (_r1, _r2, _r3),
         (_r1, _r2, _r4),
+        (_r2, _r1, _r3),
+        (_r2, _r1, _r4),
     ]
-    _tri_13 = [
-        (_r1, _r3, _r2),
-        (_r1, _r3, _r4),
-    ]
-    _q2 = [
-        tuple(sorted((_r2, _r1))),
-        tuple(sorted((_r2, _r3))),
-        tuple(sorted((_r2, _r4))),
-    ]
-    _q3 = [
-        tuple(sorted((_r3, _r1))),
-        tuple(sorted((_r3, _r2))),
-        tuple(sorted((_r3, _r4))),
+    _exacta_12_to_34 = [
+        (_r1, _r3),
+        (_r1, _r4),
+        (_r2, _r3),
+        (_r2, _r4),
     ]
 
-    _tri_12_scores = _ticket_scores(
-        _tri_12, _trifecta_hit_score_map, _trifecta_myoumi_score_map
+    _trifecta_12_box_scores = _ticket_scores(
+        _trifecta_12_box, _trifecta_hit_score_map, _trifecta_myoumi_score_map
     )
-    _tri_13_scores = _ticket_scores(
-        _tri_13, _trifecta_hit_score_map, _trifecta_myoumi_score_map
+    _exacta_12_to_34_scores = _ticket_scores(
+        _exacta_12_to_34, _exacta_hit_score_map, _exacta_myoumi_score_map
     )
-    # v335en：評価1軸は3連単2点＋追加2車単1点＝計3点平均にする。
-    _exacta_21 = (_r2, _r1)
-    _exacta_31 = (_r3, _r1)
-    _exacta_21_score = _ordered_total_score(
-        _exacta_21, _exacta_hit_score_map, _exacta_myoumi_score_map
-    )
-    _exacta_31_score = _ordered_total_score(
-        _exacta_31, _exacta_hit_score_map, _exacta_myoumi_score_map
-    )
-    _tri_12_bundle_scores = list(_tri_12_scores) + [_exacta_21_score]
-    _tri_13_bundle_scores = list(_tri_13_scores) + [_exacta_31_score]
-    _tri_12_avg = _group_avg(_tri_12_bundle_scores)
-    _tri_13_avg = _group_avg(_tri_13_bundle_scores)
-
-    # v335eo：評価2/3軸は、評価1軸との共通項だけ2車単にする。
-    # 評価2軸 = 2車単 2→1 ＋ 2車複 2-3 / 2-4（計3点）
-    # 評価3軸 = 2車単 3→1 ＋ 2車複 3-2 / 3-4（計3点）
-    # 2車複部分は既存の「加重2車複評価表」の総合点をそのまま使う。
-    # 新しい点数式や実オッズは加えない。
-    _pair_total_map = {}
-    try:
-        for _row in (globals().get("V335DH_WEIGHTED_PAIR_ROWS", []) or []):
-            if not isinstance(_row, dict):
-                continue
-            _a = int(_row.get("a"))
-            _b = int(_row.get("b"))
-            _pair_total_map[tuple(sorted((_a, _b)))] = float(_row.get("total_pt", 0.0) or 0.0)
-    except Exception:
-        _pair_total_map = {}
-
-    def _quinella_group_scores(_tickets):
-        _vals = []
-        for _t in (_tickets or []):
-            _key = tuple(sorted(int(x) for x in _t))
-            _vals.append(_pair_total_map.get(_key, None))
-        return _vals
-
-    # 共通項 2=1 / 3=1 は、それぞれ既存の裏目2車単 2→1 / 3→1 に置換。
-    # 残り2点だけ2車複として評価する。
-    _q2_quinella = [
-        tuple(sorted((_r2, _r3))),
-        tuple(sorted((_r2, _r4))),
-    ]
-    _q3_quinella = [
-        tuple(sorted((_r3, _r2))),
-        tuple(sorted((_r3, _r4))),
-    ]
-    _q2_quinella_scores = _quinella_group_scores(_q2_quinella)
-    _q3_quinella_scores = _quinella_group_scores(_q3_quinella)
-    _q2_scores = [_exacta_21_score] + list(_q2_quinella_scores)
-    _q3_scores = [_exacta_31_score] + list(_q3_quinella_scores)
-    _q2_avg = _group_avg(_q2_scores)
-    _q3_avg = _group_avg(_q3_scores)
+    _trifecta_12_box_avg = _group_avg(_trifecta_12_box_scores)
+    _exacta_12_to_34_avg = _group_avg(_exacta_12_to_34_scores)
 
     _candidate_rows = [
-        {"key": "tri12", "avg": _tri_12_avg, "priority": 0},
-        {"key": "q2",    "avg": _q2_avg,     "priority": 1},
-        {"key": "tri13", "avg": _tri_13_avg, "priority": 2},
-        {"key": "q3",    "avg": _q3_avg,     "priority": 3},
+        {"key": "trifecta", "avg": _trifecta_12_box_avg, "priority": 0},
+        {"key": "exacta",   "avg": _exacta_12_to_34_avg, "priority": 1},
     ]
     _rankable = [r for r in _candidate_rows if r.get("avg") is not None]
     _rankable = sorted(
@@ -3803,34 +3744,16 @@ def _v335bt_purchase_lines(final_order, profile):
     def _stars(_key):
         return _star_map.get(str(_key), "-")
 
-    _tri12_text = f"{_r1}-{_r2}-{_r3}{_r4}"
-    _tri13_text = f"{_r1}-{_r3}-{_r2}{_r4}"
-    _q2_text = f"{_r2}-{_r3}{_r4}"
-    _q3_text = f"{_r3}-{_r2}{_r4}"
+    _trifecta_text = f"{_r1}{_r2}-{_r1}{_r2}-{_r3}{_r4}"
+    _exacta_text = f"{_r1}{_r2}-{_r3}{_r4}"
 
     globals()["V335DS_GROUP_COMPARISON"] = {
-        "tri12_tickets": tuple(_tri_12),
-        "tri13_tickets": tuple(_tri_13),
-        "q2_tickets": tuple(_q2),
-        "q3_tickets": tuple(_q3),
-        "tri12_scores": tuple(_tri_12_scores),
-        "tri13_scores": tuple(_tri_13_scores),
-        "tri12_exacta_ticket": tuple(_exacta_21),
-        "tri13_exacta_ticket": tuple(_exacta_31),
-        "tri12_exacta_score": _exacta_21_score,
-        "tri13_exacta_score": _exacta_31_score,
-        "tri12_bundle_scores": tuple(_tri_12_bundle_scores),
-        "tri13_bundle_scores": tuple(_tri_13_bundle_scores),
-        "q2_scores": tuple(_q2_scores),
-        "q3_scores": tuple(_q3_scores),
-        "q2_exacta_ticket": tuple(_exacta_21),
-        "q3_exacta_ticket": tuple(_exacta_31),
-        "q2_quinella_tickets": tuple(_q2_quinella),
-        "q3_quinella_tickets": tuple(_q3_quinella),
-        "tri12_avg": _tri_12_avg,
-        "tri13_avg": _tri_13_avg,
-        "q2_avg": _q2_avg,
-        "q3_avg": _q3_avg,
+        "trifecta_tickets": tuple(_trifecta_12_box),
+        "exacta_tickets": tuple(_exacta_12_to_34),
+        "trifecta_scores": tuple(_trifecta_12_box_scores),
+        "exacta_scores": tuple(_exacta_12_to_34_scores),
+        "trifecta_avg": _trifecta_12_box_avg,
+        "exacta_avg": _exacta_12_to_34_avg,
         "stars": dict(_star_map),
         "recommended": str(_rankable[0].get("key")) if _rankable else "算出不可",
     }
@@ -3838,19 +3761,13 @@ def _v335bt_purchase_lines(final_order, profile):
     _out = [
         "【推奨購入】",
         "",
-        f"評価1軸　{_stars('tri12')}　平均総合点：{_avg_text(_tri_12_avg)}",
-        f"3連単　{_tri12_text}　＋2車単　{_r2}-{_r1}",
+        f"3連単　{_stars('trifecta')}　平均総合点：{_avg_text(_trifecta_12_box_avg)}",
+        f"3連単　{_trifecta_text}",
         "",
-        f"評価1軸　{_stars('tri13')}　平均総合点：{_avg_text(_tri_13_avg)}",
-        f"3連単　{_tri13_text}　＋2車単　{_r3}-{_r1}",
+        f"2車単　{_stars('exacta')}　平均総合点：{_avg_text(_exacta_12_to_34_avg)}",
+        f"2車単　{_exacta_text}",
         "",
-        f"評価2軸　{_stars('q2')}　平均総合点：{_avg_text(_q2_avg)}",
-        f"2車単　{_r2}-{_r1}　＋2車複　{_q2_text}",
-        "",
-        f"評価3軸　{_stars('q3')}　平均総合点：{_avg_text(_q3_avg)}",
-        f"2車単　{_r3}-{_r1}　＋2車複　{_q3_text}",
-        "",
-        "※★★★★～★は、評価1軸は3連単2点＋追加2車単1点、評価2・3軸は共通項2車単1点＋2車複2点の各計3点について、平均総合点を比較した順位です。",
+        "※3連単12-12-34の4点と、2車単12-34の4点について、平均総合点を比較した順位です。",
         "※総合点・平均総合点は、ヴェロビ独自の的中点・妙味点に基づいて算出した各買い目の総合点です。実オッズは使用していません。",
     ]
 
