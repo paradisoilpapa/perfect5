@@ -1,4 +1,4 @@
-# v335eq（最終着順予想・2車単3点版）
+# v335er（最終着順予想・2車単3点・想定的中率版）
 # ・【推奨購入】を最終着順予想TOP3から作る2車単「13-23」型3点へ変更（表示例：15-25）。
 # ・表示は「2車単　15-25　計3点」＋「※最終着順予想の上位3車をもとに、本線＋展開ズレを想定した3点です。」に統一。
 # ・3連単/2車単の平均総合点比較・★表示は推奨購入から外す。V評価順位、合成ヒモ、開催日査定、その他予想ロジックは変更しない。
@@ -3762,16 +3762,27 @@ def _v335bt_purchase_lines(final_order, profile):
         "recommended": str(_rankable[0].get("key")) if _rankable else "算出不可",
     }
 
-    # v335eq：推奨購入は「最終着順予想」TOP3だけから生成する。
-    # 順位1位=A、2位=B、3位=C として、2車単 A→B / A→C / C→B の3点。
-    # フォーメーション表示は AC-BC（例：1→2→5 なら 15-25）。
+    # v335er：推奨購入は「最終着順予想」TOP3から固定3点を生成する。
+    # 順位1位=A、2位=B、3位=C として、2車単 A→C / B→C / C→A の3点。
+    # 各買い目には既存v335br順序付き確率モデルの想定的中率を表示する。
     _pred1, _pred2, _pred3 = [int(x) for x in _order[:3]]
-    _final_exacta_text = f"{_pred1}{_pred3}-{_pred2}{_pred3}"
+    _final_exacta_tickets = [
+        (_pred1, _pred3),
+        (_pred2, _pred3),
+        (_pred3, _pred1),
+    ]
+
+    def _final_exacta_line(_ticket):
+        _prob = _exacta_prob_map.get(tuple(_ticket))
+        _prob_text = "算出不可" if _prob is None else f"{float(_prob) * 100.0:.2f}%"
+        return f"2車単　{int(_ticket[0])}-{int(_ticket[1])}（想定的中率 {_prob_text}）"
 
     _out = [
         "【推奨購入】",
         "",
-        f"2車単　{_final_exacta_text}　計3点",
+        *[_final_exacta_line(_ticket) for _ticket in _final_exacta_tickets],
+        "",
+        "計3点",
         "",
         "※最終着順予想の上位3車をもとに、本線＋展開ズレを想定した3点です。",
     ]
