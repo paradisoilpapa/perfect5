@@ -1,3 +1,9 @@
+# v335ev（第1流れ3連複ヒモ・同流れ含むV順位全候補版／4点）
+# ・展開1位：上位2車を軸に、同じ流れの車も含む残存全車からV評価順位最上位1車を3列目に採用して3連複1点。
+# ・展開1位：上位2車の裏2車単1点。
+# ・展開2位：上位2車＋「展開1位の最上位と展開2位軸2車を除くV評価順位最上位車」で3連複1点、上位2車の2車複1点。
+# ・合計4点を基本とし、高配当を狙える3連複を第1・第2展開へ1点ずつ配分。
+# ・予想本体、流れ比率、ポイントアップ、開催日KO、V評価順位は変更しない。
 # v335et（流れ上位2展開・三連複＋2車単＋2車複4点版）
 # ・展開1位：上位2車を核に、展開2位の上位2車を相手とする3連複2点＋裏2車単1点。
 # ・展開2位：上位2車の2車複1点。合計4点を基本とする。
@@ -3466,15 +3472,16 @@ def _v335es_finalize_flow_order(flow_order, profile):
     return tuple(int(c) for c in _knock_order)
 
 
-def _v335es_flow_top2_purchase_lines(profile):
-    """想定比率上位2展開から4点を生成。
+def _v335es_flow_top2_purchase_lines(profile, v_order=None):
+    """想定比率上位2展開から4点を生成（v335eu）。
 
     展開1位:
-      ・上位2車を核に、展開2位の上位2車を相手とする3連複2点
+      ・上位2車を軸に、同流れを含む残存全車からV評価順位最上位1車を3列目にした3連複1点
       ・上位2車の裏2車単1点
     展開2位:
+      ・上位2車＋V評価順位最上位の残存車の3連複1点
+        （展開1位の最上位車、および展開2位の軸2車は除外）
       ・上位2車の2車複1点
-    買い目ごとの想定的中率は表示しない。
     """
     if not isinstance(profile, dict):
         return None
@@ -3483,7 +3490,6 @@ def _v335es_flow_top2_purchase_lines(profile):
     if not isinstance(_style_map, dict):
         return None
 
-    # 現行表示と同じ流れ比率を使用。ゾーン比率を優先し、なければFR/U/VTXへフォールバック。
     _ratio_map = {}
     try:
         _zone = globals().get("FLOW_RATIO_MAP_BY_ZONE", {}) or {}
@@ -3540,47 +3546,52 @@ def _v335es_flow_top2_purchase_lines(profile):
     _m1, _m2 = _main_order[:2]
     _c1, _c2 = _counter_order[:2]
 
+    # 「基本スコア」は既存のV評価順位をそのまま使用する。
+    _v_order = tuple(int(c) for c in (v_order or tuple()))
+
+    # 第1展開の3連複ヒモ：軸2車だけを除外。
+    # 同じ流れの3位以下も、別流れの車もすべて候補に残し、V評価順位最上位1車を採用する。
+    _main_excluded = {int(_m1), int(_m2)}
+    _main_himo = next((int(c) for c in _v_order if int(c) not in _main_excluded), None)
+
+    # 第2展開の3連複ヒモ：第1展開最上位と第2展開軸2車を除いた中のV順位最上位1車。
+    _counter_excluded = {int(_m1), int(_c1), int(_c2)}
+    _counter_himo = next((int(c) for c in _v_order if int(c) not in _counter_excluded), None)
+
     _lines = ["【推奨購入】", ""]
 
-    # 展開1位：本線上位2車を核に、対抗流れ上位2車を三連複の相手へ。
-    # 同一車が重なった場合は無効な3連複を除外し、実際の有効点数だけ数える。
-    _trio_tickets = []
-    _seen_trio = set()
-    for _opp in (_c1, _c2):
-        _ticket = tuple(sorted((_m1, _m2, int(_opp))))
-        if len(set(_ticket)) != 3 or _ticket in _seen_trio:
-            continue
-        _seen_trio.add(_ticket)
-        _trio_tickets.append(_ticket)
-
+    # 展開1位：上位2車＋同流れを含む残存全車のV評価順位最上位車で3連複1点。
+    _main_trio_valid = False
+    _main_trio = tuple()
+    if _main_himo is not None:
+        _main_trio = tuple(sorted((_m1, _m2, int(_main_himo))))
+        _main_trio_valid = len(set(_main_trio)) == 3
     _lines.append(f"【想定展開{float(_main['ratio']) * 100.0:.0f}％】{_main['style']}")
     _lines.append(f"最終着順予想　{' → '.join(str(int(c)) for c in _main_order)}")
-    if _trio_tickets:
-        # 通常は m1-m2-c1/c2 の2点。表示はフォーメーション形式。
-        _valid_opps = []
-        for _opp in (_c1, _c2):
-            _ticket = tuple(sorted((_m1, _m2, int(_opp))))
-            if len(set(_ticket)) == 3 and _ticket in _seen_trio and int(_opp) not in _valid_opps:
-                _valid_opps.append(int(_opp))
-        if len(_valid_opps) >= 2:
-            _lines.append(f"3連複　{_m1}-{_m2}-{''.join(str(x) for x in _valid_opps)}　計{len(_trio_tickets)}点")
-        else:
-            _lines.append("3連複　" + " / ".join("-".join(str(x) for x in t) for t in _trio_tickets) + f"　計{len(_trio_tickets)}点")
-
+    if _main_trio_valid:
+        _lines.append("3連複　" + "-".join(str(x) for x in _main_trio))
     _lines.append(f"2車単　{_m2}-{_m1}")
     _lines.append("")
 
-    # 展開2位：上位2車は順序を問わず2車複1点。
+    # 展開2位：上位2車＋条件付きV評価順位最上位車で3連複1点。
+    _counter_trio_valid = False
+    _counter_trio = tuple()
+    if _counter_himo is not None:
+        _counter_trio = tuple(sorted((_c1, _c2, int(_counter_himo))))
+        _counter_trio_valid = len(set(_counter_trio)) == 3
+
     _q1, _q2 = sorted((_c1, _c2))
     _lines.append(f"【想定展開{float(_counter['ratio']) * 100.0:.0f}％】{_counter['style']}")
     _lines.append(f"最終着順予想　{' → '.join(str(int(c)) for c in _counter_order)}")
+    if _counter_trio_valid:
+        _lines.append("3連複　" + "-".join(str(x) for x in _counter_trio))
     _lines.append(f"2車複　{_q1}-{_q2}")
     _lines.append("")
 
-    _ticket_count = len(_trio_tickets) + 1 + 1
+    _ticket_count = int(_main_trio_valid) + 1 + int(_counter_trio_valid) + 1
     _lines.append(f"計{_ticket_count}点")
-    _lines.append("※同一券種で同じ買い目が重なった場合は1点に統合します。")
-    _lines.append("※展開1位は上位2車を核に、対抗展開の上位2車を相手とする3連複を組み、上位2車の逆転は2車単で押さえます。")
+    _lines.append("※展開1位は上位2車を軸に、同流れを含む残存全車からV評価順位最上位1車を加えた3連複1点と、上位2車の逆転2車単1点。")
+    _lines.append("※展開2位は上位2車＋第1展開最上位・第2展開軸を除くV評価順位最上位車の3連複1点と、上位2車の2車複1点。")
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
@@ -3610,7 +3621,7 @@ def _v335bt_purchase_lines(final_order, profile):
     """
     # v335es：推奨購入だけを「流れ上位2展開」方式へ変更する。
     # 予想本体・流れ比率・ポイントアップ・開催日KO・確率モデルは既存処理を再利用する。
-    _v335es_lines = _v335es_flow_top2_purchase_lines(profile)
+    _v335es_lines = _v335es_flow_top2_purchase_lines(profile, final_order)
     if _v335es_lines:
         return _v335es_lines
 
