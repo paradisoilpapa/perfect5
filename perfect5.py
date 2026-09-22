@@ -1,3 +1,9 @@
+# v335et（流れ上位2展開・三連複＋2車単＋2車複4点版）
+# ・展開1位：上位2車を核に、展開2位の上位2車を相手とする3連複2点＋裏2車単1点。
+# ・展開2位：上位2車の2車複1点。合計4点を基本とする。
+# ・買い目ごとの想定的中率表示を廃止。想定展開率のみ表示する。
+# ・統合された最終着順予想は公開表示から外し、展開別最終着順予想だけを表示する。
+# ・予想本体、流れ比率、ポイントアップ、開催日KO等は変更しない。
 # v335es（流れ上位2展開・表3連単＋裏2車単4点版）
 # ・順流／逆流／渦の想定比率上位2展開を採用し、各展開を現行ポイントアップ＋開催日KOで独立に最終着順化。
 # ・展開1位：着順通りの表は3連単1→2→3を1点、裏は2車単2→1を1点。
@@ -3461,7 +3467,15 @@ def _v335es_finalize_flow_order(flow_order, profile):
 
 
 def _v335es_flow_top2_purchase_lines(profile):
-    """想定比率上位2展開から最大4点を生成。重複は券種内で1点へ統合。"""
+    """想定比率上位2展開から4点を生成。
+
+    展開1位:
+      ・上位2車を核に、展開2位の上位2車を相手とする3連複2点
+      ・上位2車の裏2車単1点
+    展開2位:
+      ・上位2車の2車複1点
+    買い目ごとの想定的中率は表示しない。
+    """
     if not isinstance(profile, dict):
         return None
 
@@ -3480,7 +3494,7 @@ def _v335es_flow_top2_purchase_lines(profile):
         }
         _tot = sum(_vals.values())
         if _tot > 0:
-            _ratio_map = {k: float(v)/float(_tot) for k, v in _vals.items()}
+            _ratio_map = {k: float(v) / float(_tot) for k, v in _vals.items()}
     except Exception:
         _ratio_map = {}
     if not _ratio_map:
@@ -3492,10 +3506,10 @@ def _v335es_flow_top2_purchase_lines(profile):
                 "渦": float(_flow.get("VTX", 0.0) or 0.0),
             }
             _tot = sum(_vals.values())
-            _ratio_map = ({k: float(v)/float(_tot) for k, v in _vals.items()}
-                          if _tot > 0 else {"順流":1/3, "逆流":1/3, "渦":1/3})
+            _ratio_map = ({k: float(v) / float(_tot) for k, v in _vals.items()}
+                          if _tot > 0 else {"順流": 1/3, "逆流": 1/3, "渦": 1/3})
         except Exception:
-            _ratio_map = {"順流":1/3, "逆流":1/3, "渦":1/3}
+            _ratio_map = {"順流": 1/3, "逆流": 1/3, "渦": 1/3}
 
     _fixed = {"順流": 0, "逆流": 1, "渦": 2}
     _rows = []
@@ -3517,65 +3531,56 @@ def _v335es_flow_top2_purchase_lines(profile):
     if len(_rows) < 2:
         return None
 
-    # 想定的中率は既存v335brモデルをそのまま使用。
-    _prob_order = tuple(dict.fromkeys(int(c) for r in _rows for c in r["order"]))
-    try:
-        _p1 = _v335br_position_probability_map(profile, _prob_order, 1)
-        _p2 = _v335br_position_probability_map(profile, _prob_order, 2)
-        _p3 = _v335br_position_probability_map(profile, _prob_order, 3)
-    except Exception:
-        _p1, _p2, _p3 = {}, {}, {}
+    _main, _counter = _rows[0], _rows[1]
+    _main_order = tuple(int(c) for c in _main["order"])
+    _counter_order = tuple(int(c) for c in _counter["order"])
+    if len(_main_order) < 2 or len(_counter_order) < 2:
+        return None
 
-    def _prob(_ticket):
-        try:
-            return float(_v335br_ticket_probability(tuple(_ticket), _p1, _p2, _p3))
-        except Exception:
-            return None
+    _m1, _m2 = _main_order[:2]
+    _c1, _c2 = _counter_order[:2]
 
     _lines = ["【推奨購入】", ""]
-    _seen_exacta = set()
-    _seen_trifecta = set()
-    _ticket_count = 0
 
-    for _idx, _row in enumerate(_rows):
-        _style = str(_row["style"])
-        _ratio_pct = float(_row["ratio"]) * 100.0
-        _order = tuple(int(c) for c in _row["order"])
-        _a, _b, _c = _order[:3]
-        _lines.append(f"【想定展開{_ratio_pct:.0f}％】{_style}")
-        _lines.append(f"最終着順予想　{' → '.join(str(int(c)) for c in _order)}")
+    # 展開1位：本線上位2車を核に、対抗流れ上位2車を三連複の相手へ。
+    # 同一車が重なった場合は無効な3連複を除外し、実際の有効点数だけ数える。
+    _trio_tickets = []
+    _seen_trio = set()
+    for _opp in (_c1, _c2):
+        _ticket = tuple(sorted((_m1, _m2, int(_opp))))
+        if len(set(_ticket)) != 3 or _ticket in _seen_trio:
+            continue
+        _seen_trio.add(_ticket)
+        _trio_tickets.append(_ticket)
 
-        if _idx == 0:
-            # 展開1位：表は安い2車単ではなく、着順根拠を保ったまま3連単1点へ昇格。
-            _tri = (_a, _b, _c)
-            if _tri not in _seen_trifecta:
-                _seen_trifecta.add(_tri)
-                _p = _prob(_tri)
-                _pt = "算出不可" if _p is None else f"{_p*100.0:.2f}%"
-                _lines.append(f"3連単　{_a}-{_b}-{_c}（想定的中率 {_pt}）")
-                _ticket_count += 1
-            _ex = (_b, _a)
-            if _ex not in _seen_exacta:
-                _seen_exacta.add(_ex)
-                _p = _prob(_ex)
-                _pt = "算出不可" if _p is None else f"{_p*100.0:.2f}%"
-                _lines.append(f"2車単　{_b}-{_a}（想定的中率 {_pt}）")
-                _ticket_count += 1
+    _lines.append(f"【想定展開{float(_main['ratio']) * 100.0:.0f}％】{_main['style']}")
+    _lines.append(f"最終着順予想　{' → '.join(str(int(c)) for c in _main_order)}")
+    if _trio_tickets:
+        # 通常は m1-m2-c1/c2 の2点。表示はフォーメーション形式。
+        _valid_opps = []
+        for _opp in (_c1, _c2):
+            _ticket = tuple(sorted((_m1, _m2, int(_opp))))
+            if len(set(_ticket)) == 3 and _ticket in _seen_trio and int(_opp) not in _valid_opps:
+                _valid_opps.append(int(_opp))
+        if len(_valid_opps) >= 2:
+            _lines.append(f"3連複　{_m1}-{_m2}-{''.join(str(x) for x in _valid_opps)}　計{len(_trio_tickets)}点")
         else:
-            # 展開2位：上位2車の表裏を2車単で持つ。
-            for _ex in ((_a, _b), (_b, _a)):
-                if _ex in _seen_exacta:
-                    continue
-                _seen_exacta.add(_ex)
-                _p = _prob(_ex)
-                _pt = "算出不可" if _p is None else f"{_p*100.0:.2f}%"
-                _lines.append(f"2車単　{_ex[0]}-{_ex[1]}（想定的中率 {_pt}）")
-                _ticket_count += 1
-        _lines.append("")
+            _lines.append("3連複　" + " / ".join("-".join(str(x) for x in t) for t in _trio_tickets) + f"　計{len(_trio_tickets)}点")
 
+    _lines.append(f"2車単　{_m2}-{_m1}")
+    _lines.append("")
+
+    # 展開2位：上位2車は順序を問わず2車複1点。
+    _q1, _q2 = sorted((_c1, _c2))
+    _lines.append(f"【想定展開{float(_counter['ratio']) * 100.0:.0f}％】{_counter['style']}")
+    _lines.append(f"最終着順予想　{' → '.join(str(int(c)) for c in _counter_order)}")
+    _lines.append(f"2車複　{_q1}-{_q2}")
+    _lines.append("")
+
+    _ticket_count = len(_trio_tickets) + 1 + 1
     _lines.append(f"計{_ticket_count}点")
     _lines.append("※同一券種で同じ買い目が重なった場合は1点に統合します。")
-    _lines.append("※展開1位の着順通り1→2は2車単では買わず、1→2→3の3連単1点に置き換えます。")
+    _lines.append("※展開1位は上位2車を核に、対抗展開の上位2車を相手とする3連複を組み、上位2車の逆転は2車単で押さえます。")
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
@@ -15259,7 +15264,8 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         ) if five_point_plan else tuple()
         _dedicated_order_text = " → ".join(str(int(x)) for x in _dedicated_order) if _dedicated_order else "算出不可"
         if len(lines) >= 4:
-            lines[3] = f"最終着順予想　{_dedicated_order_text}"
+            # v335et：統合された最終着順予想は非表示。展開別の最終着順予想だけを推奨欄に表示する。
+            lines.pop(3)
 
         # v335br：旧固定買い目・回収率選抜はnote推奨に使わない。
         # 序盤はライン勢力比、最終は個人KO＋会場車番別着率＋脚質×決まり手で
