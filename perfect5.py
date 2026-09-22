@@ -1,4 +1,6 @@
-# v335ev（第1流れ3連複ヒモ・同流れ含むV順位全候補版／4点）
+# v335ew（流れ別ポイントアップ診断表示／4点）
+# ・採用する各流れごとに、V評価順位・合成ヒモ順位(P)・開催日査定・ヒモ1/元1比率を表示。
+# ・表示値は各流れの最終着順計算で実際に使用した値を返して表示し、再計算や推測表示はしない。
 # ・展開1位：上位2車を軸に、同じ流れの車も含む残存全車からV評価順位最上位1車を3列目に採用して3連複1点。
 # ・展開1位：上位2車の裏2車単1点。
 # ・展開2位：上位2車＋「展開1位の最上位と展開2位軸2車を除くV評価順位最上位車」で3連複1点、上位2車の2車複1点。
@@ -3368,11 +3370,13 @@ def _v335cd_trifecta_12_13_123(cars3):
 
 
 
-def _v335es_finalize_flow_order(flow_order, profile):
-    """流れ別順位を、現行のポイントアップ＋開催日KO＋KO最下位3位制限まで通す。"""
+def _v335es_finalize_flow_order(flow_order, profile, return_debug=False):
+    """流れ別順位を、現行のポイントアップ＋開催日KO＋KO最下位3位制限まで通す。
+    return_debug=True の場合は、実計算に使った診断値も返す。
+    """
     _order = tuple(int(x) for x in (flow_order or tuple()))
     if len(_order) < 3 or not isinstance(profile, dict):
-        return tuple()
+        return (tuple(), {}) if return_debug else tuple()
 
     _axis = int(_order[0])
     _hist_rank, _rate_map, _n_map = _v335cc_historical_quinella_data(profile, _order)
@@ -3401,6 +3405,8 @@ def _v335es_finalize_flow_order(flow_order, profile):
 
     _pre_knock_order = [int(_axis)] + [int(c) for c in _adjusted_himo_order]
     _knock_order = list(_pre_knock_order)
+    _flow_knock_log = []
+    _flow_knock_error = None
     try:
         _ko_map = globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {}
         _fatigue_adj_map = globals().get("FATIGUE_KNOCKDOWN_ADJ_MAP", {}) or {}
@@ -3442,6 +3448,16 @@ def _v335es_finalize_flow_order(flow_order, profile):
             else:
                 _lost = bool(_chal_sc > _axis_sc)
 
+            _flow_knock_log.append({
+                "axis": int(_original_axis),
+                "challenger": int(_original_v2),
+                "axis_score": float(_axis_sc),
+                "challenger_score": float(_chal_sc),
+                "v2_v1_ratio": (float(_chal_sc / _axis_sc) if float(_axis_sc) > 0.0 else None),
+                "fatigue_lost": bool(_chal_sc > _axis_sc),
+                "knock_reason": ("KO最下位除外" if (_axis_is_ko_last or _chal_is_ko_last) else ("疲労逆転" if _lost else "維持")),
+                "lost": bool(_lost),
+            })
             if _lost:
                 _remaining_himo = [
                     int(c) for c in _adjusted_himo_order if int(c) != int(_original_v2)
@@ -3449,7 +3465,8 @@ def _v335es_finalize_flow_order(flow_order, profile):
                 _knock_order = [int(_original_v2), int(_original_axis)] + _remaining_himo
             else:
                 _knock_order = [int(_original_axis)] + [int(c) for c in _adjusted_himo_order]
-    except Exception:
+    except Exception as _flow_ko_exc:
+        _flow_knock_error = str(_flow_ko_exc)
         _knock_order = list(_pre_knock_order)
 
     # 現行仕様：KO使用スコア最下位車が1・2位なら最大3位まで下げる。
@@ -3469,7 +3486,16 @@ def _v335es_finalize_flow_order(flow_order, profile):
     except Exception:
         pass
 
-    return tuple(int(c) for c in _knock_order)
+    _final_order = tuple(int(c) for c in _knock_order)
+    if return_debug:
+        return _final_order, {
+            "v_order": tuple(int(c) for c in _order),
+            "adjusted_himo_order": tuple(int(c) for c in _adjusted_himo_order),
+            "total_point": {int(c): int(_total_point.get(int(c), 0)) for c in _adjusted_himo_order},
+            "knock_log": list(_flow_knock_log),
+            "knock_error": _flow_knock_error,
+        }
+    return _final_order
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
@@ -3523,13 +3549,14 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _seq = _v281_unique_sequence(_style_map.get(_style, []) or [])
         if len(_seq) < 3:
             continue
-        _final = _v335es_finalize_flow_order(_seq, profile)
+        _final, _diag = _v335es_finalize_flow_order(_seq, profile, return_debug=True)
         if len(_final) < 3:
             continue
         _rows.append({
             "style": _style,
             "ratio": float(_ratio_map.get(_style, 0.0) or 0.0),
             "order": tuple(_final),
+            "diag": dict(_diag or {}),
             "fixed": int(_fixed[_style]),
         })
     _rows.sort(key=lambda r: (-float(r["ratio"]), int(r["fixed"])))
@@ -3558,6 +3585,33 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _counter_excluded = {int(_m1), int(_c1), int(_c2)}
     _counter_himo = next((int(c) for c in _v_order if int(c) not in _counter_excluded), None)
 
+    def _append_flow_diag(_lines, _row):
+        _diag = dict((_row or {}).get("diag") or {})
+        _flow_v = tuple(int(c) for c in (_diag.get("v_order") or tuple()))
+        _flow_himo = tuple(int(c) for c in (_diag.get("adjusted_himo_order") or tuple()))
+        _flow_pt = dict(_diag.get("total_point") or {})
+        if _flow_v:
+            _lines.append("今回V評価順位　　　：" + " → ".join(str(c) for c in _flow_v))
+        if _flow_himo:
+            _lines.append("合成ヒモ順位　　　 ：" + " → ".join(
+                f"{c}（{int(_flow_pt.get(c, 0))}P）" for c in _flow_himo
+            ))
+        _logs = list(_diag.get("knock_log") or [])
+        if _logs:
+            for _k in _logs:
+                _result = "元◎負け" if bool(_k.get("fatigue_lost")) else "元◎維持"
+                _lines.append(
+                    f"開催日査定　　　　 ：{int(_k.get('axis'))} vs {int(_k.get('challenger'))} "
+                    f"= {float(_k.get('axis_score')):.6f} vs {float(_k.get('challenger_score')):.6f}（{_result}）"
+                )
+                _ratio = _k.get("v2_v1_ratio")
+                if _ratio is not None:
+                    _lines.append(
+                        f"ヒモ1/元1比率　　 ：{float(_ratio)*100.0:.2f}%（{str(_k.get('knock_reason','維持'))}）"
+                    )
+        elif _diag.get("knock_error"):
+            _lines.append(f"開催日査定エラー　 ：{_diag.get('knock_error')}")
+
     _lines = ["【推奨購入】", ""]
 
     # 展開1位：上位2車＋同流れを含む残存全車のV評価順位最上位車で3連複1点。
@@ -3567,7 +3621,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _main_trio = tuple(sorted((_m1, _m2, int(_main_himo))))
         _main_trio_valid = len(set(_main_trio)) == 3
     _lines.append(f"【想定展開{float(_main['ratio']) * 100.0:.0f}％】{_main['style']}")
-    _lines.append(f"最終着順予想　{' → '.join(str(int(c)) for c in _main_order)}")
+    _append_flow_diag(_lines, _main)
+    _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _main_order)}")
     if _main_trio_valid:
         _lines.append("3連複　" + "-".join(str(x) for x in _main_trio))
     _lines.append(f"2車単　{_m2}-{_m1}")
@@ -3582,7 +3637,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _q1, _q2 = sorted((_c1, _c2))
     _lines.append(f"【想定展開{float(_counter['ratio']) * 100.0:.0f}％】{_counter['style']}")
-    _lines.append(f"最終着順予想　{' → '.join(str(int(c)) for c in _counter_order)}")
+    _append_flow_diag(_lines, _counter)
+    _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _counter_order)}")
     if _counter_trio_valid:
         _lines.append("3連複　" + "-".join(str(x) for x in _counter_trio))
     _lines.append(f"2車複　{_q1}-{_q2}")
