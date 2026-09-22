@@ -3637,11 +3637,27 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _third_partner = _cand
             break
 
-    _lines = ["【推奨購入】", ""]
-
     # 展開1位：最終TOP3三連複＋TOP2裏二車単。
     _main_trio = tuple(sorted((_m1, _m2, _m3)))
     _main_trio_valid = len(set(_main_trio)) == 3
+
+    # 推奨購入を先頭へ集約する。詳細欄は従来どおり各展開の診断と対応買い目を表示する。
+    _q1, _q2 = sorted((_c1, _c2))
+    _summary_lines = ["【推奨購入】"]
+    if _main_trio_valid:
+        _summary_lines.append("3連複　" + "-".join(str(x) for x in _main_trio))
+    _summary_lines.append(f"2車単　{_m2}-{_m1}")
+    _summary_lines.append(f"2車複　{_q1}-{_q2}")
+    if _third_partner is not None:
+        _w1, _w2 = sorted((_t1, int(_third_partner)))
+        _summary_lines.append(f"ワイド　{_w1}-{_w2}")
+    else:
+        _summary_lines.append("ワイド　生成不可（軸と別ラインの候補なし）")
+    _ticket_count = int(_main_trio_valid) + 1 + 1 + int(_third_partner is not None)
+    _summary_lines.append(f"計{_ticket_count}点")
+    _summary_lines.append("")
+
+    _lines = list(_summary_lines)
     _lines.append(f"【想定展開{float(_main['ratio']) * 100.0:.0f}％】{_main['style']}")
     _append_flow_diag(_lines, _main)
     _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _main_order)}")
@@ -3651,7 +3667,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines.append("")
 
     # 展開2位：最終TOP2二車複のみ。
-    _q1, _q2 = sorted((_c1, _c2))
     _lines.append(f"【想定展開{float(_counter['ratio']) * 100.0:.0f}％】{_counter['style']}")
     _append_flow_diag(_lines, _counter)
     _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _counter_order)}")
@@ -3669,8 +3684,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("ワイド　生成不可（軸と別ラインの候補なし）")
     _lines.append("")
 
-    _ticket_count = int(_main_trio_valid) + 1 + 1 + int(_third_partner is not None)
-    _lines.append(f"計{_ticket_count}点")
     _lines.append("※展開1位は、その流れの最終着順予想1・2・3位の3連複1点と、1・2位の逆転2車単1点。")
     _lines.append("※展開2位は、その流れの最終着順予想1・2位の2車複1点。")
     _lines.append("※展開3位は、その流れの最終着順予想1位を軸に、順位上位から軸と同一ラインを除外して最上位1車とのワイド1点。")
