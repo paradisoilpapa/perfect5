@@ -1,3 +1,8 @@
+# v335es（流れ上位2展開・表3連単＋裏2車単4点版）
+# ・順流／逆流／渦の想定比率上位2展開を採用し、各展開を現行ポイントアップ＋開催日KOで独立に最終着順化。
+# ・展開1位：着順通りの表は3連単1→2→3を1点、裏は2車単2→1を1点。
+# ・展開2位：2車単1→2と2→1の表裏2点。券種内の重複買い目は1点へ統合。最大4点。
+# ・各買い目に既存v335brモデルの想定的中率を表示。既存の予想・流れ比率・ポイント・KO・確率計算ロジック自体は変更しない。
 # v335er（最終着順予想・2車単3点・想定的中率版）
 # ・【推奨購入】を最終着順予想TOP3から作る2車単「13-23」型3点へ変更（表示例：15-25）。
 # ・表示は「2車単　15-25　計3点」＋「※最終着順予想の上位3車をもとに、本線＋展開ズレを想定した4点です。」に統一。
@@ -3350,6 +3355,229 @@ def _v335cd_trifecta_12_13_123(cars3):
     ]
 
 
+
+def _v335es_finalize_flow_order(flow_order, profile):
+    """流れ別順位を、現行のポイントアップ＋開催日KO＋KO最下位3位制限まで通す。"""
+    _order = tuple(int(x) for x in (flow_order or tuple()))
+    if len(_order) < 3 or not isinstance(profile, dict):
+        return tuple()
+
+    _axis = int(_order[0])
+    _hist_rank, _rate_map, _n_map = _v335cc_historical_quinella_data(profile, _order)
+    _v_rank = {int(c): int(i) for i, c in enumerate(_order, start=1)}
+
+    _base_point = {}
+    _warp_point = {}
+    for _c in _order[1:]:
+        _vr = int(_v_rank.get(int(_c), 999))
+        _base_point[int(_c)] = max(0, 7 - _vr)
+        _hr = _hist_rank.get(int(_c))
+        _warp_point[int(_c)] = 0 if _hr is None else int(_hr) - int(_vr)
+
+    _total_point = {
+        int(_c): int(_base_point.get(int(_c), 0)) + int(_warp_point.get(int(_c), 0))
+        for _c in _order[1:]
+    }
+    _adjusted_himo_order = sorted(
+        [int(c) for c in _order[1:]],
+        key=lambda c: (
+            -int(_total_point.get(int(c), -999)),
+            int(_v_rank.get(int(c), 999)),
+            int(c),
+        ),
+    )
+
+    _pre_knock_order = [int(_axis)] + [int(c) for c in _adjusted_himo_order]
+    _knock_order = list(_pre_knock_order)
+    try:
+        _ko_map = globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {}
+        _fatigue_adj_map = globals().get("FATIGUE_KNOCKDOWN_ADJ_MAP", {}) or {}
+
+        def _base_score(_car):
+            try:
+                return float(_ko_map.get(int(_car), _ko_map.get(str(int(_car)), 0.0)) or 0.0)
+            except Exception:
+                return 0.0
+
+        def _fatigue_adj(_car):
+            try:
+                return float(_fatigue_adj_map.get(int(_car), _fatigue_adj_map.get(str(int(_car)), 0.0)) or 0.0)
+            except Exception:
+                return 0.0
+
+        def _compare_score(_car):
+            return float(_base_score(_car) * max(0.01, 1.0 + _fatigue_adj(_car)))
+
+        _original_axis = int(_pre_knock_order[0])
+        _original_v2 = int(_order[1]) if len(_order) >= 2 else None
+        if _original_v2 is not None:
+            _axis_base = _base_score(_original_axis)
+            _chal_base = _base_score(_original_v2)
+            _axis_sc = _compare_score(_original_axis)
+            _chal_sc = _compare_score(_original_v2)
+            _field_scores = {int(c): float(_base_score(c)) for c in _order}
+            _min_ko_score = min(_field_scores.values()) if _field_scores else None
+            _axis_is_ko_last = bool(
+                _min_ko_score is not None and abs(float(_axis_base) - float(_min_ko_score)) <= 1e-12
+            )
+            _chal_is_ko_last = bool(
+                _min_ko_score is not None and abs(float(_chal_base) - float(_min_ko_score)) <= 1e-12
+            )
+            if _axis_is_ko_last and not _chal_is_ko_last:
+                _lost = True
+            elif _chal_is_ko_last and not _axis_is_ko_last:
+                _lost = False
+            else:
+                _lost = bool(_chal_sc > _axis_sc)
+
+            if _lost:
+                _remaining_himo = [
+                    int(c) for c in _adjusted_himo_order if int(c) != int(_original_v2)
+                ]
+                _knock_order = [int(_original_v2), int(_original_axis)] + _remaining_himo
+            else:
+                _knock_order = [int(_original_axis)] + [int(c) for c in _adjusted_himo_order]
+    except Exception:
+        _knock_order = list(_pre_knock_order)
+
+    # 現行仕様：KO使用スコア最下位車が1・2位なら最大3位まで下げる。
+    try:
+        _ko_rank_map = globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {}
+        _ko_scores = {
+            int(c): float(_ko_rank_map.get(int(c), _ko_rank_map.get(str(int(c)), 0.0)) or 0.0)
+            for c in _knock_order
+        }
+        if _ko_scores:
+            _ko_min = min(_ko_scores.values())
+            _ko_last = {int(c) for c, sc in _ko_scores.items() if abs(float(sc)-float(_ko_min)) <= 1e-12}
+            for _last_car in list(_knock_order[:2]):
+                if int(_last_car) in _ko_last:
+                    _knock_order.remove(int(_last_car))
+                    _knock_order.insert(min(2, len(_knock_order)), int(_last_car))
+    except Exception:
+        pass
+
+    return tuple(int(c) for c in _knock_order)
+
+
+def _v335es_flow_top2_purchase_lines(profile):
+    """想定比率上位2展開から最大4点を生成。重複は券種内で1点へ統合。"""
+    if not isinstance(profile, dict):
+        return None
+
+    _style_map = globals().get("AI_PRESSURE_STYLE_SEQ_MAP", {}) or globals().get("STYLE_SEQ_MAP", {}) or {}
+    if not isinstance(_style_map, dict):
+        return None
+
+    # 現行表示と同じ流れ比率を使用。ゾーン比率を優先し、なければFR/U/VTXへフォールバック。
+    _ratio_map = {}
+    try:
+        _zone = globals().get("FLOW_RATIO_MAP_BY_ZONE", {}) or {}
+        _vals = {
+            "順流": float(_zone.get("順流", 0.0) or 0.0),
+            "逆流": float(_zone.get("逆流", 0.0) or 0.0),
+            "渦": float(_zone.get("渦", 0.0) or 0.0),
+        }
+        _tot = sum(_vals.values())
+        if _tot > 0:
+            _ratio_map = {k: float(v)/float(_tot) for k, v in _vals.items()}
+    except Exception:
+        _ratio_map = {}
+    if not _ratio_map:
+        try:
+            _flow = globals().get("_flow", {}) or {}
+            _vals = {
+                "順流": float(_flow.get("FR", 0.0) or 0.0),
+                "逆流": float(_flow.get("U", 0.0) or 0.0),
+                "渦": float(_flow.get("VTX", 0.0) or 0.0),
+            }
+            _tot = sum(_vals.values())
+            _ratio_map = ({k: float(v)/float(_tot) for k, v in _vals.items()}
+                          if _tot > 0 else {"順流":1/3, "逆流":1/3, "渦":1/3})
+        except Exception:
+            _ratio_map = {"順流":1/3, "逆流":1/3, "渦":1/3}
+
+    _fixed = {"順流": 0, "逆流": 1, "渦": 2}
+    _rows = []
+    for _style in ("順流", "逆流", "渦"):
+        _seq = _v281_unique_sequence(_style_map.get(_style, []) or [])
+        if len(_seq) < 3:
+            continue
+        _final = _v335es_finalize_flow_order(_seq, profile)
+        if len(_final) < 3:
+            continue
+        _rows.append({
+            "style": _style,
+            "ratio": float(_ratio_map.get(_style, 0.0) or 0.0),
+            "order": tuple(_final),
+            "fixed": int(_fixed[_style]),
+        })
+    _rows.sort(key=lambda r: (-float(r["ratio"]), int(r["fixed"])))
+    _rows = _rows[:2]
+    if len(_rows) < 2:
+        return None
+
+    # 想定的中率は既存v335brモデルをそのまま使用。
+    _prob_order = tuple(dict.fromkeys(int(c) for r in _rows for c in r["order"]))
+    try:
+        _p1 = _v335br_position_probability_map(profile, _prob_order, 1)
+        _p2 = _v335br_position_probability_map(profile, _prob_order, 2)
+        _p3 = _v335br_position_probability_map(profile, _prob_order, 3)
+    except Exception:
+        _p1, _p2, _p3 = {}, {}, {}
+
+    def _prob(_ticket):
+        try:
+            return float(_v335br_ticket_probability(tuple(_ticket), _p1, _p2, _p3))
+        except Exception:
+            return None
+
+    _lines = ["【推奨購入】", ""]
+    _seen_exacta = set()
+    _seen_trifecta = set()
+    _ticket_count = 0
+
+    for _idx, _row in enumerate(_rows):
+        _style = str(_row["style"])
+        _ratio_pct = float(_row["ratio"]) * 100.0
+        _order = tuple(int(c) for c in _row["order"])
+        _a, _b, _c = _order[:3]
+        _lines.append(f"【想定展開{_ratio_pct:.0f}％】{_style}")
+        _lines.append(f"最終着順予想　{' → '.join(str(int(c)) for c in _order)}")
+
+        if _idx == 0:
+            # 展開1位：表は安い2車単ではなく、着順根拠を保ったまま3連単1点へ昇格。
+            _tri = (_a, _b, _c)
+            if _tri not in _seen_trifecta:
+                _seen_trifecta.add(_tri)
+                _p = _prob(_tri)
+                _pt = "算出不可" if _p is None else f"{_p*100.0:.2f}%"
+                _lines.append(f"3連単　{_a}-{_b}-{_c}（想定的中率 {_pt}）")
+                _ticket_count += 1
+            _ex = (_b, _a)
+            if _ex not in _seen_exacta:
+                _seen_exacta.add(_ex)
+                _p = _prob(_ex)
+                _pt = "算出不可" if _p is None else f"{_p*100.0:.2f}%"
+                _lines.append(f"2車単　{_b}-{_a}（想定的中率 {_pt}）")
+                _ticket_count += 1
+        else:
+            # 展開2位：上位2車の表裏を2車単で持つ。
+            for _ex in ((_a, _b), (_b, _a)):
+                if _ex in _seen_exacta:
+                    continue
+                _seen_exacta.add(_ex)
+                _p = _prob(_ex)
+                _pt = "算出不可" if _p is None else f"{_p*100.0:.2f}%"
+                _lines.append(f"2車単　{_ex[0]}-{_ex[1]}（想定的中率 {_pt}）")
+                _ticket_count += 1
+        _lines.append("")
+
+    _lines.append(f"計{_ticket_count}点")
+    _lines.append("※同一券種で同じ買い目が重なった場合は1点に統合します。")
+    _lines.append("※展開1位の着順通り1→2は2車単では買わず、1→2→3の3連単1点に置き換えます。")
+    return _lines
+
 def _v335bt_purchase_lines(final_order, profile):
     """
     v335eh: v335egのV1/V2限定を維持し、KO使用スコア最下位車を軸から除外する。
@@ -3375,6 +3603,12 @@ def _v335bt_purchase_lines(final_order, profile):
       ・順序付き的中点と順序付き妙味点の平均を各買い目の総合点とし、
         各グループ3点の平均総合点が高い側だけを★推奨とする。
     """
+    # v335es：推奨購入だけを「流れ上位2展開」方式へ変更する。
+    # 予想本体・流れ比率・ポイントアップ・開催日KO・確率モデルは既存処理を再利用する。
+    _v335es_lines = _v335es_flow_top2_purchase_lines(profile)
+    if _v335es_lines:
+        return _v335es_lines
+
     _order = tuple(int(x) for x in (final_order or tuple()))
     if len(_order) < 5 or not isinstance(profile, dict):
         return ["【推奨購入】", "算出不可"]
