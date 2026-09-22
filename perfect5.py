@@ -1,3 +1,8 @@
+# v335ex（流れ別最終着順TOP3・4点版）
+# ・各採用展開の3連複は、その展開でポイントアップ＋開催日KOまで反映した最終着順予想の上位3車をそのまま採用。
+# ・展開1位：最終1・2・3位の3連複1点＋最終1・2位の裏2車単1点。
+# ・展開2位：最終1・2・3位の3連複1点＋最終1・2位の2車複1点。
+# ・流れ別診断表示は維持。その他の予想本体・流れ比率・ポイントアップ・開催日KOは変更しない。
 # v335ew（流れ別ポイントアップ診断表示／4点）
 # ・採用する各流れごとに、V評価順位・合成ヒモ順位(P)・開催日査定・ヒモ1/元1比率を表示。
 # ・表示値は各流れの最終着順計算で実際に使用した値を返して表示し、再計算や推測表示はしない。
@@ -3573,17 +3578,11 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _m1, _m2 = _main_order[:2]
     _c1, _c2 = _counter_order[:2]
 
-    # 「基本スコア」は既存のV評価順位をそのまま使用する。
-    _v_order = tuple(int(c) for c in (v_order or tuple()))
-
-    # 第1展開の3連複ヒモ：軸2車だけを除外。
-    # 同じ流れの3位以下も、別流れの車もすべて候補に残し、V評価順位最上位1車を採用する。
-    _main_excluded = {int(_m1), int(_m2)}
-    _main_himo = next((int(c) for c in _v_order if int(c) not in _main_excluded), None)
-
-    # 第2展開の3連複ヒモ：第1展開最上位と第2展開軸2車を除いた中のV順位最上位1車。
-    _counter_excluded = {int(_m1), int(_c1), int(_c2)}
-    _counter_himo = next((int(c) for c in _v_order if int(c) not in _counter_excluded), None)
+    # v335ex：3連複は、各展開でポイントアップ＋開催日KOまで通した
+    # 「最終着順予想」の上位3車をそのまま採用する。
+    # 3列目だけ元V評価順位へ戻す処理は行わない。
+    _main_himo = int(_main_order[2]) if len(_main_order) >= 3 else None
+    _counter_himo = int(_counter_order[2]) if len(_counter_order) >= 3 else None
 
     def _append_flow_diag(_lines, _row):
         _diag = dict((_row or {}).get("diag") or {})
@@ -3614,7 +3613,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _lines = ["【推奨購入】", ""]
 
-    # 展開1位：上位2車＋同流れを含む残存全車のV評価順位最上位車で3連複1点。
+    # 展開1位：その流れの最終着順予想1・2・3位で3連複1点。
     _main_trio_valid = False
     _main_trio = tuple()
     if _main_himo is not None:
@@ -3628,7 +3627,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines.append(f"2車単　{_m2}-{_m1}")
     _lines.append("")
 
-    # 展開2位：上位2車＋条件付きV評価順位最上位車で3連複1点。
+    # 展開2位：その流れの最終着順予想1・2・3位で3連複1点。
     _counter_trio_valid = False
     _counter_trio = tuple()
     if _counter_himo is not None:
@@ -3646,8 +3645,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _ticket_count = int(_main_trio_valid) + 1 + int(_counter_trio_valid) + 1
     _lines.append(f"計{_ticket_count}点")
-    _lines.append("※展開1位は上位2車を軸に、同流れを含む残存全車からV評価順位最上位1車を加えた3連複1点と、上位2車の逆転2車単1点。")
-    _lines.append("※展開2位は上位2車＋第1展開最上位・第2展開軸を除くV評価順位最上位車の3連複1点と、上位2車の2車複1点。")
+    _lines.append("※展開1位は、その流れの最終着順予想1・2・3位の3連複1点と、1・2位の逆転2車単1点。")
+    _lines.append("※展開2位は、その流れの最終着順予想1・2・3位の3連複1点と、1・2位の2車複1点。")
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
