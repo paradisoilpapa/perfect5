@@ -1,3 +1,10 @@
+# v335fa（2ライン戦対応・新4点推奨統一版）
+# ・新4点方式を2ライン戦にも適用。展開1位＋展開2位の2展開が成立すれば買い目を生成する。
+# ・展開1位：最終TOP3の3連複1点＋TOP2逆転2車単1点。
+# ・展開2位：最終TOP2の2車複1点＋TOP2と展開1位逆転2車単を組み合わせた3連複1点。
+# ・展開3位が成立しない2ライン戦では、第3展開診断を「該当なし」と表示し、買い目生成には影響させない。
+# ・展開別データが2展開未満の場合も旧2車単4点へフォールバックせず、新方式の算出不可を表示する。
+# ・予想本体、流れ比率、V評価、合成ヒモ、開催日KOは変更しない。
 # v335ez（第2展開3連複追加・ワイド廃止4点版）
 # ・展開1位：流れ別最終着順TOP3の3連複1点＋TOP2逆転2車単1点。
 # ・展開2位：流れ別最終着順TOP2の2車複1点＋TOP2を核にした3連複1点。
@@ -3580,19 +3587,29 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         })
     _rows.sort(key=lambda r: (-float(r["ratio"]), int(r["fixed"])))
     _rows = _rows[:3]
-    if len(_rows) < 3:
-        return None
+    # v335fa: 新4点の購入に必要なのは上位2展開。
+    # 2ライン戦などで第3展開が成立しなくても、旧2車単4点へ戻さない。
+    if len(_rows) < 2:
+        return [
+            "【推奨購入】",
+            "展開別データ不足のため新4点を算出不可",
+            "※旧2車単4点へのフォールバックは行いません。",
+        ]
 
-    _main, _counter, _third = _rows[0], _rows[1], _rows[2]
+    _main, _counter = _rows[0], _rows[1]
+    _third = _rows[2] if len(_rows) >= 3 else None
     _main_order = tuple(int(c) for c in _main["order"])
     _counter_order = tuple(int(c) for c in _counter["order"])
-    _third_order = tuple(int(c) for c in _third["order"])
-    if len(_main_order) < 3 or len(_counter_order) < 2 or len(_third_order) < 2:
-        return None
+    _third_order = tuple(int(c) for c in _third["order"]) if _third is not None else tuple()
+    if len(_main_order) < 3 or len(_counter_order) < 2:
+        return [
+            "【推奨購入】",
+            "展開別データ不足のため新4点を算出不可",
+            "※旧2車単4点へのフォールバックは行いません。",
+        ]
 
     _m1, _m2, _m3 = _main_order[:3]
     _c1, _c2 = _counter_order[:2]
-    _t1 = int(_third_order[0])
 
     def _append_flow_diag(_lines, _row):
         _diag = dict((_row or {}).get("diag") or {})
@@ -3671,11 +3688,15 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("3連複　生成不可（展開1位TOP2が展開2位TOP2と重複）")
     _lines.append("")
 
-    # 展開3位：診断表示のみ。購入なし。
-    _lines.append(f"【想定展開{float(_third['ratio']) * 100.0:.0f}％】{_third['style']}")
-    _append_flow_diag(_lines, _third)
-    _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _third_order)}")
-    _lines.append("購入なし（診断表示のみ）")
+    # 展開3位：成立する場合だけ診断表示。2ライン戦では該当なし。
+    if _third is not None and _third_order:
+        _lines.append(f"【想定展開{float(_third['ratio']) * 100.0:.0f}％】{_third['style']}")
+        _append_flow_diag(_lines, _third)
+        _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _third_order)}")
+        _lines.append("購入なし（診断表示のみ）")
+    else:
+        _lines.append("【想定展開3位】該当なし")
+        _lines.append("購入なし（診断表示のみ）")
     _lines.append("")
 
     _lines.append("※展開1位は、その流れの最終着順予想1・2・3位の3連複1点と、1・2位の逆転2車単1点。")
@@ -3714,6 +3735,12 @@ def _v335bt_purchase_lines(final_order, profile):
     _v335es_lines = _v335es_flow_top2_purchase_lines(profile, final_order)
     if _v335es_lines:
         return _v335es_lines
+    # v335fa: 新方式へ統一。旧2車単4点ロジックへフォールバックしない。
+    return [
+        "【推奨購入】",
+        "展開別データ不足のため新4点を算出不可",
+        "※旧2車単4点へのフォールバックは行いません。",
+    ]
 
     _order = tuple(int(x) for x in (final_order or tuple()))
     if len(_order) < 5 or not isinstance(profile, dict):
