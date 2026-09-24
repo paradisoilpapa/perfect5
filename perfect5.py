@@ -1,3 +1,6 @@
+# v335fi（2車複TOP3 BOX＋2車単1点追加版）
+# 採用BOX内の6通りの2車単から、既存の事前想定的中率だけを使い、
+# 12倍基準8.33%に最も近い1点を追加。実オッズ・結果は選定に使わない。
 # v335fh（2車複TOP3 BOX・想定的中率／目標12倍表示版）
 # 推奨BOXに想定的中率、目標払戻倍率12倍以上、各2車複確率、合成計算を表示。
 # v335fg（2車複・各流れTOP3 BOX・12倍基準版）
@@ -3647,12 +3650,46 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     )
 
     _top3 = tuple(int(c) for c in _selected["top3"])
+
+    # 選択したTOP3 BOX内の6通りから、12倍基準(8.33%)に最も近い2車単を1点選ぶ。
+    # 実オッズ・結果は使わず、既存の事前想定的中率モデルだけで選定する。
+    _sel_order = tuple(int(c) for c in _selected["order"])
+    _sel_p1 = _v335br_position_probability_map(profile, _sel_order, 1)
+    _sel_p2 = _v335br_position_probability_map(profile, _sel_order, 2)
+    _sel_p3 = _v335br_position_probability_map(profile, _sel_order, 3)
+    _exacta_candidates = []
+    for _x in _top3:
+        for _y in _top3:
+            if int(_x) == int(_y):
+                continue
+            _cond_prob = float(_v335br_ticket_probability((int(_x), int(_y)), _sel_p1, _sel_p2, _sel_p3))
+            _weighted_prob = max(0.0, min(1.0, float(_selected["ratio"]) * _cond_prob))
+            _exacta_candidates.append({
+                "ticket": (int(_x), int(_y)),
+                "conditional_prob": _cond_prob,
+                "weighted_prob": _weighted_prob,
+            })
+
+    _exacta_target = 1.0 / 12.0
+    _exacta_selected = min(
+        _exacta_candidates,
+        key=lambda r: (
+            abs(float(r["weighted_prob"]) - _exacta_target),
+            -float(r["weighted_prob"]),
+            int(r["ticket"][0]),
+            int(r["ticket"][1]),
+        ),
+    )
+    _ex_a, _ex_b = _exacta_selected["ticket"]
+
     _lines = [
         "【推奨購入】",
         f"2車複　{''.join(str(c) for c in _top3)}BOX",
         f"想定的中率 {float(_selected['weighted_box_prob'])*100.0:.2f}%",
         "目標払戻倍率 12倍以上",
         "計3点",
+        f"2車単　{int(_ex_a)}-{int(_ex_b)}",
+        "目標払戻倍率 12倍",
         "",
         "【想定的中率】",
     ]
