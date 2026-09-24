@@ -1,3 +1,5 @@
+# v335fh（2車複TOP3 BOX・想定的中率／目標12倍表示版）
+# 推奨BOXに想定的中率、目標払戻倍率12倍以上、各2車複確率、合成計算を表示。
 # v335fg（2車複・各流れTOP3 BOX・12倍基準版）
 # 各流れの最終上位3車を2車複3点BOX化。
 # 3流れから12倍基準8.33%に最も近いBOXを1組採用。
@@ -3648,10 +3650,21 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines = [
         "【推奨購入】",
         f"2車複　{''.join(str(c) for c in _top3)}BOX",
+        f"想定的中率 {float(_selected['weighted_box_prob'])*100.0:.2f}%",
+        "目標払戻倍率 12倍以上",
         "計3点",
         "",
-        "【想定着順予想】",
+        "【想定的中率】",
     ]
+    for (_x, _y), _pr in _selected["pair_probs"]:
+        _lines.append(f"{int(_x)}－{int(_y)}：{float(_pr)*100.0:.2f}%")
+    _lines.extend([
+        "",
+        f"合成 {float(_selected['conditional_box_prob'])*100.0:.2f}% × {_selected['style']}{float(_selected['ratio'])*100.0:.0f}%",
+        f"＝ {float(_selected['weighted_box_prob'])*100.0:.2f}%",
+        "",
+        "【想定着順予想】",
+    ])
     for _row in _rows:
         _lines.append(
             f"{_row['style']}{float(_row['ratio'])*100.0:.0f}%　"
