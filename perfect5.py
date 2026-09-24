@@ -1,3 +1,7 @@
+# v335fg（2車複・各流れTOP3 BOX・12倍基準版）
+# 各流れの最終上位3車を2車複3点BOX化。
+# 3流れから12倍基準8.33%に最も近いBOXを1組採用。
+# note表示は推奨購入と3流れの想定着順のみ。金額表示なし。
 # v335fe（2車単2点・24倍ゾーン版）
 # 各流れの上位3車から「1位→2・3位」「2位→1・3位」の2セットだけを評価。
 # 最大6セットから24倍基準4.1667%に最も近いセットを1組採用。
@@ -3538,14 +3542,13 @@ def _v335es_finalize_flow_order(flow_order, profile, return_debug=False):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335fe：各流れの上位3車から、1位軸/2位軸の2車単2点セットを比較する。
+    """v335fg：各流れの最終上位3車を2車複BOX化し、12倍基準で1流れを採用する。
 
-    各流れで候補は2組だけ：
-      ・1位軸 → 2位・3位
-      ・2位軸 → 1位・3位
-    3流れ×2組＝最大6セットから、流れ加重想定的中率が
-    24倍基準 1/24=4.1667% に最も近い1組を採用する。
-    note表示は推奨購入と3流れの想定着順だけにする。
+    ・各流れの最終上位3車で2車複BOX（3点）を作る。
+    ・既存の順序付き確率から、各2車複は A→B + B→A で算出する。
+    ・3点BOXの条件付き合成的中率に流れ比率を掛ける。
+    ・3流れから12倍基準 1/12=8.33% に最も近い1組を採用する。
+    ・note表示は推奨購入と3流れの想定着順だけ。
     """
     if not isinstance(profile, dict):
         return None
@@ -3585,8 +3588,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _ratio_map = {"順流": 1/3, "逆流": 1/3, "渦": 1/3}
 
     _fixed = {"順流": 0, "逆流": 1, "渦": 2}
-    _flow_rows = []
-    _all_sets = []
+    _rows = []
 
     for _style in ("順流", "逆流", "渦"):
         _seq = _v281_unique_sequence(_style_map.get(_style, []) or [])
@@ -3604,75 +3606,53 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _ratio = float(_ratio_map.get(_style, 0.0) or 0.0)
 
         _a, _b, _c = (int(x) for x in _order[:3])
-        _candidates = (
-            (1, _a, (_b, _c)),  # 1-23
-            (2, _b, (_a, _c)),  # 2-13
-        )
+        _pairs = ((_a, _b), (_a, _c), (_b, _c))
+        _pair_probs = []
+        for _x, _y in _pairs:
+            _xy = float(_v335br_ticket_probability((_x, _y), _p1, _p2, _p3))
+            _yx = float(_v335br_ticket_probability((_y, _x), _p1, _p2, _p3))
+            _pair_probs.append(((_x, _y), _xy + _yx))
 
-        _sets = []
-        for _axis_rank, _axis, _partners in _candidates:
-            _ticket_probs = []
-            for _partner in _partners:
-                _prob = _v335br_ticket_probability((_axis, _partner), _p1, _p2, _p3)
-                _ticket_probs.append(((_axis, _partner), float(_prob)))
+        _conditional_box_prob = min(1.0, sum(float(pr) for _, pr in _pair_probs))
+        _weighted_box_prob = max(0.0, min(1.0, _ratio * _conditional_box_prob))
 
-            _conditional_set_prob = min(1.0, sum(float(x[1]) for x in _ticket_probs))
-            _weighted_set_prob = max(0.0, min(1.0, _ratio * _conditional_set_prob))
-            _set = {
-                "style": _style,
-                "ratio": _ratio,
-                "order": _order,
-                "diag": dict(_diag or {}),
-                "fixed": int(_fixed[_style]),
-                "axis": int(_axis),
-                "partners": tuple(int(c) for c in _partners),
-                "ticket_probs": tuple(_ticket_probs),
-                "conditional_set_prob": float(_conditional_set_prob),
-                "weighted_set_prob": float(_weighted_set_prob),
-                "axis_rank": int(_axis_rank),
-            }
-            _sets.append(_set)
-            _all_sets.append(_set)
-
-        _flow_rows.append({
+        _rows.append({
             "style": _style,
             "ratio": _ratio,
             "order": _order,
-            "diag": dict(_diag or {}),
             "fixed": int(_fixed[_style]),
-            "sets": _sets,
+            "top3": (_a, _b, _c),
+            "pairs": _pairs,
+            "pair_probs": tuple(_pair_probs),
+            "conditional_box_prob": float(_conditional_box_prob),
+            "weighted_box_prob": float(_weighted_box_prob),
         })
 
-    if not _all_sets:
-        return ["【推奨購入】", "展開別データ不足のため2車単2点セットを算出不可"]
+    if not _rows:
+        return ["【推奨購入】", "展開別データ不足のため2車複BOXを算出不可"]
 
-    _flow_rows.sort(key=lambda r: (-float(r["ratio"]), int(r["fixed"])))
+    _rows.sort(key=lambda r: (-float(r["ratio"]), int(r["fixed"])))
 
-    # 24倍ゾーン：1/24 = 4.1667%
-    _target_prob = 1.0 / 24.0
+    _target_prob = 1.0 / 12.0
     _selected = min(
-        _all_sets,
+        _rows,
         key=lambda r: (
-            abs(float(r["weighted_set_prob"]) - _target_prob),
-            -float(r["weighted_set_prob"]),
+            abs(float(r["weighted_box_prob"]) - _target_prob),
+            -float(r["weighted_box_prob"]),
             -float(r["ratio"]),
             int(r["fixed"]),
-            int(r["axis_rank"]),
         ),
     )
 
-    _sa = int(_selected["axis"])
-    _sp = tuple(int(c) for c in _selected["partners"])
-
-    # note表示：途中計算は出さない。
+    _top3 = tuple(int(c) for c in _selected["top3"])
     _lines = [
         "【推奨購入】",
-        f"2車単　{_sa}-{''.join(str(c) for c in _sp)}",
-        "計2点",
+        f"2車複　{''.join(str(c) for c in _top3)}BOX",
+        "計3点",
         "",
         "【想定着順予想】",
     ]
-    for _row in _flow_rows:
+    for _row in _rows:
         _lines.append(
             f"{_row['style']}{float(_row['ratio'])*100.0:.0f}%　"
             + "→".join(str(int(c)) for c in _row["order"])
