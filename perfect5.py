@@ -3667,8 +3667,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # note表示：途中計算は出さない。
     _lines = [
         "【推奨購入】",
-        f"2車単　{_sa}-{''.join(str(c) for c in _sp)}（各100円）",
-        "計2点／200円",
+        f"2車単　{_sa}-{''.join(str(c) for c in _sp)}",
+        "計2点",
         "",
         "【想定着順予想】",
     ]
