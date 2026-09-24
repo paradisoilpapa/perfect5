@@ -1,3 +1,6 @@
+# v335ff（重複ヒモ補完版）
+# ・3流れ戦で各流れ1位が重複してヒモ3車に満たない場合、第2流れ2位→第3流れ2位→第2流れ3位→第3流れ3位…の順で重複を飛ばして3車まで補完。
+# ・2ライン戦の相手流れ1・2位追加、買い目・予想本体・簡易表示は変更しない。
 # v335fe（2ライン戦・相手流れ1・2位追加版）
 # ・公開表示を「推奨購入」と「想定着順予想」だけに整理。
 # ・V評価、合成ヒモ、開催日査定、各流れ最終順位、買い目生成ロジックはv335fcから変更しない。
@@ -3683,6 +3686,28 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _opp_second = int(_counter_order[1])
         if _opp_second != _trio_axis and _opp_second not in _trio_himos:
             _trio_himos.append(_opp_second)
+
+    # v335ff：3流れ戦で各流れ1位が重複し、ヒモが3車に満たない場合だけ補完する。
+    # 補完順は「第2流れ2位 → 第3流れ2位 → 第2流れ3位 → 第3流れ3位 → …」。
+    # 軸または既採用ヒモと重複する車は飛ばし、ヒモ3車になった時点で終了する。
+    if len(_rows) >= 3 and len(_trio_himos) < 3:
+        _sub_orders = []
+        for _r in _rows[1:3]:
+            _sub_orders.append(tuple(int(c) for c in (_r.get("order") or tuple())))
+        _rank_idx = 1  # 0=各流れ1位は既に採用済みなので、2位から補完
+        while len(_trio_himos) < 3:
+            _added_or_available = False
+            for _order in _sub_orders:
+                if _rank_idx < len(_order):
+                    _added_or_available = True
+                    _c = int(_order[_rank_idx])
+                    if _c != _trio_axis and _c not in _trio_himos:
+                        _trio_himos.append(_c)
+                        if len(_trio_himos) >= 3:
+                            break
+            if not _added_or_available:
+                break
+            _rank_idx += 1
 
     _trio_count = (len(_trio_himos) * (len(_trio_himos) - 1)) // 2
     _trio_form = (
