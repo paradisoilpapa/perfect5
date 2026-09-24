@@ -1,3 +1,6 @@
+# v335fd（簡易表示版）
+# ・公開表示を「推奨購入」と「想定着順予想」だけに整理。
+# ・V評価、合成ヒモ、開催日査定、各流れ最終順位、買い目生成ロジックはv335fcから変更しない。
 # v335fc（本線2位軸・各流れ1位三連複版）
 # ・購入は展開1位のみ。展開2位・3位は診断表示のみ。
 # ・3連複は展開1位の最終2位を軸に、成立している各流れの最終1位を相手とする「軸-相手-相手」型。
@@ -3686,37 +3689,17 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _summary_lines.append(f"計{_ticket_count}点")
     _summary_lines.append("")
 
+    # v335fd：公開表示だけ簡潔化。内部のV評価・合成ヒモ・開催日査定・買い目計算は変更しない。
     _lines = list(_summary_lines)
-    _lines.append(f"【想定展開{float(_main['ratio']) * 100.0:.0f}％】{_main['style']}")
-    _append_flow_diag(_lines, _main)
-    _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _main_order)}")
-    if _trio_form:
-        _lines.append(f"3連複　{_trio_form}")
-    _lines.append(f"2車単　{_m2}-{_m1}")
-    _lines.append("")
-
-    # 展開2位：診断表示のみ。保険購入はしない。
-    _lines.append(f"【想定展開{float(_counter['ratio']) * 100.0:.0f}％】{_counter['style']}")
-    _append_flow_diag(_lines, _counter)
-    _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _counter_order)}")
-    _lines.append("購入なし（診断表示のみ）")
-    _lines.append("")
-
-    # 展開3位：成立する場合だけ診断表示。
-    if _third is not None and _third_order:
-        _lines.append(f"【想定展開{float(_third['ratio']) * 100.0:.0f}％】{_third['style']}")
-        _append_flow_diag(_lines, _third)
-        _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _third_order)}")
-        _lines.append("購入なし（診断表示のみ）")
-    else:
-        _lines.append("【想定展開3位】該当なし")
-        _lines.append("購入なし（診断表示のみ）")
-    _lines.append("")
-
-    _lines.append("※購入は展開1位のみ。展開2位・3位の保険購入は行いません。")
-    _lines.append("※3連複は、展開1位の最終着順予想2位を軸に、成立している各流れの最終1位をヒモとする軸-ヒモ-ヒモ型です。")
-    _lines.append("※展開1位の最終3位は3連複ヒモに使用しません。")
-    _lines.append("※2車単は、展開1位の最終着順予想1・2位の逆転1点です。")
+    _lines.append("【想定着順予想】")
+    for _r in _rows:
+        _order = tuple(int(c) for c in (_r.get("order") or tuple()))
+        if not _order:
+            continue
+        _lines.append(
+            f"{_r['style']}{float(_r['ratio']) * 100.0:.0f}%　"
+            + "→".join(str(c) for c in _order)
+        )
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
