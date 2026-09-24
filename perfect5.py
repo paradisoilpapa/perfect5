@@ -1,3 +1,7 @@
+# v335fd（開催日査定TOP2順序固定版）
+# ・開催日査定の元V1 vs 元V2の勝敗をTOP2順序として固定。
+# ・合成ヒモ順位は3位以下だけに適用し、他車のTOP2割り込みを禁止。
+# ・2車単3点セット／12倍基準の選抜など他ロジックは変更しない。
 # v335fc（流れ内4軸比較・12倍ゾーン・2車単3点セット版）
 # ・3流れそれぞれの最終上位4車を軸候補とし、軸→残る上位4車3車の2車単3点セットを各4組生成。
 # ・最大12セットの流れ加重想定的中率を比較し、12倍損益分岐8.33%に最も近い1組を採用。
@@ -3486,13 +3490,16 @@ def _v335es_finalize_flow_order(flow_order, profile, return_debug=False):
                 "knock_reason": ("KO最下位除外" if (_axis_is_ko_last or _chal_is_ko_last) else ("疲労逆転" if _lost else "維持")),
                 "lost": bool(_lost),
             })
+            # v335fd：開催日査定で比較した元V1・元V2の順序をTOP2として確定する。
+            # 合成ヒモ順位は3位以下だけに使用し、査定対象外の車をTOP2へ割り込ませない。
+            _remaining_himo = [
+                int(c) for c in _adjusted_himo_order
+                if int(c) not in (int(_original_axis), int(_original_v2))
+            ]
             if _lost:
-                _remaining_himo = [
-                    int(c) for c in _adjusted_himo_order if int(c) != int(_original_v2)
-                ]
                 _knock_order = [int(_original_v2), int(_original_axis)] + _remaining_himo
             else:
-                _knock_order = [int(_original_axis)] + [int(c) for c in _adjusted_himo_order]
+                _knock_order = [int(_original_axis), int(_original_v2)] + _remaining_himo
     except Exception as _flow_ko_exc:
         _flow_knock_error = str(_flow_ko_exc)
         _knock_order = list(_pre_knock_order)
