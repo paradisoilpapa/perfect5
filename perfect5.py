@@ -1,3 +1,7 @@
+# v335fk（最高確率流れ→EV100超軸→2車単3点版）
+# 車券選択：最高確率の流れから、想定回収率100％超の2車単を持つ軸を探索。
+# 複数軸なら流れ順位上位を採用し、軸から流れ上位3車へ2車単3点。
+# 実オッズ・結果は使用しない。
 # v335fj（2車複TOP3 BOX＋2車単1点・順序付き総合評価版）
 # 2車単は採用BOX内6通りを、既存ヴェロビの順序付き的中点＋順序付き妙味点で比較。
 # 単純な1/12への確率近似は廃止。実オッズ・結果は使用しない。
@@ -3550,13 +3554,14 @@ def _v335es_finalize_flow_order(flow_order, profile, return_debug=False):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335fg：各流れの最終上位3車を2車複BOX化し、12倍基準で1流れを採用する。
+    """v335fk：最高確率の流れから、想定回収率100％超を持つ最上位軸を選び2車単3点。
 
-    ・各流れの最終上位3車で2車複BOX（3点）を作る。
-    ・既存の順序付き確率から、各2車複は A→B + B→A で算出する。
-    ・3点BOXの条件付き合成的中率に流れ比率を掛ける。
-    ・3流れから12倍基準 1/12=8.33% に最も近い1組を採用する。
-    ・note表示は推奨購入と3流れの想定着順だけ。
+    ・最も確率の高い流れだけを採用。
+    ・採用流れ内の各車を1着軸候補として会場別2車単マスタで評価。
+    ・想定回収率100％超の2車単を1本以上持つ車を軸候補とする。
+    ・複数軸なら採用流れ順位が上の車を優先。
+    ・採用軸から、流れ順位上位の軸以外3車へ2車単3点。
+    ・実オッズ・結果は使用しない。
     """
     if not isinstance(profile, dict):
         return None
@@ -3641,141 +3646,57 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _rows.sort(key=lambda r: (-float(r["ratio"]), int(r["fixed"])))
 
-    _target_prob = 1.0 / 12.0
-    _selected = min(
-        _rows,
-        key=lambda r: (
-            abs(float(r["weighted_box_prob"]) - _target_prob),
-            -float(r["weighted_box_prob"]),
-            -float(r["ratio"]),
-            int(r["fixed"]),
-        ),
-    )
-
-    _top3 = tuple(int(c) for c in _selected["top3"])
-
-    # 選択したTOP3 BOX内の6通りを、既存ヴェロビの「順序付き評価」で比較する。
-    # 2車単は 1→2 と 2→1 を別物として評価。
-    # ・的中点：既存の順序付き2車単想定的中率を、全2車単内で0～12点に順位正規化
-    # ・妙味点：既存の流れ加重妙味×1着/2着位置適合度を、全2車単内で0～10.8点に順位正規化
-    # ・総合点：(的中点＋妙味点)/2
-    # 376なら 3→7 / 3→6 / 7→3 / 7→6 / 6→3 / 6→7 の6通りを比較し、
-    # 総合点最大の1点を採用する。実オッズ・結果は使わない。
+    # v335fk：
+    # 1) 最も確率の高い流れを採用。
+    # 2) その流れの各車を「1着軸」として2車単を評価。
+    # 3) 会場別マスタの想定回収率100％超の2車単を1本以上持つ車を軸候補とする。
+    # 4) 軸候補が複数なら、採用流れの順位が最上位の車を軸にする。
+    # 5) 採用軸から、同じ流れの上位順に軸以外の3車をヒモとして2車単3点。
+    # 実オッズ・結果は使わない。
+    _selected = _rows[0]
     _sel_order = tuple(int(c) for c in _selected["order"])
-    _sel_p1 = _v335br_position_probability_map(profile, _sel_order, 1)
-    _sel_p2 = _v335br_position_probability_map(profile, _sel_order, 2)
-    _sel_p3 = _v335br_position_probability_map(profile, _sel_order, 3)
 
-    def _v335fj_rank_score_map(_raw_map, _max_score):
-        _items = [(tuple(k), float(v)) for k, v in dict(_raw_map or {}).items()]
-        if not _items:
-            return {}
-        if len(_items) == 1:
-            return {_items[0][0]: float(_max_score)}
-        _bucket = {}
-        for _ticket, _v in _items:
-            _bucket.setdefault(round(float(_v), 15), []).append(_ticket)
-        _out = {}
-        _rank_start = 1
-        _n = len(_items)
-        for _v in sorted(_bucket.keys(), reverse=True):
-            _ts = _bucket[_v]
-            _rank_end = _rank_start + len(_ts) - 1
-            _avg_rank = (float(_rank_start) + float(_rank_end)) / 2.0
-            _score = float(_max_score) * (1.0 - ((float(_avg_rank) - 1.0) / float(_n - 1)))
-            for _t in _ts:
-                _out[tuple(_t)] = max(0.0, min(float(_max_score), float(_score)))
-            _rank_start = _rank_end + 1
-        return _out
+    _ev_rows, _ev_valid_n = _v335bq_dynamic_value_rows(_sel_order, profile, "2車単")
+    _axis_ev_rows = {}
+    for _r in (_ev_rows or []):
+        _t = tuple(int(x) for x in (_r.get("ticket", tuple()) or tuple()))
+        if len(_t) != 2:
+            continue
+        _axis_ev_rows.setdefault(int(_t[0]), []).append(_r)
 
-    # 全順序2車単の的中確率 → 順序付き的中点
-    _all_exacta_prob = {}
-    for _x in _sel_order:
-        for _y in _sel_order:
-            if int(_x) != int(_y):
-                _all_exacta_prob[(int(_x), int(_y))] = float(
-                    _v335br_ticket_probability((int(_x), int(_y)), _sel_p1, _sel_p2, _sel_p3)
-                )
-    _all_exacta_hit_score = _v335fj_rank_score_map(_all_exacta_prob, 12.0)
+    _axis = None
+    for _car in _sel_order:
+        if int(_car) in _axis_ev_rows:
+            _axis = int(_car)
+            break
 
-    # 既存ヴェロビの流れ加重妙味を利用して、1着/2着の位置適合度を付ける。
-    _weighted_myoumi = dict(globals().get("V335DS_WEIGHTED_CAR_MYOUMI_MAP", {}) or {})
+    _himo = []
+    if _axis is not None:
+        _himo = [int(c) for c in _sel_order if int(c) != int(_axis)][:3]
 
-    def _v335fj_position_fit(_pos_map):
-        _raw = {(int(c),): float(v) for c, v in dict(_pos_map or {}).items()}
-        _ranked = _v335fj_rank_score_map(_raw, 1.0)
-        return {int(k[0]): float(v) for k, v in _ranked.items()}
-
-    _fit1 = _v335fj_position_fit(_sel_p1)
-    _fit2 = _v335fj_position_fit(_sel_p2)
-
-    _all_exacta_myoumi_raw = {}
-    if _weighted_myoumi:
-        for _x in _sel_order:
-            for _y in _sel_order:
-                if int(_x) == int(_y):
-                    continue
-                if int(_x) not in _weighted_myoumi or int(_y) not in _weighted_myoumi:
-                    continue
-                _m1 = max(0.0, float(_weighted_myoumi.get(int(_x), 0.0) or 0.0)) * float(_fit1.get(int(_x), 0.0))
-                _m2 = max(0.0, float(_weighted_myoumi.get(int(_y), 0.0) or 0.0)) * float(_fit2.get(int(_y), 0.0))
-                _all_exacta_myoumi_raw[(int(_x), int(_y))] = (_m1 + _m2) / 2.0
-    _all_exacta_myoumi_score = _v335fj_rank_score_map(_all_exacta_myoumi_raw, 10.8)
-
-    _exacta_candidates = []
-    for _x in _top3:
-        for _y in _top3:
-            if int(_x) == int(_y):
-                continue
-            _ticket = (int(_x), int(_y))
-            _hit = _all_exacta_hit_score.get(_ticket)
-            _myo = _all_exacta_myoumi_score.get(_ticket)
-            # 妙味評価が取得できない場合は、根拠不足の買い目を勝手に出さない。
-            if _hit is None or _myo is None:
-                continue
-            _total = (float(_hit) + float(_myo)) / 2.0
-            _exacta_candidates.append({
-                "ticket": _ticket,
-                "hit_score": float(_hit),
-                "myoumi_score": float(_myo),
-                "total_score": float(_total),
-            })
-
-    _exacta_selected = None
-    if _exacta_candidates:
-        _exacta_selected = max(
-            _exacta_candidates,
-            key=lambda r: (
-                float(r["total_score"]),
-                float(r["myoumi_score"]),
-                float(r["hit_score"]),
-                -int(r["ticket"][0]),
-                -int(r["ticket"][1]),
-            ),
-        )
-
-    if _exacta_selected is not None:
-        _ex_a, _ex_b = _exacta_selected["ticket"]
+    _lines = ["【推奨購入】"]
+    if _ev_valid_n <= 0:
+        _lines.extend([
+            "2車単　算出不可",
+            "※会場別マスタの着順実績不足",
+        ])
+    elif _axis is None:
+        _lines.extend([
+            "2車単　見送り",
+            "※採用流れ内に想定回収率100％超の軸候補なし",
+        ])
+    elif len(_himo) < 3:
+        _lines.extend([
+            "2車単　算出不可",
+            "※ヒモ3車を確保できません",
+        ])
     else:
-        _ex_a, _ex_b = None, None
+        _lines.extend([
+            f"2車単　{int(_axis)}-{''.join(str(int(c)) for c in _himo)}",
+            "計3点",
+        ])
 
-    _lines = [
-        "【推奨購入】",
-        f"2車複　{''.join(str(c) for c in _top3)}BOX",
-        f"想定的中率 {float(_selected['weighted_box_prob'])*100.0:.2f}%",
-        "目標払戻倍率 12倍以上",
-        "計3点",
-        (f"2車単　{int(_ex_a)}-{int(_ex_b)}" if _ex_a is not None else "2車単　算出不可"),
-        ("目標払戻倍率 12倍" if _ex_a is not None else "※順序付き妙味評価不足のため選出なし"),
-        "",
-        "【想定的中率】",
-    ]
-    for (_x, _y), _pr in _selected["pair_probs"]:
-        _lines.append(f"{int(_x)}－{int(_y)}：{float(_pr)*100.0:.2f}%")
     _lines.extend([
-        "",
-        f"合成 {float(_selected['conditional_box_prob'])*100.0:.2f}% × {_selected['style']}{float(_selected['ratio'])*100.0:.0f}%",
-        f"＝ {float(_selected['weighted_box_prob'])*100.0:.2f}%",
         "",
         "【想定着順予想】",
     ])
