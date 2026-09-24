@@ -1,3 +1,6 @@
+# v335fj（2車複TOP3 BOX＋2車単1点・順序付き総合評価版）
+# 2車単は採用BOX内6通りを、既存ヴェロビの順序付き的中点＋順序付き妙味点で比較。
+# 単純な1/12への確率近似は廃止。実オッズ・結果は使用しない。
 # v335fi（2車複TOP3 BOX＋2車単1点追加版）
 # 採用BOX内の6通りの2車単から、既存の事前想定的中率だけを使い、
 # 12倍基準8.33%に最も近い1点を追加。実オッズ・結果は選定に使わない。
@@ -3651,36 +3654,110 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _top3 = tuple(int(c) for c in _selected["top3"])
 
-    # 選択したTOP3 BOX内の6通りから、12倍基準(8.33%)に最も近い2車単を1点選ぶ。
-    # 実オッズ・結果は使わず、既存の事前想定的中率モデルだけで選定する。
+    # 選択したTOP3 BOX内の6通りを、既存ヴェロビの「順序付き評価」で比較する。
+    # 2車単は 1→2 と 2→1 を別物として評価。
+    # ・的中点：既存の順序付き2車単想定的中率を、全2車単内で0～12点に順位正規化
+    # ・妙味点：既存の流れ加重妙味×1着/2着位置適合度を、全2車単内で0～10.8点に順位正規化
+    # ・総合点：(的中点＋妙味点)/2
+    # 376なら 3→7 / 3→6 / 7→3 / 7→6 / 6→3 / 6→7 の6通りを比較し、
+    # 総合点最大の1点を採用する。実オッズ・結果は使わない。
     _sel_order = tuple(int(c) for c in _selected["order"])
     _sel_p1 = _v335br_position_probability_map(profile, _sel_order, 1)
     _sel_p2 = _v335br_position_probability_map(profile, _sel_order, 2)
     _sel_p3 = _v335br_position_probability_map(profile, _sel_order, 3)
+
+    def _v335fj_rank_score_map(_raw_map, _max_score):
+        _items = [(tuple(k), float(v)) for k, v in dict(_raw_map or {}).items()]
+        if not _items:
+            return {}
+        if len(_items) == 1:
+            return {_items[0][0]: float(_max_score)}
+        _bucket = {}
+        for _ticket, _v in _items:
+            _bucket.setdefault(round(float(_v), 15), []).append(_ticket)
+        _out = {}
+        _rank_start = 1
+        _n = len(_items)
+        for _v in sorted(_bucket.keys(), reverse=True):
+            _ts = _bucket[_v]
+            _rank_end = _rank_start + len(_ts) - 1
+            _avg_rank = (float(_rank_start) + float(_rank_end)) / 2.0
+            _score = float(_max_score) * (1.0 - ((float(_avg_rank) - 1.0) / float(_n - 1)))
+            for _t in _ts:
+                _out[tuple(_t)] = max(0.0, min(float(_max_score), float(_score)))
+            _rank_start = _rank_end + 1
+        return _out
+
+    # 全順序2車単の的中確率 → 順序付き的中点
+    _all_exacta_prob = {}
+    for _x in _sel_order:
+        for _y in _sel_order:
+            if int(_x) != int(_y):
+                _all_exacta_prob[(int(_x), int(_y))] = float(
+                    _v335br_ticket_probability((int(_x), int(_y)), _sel_p1, _sel_p2, _sel_p3)
+                )
+    _all_exacta_hit_score = _v335fj_rank_score_map(_all_exacta_prob, 12.0)
+
+    # 既存ヴェロビの流れ加重妙味を利用して、1着/2着の位置適合度を付ける。
+    _weighted_myoumi = dict(globals().get("V335DS_WEIGHTED_CAR_MYOUMI_MAP", {}) or {})
+
+    def _v335fj_position_fit(_pos_map):
+        _raw = {(int(c),): float(v) for c, v in dict(_pos_map or {}).items()}
+        _ranked = _v335fj_rank_score_map(_raw, 1.0)
+        return {int(k[0]): float(v) for k, v in _ranked.items()}
+
+    _fit1 = _v335fj_position_fit(_sel_p1)
+    _fit2 = _v335fj_position_fit(_sel_p2)
+
+    _all_exacta_myoumi_raw = {}
+    if _weighted_myoumi:
+        for _x in _sel_order:
+            for _y in _sel_order:
+                if int(_x) == int(_y):
+                    continue
+                if int(_x) not in _weighted_myoumi or int(_y) not in _weighted_myoumi:
+                    continue
+                _m1 = max(0.0, float(_weighted_myoumi.get(int(_x), 0.0) or 0.0)) * float(_fit1.get(int(_x), 0.0))
+                _m2 = max(0.0, float(_weighted_myoumi.get(int(_y), 0.0) or 0.0)) * float(_fit2.get(int(_y), 0.0))
+                _all_exacta_myoumi_raw[(int(_x), int(_y))] = (_m1 + _m2) / 2.0
+    _all_exacta_myoumi_score = _v335fj_rank_score_map(_all_exacta_myoumi_raw, 10.8)
+
     _exacta_candidates = []
     for _x in _top3:
         for _y in _top3:
             if int(_x) == int(_y):
                 continue
-            _cond_prob = float(_v335br_ticket_probability((int(_x), int(_y)), _sel_p1, _sel_p2, _sel_p3))
-            _weighted_prob = max(0.0, min(1.0, float(_selected["ratio"]) * _cond_prob))
+            _ticket = (int(_x), int(_y))
+            _hit = _all_exacta_hit_score.get(_ticket)
+            _myo = _all_exacta_myoumi_score.get(_ticket)
+            # 妙味評価が取得できない場合は、根拠不足の買い目を勝手に出さない。
+            if _hit is None or _myo is None:
+                continue
+            _total = (float(_hit) + float(_myo)) / 2.0
             _exacta_candidates.append({
-                "ticket": (int(_x), int(_y)),
-                "conditional_prob": _cond_prob,
-                "weighted_prob": _weighted_prob,
+                "ticket": _ticket,
+                "hit_score": float(_hit),
+                "myoumi_score": float(_myo),
+                "total_score": float(_total),
             })
 
-    _exacta_target = 1.0 / 12.0
-    _exacta_selected = min(
-        _exacta_candidates,
-        key=lambda r: (
-            abs(float(r["weighted_prob"]) - _exacta_target),
-            -float(r["weighted_prob"]),
-            int(r["ticket"][0]),
-            int(r["ticket"][1]),
-        ),
-    )
-    _ex_a, _ex_b = _exacta_selected["ticket"]
+    _exacta_selected = None
+    if _exacta_candidates:
+        _exacta_selected = max(
+            _exacta_candidates,
+            key=lambda r: (
+                float(r["total_score"]),
+                float(r["myoumi_score"]),
+                float(r["hit_score"]),
+                -int(r["ticket"][0]),
+                -int(r["ticket"][1]),
+            ),
+        )
+
+    if _exacta_selected is not None:
+        _ex_a, _ex_b = _exacta_selected["ticket"]
+    else:
+        _ex_a, _ex_b = None, None
 
     _lines = [
         "【推奨購入】",
@@ -3688,8 +3765,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         f"想定的中率 {float(_selected['weighted_box_prob'])*100.0:.2f}%",
         "目標払戻倍率 12倍以上",
         "計3点",
-        f"2車単　{int(_ex_a)}-{int(_ex_b)}",
-        "目標払戻倍率 12倍",
+        (f"2車単　{int(_ex_a)}-{int(_ex_b)}" if _ex_a is not None else "2車単　算出不可"),
+        ("目標払戻倍率 12倍" if _ex_a is not None else "※順序付き妙味評価不足のため選出なし"),
         "",
         "【想定的中率】",
     ]
