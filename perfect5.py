@@ -1,3 +1,6 @@
+# v335fa TOP2査定固定修正版
+# 修正点：開催日査定の元V1 vs 元V2でTOP2を確定し、合成ヒモ順位の車が2位へ割り込まないよう修正。
+# 買い目ルール・流れ比率・V評価・合成ヒモ計算・開催日査定値は変更しない。
 # v335fa（2ライン戦対応・新4点推奨統一版）
 # ・新4点方式を2ライン戦にも適用。展開1位＋展開2位の2展開が成立すれば買い目を生成する。
 # ・展開1位：最終TOP3の3連複1点＋TOP2逆転2車単1点。
@@ -3482,13 +3485,16 @@ def _v335es_finalize_flow_order(flow_order, profile, return_debug=False):
                 "knock_reason": ("KO最下位除外" if (_axis_is_ko_last or _chal_is_ko_last) else ("疲労逆転" if _lost else "維持")),
                 "lost": bool(_lost),
             })
+            # v335fa-fix: 開催日査定は元V1 vs 元V2の直接比較なので、
+            # その勝敗で最終TOP2を固定する。合成ヒモ順位は3位以下だけに使う。
+            _remaining_himo = [
+                int(c) for c in _adjusted_himo_order
+                if int(c) not in {int(_original_axis), int(_original_v2)}
+            ]
             if _lost:
-                _remaining_himo = [
-                    int(c) for c in _adjusted_himo_order if int(c) != int(_original_v2)
-                ]
                 _knock_order = [int(_original_v2), int(_original_axis)] + _remaining_himo
             else:
-                _knock_order = [int(_original_axis)] + [int(c) for c in _adjusted_himo_order]
+                _knock_order = [int(_original_axis), int(_original_v2)] + _remaining_himo
     except Exception as _flow_ko_exc:
         _flow_knock_error = str(_flow_ko_exc)
         _knock_order = list(_pre_knock_order)
@@ -3503,10 +3509,13 @@ def _v335es_finalize_flow_order(flow_order, profile, return_debug=False):
         if _ko_scores:
             _ko_min = min(_ko_scores.values())
             _ko_last = {int(c) for c, sc in _ko_scores.items() if abs(float(sc)-float(_ko_min)) <= 1e-12}
-            for _last_car in list(_knock_order[:2]):
-                if int(_last_car) in _ko_last:
-                    _knock_order.remove(int(_last_car))
-                    _knock_order.insert(min(2, len(_knock_order)), int(_last_car))
+            # v335fa-fix: 元V1/V2の直接査定で確定したTOP2はここでは崩さない。
+            # KO最下位3位制限はTOP2以外にのみ適用する。
+            _locked_top2 = {int(c) for c in _knock_order[:2]}
+            for _last_car in list(_knock_order[2:]):
+                if int(_last_car) in _ko_last and int(_last_car) not in _locked_top2:
+                    # 既に3位以下なので順位変更不要。
+                    pass
     except Exception:
         pass
 
