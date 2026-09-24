@@ -1,6 +1,15 @@
+# v335fc（本線2位軸・各流れ1位三連複版）
+# ・購入は展開1位のみ。展開2位・3位は診断表示のみ。
+# ・3連複は展開1位の最終2位を軸に、成立している各流れの最終1位を相手とする「軸-相手-相手」型。
+# ・展開1位の最終3位は3連複ヒモに使用しない。
+# ・展開1位TOP2の逆転2車単1点は維持。
 # v335fa TOP2査定固定修正版
 # 修正点：開催日査定の元V1 vs 元V2でTOP2を確定し、合成ヒモ順位の車が2位へ割り込まないよう修正。
 # 買い目ルール・流れ比率・V評価・合成ヒモ計算・開催日査定値は変更しない。
+# v335fb（本線3連複・各流れ1位追加／保険廃止版）
+# ・購入は展開1位のみ。展開2位・3位は診断表示のみ。
+# ・展開1位3連複はTOP2固定、3列目＝展開1位3位＋成立している各流れ1位（TOP2重複除外）。
+# ・展開1位TOP2の逆転2車単1点は維持。
 # v335fa（2ライン戦対応・新4点推奨統一版）
 # ・新4点方式を2ライン戦にも適用。展開1位＋展開2位の2展開が成立すれば買い目を生成する。
 # ・展開1位：最終TOP3の3連複1点＋TOP2逆転2車単1点。
@@ -3647,33 +3656,33 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         elif _diag.get("knock_error"):
             _lines.append(f"開催日査定エラー　 ：{_diag.get('knock_error')}")
 
-    # 展開2位の3連複：TOP2を核に、展開1位の逆転2車単の頭（m2）を3車目へ。
-    # m2が重複する場合は逆転2車単のもう一方（m1）を採用する。
-    _counter_pair = {int(_c1), int(_c2)}
-    _counter_trio_partner = None
-    if int(_m2) not in _counter_pair:
-        _counter_trio_partner = int(_m2)
-    elif int(_m1) not in _counter_pair:
-        _counter_trio_partner = int(_m1)
+    # v335fc：購入は展開1位だけ。展開2位・3位は保険購入せず診断表示のみ。
+    # 3連複は展開1位の最終2位を軸に、成立している各流れの最終1位だけをヒモにする。
+    # 例：順流2位=7、各流れ1位=3/5/1 → 7-351-351（3点）。
+    # 展開1位の最終3位はヒモに使用しない。
+    _trio_axis = int(_m2)
+    _trio_himos = []
+    for _r in _rows:
+        _order = tuple(int(c) for c in (_r.get("order") or tuple()))
+        if not _order:
+            continue
+        _c = int(_order[0])
+        if _c == _trio_axis:
+            continue
+        if _c not in _trio_himos:
+            _trio_himos.append(_c)
 
-    # 展開1位：最終TOP3三連複＋TOP2裏二車単。
-    _main_trio = tuple(sorted((_m1, _m2, _m3)))
-    _main_trio_valid = len(set(_main_trio)) == 3
+    _trio_count = (len(_trio_himos) * (len(_trio_himos) - 1)) // 2
+    _trio_form = (
+        f"{_trio_axis}-" + "".join(str(x) for x in _trio_himos)
+        + "-" + "".join(str(x) for x in _trio_himos)
+    ) if len(_trio_himos) >= 2 else ""
 
-    # 推奨購入を先頭へ集約する。詳細欄は従来どおり各展開の診断と対応買い目を表示する。
-    _q1, _q2 = sorted((_c1, _c2))
     _summary_lines = ["【推奨購入】"]
-    if _main_trio_valid:
-        _summary_lines.append("3連複　" + "-".join(str(x) for x in _main_trio))
+    if _trio_form:
+        _summary_lines.append(f"3連複　{_trio_form}")
     _summary_lines.append(f"2車単　{_m2}-{_m1}")
-    _summary_lines.append(f"2車複　{_q1}-{_q2}")
-    _counter_trio_valid = _counter_trio_partner is not None and len({_c1, _c2, _counter_trio_partner}) == 3
-    if _counter_trio_valid:
-        _counter_trio = tuple(sorted((_c1, _c2, int(_counter_trio_partner))))
-        _summary_lines.append("3連複　" + "-".join(str(x) for x in _counter_trio))
-    else:
-        _summary_lines.append("3連複　生成不可（展開1位TOP2が展開2位TOP2と重複）")
-    _ticket_count = int(_main_trio_valid) + 1 + 1 + int(_counter_trio_valid)
+    _ticket_count = _trio_count + 1
     _summary_lines.append(f"計{_ticket_count}点")
     _summary_lines.append("")
 
@@ -3681,23 +3690,19 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines.append(f"【想定展開{float(_main['ratio']) * 100.0:.0f}％】{_main['style']}")
     _append_flow_diag(_lines, _main)
     _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _main_order)}")
-    if _main_trio_valid:
-        _lines.append("3連複　" + "-".join(str(x) for x in _main_trio))
+    if _trio_form:
+        _lines.append(f"3連複　{_trio_form}")
     _lines.append(f"2車単　{_m2}-{_m1}")
     _lines.append("")
 
-    # 展開2位：最終TOP2二車複のみ。
+    # 展開2位：診断表示のみ。保険購入はしない。
     _lines.append(f"【想定展開{float(_counter['ratio']) * 100.0:.0f}％】{_counter['style']}")
     _append_flow_diag(_lines, _counter)
     _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _counter_order)}")
-    _lines.append(f"2車複　{_q1}-{_q2}")
-    if _counter_trio_valid:
-        _lines.append("3連複　" + "-".join(str(x) for x in _counter_trio))
-    else:
-        _lines.append("3連複　生成不可（展開1位TOP2が展開2位TOP2と重複）")
+    _lines.append("購入なし（診断表示のみ）")
     _lines.append("")
 
-    # 展開3位：成立する場合だけ診断表示。2ライン戦では該当なし。
+    # 展開3位：成立する場合だけ診断表示。
     if _third is not None and _third_order:
         _lines.append(f"【想定展開{float(_third['ratio']) * 100.0:.0f}％】{_third['style']}")
         _append_flow_diag(_lines, _third)
@@ -3708,10 +3713,10 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("購入なし（診断表示のみ）")
     _lines.append("")
 
-    _lines.append("※展開1位は、その流れの最終着順予想1・2・3位の3連複1点と、1・2位の逆転2車単1点。")
-    _lines.append("※展開2位は、その流れの最終着順予想1・2位の2車複1点と、その2車＋展開1位の逆転2車単の頭を基本とする3連複1点。")
-    _lines.append("※展開2位3連複の3車目が重複する場合は、展開1位逆転2車単のもう一方を採用。両方重複なら生成不可。")
-    _lines.append("※展開3位は診断表示のみで購入しません。")
+    _lines.append("※購入は展開1位のみ。展開2位・3位の保険購入は行いません。")
+    _lines.append("※3連複は、展開1位の最終着順予想2位を軸に、成立している各流れの最終1位をヒモとする軸-ヒモ-ヒモ型です。")
+    _lines.append("※展開1位の最終3位は3連複ヒモに使用しません。")
+    _lines.append("※2車単は、展開1位の最終着順予想1・2位の逆転1点です。")
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
