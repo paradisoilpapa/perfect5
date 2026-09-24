@@ -1,3 +1,7 @@
+# v335fb（流れ別12倍ゾーン・2車単3点セット版）
+# ・3流れそれぞれの最終1位→2/3/4位を2車単3点セット化。
+# ・既存想定的中率モデルで3点合成確率を算出し、流れ想定比率を掛けた確率が12倍損益分岐8.33%に最も近い流れを採用。
+# ・実オッズ・過去払戻は選定に使わず、予想本体・流れ比率・V評価・合成ヒモ・開催日KOは変更しない。
 # v335fa（2ライン戦対応・新4点推奨統一版）
 # ・新4点方式を2ライン戦にも適用。展開1位＋展開2位の2展開が成立すれば買い目を生成する。
 # ・展開1位：最終TOP3の3連複1点＋TOP2逆転2車単1点。
@@ -3523,17 +3527,14 @@ def _v335es_finalize_flow_order(flow_order, profile, return_debug=False):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """想定比率上位2展開から4点を生成（v335ez）。
+    """v335fb：3流れの「1→2・3・4」2車単3点セットから12倍ゾーンを選ぶ。
 
-    展開1位:
-      ・その流れの最終着順予想1・2・3位の3連複1点
-      ・最終1・2位の逆転2車単1点
-    展開2位:
-      ・その流れの最終着順予想1・2位の2車複1点
-      ・その2車＋展開1位の逆転2車単の頭（展開1位最終2位）で3連複1点
-      ・頭が展開2位TOP2と重複する場合は、逆転2車単のもう一方（展開1位最終1位）を採用
-    展開3位:
-      ・購入なし（診断表示のみ維持）
+    ・順流／渦／逆流を、それぞれ独立に現行ロジックで最終着順化する。
+    ・各流れの最終1位を頭、最終2・3・4位を相手にした2車単3点セットを作る。
+    ・既存v335br想定的中率モデルで3点の条件付き合成的中率を算出する。
+    ・その流れ自体の想定比率を掛け、レース全体での「流れ加重・3点セット想定的中率」を算出する。
+    ・12倍の損益分岐 1/12 = 8.33% に最も近い流れの3点セットだけを推奨購入に採用する。
+    ・予想本体、流れ比率、V評価、合成ヒモ、開催日KOは変更しない。
     """
     if not isinstance(profile, dict):
         return None
@@ -3573,43 +3574,59 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _rows = []
     for _style in ("順流", "逆流", "渦"):
         _seq = _v281_unique_sequence(_style_map.get(_style, []) or [])
-        if len(_seq) < 3:
+        if len(_seq) < 4:
             continue
         _final, _diag = _v335es_finalize_flow_order(_seq, profile, return_debug=True)
-        if len(_final) < 3:
+        if len(_final) < 4:
             continue
+
+        _order = tuple(int(c) for c in _final)
+        _p1 = _v335br_position_probability_map(profile, _order, 1)
+        _p2 = _v335br_position_probability_map(profile, _order, 2)
+        _p3 = _v335br_position_probability_map(profile, _order, 3)
+        _axis = int(_order[0])
+        _partners = tuple(int(c) for c in _order[1:4])
+        _ticket_probs = []
+        for _partner in _partners:
+            _prob = _v335br_ticket_probability((_axis, _partner), _p1, _p2, _p3)
+            _ticket_probs.append(((_axis, _partner), float(_prob)))
+        _conditional_set_prob = min(1.0, sum(float(x[1]) for x in _ticket_probs))
+        _ratio = float(_ratio_map.get(_style, 0.0) or 0.0)
+        _weighted_set_prob = max(0.0, min(1.0, _ratio * _conditional_set_prob))
+
         _rows.append({
             "style": _style,
-            "ratio": float(_ratio_map.get(_style, 0.0) or 0.0),
-            "order": tuple(_final),
+            "ratio": _ratio,
+            "order": _order,
             "diag": dict(_diag or {}),
             "fixed": int(_fixed[_style]),
+            "axis": _axis,
+            "partners": _partners,
+            "ticket_probs": tuple(_ticket_probs),
+            "conditional_set_prob": float(_conditional_set_prob),
+            "weighted_set_prob": float(_weighted_set_prob),
         })
+
+    if not _rows:
+        return [
+            "【推奨購入】",
+            "展開別データ不足のため2車単3点セットを算出不可",
+        ]
+
+    # 表示順は従来どおり想定展開比率の高い順。
     _rows.sort(key=lambda r: (-float(r["ratio"]), int(r["fixed"])))
-    _rows = _rows[:3]
-    # v335fa: 新4点の購入に必要なのは上位2展開。
-    # 2ライン戦などで第3展開が成立しなくても、旧2車単4点へ戻さない。
-    if len(_rows) < 2:
-        return [
-            "【推奨購入】",
-            "展開別データ不足のため新4点を算出不可",
-            "※旧2車単4点へのフォールバックは行いません。",
-        ]
 
-    _main, _counter = _rows[0], _rows[1]
-    _third = _rows[2] if len(_rows) >= 3 else None
-    _main_order = tuple(int(c) for c in _main["order"])
-    _counter_order = tuple(int(c) for c in _counter["order"])
-    _third_order = tuple(int(c) for c in _third["order"]) if _third is not None else tuple()
-    if len(_main_order) < 3 or len(_counter_order) < 2:
-        return [
-            "【推奨購入】",
-            "展開別データ不足のため新4点を算出不可",
-            "※旧2車単4点へのフォールバックは行いません。",
-        ]
-
-    _m1, _m2, _m3 = _main_order[:3]
-    _c1, _c2 = _counter_order[:2]
+    # 12倍の損益分岐＝8.333...%。流れ加重3点セット想定的中率が最も近い流れを採用。
+    _target_prob = 1.0 / 12.0
+    _selected = min(
+        _rows,
+        key=lambda r: (
+            abs(float(r["weighted_set_prob"]) - _target_prob),
+            -float(r["weighted_set_prob"]),
+            -float(r["ratio"]),
+            int(r["fixed"]),
+        ),
+    )
 
     def _append_flow_diag(_lines, _row):
         _diag = dict((_row or {}).get("diag") or {})
@@ -3638,71 +3655,44 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         elif _diag.get("knock_error"):
             _lines.append(f"開催日査定エラー　 ：{_diag.get('knock_error')}")
 
-    # 展開2位の3連複：TOP2を核に、展開1位の逆転2車単の頭（m2）を3車目へ。
-    # m2が重複する場合は逆転2車単のもう一方（m1）を採用する。
-    _counter_pair = {int(_c1), int(_c2)}
-    _counter_trio_partner = None
-    if int(_m2) not in _counter_pair:
-        _counter_trio_partner = int(_m2)
-    elif int(_m1) not in _counter_pair:
-        _counter_trio_partner = int(_m1)
-
-    # 展開1位：最終TOP3三連複＋TOP2裏二車単。
-    _main_trio = tuple(sorted((_m1, _m2, _m3)))
-    _main_trio_valid = len(set(_main_trio)) == 3
-
-    # 推奨購入を先頭へ集約する。詳細欄は従来どおり各展開の診断と対応買い目を表示する。
-    _q1, _q2 = sorted((_c1, _c2))
-    _summary_lines = ["【推奨購入】"]
-    if _main_trio_valid:
-        _summary_lines.append("3連複　" + "-".join(str(x) for x in _main_trio))
-    _summary_lines.append(f"2車単　{_m2}-{_m1}")
-    _summary_lines.append(f"2車複　{_q1}-{_q2}")
-    _counter_trio_valid = _counter_trio_partner is not None and len({_c1, _c2, _counter_trio_partner}) == 3
-    if _counter_trio_valid:
-        _counter_trio = tuple(sorted((_c1, _c2, int(_counter_trio_partner))))
-        _summary_lines.append("3連複　" + "-".join(str(x) for x in _counter_trio))
-    else:
-        _summary_lines.append("3連複　生成不可（展開1位TOP2が展開2位TOP2と重複）")
-    _ticket_count = int(_main_trio_valid) + 1 + 1 + int(_counter_trio_valid)
-    _summary_lines.append(f"計{_ticket_count}点")
-    _summary_lines.append("")
+    _sa = int(_selected["axis"])
+    _sp = tuple(int(c) for c in _selected["partners"])
+    _summary_lines = [
+        "【推奨購入】",
+        f"２車単　{_sa}-{''.join(str(c) for c in _sp)}（各100円）",
+        f"採用流れ：{_selected['style']}（想定展開{float(_selected['ratio'])*100.0:.0f}%）",
+        f"3点セット想定的中率：{float(_selected['weighted_set_prob'])*100.0:.2f}%（12倍基準8.33%との差 {abs(float(_selected['weighted_set_prob'])-_target_prob)*100.0:.2f}pt）",
+        "計3点／300円",
+        "",
+    ]
 
     _lines = list(_summary_lines)
-    _lines.append(f"【想定展開{float(_main['ratio']) * 100.0:.0f}％】{_main['style']}")
-    _append_flow_diag(_lines, _main)
-    _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _main_order)}")
-    if _main_trio_valid:
-        _lines.append("3連複　" + "-".join(str(x) for x in _main_trio))
-    _lines.append(f"2車単　{_m2}-{_m1}")
-    _lines.append("")
+    for _row in _rows:
+        _order = tuple(int(c) for c in _row["order"])
+        _axis = int(_row["axis"])
+        _partners = tuple(int(c) for c in _row["partners"])
+        _mark = "【採用】" if _row is _selected else ""
+        _lines.append(f"【想定展開{float(_row['ratio']) * 100.0:.0f}％】{_row['style']}{_mark}")
+        _append_flow_diag(_lines, _row)
+        _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _order)}")
+        _lines.append(f"2車単3点セット　　 ：{_axis}-{''.join(str(c) for c in _partners)}")
+        _lines.append(
+            f"条件付き合成的中率 ：{float(_row['conditional_set_prob'])*100.0:.2f}%"
+        )
+        _lines.append(
+            f"流れ加重想定的中率 ：{float(_row['weighted_set_prob'])*100.0:.2f}%"
+        )
+        _detail = " / ".join(
+            f"{int(t[0])}-{int(t[1])} {float(pr)*100.0:.2f}%"
+            for t, pr in _row["ticket_probs"]
+        )
+        _lines.append(f"内訳（条件付き）　 ：{_detail}")
+        _lines.append("")
 
-    # 展開2位：最終TOP2二車複のみ。
-    _lines.append(f"【想定展開{float(_counter['ratio']) * 100.0:.0f}％】{_counter['style']}")
-    _append_flow_diag(_lines, _counter)
-    _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _counter_order)}")
-    _lines.append(f"2車複　{_q1}-{_q2}")
-    if _counter_trio_valid:
-        _lines.append("3連複　" + "-".join(str(x) for x in _counter_trio))
-    else:
-        _lines.append("3連複　生成不可（展開1位TOP2が展開2位TOP2と重複）")
-    _lines.append("")
-
-    # 展開3位：成立する場合だけ診断表示。2ライン戦では該当なし。
-    if _third is not None and _third_order:
-        _lines.append(f"【想定展開{float(_third['ratio']) * 100.0:.0f}％】{_third['style']}")
-        _append_flow_diag(_lines, _third)
-        _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _third_order)}")
-        _lines.append("購入なし（診断表示のみ）")
-    else:
-        _lines.append("【想定展開3位】該当なし")
-        _lines.append("購入なし（診断表示のみ）")
-    _lines.append("")
-
-    _lines.append("※展開1位は、その流れの最終着順予想1・2・3位の3連複1点と、1・2位の逆転2車単1点。")
-    _lines.append("※展開2位は、その流れの最終着順予想1・2位の2車複1点と、その2車＋展開1位の逆転2車単の頭を基本とする3連複1点。")
-    _lines.append("※展開2位3連複の3車目が重複する場合は、展開1位逆転2車単のもう一方を採用。両方重複なら生成不可。")
-    _lines.append("※展開3位は診断表示のみで購入しません。")
+    _lines.append("※各流れの最終着順予想1位→2・3・4位を2車単3点セットとして評価。")
+    _lines.append("※3点の条件付き合成的中率に、その流れの想定展開比率を掛けた『流れ加重想定的中率』を使用。")
+    _lines.append("※12倍の損益分岐8.33%に最も近い流れの3点セットを1組だけ採用。")
+    _lines.append("※実オッズ・過去払戻は選定に使用しません。")
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
