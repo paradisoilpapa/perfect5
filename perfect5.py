@@ -1,4 +1,4 @@
-# v335fd（簡易表示版）
+# v335fe（2ライン戦・相手流れ1・2位追加版）
 # ・公開表示を「推奨購入」と「想定着順予想」だけに整理。
 # ・V評価、合成ヒモ、開催日査定、各流れ最終順位、買い目生成ロジックはv335fcから変更しない。
 # v335fc（本線2位軸・各流れ1位三連複版）
@@ -3674,6 +3674,15 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             continue
         if _c not in _trio_himos:
             _trio_himos.append(_c)
+
+    # v335fe：2ライン戦だけ、展開1位に対する相手流れ（展開2位）の
+    # 最終着順1・2位を3連複ヒモに使う。
+    # 各流れ1位は上で既に入っているため、ここでは相手流れ2位を追加する。
+    # 例：逆流 1→2…／順流 3→4…、軸=2 → ヒモ 1・3・4 → 2-134-134。
+    if len(_rows) == 2 and len(_counter_order) >= 2:
+        _opp_second = int(_counter_order[1])
+        if _opp_second != _trio_axis and _opp_second not in _trio_himos:
+            _trio_himos.append(_opp_second)
 
     _trio_count = (len(_trio_himos) * (len(_trio_himos) - 1)) // 2
     _trio_form = (
