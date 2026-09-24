@@ -1,3 +1,7 @@
+# v335fe（2車単2点・24倍ゾーン版）
+# 各流れの上位3車から「1位→2・3位」「2位→1・3位」の2セットだけを評価。
+# 最大6セットから24倍基準4.1667%に最も近いセットを1組採用。
+# note表示は推奨2点と3流れの想定着順だけ。
 # v335fd（開催日査定TOP2順序固定版）
 # ・開催日査定の元V1 vs 元V2の勝敗をTOP2順序として固定。
 # ・合成ヒモ順位は3位以下だけに適用し、他車のTOP2割り込みを禁止。
@@ -3534,14 +3538,14 @@ def _v335es_finalize_flow_order(flow_order, profile, return_debug=False):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335fc：各流れの上位4車を軸候補にした2車単3点セットから12倍ゾーンを選ぶ。
+    """v335fe：各流れの上位3車から、1位軸/2位軸の2車単2点セットを比較する。
 
-    ・順流／渦／逆流を、それぞれ独立に現行ロジックで最終着順化する。
-    ・各流れの最終上位4車について、各車を軸に「軸→残る上位4車の3車」の2車単3点セットを4組作る。
-    ・既存v335br想定的中率モデルで各3点セットの条件付き合成的中率を算出する。
-    ・その流れ自体の想定比率を掛けた「流れ加重・3点セット想定的中率」を算出する。
-    ・3流れ×最大4軸＝最大12セットから、12倍損益分岐 1/12=8.33% に最も近い1組だけを採用する。
-    ・予想本体、流れ比率、V評価、合成ヒモ、開催日KOは変更しない。
+    各流れで候補は2組だけ：
+      ・1位軸 → 2位・3位
+      ・2位軸 → 1位・3位
+    3流れ×2組＝最大6セットから、流れ加重想定的中率が
+    24倍基準 1/24=4.1667% に最も近い1組を採用する。
+    note表示は推奨購入と3流れの想定着順だけにする。
     """
     if not isinstance(profile, dict):
         return None
@@ -3553,30 +3557,44 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _ratio_map = {}
     try:
         _zone = globals().get("FLOW_RATIO_MAP_BY_ZONE", {}) or {}
-        _vals = {"順流": float(_zone.get("順流", 0.0) or 0.0), "逆流": float(_zone.get("逆流", 0.0) or 0.0), "渦": float(_zone.get("渦", 0.0) or 0.0)}
+        _vals = {
+            "順流": float(_zone.get("順流", 0.0) or 0.0),
+            "逆流": float(_zone.get("逆流", 0.0) or 0.0),
+            "渦": float(_zone.get("渦", 0.0) or 0.0),
+        }
         _tot = sum(_vals.values())
         if _tot > 0:
             _ratio_map = {k: float(v) / float(_tot) for k, v in _vals.items()}
     except Exception:
         _ratio_map = {}
+
     if not _ratio_map:
         try:
             _flow = globals().get("_flow", {}) or {}
-            _vals = {"順流": float(_flow.get("FR", 0.0) or 0.0), "逆流": float(_flow.get("U", 0.0) or 0.0), "渦": float(_flow.get("VTX", 0.0) or 0.0)}
+            _vals = {
+                "順流": float(_flow.get("FR", 0.0) or 0.0),
+                "逆流": float(_flow.get("U", 0.0) or 0.0),
+                "渦": float(_flow.get("VTX", 0.0) or 0.0),
+            }
             _tot = sum(_vals.values())
-            _ratio_map = ({k: float(v) / float(_tot) for k, v in _vals.items()} if _tot > 0 else {"順流": 1/3, "逆流": 1/3, "渦": 1/3})
+            _ratio_map = (
+                {k: float(v) / float(_tot) for k, v in _vals.items()}
+                if _tot > 0 else {"順流": 1/3, "逆流": 1/3, "渦": 1/3}
+            )
         except Exception:
             _ratio_map = {"順流": 1/3, "逆流": 1/3, "渦": 1/3}
 
     _fixed = {"順流": 0, "逆流": 1, "渦": 2}
     _flow_rows = []
     _all_sets = []
+
     for _style in ("順流", "逆流", "渦"):
         _seq = _v281_unique_sequence(_style_map.get(_style, []) or [])
-        if len(_seq) < 4:
+        if len(_seq) < 3:
             continue
+
         _final, _diag = _v335es_finalize_flow_order(_seq, profile, return_debug=True)
-        if len(_final) < 4:
+        if len(_final) < 3:
             continue
 
         _order = tuple(int(c) for c in _final)
@@ -3584,77 +3602,82 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _p2 = _v335br_position_probability_map(profile, _order, 2)
         _p3 = _v335br_position_probability_map(profile, _order, 3)
         _ratio = float(_ratio_map.get(_style, 0.0) or 0.0)
-        _top4 = tuple(int(c) for c in _order[:4])
+
+        _a, _b, _c = (int(x) for x in _order[:3])
+        _candidates = (
+            (1, _a, (_b, _c)),  # 1-23
+            (2, _b, (_a, _c)),  # 2-13
+        )
+
         _sets = []
-        for _axis in _top4:
-            _partners = tuple(int(c) for c in _top4 if int(c) != int(_axis))
+        for _axis_rank, _axis, _partners in _candidates:
             _ticket_probs = []
             for _partner in _partners:
                 _prob = _v335br_ticket_probability((_axis, _partner), _p1, _p2, _p3)
                 _ticket_probs.append(((_axis, _partner), float(_prob)))
+
             _conditional_set_prob = min(1.0, sum(float(x[1]) for x in _ticket_probs))
             _weighted_set_prob = max(0.0, min(1.0, _ratio * _conditional_set_prob))
-            _set = {"style": _style, "ratio": _ratio, "order": _order, "diag": dict(_diag or {}), "fixed": int(_fixed[_style]), "axis": int(_axis), "partners": _partners, "ticket_probs": tuple(_ticket_probs), "conditional_set_prob": float(_conditional_set_prob), "weighted_set_prob": float(_weighted_set_prob), "axis_rank": int(_top4.index(_axis) + 1)}
+            _set = {
+                "style": _style,
+                "ratio": _ratio,
+                "order": _order,
+                "diag": dict(_diag or {}),
+                "fixed": int(_fixed[_style]),
+                "axis": int(_axis),
+                "partners": tuple(int(c) for c in _partners),
+                "ticket_probs": tuple(_ticket_probs),
+                "conditional_set_prob": float(_conditional_set_prob),
+                "weighted_set_prob": float(_weighted_set_prob),
+                "axis_rank": int(_axis_rank),
+            }
             _sets.append(_set)
             _all_sets.append(_set)
-        _flow_rows.append({"style": _style, "ratio": _ratio, "order": _order, "diag": dict(_diag or {}), "fixed": int(_fixed[_style]), "sets": _sets})
+
+        _flow_rows.append({
+            "style": _style,
+            "ratio": _ratio,
+            "order": _order,
+            "diag": dict(_diag or {}),
+            "fixed": int(_fixed[_style]),
+            "sets": _sets,
+        })
 
     if not _all_sets:
-        return ["【推奨購入】", "展開別データ不足のため2車単3点セットを算出不可"]
+        return ["【推奨購入】", "展開別データ不足のため2車単2点セットを算出不可"]
 
     _flow_rows.sort(key=lambda r: (-float(r["ratio"]), int(r["fixed"])))
-    _target_prob = 1.0 / 12.0
-    _selected = min(_all_sets, key=lambda r: (abs(float(r["weighted_set_prob"]) - _target_prob), -float(r["weighted_set_prob"]), -float(r["ratio"]), int(r["fixed"]), int(r["axis_rank"])))
 
-    def _append_flow_diag(_lines, _row):
-        _diag = dict((_row or {}).get("diag") or {})
-        _flow_v = tuple(int(c) for c in (_diag.get("v_order") or tuple()))
-        _flow_himo = tuple(int(c) for c in (_diag.get("adjusted_himo_order") or tuple()))
-        _flow_pt = dict(_diag.get("total_point") or {})
-        if _flow_v:
-            _lines.append("今回V評価順位　　　：" + " → ".join(str(c) for c in _flow_v))
-        if _flow_himo:
-            _lines.append("合成ヒモ順位　　　 ：" + " → ".join(f"{c}（{int(_flow_pt.get(c, 0))}P）" for c in _flow_himo))
-        _logs = list(_diag.get("knock_log") or [])
-        if _logs:
-            for _k in _logs:
-                _result = "元◎負け" if bool(_k.get("fatigue_lost")) else "元◎維持"
-                _lines.append(f"開催日査定　　　　 ：{int(_k.get('axis'))} vs {int(_k.get('challenger'))} = {float(_k.get('axis_score')):.6f} vs {float(_k.get('challenger_score')):.6f}（{_result}）")
-                _ratio = _k.get("v2_v1_ratio")
-                if _ratio is not None:
-                    _lines.append(f"ヒモ1/元1比率　　 ：{float(_ratio)*100.0:.2f}%（{str(_k.get('knock_reason','維持'))}）")
-        elif _diag.get("knock_error"):
-            _lines.append(f"開催日査定エラー　 ：{_diag.get('knock_error')}")
+    # 24倍ゾーン：1/24 = 4.1667%
+    _target_prob = 1.0 / 24.0
+    _selected = min(
+        _all_sets,
+        key=lambda r: (
+            abs(float(r["weighted_set_prob"]) - _target_prob),
+            -float(r["weighted_set_prob"]),
+            -float(r["ratio"]),
+            int(r["fixed"]),
+            int(r["axis_rank"]),
+        ),
+    )
 
     _sa = int(_selected["axis"])
     _sp = tuple(int(c) for c in _selected["partners"])
+
+    # note表示：途中計算は出さない。
     _lines = [
         "【推奨購入】",
-        f"２車単　{_sa}-{''.join(str(c) for c in _sp)}（各100円）",
-        f"採用流れ：{_selected['style']}（想定展開{float(_selected['ratio'])*100.0:.0f}%）／流れ内軸順位：{int(_selected['axis_rank'])}位",
-        f"3点セット想定的中率：{float(_selected['weighted_set_prob'])*100.0:.2f}%（12倍基準8.33%との差 {abs(float(_selected['weighted_set_prob'])-_target_prob)*100.0:.2f}pt）",
-        "計3点／300円", ""
+        f"2車単　{_sa}-{''.join(str(c) for c in _sp)}（各100円）",
+        "計2点／200円",
+        "",
+        "【想定着順予想】",
     ]
-
     for _row in _flow_rows:
-        _mark_flow = "【採用流れ】" if _row["style"] == _selected["style"] else ""
-        _lines.append(f"【想定展開{float(_row['ratio'])*100.0:.0f}％】{_row['style']}{_mark_flow}")
-        _append_flow_diag(_lines, _row)
-        _lines.append(f"最終着順予想　　　 ：{' → '.join(str(int(c)) for c in _row['order'])}")
-        for _set in _row["sets"]:
-            _axis = int(_set["axis"]); _partners = tuple(int(c) for c in _set["partners"])
-            _mark = "【採用】" if _set is _selected else ""
-            _lines.append(f"軸{int(_set['axis_rank'])}位 2車単3点セット：{_axis}-{''.join(str(c) for c in _partners)} {_mark}".rstrip())
-            _lines.append(f"　条件付き合成的中率：{float(_set['conditional_set_prob'])*100.0:.2f}%")
-            _lines.append(f"　流れ加重想定的中率：{float(_set['weighted_set_prob'])*100.0:.2f}%（8.33%との差 {abs(float(_set['weighted_set_prob'])-_target_prob)*100.0:.2f}pt）")
-            _detail = " / ".join(f"{int(t[0])}-{int(t[1])} {float(pr)*100.0:.2f}%" for t, pr in _set["ticket_probs"])
-            _lines.append(f"　内訳（条件付き）　：{_detail}")
-        _lines.append("")
+        _lines.append(
+            f"{_row['style']}{float(_row['ratio'])*100.0:.0f}%　"
+            + "→".join(str(int(c)) for c in _row["order"])
+        )
 
-    _lines.append("※各流れの最終上位4車について、各車を軸に残る3車へ流す2車単3点セットを4組評価。")
-    _lines.append("※3点の条件付き合成的中率に、その流れの想定展開比率を掛けた『流れ加重想定的中率』を使用。")
-    _lines.append("※3流れ×最大4軸＝最大12セットから、12倍の損益分岐8.33%に最も近い1組だけを採用。")
-    _lines.append("※実オッズ・過去払戻は選定に使用しません。")
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
