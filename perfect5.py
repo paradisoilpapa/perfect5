@@ -1,3 +1,9 @@
+# v335fh（買い目別想定的中率表示版）
+# ・v335fgの「2車複 本線最終2位×他流れ1位 2点＋3連単 本線最終2位→他流れ1位→本線最終1位 2点」は変更しない。
+# ・推奨購入の各フォーメーション横に、そのフォーメーション全体の想定的中率を表示する。
+# ・2車複は各相手について既存v335brモデルの「A→B」と「B→A」を合算し、さらに2点分を合計する。
+# ・3連単は既存v335brモデルの順序付き確率を使い、2点分を合計する。
+# ・想定的中率はヴェロビ内部モデル値であり、実測的中率ではない。
 # v335fg（2車複2-46＋3連単2-46-1・本線補完版）
 # ・推奨購入を「本線最終2位×他流れ1位」の2車複2点＋「本線最終2位→他流れ1位→本線最終1位」の3連単2点＝計4点へ変更。
 # ・相手2車は第2流れ1位→第3流れ1位を優先し、重複・不成立時は本線最終3位以下から先に補完する。
@@ -3562,6 +3568,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
       ・相手重複・不成立時は本線最終3位以下を優先。
       ・なお不足する場合だけ第2・第3流れの2位以下を交互に採用。
       ・本線最終1位と軸自身は相手に採用しない。
+    表示:
+      ・2車複・3連単の各実買い目ごとに既存v335brモデルの想定的中率を併記する。
     """
     if not isinstance(profile, dict):
         return None
@@ -3735,11 +3743,65 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _pair_himos = _pair_himos[:2]
 
+    # v335fh：推奨4点それぞれに既存v335brモデルの想定的中率を表示する。
+    # 2車複は順序を問わないため A→B と B→A の確率を合算する。
+    # 3連単は順序付き確率をそのまま使用する。
+    try:
+        _prob_order = tuple(int(c) for c in _main_order)
+        _p1_map = _v335br_position_probability_map(profile, _prob_order, 1)
+        _p2_map = _v335br_position_probability_map(profile, _prob_order, 2)
+        _p3_map = _v335br_position_probability_map(profile, _prob_order, 3)
+    except Exception:
+        _p1_map, _p2_map, _p3_map = {}, {}, {}
+
+    def _quinella_prob(_a, _b):
+        try:
+            _ab = _v335br_ticket_probability(
+                (int(_a), int(_b)), _p1_map, _p2_map, _p3_map
+            )
+            _ba = _v335br_ticket_probability(
+                (int(_b), int(_a)), _p1_map, _p2_map, _p3_map
+            )
+            return max(0.0, min(1.0, float(_ab) + float(_ba)))
+        except Exception:
+            return None
+
+    def _trifecta_prob(_a, _b, _c):
+        try:
+            return _v335br_ticket_probability(
+                (int(_a), int(_b), int(_c)), _p1_map, _p2_map, _p3_map
+            )
+        except Exception:
+            return None
+
+    def _prob_text(_prob):
+        return "算出不可" if _prob is None else f"{float(_prob) * 100.0:.2f}%"
+
     _summary_lines = ["【推奨購入】"]
     if _pair_himos:
         _himo_text = "".join(str(x) for x in _pair_himos)
-        _summary_lines.append(f"2車複　{_pair_axis}-{_himo_text}")
-        _summary_lines.append(f"3連単　{_pair_axis}-{_himo_text}-{_trifecta_third}")
+
+        _q_probs = [_quinella_prob(_pair_axis, _h) for _h in _pair_himos]
+        _t_probs = [
+            _trifecta_prob(_pair_axis, _h, _trifecta_third)
+            for _h in _pair_himos
+        ]
+        _q_total = (
+            sum(float(x) for x in _q_probs if x is not None)
+            if any(x is not None for x in _q_probs) else None
+        )
+        _t_total = (
+            sum(float(x) for x in _t_probs if x is not None)
+            if any(x is not None for x in _t_probs) else None
+        )
+
+        _summary_lines.append(
+            f"2車複　{_pair_axis}-{_himo_text}（想定的中率 {_prob_text(_q_total)}）"
+        )
+        _summary_lines.append(
+            f"3連単　{_pair_axis}-{_himo_text}-{_trifecta_third}"
+            f"（想定的中率 {_prob_text(_t_total)}）"
+        )
         _summary_lines.append(f"計{len(_pair_himos) * 2}点")
     else:
         _summary_lines.append("相手候補不足のため買い目算出不可")
