@@ -1,3 +1,8 @@
+# v335fj（他流れ代表・流れ内スライド補完版）
+# ・v335fiの買い目・個別想定的中率表示は変更しない。
+# ・第2流れ／第3流れは各流れから代表1車を選び、1位が本線1位・軸・既採用相手と重複して使えない場合、その同じ流れの2位→3位→…へ順にスライドする。
+# ・各流れ内を最後まで探しても代表車を確保できない場合だけ、本線最終3位以下から補完する。
+# ・本線最終1位と軸（本線最終2位）は相手候補から除外し、2-1は推奨購入へ戻さない。
 # v335fi（4買い目・個別想定的中率表示版）
 # ・v335fhの買い目生成ロジックは変更せず、想定的中率の表示だけをフォーメーション合算から各実買い目の個別表示へ変更。
 # ・2車複は各買い目ごとに既存v335brモデルの「A→B」と「B→A」を合算した確率を表示する。
@@ -3565,8 +3570,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
       ・本線最終2位を軸に、第2・第3流れの最終1位を相手とする2車複2点。
       ・同じ相手2車を使い、本線最終1位を3着固定した3連単2点。
     補完:
-      ・相手重複・不成立時は本線最終3位以下を優先。
-      ・なお不足する場合だけ第2・第3流れの2位以下を交互に採用。
+      ・第2流れ／第3流れごとに代表1車を選ぶ。
+      ・各流れの1位が使えない場合、その同じ流れの2位→3位→…へ順にスライド。
+      ・各流れ内を最後まで探しても代表を確保できない場合だけ、本線最終3位以下から補完。
       ・本線最終1位と軸自身は相手に採用しない。
     表示:
       ・2車複・3連単の各実買い目ごとに既存v335brモデルの想定的中率を併記する。
@@ -3674,13 +3680,14 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         elif _diag.get("knock_error"):
             _lines.append(f"開催日査定エラー　 ：{_diag.get('knock_error')}")
 
-    # v335fg：本線最終2位を柱に、他流れ1位との2車関係を買う。
+    # v335fj：本線最終2位を柱に、他流れごとに代表1車を選ぶ。
     # 基本形（本線 1→2→3／第2流れ 4→…／第3流れ 6→…）：
     #   2車複 2-46
     #   3連単 2-46-1
-    # 相手2車は第2・第3流れの1位を優先する。
-    # 重複・不成立時は、本線最終3位以下を先に補完し、
-    # それでも不足する場合だけ第2・第3流れの2位以下を交互に補完する。
+    # 第2・第3流れは、それぞれ1位から順に候補を見て、
+    # 本線1位・軸・既採用相手と重複して使えない場合は、
+    # 「同じ流れの2位→3位→…」へスライドして代表1車を確保する。
+    # 各流れ内を最後まで探しても相手を確保できない場合だけ、本線最終3位以下で補完する。
     # 本線最終1位(_m1)と軸(_m2)は相手候補にしない。
     _pair_axis = int(_m2)
     _trifecta_third = int(_m1)
@@ -3697,42 +3704,34 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _pair_himos.append(_car)
         return True
 
-    # 1) 第2・第3流れの最終1位を優先。
-    if len(_counter_order) >= 1:
-        _add_pair_himo(_counter_order[0])
-    if len(_third_order) >= 1:
-        _add_pair_himo(_third_order[0])
+    def _add_flow_representative(_order):
+        """1位から順に、その流れ内で使える最上位1車を代表として追加する。"""
+        for _c in tuple(int(x) for x in (_order or tuple())):
+            if _add_pair_himo(_c):
+                return True
+        return False
 
-    # 2) 重複・不成立で2車に満たない場合は、本線最終3位以下から補完。
+    # 1) 第2流れの代表を、その流れの1位→2位→3位…の順で確保。
+    _counter_added = _add_flow_representative(_counter_order)
+
+    # 2) 第3流れも同様に、その流れ内でスライドして代表を確保。
+    _third_added = False
+    if _third_order:
+        _third_added = _add_flow_representative(_third_order)
+
+    # 3) 2ライン戦、または各流れ内を最後まで探しても代表が不足した場合だけ、
+    #    本線最終3位以下から補完する。
     if len(_pair_himos) < 2:
         for _c in _main_order[2:]:
             _add_pair_himo(_c)
             if len(_pair_himos) >= 2:
                 break
 
-    # 3) それでも不足する場合だけ、他流れの2位以下を交互に補完。
-    if len(_pair_himos) < 2:
-        _sub_orders = [_counter_order]
-        if _third_order:
-            _sub_orders.append(_third_order)
-        _rank_idx = 1  # 0=各流れ1位は上で処理済み。2位から。
-        while len(_pair_himos) < 2:
-            _available = False
-            for _order in _sub_orders:
-                if _rank_idx < len(_order):
-                    _available = True
-                    _add_pair_himo(_order[_rank_idx])
-                    if len(_pair_himos) >= 2:
-                        break
-            if not _available:
-                break
-            _rank_idx += 1
-
-    # 念のため全出走車から最後の補完。通常はここまで来ない。
-    # 2-1を復活させないため、本線1位と軸は常に除外する。
+    # 4) 念のため、それでも不足する場合のみ全流れの残存上位から最後の補完。
+    #    2-1を復活させないため、本線1位と軸は常に除外する。
     if len(_pair_himos) < 2:
         _fallback_pool = []
-        for _r in _rows:
+        for _r in _rows[1:]:
             for _c in tuple(int(x) for x in (_r.get("order") or tuple())):
                 if _c not in _fallback_pool:
                     _fallback_pool.append(_c)
