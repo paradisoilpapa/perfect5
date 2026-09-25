@@ -1,8 +1,8 @@
-# v335fh（買い目別想定的中率表示版）
-# ・v335fgの「2車複 本線最終2位×他流れ1位 2点＋3連単 本線最終2位→他流れ1位→本線最終1位 2点」は変更しない。
-# ・推奨購入の各フォーメーション横に、そのフォーメーション全体の想定的中率を表示する。
-# ・2車複は各相手について既存v335brモデルの「A→B」と「B→A」を合算し、さらに2点分を合計する。
-# ・3連単は既存v335brモデルの順序付き確率を使い、2点分を合計する。
+# v335fi（4買い目・個別想定的中率表示版）
+# ・v335fhの買い目生成ロジックは変更せず、想定的中率の表示だけをフォーメーション合算から各実買い目の個別表示へ変更。
+# ・2車複は各買い目ごとに既存v335brモデルの「A→B」と「B→A」を合算した確率を表示する。
+# ・3連単は各買い目ごとに既存v335brモデルの順序付き確率をそのまま表示する。
+# ・表示順は「2車複見出し→2点→空行→3連単見出し→2点→空行→計4点」。
 # ・想定的中率はヴェロビ内部モデル値であり、実測的中率ではない。
 # v335fg（2車複2-46＋3連単2-46-1・本線補完版）
 # ・推奨購入を「本線最終2位×他流れ1位」の2車複2点＋「本線最終2位→他流れ1位→本線最終1位」の3連単2点＝計4点へ変更。
@@ -3779,29 +3779,24 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _summary_lines = ["【推奨購入】"]
     if _pair_himos:
-        _himo_text = "".join(str(x) for x in _pair_himos)
+        # v335fi：フォーメーション合算ではなく、4買い目それぞれの想定的中率を個別表示する。
+        _summary_lines.append("2車複")
+        for _h in _pair_himos:
+            _q_prob = _quinella_prob(_pair_axis, _h)
+            _summary_lines.append(
+                f"{_pair_axis}-{int(_h)}（想定的中率 {_prob_text(_q_prob)}）"
+            )
 
-        _q_probs = [_quinella_prob(_pair_axis, _h) for _h in _pair_himos]
-        _t_probs = [
-            _trifecta_prob(_pair_axis, _h, _trifecta_third)
-            for _h in _pair_himos
-        ]
-        _q_total = (
-            sum(float(x) for x in _q_probs if x is not None)
-            if any(x is not None for x in _q_probs) else None
-        )
-        _t_total = (
-            sum(float(x) for x in _t_probs if x is not None)
-            if any(x is not None for x in _t_probs) else None
-        )
+        _summary_lines.append("")
+        _summary_lines.append("3連単")
+        for _h in _pair_himos:
+            _t_prob = _trifecta_prob(_pair_axis, _h, _trifecta_third)
+            _summary_lines.append(
+                f"{_pair_axis}-{int(_h)}-{_trifecta_third}"
+                f"（想定的中率 {_prob_text(_t_prob)}）"
+            )
 
-        _summary_lines.append(
-            f"2車複　{_pair_axis}-{_himo_text}（想定的中率 {_prob_text(_q_total)}）"
-        )
-        _summary_lines.append(
-            f"3連単　{_pair_axis}-{_himo_text}-{_trifecta_third}"
-            f"（想定的中率 {_prob_text(_t_total)}）"
-        )
+        _summary_lines.append("")
         _summary_lines.append(f"計{len(_pair_himos) * 2}点")
     else:
         _summary_lines.append("相手候補不足のため買い目算出不可")
