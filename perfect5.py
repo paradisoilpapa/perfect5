@@ -1,3 +1,9 @@
+# v335fg（2車複2-46＋3連単2-46-1・本線補完版）
+# ・推奨購入を「本線最終2位×他流れ1位」の2車複2点＋「本線最終2位→他流れ1位→本線最終1位」の3連単2点＝計4点へ変更。
+# ・相手2車は第2流れ1位→第3流れ1位を優先し、重複・不成立時は本線最終3位以下から先に補完する。
+# ・それでも2車に満たない場合だけ、第2流れ2位→第3流れ2位→第2流れ3位→第3流れ3位…の順で補完する。
+# ・本線最終1位と軸（本線最終2位）は相手候補から除外し、2-1は推奨購入へ戻さない。
+# ・予想本体、流れ比率、V評価、合成ヒモ、開催日査定、各流れ最終順位、想定着順予想表示は変更しない。
 # v335ff（重複ヒモ補完版）
 # ・3流れ戦で各流れ1位が重複してヒモ3車に満たない場合、第2流れ2位→第3流れ2位→第2流れ3位→第3流れ3位…の順で重複を飛ばして3車まで補完。
 # ・2ライン戦の相手流れ1・2位追加、買い目・予想本体・簡易表示は変更しない。
@@ -3547,17 +3553,15 @@ def _v335es_finalize_flow_order(flow_order, profile, return_debug=False):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """想定比率上位2展開から4点を生成（v335ez）。
+    """想定比率上位の各流れから、v335fgの推奨4点を生成する。
 
-    展開1位:
-      ・その流れの最終着順予想1・2・3位の3連複1点
-      ・最終1・2位の逆転2車単1点
-    展開2位:
-      ・その流れの最終着順予想1・2位の2車複1点
-      ・その2車＋展開1位の逆転2車単の頭（展開1位最終2位）で3連複1点
-      ・頭が展開2位TOP2と重複する場合は、逆転2車単のもう一方（展開1位最終1位）を採用
-    展開3位:
-      ・購入なし（診断表示のみ維持）
+    基本:
+      ・本線最終2位を軸に、第2・第3流れの最終1位を相手とする2車複2点。
+      ・同じ相手2車を使い、本線最終1位を3着固定した3連単2点。
+    補完:
+      ・相手重複・不成立時は本線最終3位以下を優先。
+      ・なお不足する場合だけ第2・第3流れの2位以下を交互に採用。
+      ・本線最終1位と軸自身は相手に採用しない。
     """
     if not isinstance(profile, dict):
         return None
@@ -3662,65 +3666,84 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         elif _diag.get("knock_error"):
             _lines.append(f"開催日査定エラー　 ：{_diag.get('knock_error')}")
 
-    # v335fc：購入は展開1位だけ。展開2位・3位は保険購入せず診断表示のみ。
-    # 3連複は展開1位の最終2位を軸に、成立している各流れの最終1位だけをヒモにする。
-    # 例：順流2位=7、各流れ1位=3/5/1 → 7-351-351（3点）。
-    # 展開1位の最終3位はヒモに使用しない。
-    _trio_axis = int(_m2)
-    _trio_himos = []
-    for _r in _rows:
-        _order = tuple(int(c) for c in (_r.get("order") or tuple()))
-        if not _order:
-            continue
-        _c = int(_order[0])
-        if _c == _trio_axis:
-            continue
-        if _c not in _trio_himos:
-            _trio_himos.append(_c)
+    # v335fg：本線最終2位を柱に、他流れ1位との2車関係を買う。
+    # 基本形（本線 1→2→3／第2流れ 4→…／第3流れ 6→…）：
+    #   2車複 2-46
+    #   3連単 2-46-1
+    # 相手2車は第2・第3流れの1位を優先する。
+    # 重複・不成立時は、本線最終3位以下を先に補完し、
+    # それでも不足する場合だけ第2・第3流れの2位以下を交互に補完する。
+    # 本線最終1位(_m1)と軸(_m2)は相手候補にしない。
+    _pair_axis = int(_m2)
+    _trifecta_third = int(_m1)
+    _pair_himos = []
 
-    # v335fe：2ライン戦だけ、展開1位に対する相手流れ（展開2位）の
-    # 最終着順1・2位を3連複ヒモに使う。
-    # 各流れ1位は上で既に入っているため、ここでは相手流れ2位を追加する。
-    # 例：逆流 1→2…／順流 3→4…、軸=2 → ヒモ 1・3・4 → 2-134-134。
-    if len(_rows) == 2 and len(_counter_order) >= 2:
-        _opp_second = int(_counter_order[1])
-        if _opp_second != _trio_axis and _opp_second not in _trio_himos:
-            _trio_himos.append(_opp_second)
+    def _add_pair_himo(_car):
+        if _car is None:
+            return False
+        _car = int(_car)
+        if _car in {_pair_axis, _trifecta_third}:
+            return False
+        if _car in _pair_himos:
+            return False
+        _pair_himos.append(_car)
+        return True
 
-    # v335ff：3流れ戦で各流れ1位が重複し、ヒモが3車に満たない場合だけ補完する。
-    # 補完順は「第2流れ2位 → 第3流れ2位 → 第2流れ3位 → 第3流れ3位 → …」。
-    # 軸または既採用ヒモと重複する車は飛ばし、ヒモ3車になった時点で終了する。
-    if len(_rows) >= 3 and len(_trio_himos) < 3:
-        _sub_orders = []
-        for _r in _rows[1:3]:
-            _sub_orders.append(tuple(int(c) for c in (_r.get("order") or tuple())))
-        _rank_idx = 1  # 0=各流れ1位は既に採用済みなので、2位から補完
-        while len(_trio_himos) < 3:
-            _added_or_available = False
+    # 1) 第2・第3流れの最終1位を優先。
+    if len(_counter_order) >= 1:
+        _add_pair_himo(_counter_order[0])
+    if len(_third_order) >= 1:
+        _add_pair_himo(_third_order[0])
+
+    # 2) 重複・不成立で2車に満たない場合は、本線最終3位以下から補完。
+    if len(_pair_himos) < 2:
+        for _c in _main_order[2:]:
+            _add_pair_himo(_c)
+            if len(_pair_himos) >= 2:
+                break
+
+    # 3) それでも不足する場合だけ、他流れの2位以下を交互に補完。
+    if len(_pair_himos) < 2:
+        _sub_orders = [_counter_order]
+        if _third_order:
+            _sub_orders.append(_third_order)
+        _rank_idx = 1  # 0=各流れ1位は上で処理済み。2位から。
+        while len(_pair_himos) < 2:
+            _available = False
             for _order in _sub_orders:
                 if _rank_idx < len(_order):
-                    _added_or_available = True
-                    _c = int(_order[_rank_idx])
-                    if _c != _trio_axis and _c not in _trio_himos:
-                        _trio_himos.append(_c)
-                        if len(_trio_himos) >= 3:
-                            break
-            if not _added_or_available:
+                    _available = True
+                    _add_pair_himo(_order[_rank_idx])
+                    if len(_pair_himos) >= 2:
+                        break
+            if not _available:
                 break
             _rank_idx += 1
 
-    _trio_count = (len(_trio_himos) * (len(_trio_himos) - 1)) // 2
-    _trio_form = (
-        f"{_trio_axis}-" + "".join(str(x) for x in _trio_himos)
-        + "-" + "".join(str(x) for x in _trio_himos)
-    ) if len(_trio_himos) >= 2 else ""
+    # 念のため全出走車から最後の補完。通常はここまで来ない。
+    # 2-1を復活させないため、本線1位と軸は常に除外する。
+    if len(_pair_himos) < 2:
+        _fallback_pool = []
+        for _r in _rows:
+            for _c in tuple(int(x) for x in (_r.get("order") or tuple())):
+                if _c not in _fallback_pool:
+                    _fallback_pool.append(_c)
+        for _c in _fallback_pool:
+            _add_pair_himo(_c)
+            if len(_pair_himos) >= 2:
+                break
+
+    _pair_himos = _pair_himos[:2]
 
     _summary_lines = ["【推奨購入】"]
-    if _trio_form:
-        _summary_lines.append(f"3連複　{_trio_form}")
-    _summary_lines.append(f"2車単　{_m2}-{_m1}")
-    _ticket_count = _trio_count + 1
-    _summary_lines.append(f"計{_ticket_count}点")
+    if _pair_himos:
+        _himo_text = "".join(str(x) for x in _pair_himos)
+        _summary_lines.append(f"2車複　{_pair_axis}-{_himo_text}")
+        _summary_lines.append(f"3連単　{_pair_axis}-{_himo_text}-{_trifecta_third}")
+        _summary_lines.append(f"計{len(_pair_himos) * 2}点")
+    else:
+        _summary_lines.append("相手候補不足のため買い目算出不可")
+        _summary_lines.append("計0点")
     _summary_lines.append("")
 
     # v335fd：公開表示だけ簡潔化。内部のV評価・合成ヒモ・開催日査定・買い目計算は変更しない。
