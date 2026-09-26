@@ -1,11 +1,10 @@
-# v335fk（上位2流れ共通軸・的中ヒモ＋妙味ヒモ4点版）
-# ・1着軸は、流れ想定比率1位＋2位の最終順位から「最悪順位最小→順位合計最小→1位流れ順位」で共通軸を決定。
-# ・第3流れは軸変更には使わず、妙味ヒモの補完材料に限定。
-# ・ヒモ1は軸との2車複想定的中率を最優先する的中重視。既存v335br確率モデルのライン文脈補正をそのまま使用。
-# ・ヒモ2は既存の流れ加重妙味評価を最優先する妙味重視。ヒモ1との重複は禁止。
-# ・推奨購入は2車複「軸-的中ヒモ／軸-妙味ヒモ」2点＋3連単「軸→的中→妙味／軸→妙味→的中」2点＝計4点。
-# ・公開表示順を「想定隊列→想定着順予想→【ヴェロビ分析による買目】」へ変更。
-# ・予想本体、流れ比率、各流れ最終順位、開催日査定、既存v335br確率モデルは変更しない。
+# v335fl（上位2流れ共通軸・基本3点＋条件付き4点版）
+# ・軸は想定比率1位＋2位流れの共通順位最上位。第3流れは軸変更に使わない。
+# ・ヒモは「的中重視1車＋妙味重視1車」の2車を選出する。
+# ・基本購入は、2車複「軸-的中ヒモ」1点＋3連単「軸→的中→妙味／軸→妙味→的中」2点＝計3点。
+# ・妙味ヒモ側の2車複は、想定的中率が5%以上かつ本線2車複想定的中率の50%以上の場合だけ4点目として追加する。
+# ・実オッズ未入力のため、低想定的中率を「妙味あり」とみなして2車複を強制購入しない。
+# ・公開表示順は「想定隊列→想定着順予想→【ヴェロビ分析による買目】」。
 # v335fj（他流れ代表・流れ内スライド補完版）
 # ・v335fiの買い目・個別想定的中率表示は変更しない。
 # ・第2流れ／第3流れは各流れから代表1車を選び、1位が本線1位・軸・既採用相手と重複して使えない場合、その同じ流れの2位→3位→…へ順にスライドする。
@@ -3571,8 +3570,30 @@ def _v335es_finalize_flow_order(flow_order, profile, return_debug=False):
     return _final_order
 
 
+def _v335fl_allow_value_quinella(hit_prob, value_prob):
+    """妙味ヒモ側の2車複を4点目として追加するかを固定条件で判定する。
+
+    現行ヴェロビは実オッズを入力していないため、ここでは期待値を推定しない。
+    2車複としてのモデル支持が十分ある場合だけ追加する。
+
+    条件（両方必須）:
+      1) 妙味ヒモ側2車複の想定的中率 >= 5%
+      2) 妙味ヒモ側2車複の想定的中率 >= 本線2車複の50%
+
+    想定的中率が算出できない場合は追加しない。
+    """
+    try:
+        _hit = float(hit_prob)
+        _value = float(value_prob)
+    except Exception:
+        return False
+    if _hit <= 0.0 or _value <= 0.0:
+        return False
+    return bool(_value >= 0.05 and _value >= (0.50 * _hit))
+
+
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335fk：上位2流れ共通軸＋的中ヒモ／妙味ヒモの4点を生成する。
+    """v335fl：上位2流れ共通軸＋的中ヒモ／妙味ヒモで基本3点、条件成立時のみ4点を生成する。
 
     軸:
       ・想定比率1位流れと2位流れだけを使用する。
@@ -3590,9 +3611,10 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         妙味評価が未生成の場合は、第3流れの上振れ→上位2流れ共通順位→2車複確率で補完する。
 
     買目:
-      ・2車複：軸-的中ヒモ／軸-妙味ヒモ
-      ・3連単：軸→的中ヒモ→妙味ヒモ／軸→妙味ヒモ→的中ヒモ
-      ・計4点固定。
+      ・2車複：軸-的中ヒモを必ず1点。
+      ・妙味ヒモ側2車複は、想定的中率5%以上かつ本線2車複の50%以上の場合だけ追加。
+      ・3連単：軸→的中ヒモ→妙味ヒモ／軸→妙味ヒモ→的中ヒモの2点。
+      ・基本3点、条件成立時のみ4点。
 
     表示:
       ・想定着順予想を先に表示し、その後を【ヴェロビ分析による買目】とする。
@@ -3934,13 +3956,25 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             + "→".join(str(c) for c in _order)
         )
 
+    # ---------------------------------------------------------
+    # v335fl 購入点数判定
+    # 基本は「本線2車複1点＋3連単2点」の3点。
+    # 妙味ヒモ側の2車複は、低確率＝妙味と誤認しないよう、
+    # 2車複としてのモデル支持が十分な場合だけ4点目へ追加する。
+    # ---------------------------------------------------------
+    _hit_q_prob = _quinella_prob(_axis, _hit_himo)
+    _value_q_prob = _quinella_prob(_axis, _value_himo)
+    _add_value_quinella = _v335fl_allow_value_quinella(_hit_q_prob, _value_q_prob)
+
     _lines.append("")
     _lines.append("【ヴェロビ分析による買目】")
     _lines.append("2車複")
-    for _h in (_hit_himo, _value_himo):
-        _q_prob = _quinella_prob(_axis, _h)
+    _lines.append(
+        f"{_axis}-{int(_hit_himo)}（想定的中率 {_prob_text(_hit_q_prob)}）"
+    )
+    if _add_value_quinella:
         _lines.append(
-            f"{_axis}-{int(_h)}（想定的中率 {_prob_text(_q_prob)}）"
+            f"{_axis}-{int(_value_himo)}（想定的中率 {_prob_text(_value_q_prob)}）"
         )
 
     _lines.append("")
@@ -3955,8 +3989,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             f"{int(_a)}-{int(_b)}-{int(_c)}（想定的中率 {_prob_text(_t_prob)}）"
         )
 
+    _ticket_count = 3 + (1 if _add_value_quinella else 0)
     _lines.append("")
-    _lines.append("計4点")
+    _lines.append(f"計{_ticket_count}点")
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
