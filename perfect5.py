@@ -1,3 +1,11 @@
+# v335fm（上位2流れ共通軸・的中ヒモ＋ライン妙味2車・4点版）
+# ・軸はv335flどおり、想定比率1位＋2位流れの共通順位最上位。第3流れは軸変更に使わない。
+# ・ヒモ1はv335flどおり、軸との2車複想定的中率を最優先する「的中重視」1車。
+# ・ヒモ2・3は、ヒモ1を除いた候補から「軸とのライン構造」を優先し、その中で既存の流れ加重妙味評価を効かせて上位2車を選ぶ。
+# ・ライン構造は「軸直後の同ライン→軸後位の同ライン→同ライン→別ライン」の順で優先し、同階層では妙味評価を優先する。
+# ・購入は3連単「軸→的中ヒモ→ライン妙味ヒモ」2点＋2車単「軸→ライン妙味ヒモ」2点＝計4点固定。
+# ・2車複は推奨購入から外す。予想本体、流れ比率、各流れ最終順位、既存v335br確率モデルは変更しない。
+# ・公開表示順は「想定隊列→想定着順予想→【ヴェロビ分析による買目】」。
 # v335fl（上位2流れ共通軸・基本3点＋条件付き4点版）
 # ・軸は想定比率1位＋2位流れの共通順位最上位。第3流れは軸変更に使わない。
 # ・ヒモは「的中重視1車＋妙味重視1車」の2車を選出する。
@@ -3593,7 +3601,7 @@ def _v335fl_allow_value_quinella(hit_prob, value_prob):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335fl：上位2流れ共通軸＋的中ヒモ／妙味ヒモで基本3点、条件成立時のみ4点を生成する。
+    """v335fm：上位2流れ共通軸＋的中ヒモ1車＋ライン妙味ヒモ2車で4点を生成する。
 
     軸:
       ・想定比率1位流れと2位流れだけを使用する。
@@ -3602,19 +3610,18 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
       ・第3流れは軸変更に使用しない。
 
     ヒモ:
-      ・的中重視ヒモ：軸との2車複想定的中率が最大の1車。
-        既存v335br確率モデルはライン文脈を含むため、その確率を直接使用する。
+      ・的中重視ヒモB：軸との2車複想定的中率が最大の1車。
         同率時のみ、軸と同ライン・軸後位・上位2流れでの共通順位を優先する。
-      ・妙味重視ヒモ：的中重視ヒモとは別車から、既存の流れ加重妙味評価
-        V335DS_WEIGHTED_CAR_MYOUMI_MAP を最優先して1車選ぶ。
-        両上位流れで下位に沈む車を避けるため、少なくとも一方で4位以内を基本母集団とする。
-        妙味評価が未生成の場合は、第3流れの上振れ→上位2流れ共通順位→2車複確率で補完する。
+      ・ライン妙味ヒモC/D：軸とBを除いた候補から2車選ぶ。
+        ライン構造を「軸直後の同ライン→軸後位の同ライン→同ライン→別ライン」の順で優先し、
+        同階層では既存の流れ加重妙味評価 V335DS_WEIGHTED_CAR_MYOUMI_MAP を優先する。
+        妙味評価が未生成の場合は、第3流れでの上振れ→軸との順序付き確率→上位2流れ共通順位で補完する。
 
-    買目:
-      ・2車複：軸-的中ヒモを必ず1点。
-      ・妙味ヒモ側2車複は、想定的中率5%以上かつ本線2車複の50%以上の場合だけ追加。
-      ・3連単：軸→的中ヒモ→妙味ヒモ／軸→妙味ヒモ→的中ヒモの2点。
-      ・基本3点、条件成立時のみ4点。
+    買目（4点固定）:
+      ・3連単：A→B→C / A→B→D の2点。
+      ・2車単：A→C / A→D の2点。
+      ・A=軸、B=的中重視、C/D=ライン構造＋妙味重視。
+      ・2車複は推奨購入へ出さない。
 
     表示:
       ・想定着順予想を先に表示し、その後を【ヴェロビ分析による買目】とする。
@@ -3720,8 +3727,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 _cars.append(_c)
 
     # ---------------------------------------------------------
-    # 1着軸：流れ1位＋2位の共通順位
-    # max(rank1, rank2) → rank1+rank2 → rank1 の順で最小を選ぶ。
+    # A：1着軸。流れ1位＋2位の共通順位
+    # max(rank1, rank2) → rank1+rank2 → rank1 の順で最小。
     # ---------------------------------------------------------
     def _axis_key(_c):
         _r1 = int(_rank1.get(int(_c), 999))
@@ -3763,6 +3770,14 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         except Exception:
             return None
 
+    def _exacta_prob(_a, _b):
+        try:
+            return _v335br_ticket_probability(
+                (int(_a), int(_b)), _p1_map, _p2_map, _p3_map
+            )
+        except Exception:
+            return None
+
     def _trifecta_prob(_a, _b, _c):
         try:
             return _v335br_ticket_probability(
@@ -3775,7 +3790,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         return "算出不可" if _prob is None else f"{float(_prob) * 100.0:.2f}%"
 
     # ---------------------------------------------------------
-    # ライン関係（同率時のタイブレーク用）
+    # ライン関係
     # ---------------------------------------------------------
     _line_groups = []
 
@@ -3824,9 +3839,18 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     return {"same": True, "behind": False, "adjacent_behind": False, "distance": 99}
         return {"same": False, "behind": False, "adjacent_behind": False, "distance": 99}
 
+    def _line_tier(_row):
+        """ライン構造の固定優先順位。高いほど優先。"""
+        if bool(_row.get("adjacent_behind", False)):
+            return 3
+        if bool(_row.get("behind", False)):
+            return 2
+        if bool(_row.get("same_line", False)):
+            return 1
+        return 0
+
     # ---------------------------------------------------------
-    # ヒモ1：的中重視
-    # 2車複想定的中率を最優先。確率同率時のみラインと流れ共通順位で決める。
+    # 候補データ
     # ---------------------------------------------------------
     _candidate_rows = []
     _weighted_hit_map = dict(globals().get("V335DS_WEIGHTED_CAR_HIT_MAP", {}) or {})
@@ -3860,11 +3884,13 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "same_line": bool(_rel.get("same", False)),
             "behind": bool(_rel.get("behind", False)),
             "adjacent_behind": bool(_rel.get("adjacent_behind", False)),
+            "line_distance": int(_rel.get("distance", 99)),
             "hit_value": float(_hit_v),
             "myoumi_value": float(_myoumi_v),
         })
 
-    if len(_candidate_rows) < 2:
+    # A以外にB/C/Dの3車が必要。
+    if len(_candidate_rows) < 3:
         return [
             "【想定着順予想】",
             *[
@@ -3878,6 +3904,10 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "計0点",
         ]
 
+    # ---------------------------------------------------------
+    # B：的中重視ヒモ
+    # 2車複想定的中率を最優先。確率同率時のみラインと流れ共通順位で決める。
+    # ---------------------------------------------------------
     _hit_row = max(
         _candidate_rows,
         key=lambda r: (
@@ -3894,57 +3924,69 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _hit_himo = int(_hit_row["car"])
 
     # ---------------------------------------------------------
-    # ヒモ2：妙味重視
-    # ・的中ヒモとは別車。
-    # ・上位2流れのどちらかで4位以内を基本対象。
-    # ・既存妙味評価を最優先。
-    # ・妙味評価が同値/未生成なら、第三流れでの上振れ、展開分散、確率で補完。
+    # C/D：ライン構造＋妙味ヒモ
+    # Bを除いた候補から2車を選ぶ。
+    # ライン構造を主軸にし、同じ構造階層では既存妙味評価を効かせる。
+    # ライン車が存在しない／妙味評価が未生成でも、第三流れ上振れと確率で必ず順位化する。
     # ---------------------------------------------------------
-    _value_pool = [
-        r for r in _candidate_rows
-        if int(r.get("car")) != _hit_himo and min(int(r.get("r1", 999)), int(r.get("r2", 999))) <= 4
-    ]
-    if not _value_pool:
-        _value_pool = [r for r in _candidate_rows if int(r.get("car")) != _hit_himo]
+    _line_value_pool = [r for r in _candidate_rows if int(r.get("car")) != _hit_himo]
 
-    _has_myoumi = any(float(r.get("myoumi_value", 0.0)) > 0.0 for r in _value_pool)
+    def _third_lift(_r):
+        _best12 = min(int(_r.get("r1", 999)), int(_r.get("r2", 999)))
+        _r3 = int(_r.get("r3", 999))
+        return (_best12 - _r3) if _r3 < 999 else -999
+
+    _has_myoumi = any(float(r.get("myoumi_value", 0.0)) > 0.0 for r in _line_value_pool)
+
     if _has_myoumi:
-        _value_row = max(
-            _value_pool,
+        _line_value_pool = sorted(
+            _line_value_pool,
             key=lambda r: (
+                int(_line_tier(r)),
                 float(r.get("myoumi_value", 0.0)),
-                int(not bool(r.get("same_line", False))),
                 float(r.get("qprob", -1.0)),
                 float(r.get("hit_value", 0.0)),
-                -int(r.get("r3", 999)),
-                -int(r.get("max12", 999)),
-                -int(r.get("car", 99)),
-            ),
-        )
-    else:
-        # 妙味マップがまだない場合は「第3流れで上がる車」を妙味側の代理とする。
-        def _third_lift(_r):
-            _best12 = min(int(_r.get("r1", 999)), int(_r.get("r2", 999)))
-            _r3 = int(_r.get("r3", 999))
-            return (_best12 - _r3) if _r3 < 999 else -999
-
-        _value_row = max(
-            _value_pool,
-            key=lambda r: (
                 int(_third_lift(r)),
-                -int(r.get("r3", 999)),
-                int(not bool(r.get("same_line", False))),
-                float(r.get("qprob", -1.0)),
                 -int(r.get("max12", 999)),
                 -int(r.get("sum12", 999)),
                 -int(r.get("car", 99)),
             ),
+            reverse=True,
+        )
+    else:
+        _line_value_pool = sorted(
+            _line_value_pool,
+            key=lambda r: (
+                int(_line_tier(r)),
+                int(_third_lift(r)),
+                -int(r.get("r3", 999)),
+                float(r.get("qprob", -1.0)),
+                float(r.get("hit_value", 0.0)),
+                -int(r.get("max12", 999)),
+                -int(r.get("sum12", 999)),
+                -int(r.get("car", 99)),
+            ),
+            reverse=True,
         )
 
-    _value_himo = int(_value_row["car"])
+    if len(_line_value_pool) < 2:
+        return [
+            "【想定着順予想】",
+            *[
+                f"{_r['style']}{float(_r['ratio']) * 100.0:.0f}%　"
+                + "→".join(str(c) for c in tuple(_r.get("order") or tuple()))
+                for _r in _rows
+            ],
+            "",
+            "【ヴェロビ分析による買目】",
+            "ライン妙味ヒモが2車に満たないため算出不可",
+            "計0点",
+        ]
+
+    _line_value_himos = [int(_line_value_pool[0]["car"]), int(_line_value_pool[1]["car"])]
 
     # ---------------------------------------------------------
-    # 公開表示：隊列の直後に想定着順予想、その下に買目。
+    # 公開表示：想定着順予想 → 買目
     # ---------------------------------------------------------
     _lines = ["【想定着順予想】"]
     for _r in _rows:
@@ -3956,42 +3998,28 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             + "→".join(str(c) for c in _order)
         )
 
-    # ---------------------------------------------------------
-    # v335fl 購入点数判定
-    # 基本は「本線2車複1点＋3連単2点」の3点。
-    # 妙味ヒモ側の2車複は、低確率＝妙味と誤認しないよう、
-    # 2車複としてのモデル支持が十分な場合だけ4点目へ追加する。
-    # ---------------------------------------------------------
-    _hit_q_prob = _quinella_prob(_axis, _hit_himo)
-    _value_q_prob = _quinella_prob(_axis, _value_himo)
-    _add_value_quinella = _v335fl_allow_value_quinella(_hit_q_prob, _value_q_prob)
-
     _lines.append("")
     _lines.append("【ヴェロビ分析による買目】")
-    _lines.append("2車複")
-    _lines.append(
-        f"{_axis}-{int(_hit_himo)}（想定的中率 {_prob_text(_hit_q_prob)}）"
-    )
-    if _add_value_quinella:
-        _lines.append(
-            f"{_axis}-{int(_value_himo)}（想定的中率 {_prob_text(_value_q_prob)}）"
-        )
 
-    _lines.append("")
+    # 3連単：A-B-C / A-B-D
     _lines.append("3連単")
-    _tri_tickets = [
-        (_axis, _hit_himo, _value_himo),
-        (_axis, _value_himo, _hit_himo),
-    ]
-    for _a, _b, _c in _tri_tickets:
-        _t_prob = _trifecta_prob(_a, _b, _c)
+    for _c in _line_value_himos:
+        _t_prob = _trifecta_prob(_axis, _hit_himo, _c)
         _lines.append(
-            f"{int(_a)}-{int(_b)}-{int(_c)}（想定的中率 {_prob_text(_t_prob)}）"
+            f"{int(_axis)}-{int(_hit_himo)}-{int(_c)}（想定的中率 {_prob_text(_t_prob)}）"
         )
 
-    _ticket_count = 3 + (1 if _add_value_quinella else 0)
     _lines.append("")
-    _lines.append(f"計{_ticket_count}点")
+    # 2車単：A-C / A-D
+    _lines.append("2車単")
+    for _c in _line_value_himos:
+        _e_prob = _exacta_prob(_axis, _c)
+        _lines.append(
+            f"{int(_axis)}-{int(_c)}（想定的中率 {_prob_text(_e_prob)}）"
+        )
+
+    _lines.append("")
+    _lines.append("計4点")
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
