@@ -1,3 +1,9 @@
+# v335ft（妙味100%以上限定・出走数基準対応版）
+# ・◎/◯の選定ロジック、買い目の役割はv335fsから変更しない。
+# ・▲/×は「期待値指数100%以上」の車だけを妙味候補にする。100%未満は妙味車として採用しない。
+# ・期待値指数の基準は出走数に応じて自動変更。7車=1/42=2.38%、6車=1/30=3.33%など、当該レースの2車単均等確率を100%とする。
+# ・基準以上の候補のうち、100%への超過幅が小さい順に▲、×を選ぶ。
+# ・基準通過が1車だけなら▲のみで3点、0車なら◎→◯の2車単1点のみ。基準未満を無理に補完しない。
 # v335fs（評価表示指数化・5点版）
 # ・買目・◎/◯/▲/×の選定ロジックはv335frから変更しない。
 # ・【ヴェロビ評価】表示を役割に合わせて指数化。
@@ -4027,50 +4033,50 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _hit_himo = int(_hit_row["car"])
 
     # ---------------------------------------------------------
-    # C/D：2.38%近似妙味ヒモ
-    # Bを除いた候補から、A→候補の2車単内部想定的中率が
-    # 7車2車単の完全ランダム1点基準 2.38% に絶対値で近い順に2車選ぶ。
-    # ▲=最も近い車、×=次に近い車。
-    # ライン構造・旧妙味点はC/Dの主選定には使用しない。
+    # C/D：期待値指数100%以上だけを採用する妙味ヒモ
+    # Bを除いた候補から、A→候補の2車単内部想定的中率を評価する。
+    # 完全ランダム1点基準は出走数Nに応じて 1 / (N * (N - 1))。
+    #   7車 = 1/42 = 2.38%
+    #   6車 = 1/30 = 3.33%
+    # この基準以上（期待値指数100%以上）の車だけを候補に残し、
+    # 基準への超過幅が小さい順に▲、×を選ぶ。
+    # 基準未満の車は「近い」という理由だけでは妙味車に採用しない。
     # ---------------------------------------------------------
-    _MYOUMI_TARGET_EXACTA_V335FP = 0.0238
-    _myoumi_pool = [r for r in _candidate_rows if int(r.get("car")) != _hit_himo]
+    _n_exacta_cars_v335ft = max(2, len(_cars))
+    _MYOUMI_TARGET_EXACTA_V335FP = 1.0 / float(
+        _n_exacta_cars_v335ft * (_n_exacta_cars_v335ft - 1)
+    )
 
-    def _v335fp_myoumi_distance(_r):
+    _myoumi_pool_all = [
+        r for r in _candidate_rows
+        if int(r.get("car")) != _hit_himo
+    ]
+
+    # 100%以上だけを通過。浮動小数の丸め誤差だけは許容する。
+    _MYOUMI_EPS_V335FT = 1e-12
+    _myoumi_pool = []
+    for _r in _myoumi_pool_all:
         try:
             _p = float(_r.get("eprob", -1.0))
         except Exception:
             _p = -1.0
-        if _p < 0.0:
-            return float("inf")
-        return abs(float(_p) - float(_MYOUMI_TARGET_EXACTA_V335FP))
+        if _p >= (float(_MYOUMI_TARGET_EXACTA_V335FP) - _MYOUMI_EPS_V335FT):
+            _myoumi_pool.append(_r)
 
+    # 100%を超えた中で、100%に近い順。
+    # 同差なら2車複確率が高い方、その後は車番順。
     _myoumi_pool = sorted(
         _myoumi_pool,
         key=lambda r: (
-            float(_v335fp_myoumi_distance(r)),
-            -float(r.get("eprob", -1.0)),
+            max(0.0, float(r.get("eprob", -1.0)) - float(_MYOUMI_TARGET_EXACTA_V335FP)),
             -float(r.get("qprob", -1.0)),
             int(r.get("car", 99)),
         ),
     )
 
-    if len(_myoumi_pool) < 2:
-        return [
-            "【想定着順予想】",
-            *[
-                f"{_r['style']}{float(_r['ratio']) * 100.0:.0f}%　"
-                + "→".join(str(c) for c in tuple(_r.get("order") or tuple()))
-                for _r in _rows
-            ],
-            "",
-            "【ヴェロビ分析による買目】",
-            "妙味ヒモが2車に満たないため算出不可",
-            "計0点",
-        ]
-
-    _myoumi_rows = [_myoumi_pool[0], _myoumi_pool[1]]
-    _myoumi_himos = [int(_myoumi_rows[0]["car"]), int(_myoumi_rows[1]["car"])]
+    # 基準未満からの補完はしない。0～2車の可変とする。
+    _myoumi_rows = list(_myoumi_pool[:2])
+    _myoumi_himos = [int(_r["car"]) for _r in _myoumi_rows]
 
     # ---------------------------------------------------------
     # 公開表示：想定着順予想 → 印 → 買目
@@ -4092,7 +4098,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ◎ 軸指数：現在の「上位2流れで崩れにくい」軸思想を0～100へ換算。
     #   最悪順位70%＋2流れ平均順位20%＋第1流れ順位10%。
     # ◯ 連対指数：◎との2車複内部想定的中率そのもの。
-    # ▲×期待値指数：2.38%=100としたA→候補の2車単確率の相対指数。
+    # ▲×期待値指数：当該出走数の2車単均等確率=100としたA→候補の相対指数。
     try:
         _axis_sorted_v335fs = sorted(_axis_candidates, key=_axis_key)
         _axis_rank_v335fs = int(_axis_sorted_v335fs.index(int(_axis)) + 1)
@@ -4161,8 +4167,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         except Exception:
             return None
 
-    _ev1_v335fs = _ev_index_v335fs(_myoumi_rows[0])
-    _ev2_v335fs = _ev_index_v335fs(_myoumi_rows[1])
+    _ev_values_v335ft = [_ev_index_v335fs(_r) for _r in _myoumi_rows]
 
     _lines.append(
         f"◎　{int(_axis)}　軸指数　　　{int(_axis_rank_v335fs)}位・{float(_axis_index_v335fs):.1f}"
@@ -4171,14 +4176,21 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         f"◯　{int(_hit_himo)}　連対指数　　{int(_hit_rank_v335fs)}位・"
         + ("算出不可" if _hit_pair_prob_v335fs < 0.0 else f"{_hit_pair_prob_v335fs * 100.0:.1f}%")
     )
-    _lines.append(
-        f"▲　{int(_myoumi_himos[0])}　期待値指数　"
-        + ("算出不可" if _ev1_v335fs is None else f"{float(_ev1_v335fs):.1f}%")
-    )
-    _lines.append(
-        f"×　{int(_myoumi_himos[1])}　期待値指数　"
-        + ("算出不可" if _ev2_v335fs is None else f"{float(_ev2_v335fs):.1f}%")
-    )
+    if len(_myoumi_himos) >= 1:
+        _lines.append(
+            f"▲　{int(_myoumi_himos[0])}　期待値指数　"
+            + ("算出不可" if _ev_values_v335ft[0] is None else f"{float(_ev_values_v335ft[0]):.1f}%")
+        )
+    else:
+        _lines.append("▲　該当なし　期待値指数　100%以上なし")
+
+    if len(_myoumi_himos) >= 2:
+        _lines.append(
+            f"×　{int(_myoumi_himos[1])}　期待値指数　"
+            + ("算出不可" if _ev_values_v335ft[1] is None else f"{float(_ev_values_v335ft[1]):.1f}%")
+        )
+    else:
+        _lines.append("×　該当なし　期待値指数　100%以上なし")
 
     _lines.append("")
     _lines.append("【ヴェロビ分析による買目】")
@@ -4212,7 +4224,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         )
 
     _lines.append("")
-    _lines.append("計5点")
+    _total_points_v335ft = 1 + (2 * len(_myoumi_himos))
+    _lines.append(f"計{int(_total_points_v335ft)}点")
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
