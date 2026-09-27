@@ -1,3 +1,12 @@
+# v335fo（単騎戦・1ライン戦の流れ構造＋妙味補正版）
+# ・v335fnの軸A、的中ヒモB、4点構成、通常の複数ライン戦ロジックは変更しない。
+# ・ガールズ／アドバンスは、ライン構造比較を使わず「3流れの着順構造→妙味」の順でC/Dを選ぶ。
+# ・通常級でも、有効な2車以上ラインが0～1本（1ライン＋残り単騎を含む）の場合は同じ単騎戦モードへ切り替える。
+# ・単騎戦モードでは、3流れの比率加重平均順位を最優先し、安定順位→上振れ順位→既存妙味評価→確率の順でC/Dを選ぶ。
+# ・これにより、例：ガールズで全流れ5～6位の車が妙味だけで、全流れ2～4位の車を飛び越えることを防ぐ。
+# ・2本以上の有効ラインがある通常戦では、v335fnの「軸ライン構造＋他ライン前方強車ブロック＋妙味」をそのまま使う。
+# ・購入は3連単「軸→的中ヒモ→C/D」2点＋2車単「軸→C/D」2点＝計4点固定。
+# ・予想本体、流れ比率、軸決定、ヒモB、各流れ最終順位、既存v335br確率モデルは変更しない。
 # v335fn（他ライン前方強車ブロック補正・的中ヒモ＋ライン妙味2車・4点版）
 # ・軸、ヒモ1、買目4点構成はv335fmから変更しない。
 # ・ヒモ2・3の「ライン構造＋妙味」に、候補自身のライン内位置と前方車の強さを追加する。
@@ -3602,7 +3611,7 @@ def _v335fl_allow_value_quinella(hit_prob, value_prob):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335fn：上位2流れ共通軸＋的中ヒモ1車＋ライン妙味ヒモ2車で4点を生成する。
+    """v335fo：上位2流れ共通軸＋的中ヒモ1車＋構造妙味ヒモ2車で4点を生成する。
 
     軸:
       ・想定比率1位流れと2位流れだけを使用する。
@@ -3613,12 +3622,13 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     ヒモ:
       ・的中重視ヒモB：軸との2車複想定的中率が最大の1車。
         同率時のみ、軸と同ライン・軸後位・上位2流れでの共通順位を優先する。
-      ・ライン妙味ヒモC/D：軸とBを除いた候補から2車選ぶ。
-        軸同ラインは「軸直後→軸後位→同ライン」を従来どおり最優先する。
-        軸と別ラインでは、候補自身のライン内位置も査定し、候補より前に
-        「上位2流れで候補より強い車」が2車以上いる深い番手を構造上1段降格する。
-        そのうえで既存の流れ加重妙味評価 V335DS_WEIGHTED_CAR_MYOUMI_MAP を優先する。
-        妙味評価が未生成の場合は、第3流れでの上振れ→軸との順序付き確率→上位2流れ共通順位で補完する。
+      ・構造妙味ヒモC/D：軸とBを除いた候補から2車選ぶ。
+        2本以上の有効ラインがある通常戦ではv335fnを維持し、軸同ラインの後位車を優先、
+        別ラインの深い番手は前方強車数で1段降格してから既存妙味評価を使う。
+        ガールズ／アドバンス、または有効な2車以上ラインが0～1本のレースでは、
+        ライン比較を行わず、3流れの比率加重平均順位を最優先する「単騎戦モード」に切替える。
+        単騎戦モードは、流れ構造を先に固定してから既存妙味評価を効かせるため、
+        下位固定車が妙味だけで上位安定車を飛び越えない。
 
     買目（4点固定）:
       ・3連単：A→B→C / A→B→D の2点。
@@ -3825,6 +3835,26 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     except Exception:
         pass
 
+    # v335fo：ライン比較が成立するかを先に判定する。
+    # ガールズ／アドバンスは級別として常に単騎戦モード。
+    # 通常級でも、有効な2車以上ラインが0～1本なら
+    # 「1ライン＋残り単騎」または「全員単騎」とみなし、流れ構造を優先する。
+    _active_set_v335fo = {int(c) for c in _cars}
+    _multi_line_groups_v335fo = []
+    for _line in _line_groups:
+        try:
+            _active_members = [int(x) for x in _line if int(x) in _active_set_v335fo]
+        except Exception:
+            _active_members = []
+        if len(_active_members) >= 2 and _active_members not in _multi_line_groups_v335fo:
+            _multi_line_groups_v335fo.append(_active_members)
+
+    _race_class_v335fo = str(globals().get("race_class", "") or "").strip()
+    _is_girls_advance_v335fo = _race_class_v335fo in ("ガールズ", "アドバンス")
+    _sparse_line_mode_v335fo = bool(
+        _is_girls_advance_v335fo or len(_multi_line_groups_v335fo) <= 1
+    )
+
     def _line_relation(_car):
         _car = int(_car)
         for _line in _line_groups:
@@ -3980,12 +4010,18 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _hit_himo = int(_hit_row["car"])
 
     # ---------------------------------------------------------
-    # C/D：ライン構造＋妙味ヒモ
+    # C/D：構造＋妙味ヒモ
     # Bを除いた候補から2車を選ぶ。
-    # 軸同ラインの後位車を優先し、別ラインでは候補自身のライン内構造も見る。
-    # 前方に上位2流れで強い車が2車以上いる深い番手は1段降格し、
-    # その構造階層内で既存妙味評価を効かせる。
-    # ライン車が存在しない／妙味評価が未生成でも、第三流れ上振れと確率で必ず順位化する。
+    #
+    # 通常モード（有効ライン2本以上）:
+    #   v335fnを維持。軸ライン後位を優先し、他ライン深い番手は
+    #   前方強車ブロックを掛け、その構造階層内で妙味を使う。
+    #
+    # 単騎戦モード（ガールズ／アドバンス／有効ライン0～1本）:
+    #   ライン比較をしない。3流れの比率加重平均順位を最優先し、
+    #   安定順位→上振れ順位→妙味→確率の順で選ぶ。
+    #   妙味は残すが、全流れ下位の車が妙味だけで上位安定車を
+    #   飛び越えないよう「流れ構造」を先に固定する。
     # ---------------------------------------------------------
     _line_value_pool = [r for r in _candidate_rows if int(r.get("car")) != _hit_himo]
 
@@ -3994,9 +4030,52 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _r3 = int(_r.get("r3", 999))
         return (_best12 - _r3) if _r3 < 999 else -999
 
+    def _flow_weighted_rank_v335fo(_r):
+        """3流れの比率加重平均順位。小さいほど流れ構造上強い。"""
+        _pairs = []
+        for _flow_row, _rk_key in ((_flow1, "r1"), (_flow2, "r2"), (_flow3, "r3")):
+            if not isinstance(_flow_row, dict):
+                continue
+            try:
+                _ratio = float(_flow_row.get("ratio", 0.0) or 0.0)
+                _rank = int(_r.get(_rk_key, 999))
+            except Exception:
+                continue
+            if _ratio > 0.0 and _rank < 999:
+                _pairs.append((_ratio, _rank))
+        _den = sum(float(x[0]) for x in _pairs)
+        if _den <= 0.0:
+            return float(999.0)
+        return sum(float(w) * float(rank) for w, rank in _pairs) / _den
+
+    def _flow_worst_rank_v335fo(_r):
+        _vals = [int(_r.get(k, 999)) for k in ("r1", "r2", "r3") if int(_r.get(k, 999)) < 999]
+        return max(_vals) if _vals else 999
+
+    def _flow_best_rank_v335fo(_r):
+        _vals = [int(_r.get(k, 999)) for k in ("r1", "r2", "r3") if int(_r.get(k, 999)) < 999]
+        return min(_vals) if _vals else 999
+
     _has_myoumi = any(float(r.get("myoumi_value", 0.0)) > 0.0 for r in _line_value_pool)
 
-    if _has_myoumi:
+    if _sparse_line_mode_v335fo:
+        # 流れ構造を最優先。妙味は同程度の流れ構造の中で効かせる。
+        # reverse=True のため、小さい順位値はマイナス化して上位へ置く。
+        _line_value_pool = sorted(
+            _line_value_pool,
+            key=lambda r: (
+                -float(_flow_weighted_rank_v335fo(r)),
+                -int(_flow_worst_rank_v335fo(r)),
+                -int(_flow_best_rank_v335fo(r)),
+                float(r.get("myoumi_value", 0.0)) if _has_myoumi else 0.0,
+                int(_third_lift(r)),
+                float(r.get("qprob", -1.0)),
+                float(r.get("hit_value", 0.0)),
+                -int(r.get("car", 99)),
+            ),
+            reverse=True,
+        )
+    elif _has_myoumi:
         _line_value_pool = sorted(
             _line_value_pool,
             key=lambda r: (
@@ -4037,7 +4116,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             ],
             "",
             "【ヴェロビ分析による買目】",
-            "ライン妙味ヒモが2車に満たないため算出不可",
+            "構造妙味ヒモが2車に満たないため算出不可",
             "計0点",
         ]
 
