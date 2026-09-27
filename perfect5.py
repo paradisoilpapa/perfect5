@@ -1,10 +1,11 @@
-# v335fm（上位2流れ共通軸・的中ヒモ＋ライン妙味2車・4点版）
-# ・軸はv335flどおり、想定比率1位＋2位流れの共通順位最上位。第3流れは軸変更に使わない。
-# ・ヒモ1はv335flどおり、軸との2車複想定的中率を最優先する「的中重視」1車。
-# ・ヒモ2・3は、ヒモ1を除いた候補から「軸とのライン構造」を優先し、その中で既存の流れ加重妙味評価を効かせて上位2車を選ぶ。
-# ・ライン構造は「軸直後の同ライン→軸後位の同ライン→同ライン→別ライン」の順で優先し、同階層では妙味評価を優先する。
+# v335fn（他ライン前方強車ブロック補正・的中ヒモ＋ライン妙味2車・4点版）
+# ・軸、ヒモ1、買目4点構成はv335fmから変更しない。
+# ・ヒモ2・3の「ライン構造＋妙味」に、候補自身のライン内位置と前方車の強さを追加する。
+# ・軸と別ラインの候補は、候補より前に「上位2流れで候補より強い車」が2車以上いる場合、深い番手として構造上1段降格する。
+# ・これにより、例：194の④が①・⑨より前方構造を無視して妙味だけで上位選出されることを防ぐ。
+# ・前方強車が0～1車なら従来の妙味評価を残し、番手車を一律に排除しない。軸同ラインの後位車は従来どおり最優先する。
 # ・購入は3連単「軸→的中ヒモ→ライン妙味ヒモ」2点＋2車単「軸→ライン妙味ヒモ」2点＝計4点固定。
-# ・2車複は推奨購入から外す。予想本体、流れ比率、各流れ最終順位、既存v335br確率モデルは変更しない。
+# ・予想本体、流れ比率、軸決定、ヒモ1、各流れ最終順位、既存v335br確率モデルは変更しない。
 # ・公開表示順は「想定隊列→想定着順予想→【ヴェロビ分析による買目】」。
 # v335fl（上位2流れ共通軸・基本3点＋条件付き4点版）
 # ・軸は想定比率1位＋2位流れの共通順位最上位。第3流れは軸変更に使わない。
@@ -3601,7 +3602,7 @@ def _v335fl_allow_value_quinella(hit_prob, value_prob):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335fm：上位2流れ共通軸＋的中ヒモ1車＋ライン妙味ヒモ2車で4点を生成する。
+    """v335fn：上位2流れ共通軸＋的中ヒモ1車＋ライン妙味ヒモ2車で4点を生成する。
 
     軸:
       ・想定比率1位流れと2位流れだけを使用する。
@@ -3613,8 +3614,10 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
       ・的中重視ヒモB：軸との2車複想定的中率が最大の1車。
         同率時のみ、軸と同ライン・軸後位・上位2流れでの共通順位を優先する。
       ・ライン妙味ヒモC/D：軸とBを除いた候補から2車選ぶ。
-        ライン構造を「軸直後の同ライン→軸後位の同ライン→同ライン→別ライン」の順で優先し、
-        同階層では既存の流れ加重妙味評価 V335DS_WEIGHTED_CAR_MYOUMI_MAP を優先する。
+        軸同ラインは「軸直後→軸後位→同ライン」を従来どおり最優先する。
+        軸と別ラインでは、候補自身のライン内位置も査定し、候補より前に
+        「上位2流れで候補より強い車」が2車以上いる深い番手を構造上1段降格する。
+        そのうえで既存の流れ加重妙味評価 V335DS_WEIGHTED_CAR_MYOUMI_MAP を優先する。
         妙味評価が未生成の場合は、第3流れでの上振れ→軸との順序付き確率→上位2流れ共通順位で補完する。
 
     買目（4点固定）:
@@ -3839,14 +3842,62 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     return {"same": True, "behind": False, "adjacent_behind": False, "distance": 99}
         return {"same": False, "behind": False, "adjacent_behind": False, "distance": 99}
 
+    def _common_flow_strength_key(_car):
+        """上位2流れだけで見る候補車の強さ。小さいほど強い。
+
+        深い番手の前方車が本当に強いかを判定するため、
+        片方の流れでどこまで上へ来るか（best12）を最初に見て、
+        同値なら2流れ合計→最悪順位→第1流れ順位で比較する。
+        """
+        _car = int(_car)
+        _r1 = int(_rank1.get(_car, 999))
+        _r2 = int(_rank2.get(_car, 999))
+        return (min(_r1, _r2), _r1 + _r2, max(_r1, _r2), _r1, _car)
+
+    def _own_line_context(_car):
+        """候補自身のライン内位置と、前方にいる強い車数を返す。"""
+        _car = int(_car)
+        for _line in _line_groups:
+            if _car not in _line:
+                continue
+            try:
+                _idx = int(_line.index(_car))
+                _front = [int(x) for x in _line[:_idx]]
+                _car_key = _common_flow_strength_key(_car)
+                _strong_front = [
+                    int(x) for x in _front
+                    if _common_flow_strength_key(int(x)) < _car_key
+                ]
+                return {
+                    "line_pos": _idx,
+                    "front_count": len(_front),
+                    "strong_front_count": len(_strong_front),
+                    "strong_front_cars": tuple(_strong_front),
+                }
+            except Exception:
+                break
+        return {
+            "line_pos": 0,
+            "front_count": 0,
+            "strong_front_count": 0,
+            "strong_front_cars": tuple(),
+        }
+
     def _line_tier(_row):
-        """ライン構造の固定優先順位。高いほど優先。"""
+        """ライン構造の固定優先順位。高いほど優先。
+
+        軸同ラインの後位車は従来どおり強く優先する。
+        軸と別ラインでは、前方に上位2流れで強い車が2車以上いる
+        深い番手だけを1段下げ、妙味だけで前方2車を飛び越えないようにする。
+        """
         if bool(_row.get("adjacent_behind", False)):
             return 3
         if bool(_row.get("behind", False)):
             return 2
         if bool(_row.get("same_line", False)):
             return 1
+        if int(_row.get("strong_front_count", 0)) >= 2:
+            return -1
         return 0
 
     # ---------------------------------------------------------
@@ -3862,6 +3913,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             continue
         _q = _quinella_prob(_axis, _c)
         _rel = _line_relation(_c)
+        _own_ctx = _own_line_context(_c)
         _r1 = int(_rank1.get(_c, 999))
         _r2 = int(_rank2.get(_c, 999))
         _r3 = int(_rank3.get(_c, 999))
@@ -3885,6 +3937,10 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "behind": bool(_rel.get("behind", False)),
             "adjacent_behind": bool(_rel.get("adjacent_behind", False)),
             "line_distance": int(_rel.get("distance", 99)),
+            "own_line_pos": int(_own_ctx.get("line_pos", 0)),
+            "front_count": int(_own_ctx.get("front_count", 0)),
+            "strong_front_count": int(_own_ctx.get("strong_front_count", 0)),
+            "strong_front_cars": tuple(_own_ctx.get("strong_front_cars", tuple())),
             "hit_value": float(_hit_v),
             "myoumi_value": float(_myoumi_v),
         })
@@ -3926,7 +3982,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ---------------------------------------------------------
     # C/D：ライン構造＋妙味ヒモ
     # Bを除いた候補から2車を選ぶ。
-    # ライン構造を主軸にし、同じ構造階層では既存妙味評価を効かせる。
+    # 軸同ラインの後位車を優先し、別ラインでは候補自身のライン内構造も見る。
+    # 前方に上位2流れで強い車が2車以上いる深い番手は1段降格し、
+    # その構造階層内で既存妙味評価を効かせる。
     # ライン車が存在しない／妙味評価が未生成でも、第三流れ上振れと確率で必ず順位化する。
     # ---------------------------------------------------------
     _line_value_pool = [r for r in _candidate_rows if int(r.get("car")) != _hit_himo]
