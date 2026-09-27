@@ -1,3 +1,20 @@
+# v335fs（評価表示指数化・5点版）
+# ・買目・◎/◯/▲/×の選定ロジックはv335frから変更しない。
+# ・【ヴェロビ評価】表示を役割に合わせて指数化。
+# ・◎は上位2流れの共通軸ロジックを0～100へ換算した「軸指数」を表示し、軸候補内順位も併記する。
+# ・◯は◎との2車複内部想定的中率を「連対指数」として表示し、候補内順位も併記する。
+# ・▲/×はA→候補の2車単内部想定的中率を、7車2車単の均等基準2.38%=100とした「期待値指数」で表示する。
+# ・表示の数値列は見やすいようにインデントを揃える。
+# v335fr（2.38%近似妙味C/D・役割分離5点版）
+# ・A=◎：上位2流れ共通軸。勝ち切り固定ではなく、複数展開で残りやすい共通軸として扱う。
+# ・B=◯：軸との2車複想定的中率最大の的中精度ヒモ。
+# ・C/D=▲/×：A→候補車の2車単内部想定的中率が2.38%に絶対値で近い順の2車。
+# ・買目は2車単 ◎→◯ 1点、3連単 ◯→◎→▲ / ◯→◎→× 2点、2車複 ◎-▲ / ◎-× 2点＝計5点。
+# ・2車単◎→◯は、◎が勝ち切った場合を3着不問で拾う圧縮買目。
+# ・3連単◯→◎→▲×は、◯が頭・◎が2着に残る本来の強さ側の本線。
+# ・2車複◎-▲×は、◯が連対から飛んだ場合に◎＋妙味車で拾う崩れ目。
+# ・公開表示は想定着順予想→【ヴェロビ評価】◎/◯/▲/×→【ヴェロビ分析による買目】の順。
+# ・▲/×には選定根拠確認用としてA→当該車の2車単内部想定的中率を表示する。
 # v335fo（単騎戦・1ライン戦の流れ構造＋妙味補正版）
 # ・v335fnの軸A、的中ヒモB、4点構成、通常の複数ライン戦ロジックは変更しない。
 # ・ガールズ／アドバンスは、ライン構造比較を使わず「3流れの着順構造→妙味」の順でC/Dを選ぶ。
@@ -3611,7 +3628,7 @@ def _v335fl_allow_value_quinella(hit_prob, value_prob):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335fo：上位2流れ共通軸＋的中ヒモ1車＋構造妙味ヒモ2車で4点を生成する。
+    """v335fr：上位2流れ共通軸＋的中ヒモ1車＋2.38%近似妙味ヒモ2車で役割分離5点を生成する。
 
     軸:
       ・想定比率1位流れと2位流れだけを使用する。
@@ -3622,22 +3639,19 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     ヒモ:
       ・的中重視ヒモB：軸との2車複想定的中率が最大の1車。
         同率時のみ、軸と同ライン・軸後位・上位2流れでの共通順位を優先する。
-      ・構造妙味ヒモC/D：軸とBを除いた候補から2車選ぶ。
-        2本以上の有効ラインがある通常戦ではv335fnを維持し、軸同ラインの後位車を優先、
-        別ラインの深い番手は前方強車数で1段降格してから既存妙味評価を使う。
-        ガールズ／アドバンス、または有効な2車以上ラインが0～1本のレースでは、
-        ライン比較を行わず、3流れの比率加重平均順位を最優先する「単騎戦モード」に切替える。
-        単騎戦モードは、流れ構造を先に固定してから既存妙味評価を効かせるため、
-        下位固定車が妙味だけで上位安定車を飛び越えない。
+      ・妙味ヒモC/D：軸AとBを除いた候補についてA→候補の2車単内部想定的中率を算出し、
+        完全ランダム7車2車単の1点基準2.38%との差の絶対値が小さい順に2車選ぶ。
+        最も近い車を▲、次に近い車を×とする。
+        同距離の場合はA→候補の2車単確率が高い方→軸との2車複確率が高い方→車番順で決める。
 
-    買目（4点固定）:
-      ・3連単：A→B→C / A→B→D の2点。
-      ・2車単：A→C / A→D の2点。
-      ・A=軸、B=的中重視、C/D=ライン構造＋妙味重視。
-      ・2車複は推奨購入へ出さない。
+    買目（5点固定）:
+      ・2車単：A→B の1点。Aが勝ち切る場合を3着不問で拾う。
+      ・3連単：B→A→C / B→A→D の2点。B頭・A2着を本線とする。
+      ・2車複：A-C / A-D の2点。Bが連対から飛ぶ崩れ目を妙味2車で拾う。
+      ・A=◎共通軸、B=◯的中精度、C/D=▲/×の2.38%近似妙味。
 
     表示:
-      ・想定着順予想を先に表示し、その後を【ヴェロビ分析による買目】とする。
+      ・想定着順予想→【ヴェロビ評価】◎/◯/▲/×→【ヴェロビ分析による買目】の順で表示する。
       ・各実買い目ごとに既存v335brモデルの想定的中率を表示する。
     """
     if not isinstance(profile, dict):
@@ -3740,7 +3754,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 _cars.append(_c)
 
     # ---------------------------------------------------------
-    # A：1着軸。流れ1位＋2位の共通順位
+    # A：共通軸。流れ1位＋2位の共通順位
+    # 勝ち切り固定ではなく、複数展開で崩れにくい車を選ぶ。
     # max(rank1, rank2) → rank1+rank2 → rank1 の順で最小。
     # ---------------------------------------------------------
     def _axis_key(_c):
@@ -3942,6 +3957,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         if _c == _axis:
             continue
         _q = _quinella_prob(_axis, _c)
+        _e = _exacta_prob(_axis, _c)
         _rel = _line_relation(_c)
         _own_ctx = _own_line_context(_c)
         _r1 = int(_rank1.get(_c, 999))
@@ -3958,6 +3974,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _candidate_rows.append({
             "car": _c,
             "qprob": -1.0 if _q is None else float(_q),
+            "eprob": -1.0 if _e is None else float(_e),
             "r1": _r1,
             "r2": _r2,
             "r3": _r3,
@@ -4010,103 +4027,35 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _hit_himo = int(_hit_row["car"])
 
     # ---------------------------------------------------------
-    # C/D：構造＋妙味ヒモ
-    # Bを除いた候補から2車を選ぶ。
-    #
-    # 通常モード（有効ライン2本以上）:
-    #   v335fnを維持。軸ライン後位を優先し、他ライン深い番手は
-    #   前方強車ブロックを掛け、その構造階層内で妙味を使う。
-    #
-    # 単騎戦モード（ガールズ／アドバンス／有効ライン0～1本）:
-    #   ライン比較をしない。3流れの比率加重平均順位を最優先し、
-    #   安定順位→上振れ順位→妙味→確率の順で選ぶ。
-    #   妙味は残すが、全流れ下位の車が妙味だけで上位安定車を
-    #   飛び越えないよう「流れ構造」を先に固定する。
+    # C/D：2.38%近似妙味ヒモ
+    # Bを除いた候補から、A→候補の2車単内部想定的中率が
+    # 7車2車単の完全ランダム1点基準 2.38% に絶対値で近い順に2車選ぶ。
+    # ▲=最も近い車、×=次に近い車。
+    # ライン構造・旧妙味点はC/Dの主選定には使用しない。
     # ---------------------------------------------------------
-    _line_value_pool = [r for r in _candidate_rows if int(r.get("car")) != _hit_himo]
+    _MYOUMI_TARGET_EXACTA_V335FP = 0.0238
+    _myoumi_pool = [r for r in _candidate_rows if int(r.get("car")) != _hit_himo]
 
-    def _third_lift(_r):
-        _best12 = min(int(_r.get("r1", 999)), int(_r.get("r2", 999)))
-        _r3 = int(_r.get("r3", 999))
-        return (_best12 - _r3) if _r3 < 999 else -999
+    def _v335fp_myoumi_distance(_r):
+        try:
+            _p = float(_r.get("eprob", -1.0))
+        except Exception:
+            _p = -1.0
+        if _p < 0.0:
+            return float("inf")
+        return abs(float(_p) - float(_MYOUMI_TARGET_EXACTA_V335FP))
 
-    def _flow_weighted_rank_v335fo(_r):
-        """3流れの比率加重平均順位。小さいほど流れ構造上強い。"""
-        _pairs = []
-        for _flow_row, _rk_key in ((_flow1, "r1"), (_flow2, "r2"), (_flow3, "r3")):
-            if not isinstance(_flow_row, dict):
-                continue
-            try:
-                _ratio = float(_flow_row.get("ratio", 0.0) or 0.0)
-                _rank = int(_r.get(_rk_key, 999))
-            except Exception:
-                continue
-            if _ratio > 0.0 and _rank < 999:
-                _pairs.append((_ratio, _rank))
-        _den = sum(float(x[0]) for x in _pairs)
-        if _den <= 0.0:
-            return float(999.0)
-        return sum(float(w) * float(rank) for w, rank in _pairs) / _den
+    _myoumi_pool = sorted(
+        _myoumi_pool,
+        key=lambda r: (
+            float(_v335fp_myoumi_distance(r)),
+            -float(r.get("eprob", -1.0)),
+            -float(r.get("qprob", -1.0)),
+            int(r.get("car", 99)),
+        ),
+    )
 
-    def _flow_worst_rank_v335fo(_r):
-        _vals = [int(_r.get(k, 999)) for k in ("r1", "r2", "r3") if int(_r.get(k, 999)) < 999]
-        return max(_vals) if _vals else 999
-
-    def _flow_best_rank_v335fo(_r):
-        _vals = [int(_r.get(k, 999)) for k in ("r1", "r2", "r3") if int(_r.get(k, 999)) < 999]
-        return min(_vals) if _vals else 999
-
-    _has_myoumi = any(float(r.get("myoumi_value", 0.0)) > 0.0 for r in _line_value_pool)
-
-    if _sparse_line_mode_v335fo:
-        # 流れ構造を最優先。妙味は同程度の流れ構造の中で効かせる。
-        # reverse=True のため、小さい順位値はマイナス化して上位へ置く。
-        _line_value_pool = sorted(
-            _line_value_pool,
-            key=lambda r: (
-                -float(_flow_weighted_rank_v335fo(r)),
-                -int(_flow_worst_rank_v335fo(r)),
-                -int(_flow_best_rank_v335fo(r)),
-                float(r.get("myoumi_value", 0.0)) if _has_myoumi else 0.0,
-                int(_third_lift(r)),
-                float(r.get("qprob", -1.0)),
-                float(r.get("hit_value", 0.0)),
-                -int(r.get("car", 99)),
-            ),
-            reverse=True,
-        )
-    elif _has_myoumi:
-        _line_value_pool = sorted(
-            _line_value_pool,
-            key=lambda r: (
-                int(_line_tier(r)),
-                float(r.get("myoumi_value", 0.0)),
-                float(r.get("qprob", -1.0)),
-                float(r.get("hit_value", 0.0)),
-                int(_third_lift(r)),
-                -int(r.get("max12", 999)),
-                -int(r.get("sum12", 999)),
-                -int(r.get("car", 99)),
-            ),
-            reverse=True,
-        )
-    else:
-        _line_value_pool = sorted(
-            _line_value_pool,
-            key=lambda r: (
-                int(_line_tier(r)),
-                int(_third_lift(r)),
-                -int(r.get("r3", 999)),
-                float(r.get("qprob", -1.0)),
-                float(r.get("hit_value", 0.0)),
-                -int(r.get("max12", 999)),
-                -int(r.get("sum12", 999)),
-                -int(r.get("car", 99)),
-            ),
-            reverse=True,
-        )
-
-    if len(_line_value_pool) < 2:
+    if len(_myoumi_pool) < 2:
         return [
             "【想定着順予想】",
             *[
@@ -4116,14 +4065,15 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             ],
             "",
             "【ヴェロビ分析による買目】",
-            "構造妙味ヒモが2車に満たないため算出不可",
+            "妙味ヒモが2車に満たないため算出不可",
             "計0点",
         ]
 
-    _line_value_himos = [int(_line_value_pool[0]["car"]), int(_line_value_pool[1]["car"])]
+    _myoumi_rows = [_myoumi_pool[0], _myoumi_pool[1]]
+    _myoumi_himos = [int(_myoumi_rows[0]["car"]), int(_myoumi_rows[1]["car"])]
 
     # ---------------------------------------------------------
-    # 公開表示：想定着順予想 → 買目
+    # 公開表示：想定着順予想 → 印 → 買目
     # ---------------------------------------------------------
     _lines = ["【想定着順予想】"]
     for _r in _rows:
@@ -4136,27 +4086,133 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         )
 
     _lines.append("")
+    _lines.append("【ヴェロビ評価】")
+
+    # v335fs：表示用指数。選定ロジック自体は変更しない。
+    # ◎ 軸指数：現在の「上位2流れで崩れにくい」軸思想を0～100へ換算。
+    #   最悪順位70%＋2流れ平均順位20%＋第1流れ順位10%。
+    # ◯ 連対指数：◎との2車複内部想定的中率そのもの。
+    # ▲×期待値指数：2.38%=100としたA→候補の2車単確率の相対指数。
+    try:
+        _axis_sorted_v335fs = sorted(_axis_candidates, key=_axis_key)
+        _axis_rank_v335fs = int(_axis_sorted_v335fs.index(int(_axis)) + 1)
+    except Exception:
+        _axis_rank_v335fs = 1
+
+    try:
+        _n_rank_v335fs = max(2, len(_axis_candidates))
+        _den_v335fs = float(_n_rank_v335fs - 1)
+        _ar1_v335fs = int(_rank1.get(int(_axis), _n_rank_v335fs))
+        _ar2_v335fs = int(_rank2.get(int(_axis), _n_rank_v335fs))
+
+        def _rank_score_v335fs(_rank):
+            _rank = max(1, min(_n_rank_v335fs, int(_rank)))
+            return max(0.0, min(100.0,
+                (float(_n_rank_v335fs - _rank) / _den_v335fs) * 100.0
+            ))
+
+        _axis_worst_score_v335fs = _rank_score_v335fs(max(_ar1_v335fs, _ar2_v335fs))
+        _axis_avg_rank_v335fs = (float(_ar1_v335fs) + float(_ar2_v335fs)) / 2.0
+        _axis_avg_score_v335fs = max(0.0, min(100.0,
+            (float(_n_rank_v335fs) - _axis_avg_rank_v335fs) / _den_v335fs * 100.0
+        ))
+        _axis_flow1_score_v335fs = _rank_score_v335fs(_ar1_v335fs)
+        _axis_index_v335fs = (
+            0.70 * _axis_worst_score_v335fs
+            + 0.20 * _axis_avg_score_v335fs
+            + 0.10 * _axis_flow1_score_v335fs
+        )
+    except Exception:
+        _axis_index_v335fs = 0.0
+
+    try:
+        _hit_sorted_v335fs = sorted(
+            _candidate_rows,
+            key=lambda r: (
+                -float(r.get("qprob", -1.0)),
+                -int(bool(r.get("adjacent_behind", False))),
+                -int(bool(r.get("behind", False))),
+                -int(bool(r.get("same_line", False))),
+                -float(r.get("hit_value", 0.0)),
+                int(r.get("max12", 999)),
+                int(r.get("sum12", 999)),
+                int(r.get("car", 99)),
+            ),
+        )
+        _hit_rank_v335fs = next(
+            (i for i, r in enumerate(_hit_sorted_v335fs, start=1)
+             if int(r.get("car")) == int(_hit_himo)),
+            1,
+        )
+    except Exception:
+        _hit_rank_v335fs = 1
+
+    try:
+        _hit_pair_prob_v335fs = float(_hit_row.get("qprob", -1.0))
+    except Exception:
+        _hit_pair_prob_v335fs = -1.0
+
+    def _ev_index_v335fs(_row):
+        try:
+            _p = float(_row.get("eprob", -1.0))
+            if _p < 0.0:
+                return None
+            return (_p / float(_MYOUMI_TARGET_EXACTA_V335FP)) * 100.0
+        except Exception:
+            return None
+
+    _ev1_v335fs = _ev_index_v335fs(_myoumi_rows[0])
+    _ev2_v335fs = _ev_index_v335fs(_myoumi_rows[1])
+
+    _lines.append(
+        f"◎　{int(_axis)}　軸指数　　　{int(_axis_rank_v335fs)}位・{float(_axis_index_v335fs):.1f}"
+    )
+    _lines.append(
+        f"◯　{int(_hit_himo)}　連対指数　　{int(_hit_rank_v335fs)}位・"
+        + ("算出不可" if _hit_pair_prob_v335fs < 0.0 else f"{_hit_pair_prob_v335fs * 100.0:.1f}%")
+    )
+    _lines.append(
+        f"▲　{int(_myoumi_himos[0])}　期待値指数　"
+        + ("算出不可" if _ev1_v335fs is None else f"{float(_ev1_v335fs):.1f}%")
+    )
+    _lines.append(
+        f"×　{int(_myoumi_himos[1])}　期待値指数　"
+        + ("算出不可" if _ev2_v335fs is None else f"{float(_ev2_v335fs):.1f}%")
+    )
+
+    _lines.append("")
     _lines.append("【ヴェロビ分析による買目】")
 
-    # 3連単：A-B-C / A-B-D
-    _lines.append("3連単")
-    for _c in _line_value_himos:
-        _t_prob = _trifecta_prob(_axis, _hit_himo, _c)
-        _lines.append(
-            f"{int(_axis)}-{int(_hit_himo)}-{int(_c)}（想定的中率 {_prob_text(_t_prob)}）"
-        )
-
-    _lines.append("")
-    # 2車単：A-C / A-D
+    # 2車単：◎A→◯B
+    # ◎が勝ち切った場合を、3着不問で拾う圧縮買目。
     _lines.append("2車単")
-    for _c in _line_value_himos:
-        _e_prob = _exacta_prob(_axis, _c)
+    _ab_prob = _exacta_prob(_axis, _hit_himo)
+    _lines.append(
+        f"{int(_axis)}-{int(_hit_himo)}（想定的中率 {_prob_text(_ab_prob)}）"
+    )
+
+    _lines.append("")
+    # 3連単：◯B→◎A→▲C / ×D
+    # 共通軸Aは2着側に残し、的中精度Bが頭へ来る本線。
+    _lines.append("3連単")
+    for _c in _myoumi_himos:
+        _t_prob = _trifecta_prob(_hit_himo, _axis, _c)
         _lines.append(
-            f"{int(_axis)}-{int(_c)}（想定的中率 {_prob_text(_e_prob)}）"
+            f"{int(_hit_himo)}-{int(_axis)}-{int(_c)}（想定的中率 {_prob_text(_t_prob)}）"
         )
 
     _lines.append("")
-    _lines.append("計4点")
+    # 2車複：◎A-▲C / ×D
+    # ◯Bが連対から飛んだ崩れ目を、◎＋妙味車で順序不問で拾う。
+    _lines.append("2車複")
+    for _c in _myoumi_himos:
+        _q_prob = _quinella_prob(_axis, _c)
+        _lines.append(
+            f"{int(_axis)}-{int(_c)}（想定的中率 {_prob_text(_q_prob)}）"
+        )
+
+    _lines.append("")
+    _lines.append("計5点")
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
