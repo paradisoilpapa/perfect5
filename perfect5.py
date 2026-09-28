@@ -3644,7 +3644,7 @@ def _v335fl_allow_value_quinella(hit_prob, value_prob):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335fu：基本買目＋期待値軸別の条件付き展開を生成する。
+    """v335fv：基本買目＋期待値軸別の条件付き展開を生成する。
 
     基本評価（v335ftを維持）:
       ・A=◎：想定比率1位流れ＋2位流れの共通軸。
@@ -3664,7 +3664,11 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
       ・各流れの最終順位を、Eの位置を中心に
         E→右1→左1→右2→左2… の順で再配列する。
       ・再配列後に既存の流れ別最終化処理を再利用するが、Eは条件付き軸として先頭固定。
-      ・E軸ごとにB相当の的中ヒモと、C/D相当の期待値ヒモを同じ基準で再計算する。
+      ・E軸→候補の2車単内部想定的中率が、当該車立ての均等基準以上の車だけを
+        B相当ヒモ候補として残す。
+      ・基準通過車の中から、既存どおりEとの2車複想定的中率最大をB相当ヒモにする。
+      ・基準通過車が0なら、その期待値軸は2車単・3連単とも「該当なし」。
+      ・C/D相当の期待値ヒモも同じ100%基準で再計算する。
       ・表示は2車単 E→B と、3連単 E→B→C/D。
 
     表示:
@@ -4233,13 +4237,56 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _sp2,
             _sp3,
         )
-        _shit, _shit_row = _select_hit_himo(_scandidates)
+
+        # v335fv：期待値軸の2車単ヒモにも100%基準を適用する。
+        # 当該車立ての完全ランダム2車単1点基準
+        #   7車 = 1/42 = 2.38%
+        #   6車 = 1/30 = 3.33%
+        # 以上の「期待値軸→候補」だけをB相当ヒモ候補へ残す。
+        _n_scenario_cars = max(2, len(_cars))
+        _scenario_exacta_target = 1.0 / float(
+            _n_scenario_cars * (_n_scenario_cars - 1)
+        )
+        _SCENARIO_EPS_V335FV = 1e-12
+        _qualified_hit_candidates = []
+        for _r in _scandidates:
+            try:
+                _ep = float(_r.get("eprob", -1.0))
+            except Exception:
+                _ep = -1.0
+            if _ep >= (float(_scenario_exacta_target) - _SCENARIO_EPS_V335FV):
+                _qualified_hit_candidates.append(_r)
+
+        if not _qualified_hit_candidates:
+            _valid_eprobs = []
+            for _r in _scandidates:
+                try:
+                    _ep = float(_r.get("eprob", -1.0))
+                except Exception:
+                    _ep = -1.0
+                if _ep >= 0.0:
+                    _valid_eprobs.append(_ep)
+            _max_ep = max(_valid_eprobs) if _valid_eprobs else None
+            _expected_scenarios.append({
+                "axis": _ev_axis,
+                "hit_himo": None,
+                "value_himos": [],
+                "rows": _srows,
+                "threshold": float(_scenario_exacta_target),
+                "max_exacta_prob": _max_ep,
+                "reason": "2車単100%基準未満",
+            })
+            continue
+
+        # 基準通過後は既存B選定と同じく、軸との2車複想定的中率最大を採用する。
+        _shit, _shit_row = _select_hit_himo(_qualified_hit_candidates)
         if _shit is None:
             _expected_scenarios.append({
                 "axis": _ev_axis,
                 "hit_himo": None,
                 "value_himos": [],
                 "rows": _srows,
+                "threshold": float(_scenario_exacta_target),
                 "reason": "的中ヒモ算出不可",
             })
             continue
@@ -4256,6 +4303,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "value_himos": [int(c) for c in _svalues],
             "value_rows": list(_svalue_rows),
             "target": float(_starget),
+            "threshold": float(_scenario_exacta_target),
             "rows": _srows,
             "p1": _sp1,
             "p2": _sp2,
@@ -4274,7 +4322,22 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _ea = int(_sc.get("axis"))
             _eh = _sc.get("hit_himo")
             if _eh is None:
-                _lines.append(f"{_ea}軸：{str(_sc.get('reason') or '算出不可')}")
+                _reason = str(_sc.get("reason") or "算出不可")
+                if _reason == "2車単100%基準未満":
+                    _th = _sc.get("threshold")
+                    _mx = _sc.get("max_exacta_prob")
+                    if _th is not None and _mx is not None:
+                        _lines.append(
+                            f"{_ea}軸：該当なし（最大 {_prob_text(_mx)}／基準 {_prob_text(_th)}）"
+                        )
+                    elif _th is not None:
+                        _lines.append(
+                            f"{_ea}軸：該当なし（基準 {_prob_text(_th)}）"
+                        )
+                    else:
+                        _lines.append(f"{_ea}軸：該当なし")
+                else:
+                    _lines.append(f"{_ea}軸：{_reason}")
                 continue
             _sp1 = _sc.get("p1", {}) or {}
             _sp2 = _sc.get("p2", {}) or {}
@@ -4290,6 +4353,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _ea = int(_sc.get("axis"))
             _eh = _sc.get("hit_himo")
             if _eh is None:
+                _reason = str(_sc.get("reason") or "")
+                if _reason == "2車単100%基準未満":
+                    _lines.append(f"{_ea}軸：該当なし（2車単ヒモ100%基準未満）")
                 continue
             _value_himos = [int(c) for c in (_sc.get("value_himos") or [])]
             if not _value_himos:
