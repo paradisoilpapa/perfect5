@@ -1,3 +1,9 @@
+# v335gj（_p1_map参照順修正版）
+# ・v335giの買い目ロジック、総合評価点、候補表示は変更しない。
+# ・note用簡易出力で _p1_map / _p2_map / _p3_map が生成される前に
+#   配当妙味用の着順適合マップを作っていた初期化順エラーを修正。
+# ・着順適合マップは、実際に総合評価点を計算する時点で遅延生成する。
+# ・3連複妙味計算で使用する permutations を明示 import。
 # v335gi（買い目欄・総合評価点表示版）
 # ・v335ghの候補生成、的中点＋妙味点50:50、70%継続＋1位50%下限、券種別★☆は変更しない。
 # ・買い目欄の「想定的中率」表示を廃止し、候補選抜に実際に使っている「総合評価点」を表示する。
@@ -4123,15 +4129,19 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         except Exception:
             return {}
 
-    _fit1_v335gh = _position_fit_map_v335gh(_p1_map)
-    _fit2_v335gh = _position_fit_map_v335gh(_p2_map)
-    _fit3_v335gh = _position_fit_map_v335gh(_p3_map)
+    def _current_fit_maps_v335gj():
+        """_p1/_p2/_p3_map 生成後に着順適合マップを遅延生成する。"""
+        return (
+            _position_fit_map_v335gh(_p1_map),
+            _position_fit_map_v335gh(_p2_map),
+            _position_fit_map_v335gh(_p3_map),
+        )
 
     def _ordered_myoumi_raw_v335gh(_ticket):
         """順序付き券の既存妙味評価×着順適合度の平均。"""
         try:
             _ticket = tuple(int(x) for x in (_ticket or tuple()))
-            _fits = (_fit1_v335gh, _fit2_v335gh, _fit3_v335gh)
+            _fits = _current_fit_maps_v335gj()
             _vals = []
             for _idx, _car in enumerate(_ticket):
                 if _idx >= len(_fits):
