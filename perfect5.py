@@ -1,3 +1,22 @@
+# v335fz（配当分布×内部的中率・3点固定版）
+# ・◎/◯の2車選定、想定着順、流れ比率、確率モデルはv335fyから変更しない。
+# ・最終買目は2車単1点＋3連単2点＝計3点固定。
+# ・◎/◯の2車について「◎→◯」「◯→◎」の両方を内部計算し、
+#   2車単想定的中率×該当理論オッズ帯の2車単配当数割合で方向を1つ選ぶ。
+# ・選んだ1・2着を固定し、残る全車を3着候補として3連単を内部計算する。
+# ・各3着候補は3連単想定的中率×該当理論オッズ帯の3連単配当数割合で順位付けし、上位2車だけを採用する。
+# ・従来の▲/×期待値指数は評価表示として残すが、3点選抜で二重加点しない。
+# ・実オッズ入力は使用しない。理論オッズはヴェロビ想定的中率pの逆数1/p。
+# ・配当数分布は2017～2019年のS級・A1/A2班・9車立て集計を使用する。
+# ・この配当分布は現行7車立ての実測分布ではなく、3点選抜用の外部補正データとして扱う。
+# v335fy（理論オッズ帯・市場回収率参考表示版）
+# ・v335fxの◎/◯/▲/×、基本買目、期待値軸、100%基準、ヒモ選定、3連単選定は変更しない。
+# ・実オッズ入力は追加しない。
+# ・各2車単／3連単のヴェロビ想定的中率pから「理論オッズ=1/p」を算出する。
+# ・理論オッズを、ユーザー提示の2017～2019年「S級・A1/A2班・9車立て」オッズ帯別回収率表へ照合する。
+# ・2車単は2車単表、3連単は3連単表の市場帯回収率を参考値として表示する。
+# ・市場帯データは現在の7車立てへ直接適用する購入条件ではなく、価格帯特性を見る診断情報としてのみ使用する。
+# ・買目の採用／不採用や点数は市場帯回収率では変更しない。
 # v335fx（期待値軸3連単専用・券種変換注記版）
 # ・◎/◯/▲/×の基本選定ロジックはv335ftから変更しない。
 # ・基本買目は2車単「◎→◯」1点＋3連単「◯→◎→▲/×」0～2点を維持する。
@@ -3646,39 +3665,21 @@ def _v335fl_allow_value_quinella(hit_prob, value_prob):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335fx：基本買目＋期待値軸別の条件付き展開を生成する。
+    """v335fz：◎/◯の2車を固定し、配当分布補正で最終3点へ絞る。
 
-    基本評価（v335ftを維持）:
-      ・A=◎：想定比率1位流れ＋2位流れの共通軸。
-      ・B=◯：Aとの2車複想定的中率が最大の1車。
-      ・C/D=▲/×：A→候補の2車単内部想定的中率が、当該車立ての
-        完全ランダム1点基準以上（期待値指数100%以上）の車だけ。
-        100%への超過幅が小さい順に最大2車。
+    1) ◎と◯の選定は従来ロジックを維持。
+    2) ◎→◯ と ◯→◎ の2車単を両方内部計算。
+    3) 各方向を
+         2車単想定的中率 × その理論オッズ帯の2車単配当数割合
+       で比較し、1・2着方向を1本へ決定。
+    4) 決定した1・2着を固定し、残る全車を3着候補として3連単を計算。
+    5) 各3着候補を
+         3連単想定的中率 × その理論オッズ帯の3連単配当数割合
+       で比較し、上位2車だけ採用。
+    6) 最終買目は2車単1点＋3連単2点＝計3点固定。
 
-    基本買目:
-      ・2車単：A→B 1点。
-      ・3連単：B→A→C / B→A→D 0～2点。
-      ・従来の2車複 A-C / A-D は廃止。
-
-    期待値軸展開:
-      ・基本評価で採用されたC/Dを、それぞれ独立した条件付き軸Eとして扱う。
-      ・元の順流/逆流/渦と流れ比率は変更しない。
-      ・各流れの最終順位を、Eの位置を中心に
-        E→右1→左1→右2→左2… の順で再配列する。
-      ・再配列後に既存の流れ別最終化処理を再利用するが、Eは条件付き軸として先頭固定。
-      ・E軸→候補の2車単内部想定的中率が、当該車立ての均等基準以上の車だけを
-        B相当ヒモ候補として残す。
-      ・基準通過車の中から、既存どおりEとの2車複想定的中率最大をB相当ヒモにする。
-      ・基準通過車が0なら、その期待値軸は3連単「該当なし」。
-      ・C/D相当の期待値ヒモも同じ100%基準で再計算する。
-      ・公開表示は3連単 E→B→C/Dだけとし、E→Bの2車単は内部選定にのみ使用する。
-      ・必要に応じて、表示3連単の1・2着を2車単、3車を3連複へ券種変換する。
-
-    表示:
-      ・想定着順予想
-      ・【ヴェロビ評価】
-      ・【ヴェロビ分析による基本買目】
-      ・【基本買目からの期待値軸買目】
+    ▲/×の期待値指数は評価表示として維持するが、
+    想定的中率由来の情報を二重加点しないため最終3点の選抜値には直接掛けない。
     """
     if not isinstance(profile, dict):
         return None
@@ -3894,6 +3895,214 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     def _prob_text(_prob):
         return "算出不可" if _prob is None else f"{float(_prob) * 100.0:.2f}%"
+
+
+    # ---------------------------------------------------------
+    # v335fz：配当数分布
+    # ユーザー提示資料
+    # 2017/1/1～2019/12/31、S級・A1/A2班、9車立て。
+    # 「配当数」列を使用し、回収率列は最終3点選抜には使わない。
+    #
+    # 区分は元資料が対数目盛（約10^0.25刻み）のため、
+    # 表示上の丸め境界ではなく連続境界で判定する。
+    # ---------------------------------------------------------
+    _PAYOUT_HIT_SHARE_EXACTA_V335FZ = (
+        ("1.0～1.7",       10.0 ** 0.25,  0.970),
+        ("1.8～3.1",       10.0 ** 0.50,  6.110),
+        ("3.2～5.6",       10.0 ** 0.75, 12.690),
+        ("5.7～9.9",       10.0 ** 1.00, 14.870),
+        ("10.0～17.7",     10.0 ** 1.25, 16.530),
+        ("17.8～31.6",     10.0 ** 1.50, 16.170),
+        ("31.7～56.2",     10.0 ** 1.75, 13.020),
+        ("56.3～99.9",     10.0 ** 2.00,  9.020),
+        ("100.0～177.8",   10.0 ** 2.25,  5.730),
+        ("177.9～316.2",   10.0 ** 2.50,  3.040),
+        ("316.3～562.3",   10.0 ** 2.75,  1.290),
+        ("562.4～999.9",   10.0 ** 3.00,  0.440),
+        ("1000.0～1778.2", 10.0 ** 3.25,  0.083),
+        ("1778.3～3162.2", 10.0 ** 3.50,  0.021),
+        ("3162.3～5623.4", 10.0 ** 3.75,  0.005),
+        ("5623.5～9999.8", 10.0 ** 4.00,  0.000),
+        ("9999.9～",       float("inf"), 0.002),
+    )
+
+    _PAYOUT_HIT_SHARE_TRIFECTA_V335FZ = (
+        ("1.0～1.7",       10.0 ** 0.25,  0.00),
+        ("1.8～3.1",       10.0 ** 0.50,  0.23),
+        ("3.2～5.6",       10.0 ** 0.75,  1.66),
+        ("5.7～9.9",       10.0 ** 1.00,  4.22),
+        ("10.0～17.7",     10.0 ** 1.25,  8.24),
+        ("17.8～31.6",     10.0 ** 1.50, 10.97),
+        ("31.7～56.2",     10.0 ** 1.75, 13.17),
+        ("56.3～99.9",     10.0 ** 2.00, 14.00),
+        ("100.0～177.8",   10.0 ** 2.25, 13.41),
+        ("177.9～316.2",   10.0 ** 2.50, 11.64),
+        ("316.3～562.3",   10.0 ** 2.75,  9.09),
+        ("562.4～999.9",   10.0 ** 3.00,  6.43),
+        ("1000.0～1778.2", 10.0 ** 3.25,  3.72),
+        ("1778.3～3162.2", 10.0 ** 3.50,  2.04),
+        ("3162.3～5623.4", 10.0 ** 3.75,  0.82),
+        ("5623.5～9999.8", 10.0 ** 4.00,  0.28),
+        ("9999.9～",       float("inf"), 0.08),
+    )
+
+    def _distribution_band_v335fz(_ticket_type, _prob):
+        """想定的中率p→理論オッズ1/p→該当配当帯・配当数割合。"""
+        try:
+            _p = float(_prob)
+        except Exception:
+            _p = -1.0
+
+        if _p <= 0.0:
+            return {
+                "theoretical_odds": None,
+                "band": None,
+                "hit_share": 0.0,
+                "selection_score": -1.0,
+            }
+
+        _odds = 1.0 / _p
+        _table = (
+            _PAYOUT_HIT_SHARE_EXACTA_V335FZ
+            if str(_ticket_type) == "2車単"
+            else _PAYOUT_HIT_SHARE_TRIFECTA_V335FZ
+        )
+
+        _label = None
+        _share = 0.0
+        for _band_label, _upper, _hit_share in _table:
+            if float(_odds) < float(_upper):
+                _label = str(_band_label)
+                _share = float(_hit_share)
+                break
+
+        if _label is None:
+            _label = str(_table[-1][0])
+            _share = float(_table[-1][2])
+
+        # 配当数割合は百分率なので /100。
+        # この値は確率ではなく「内部想定的中率×歴史的配当帯の厚み」の選抜値。
+        _score = float(_p) * (float(_share) / 100.0)
+
+        return {
+            "theoretical_odds": float(_odds),
+            "band": _label,
+            "hit_share": float(_share),
+            "selection_score": float(_score),
+        }
+
+    def _selection_diag_v335fz(_ticket_type, _prob):
+        _d = _distribution_band_v335fz(_ticket_type, _prob)
+        if _d.get("theoretical_odds") is None:
+            return "配当分布算出不可"
+        return (
+            f"理論オッズ {float(_d['theoretical_odds']):.1f}倍"
+            f"／配当帯 {_d['band']}倍"
+            f"／配当数割合 {float(_d['hit_share']):.3f}%"
+            f"／選抜値 {float(_d['selection_score']) * 100.0:.4f}"
+        )
+
+    # ---------------------------------------------------------
+    # v335fy：ヴェロビ想定的中率を「理論オッズ=1/p」へ変換し、
+    # ユーザー提示の2017～2019年・9車立て市場データの
+    # オッズ帯別回収率へ照合する。
+    #
+    # 左端/右端は画像表示上は丸められているため、
+    # 実際の区分は対数目盛（10^0.25刻み）として連続的に扱う。
+    # 例：1.8～3.1表示 = 10^0.25 ～ 10^0.50 未満。
+    # ---------------------------------------------------------
+    _MARKET_ROI_EXACTA_V335FY = (
+        ("1.0～1.7",       10.0 ** 0.25, 81.81),
+        ("1.8～3.1",       10.0 ** 0.50, 74.94),
+        ("3.2～5.6",       10.0 ** 0.75, 78.38),
+        ("5.7～9.9",       10.0 ** 1.00, 77.97),
+        ("10.0～17.7",     10.0 ** 1.25, 77.38),
+        ("17.8～31.6",     10.0 ** 1.50, 77.75),
+        ("31.7～56.2",     10.0 ** 1.75, 75.90),
+        ("56.3～99.9",     10.0 ** 2.00, 70.44),
+        ("100.0～177.8",   10.0 ** 2.25, 67.19),
+        ("177.9～316.2",   10.0 ** 2.50, 60.12),
+        ("316.3～562.3",   10.0 ** 2.75, 51.23),
+        ("562.4～999.9",   10.0 ** 3.00, 45.73),
+        ("1000.0～1778.2", 10.0 ** 3.25, 31.24),
+        ("1778.3～3162.2", 10.0 ** 3.50, 41.98),
+        ("3162.3～5623.4", 10.0 ** 3.75, 61.93),
+        ("5623.5～9999.8", 10.0 ** 4.00, 0.00),
+        ("9999.9～",       float("inf"), 20.21),
+    )
+
+    _MARKET_ROI_TRIFECTA_V335FY = (
+        ("1.0～1.7",       10.0 ** 0.25, 0.00),
+        ("1.8～3.1",       10.0 ** 0.50, 85.82),
+        ("3.2～5.6",       10.0 ** 0.75, 84.59),
+        ("5.7～9.9",       10.0 ** 1.00, 80.00),
+        ("10.0～17.7",     10.0 ** 1.25, 80.24),
+        ("17.8～31.6",     10.0 ** 1.50, 73.99),
+        ("31.7～56.2",     10.0 ** 1.75, 74.02),
+        ("56.3～99.9",     10.0 ** 2.00, 76.31),
+        ("100.0～177.8",   10.0 ** 2.25, 77.95),
+        ("177.9～316.2",   10.0 ** 2.50, 77.97),
+        ("316.3～562.3",   10.0 ** 2.75, 75.03),
+        ("562.4～999.9",   10.0 ** 3.00, 72.20),
+        ("1000.0～1778.2", 10.0 ** 3.25, 62.72),
+        ("1778.3～3162.2", 10.0 ** 3.50, 58.87),
+        ("3162.3～5623.4", 10.0 ** 3.75, 50.09),
+        ("5623.5～9999.8", 10.0 ** 4.00, 44.48),
+        ("9999.9～",       float("inf"), 41.04),
+    )
+
+    def _theoretical_odds_v335fy(_prob):
+        """ヴェロビ想定的中率pを理論オッズ1/pへ変換する。実オッズではない。"""
+        try:
+            _p = float(_prob)
+        except Exception:
+            return None
+        if _p <= 0.0:
+            return None
+        return 1.0 / _p
+
+    def _market_band_v335fy(_ticket_type, _prob):
+        """券種と想定的中率から、理論オッズ帯と市場帯回収率を返す。"""
+        _odds = _theoretical_odds_v335fy(_prob)
+        if _odds is None:
+            return {
+                "theoretical_odds": None,
+                "band": None,
+                "market_roi": None,
+            }
+
+        _table = (
+            _MARKET_ROI_EXACTA_V335FY
+            if str(_ticket_type) == "2車単"
+            else _MARKET_ROI_TRIFECTA_V335FY
+        )
+        for _label, _upper, _roi in _table:
+            if float(_odds) < float(_upper):
+                return {
+                    "theoretical_odds": float(_odds),
+                    "band": str(_label),
+                    "market_roi": float(_roi),
+                }
+
+        return {
+            "theoretical_odds": float(_odds),
+            "band": "9999.9～",
+            "market_roi": float(_table[-1][2]),
+        }
+
+    def _market_diag_text_v335fy(_ticket_type, _prob):
+        """公開表示用。実オッズと誤認しないよう『理論オッズ』と明記する。"""
+        _d = _market_band_v335fy(_ticket_type, _prob)
+        _odds = _d.get("theoretical_odds")
+        _band = _d.get("band")
+        _roi = _d.get("market_roi")
+        if _odds is None or _band is None or _roi is None:
+            return "理論オッズ 算出不可／市場帯 算出不可"
+        return (
+            f"理論オッズ {float(_odds):.1f}倍"
+            f"／市場帯 {_band}倍"
+            f"／市場帯回収率 {float(_roi):.2f}%"
+        )
 
     def _scenario_candidate_rows(_axis_car, _srows, _p1, _p2, _p3):
         """指定軸と指定3流れで、現行B/C/D選定に必要な候補データを作る。"""
@@ -4168,204 +4377,134 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("×　該当なし　期待値指数　100%以上なし")
 
     _lines.append("")
-    _lines.append("【ヴェロビ分析による基本買目】")
-
-    # 基本2車単：◎→◯
-    _lines.append("2車単")
-    _ab_prob = _exacta_prob_with(_axis, _hit_himo, _p1_map, _p2_map, _p3_map)
-    _lines.append(
-        f"{int(_axis)}-{int(_hit_himo)}（想定的中率 {_prob_text(_ab_prob)}）"
-    )
-
-    _lines.append("")
-    # 基本3連単：◯→◎→▲/×
-    _lines.append("3連単")
-    if _myoumi_himos:
-        for _c in _myoumi_himos:
-            _t_prob = _trifecta_prob_with(_hit_himo, _axis, _c, _p1_map, _p2_map, _p3_map)
-            _lines.append(
-                f"{int(_hit_himo)}-{int(_axis)}-{int(_c)}（想定的中率 {_prob_text(_t_prob)}）"
-            )
-    else:
-        _lines.append("期待値指数100%以上の3着候補なし")
+    _lines.append("【ヴェロビ分析による3点買目】")
 
     # ---------------------------------------------------------
-    # 期待値軸ごとの条件付き展開。
-    # 基本C/D（▲/×）だけを軸候補とする。基準未満から補完しない。
+    # 1・2着方向
+    # ◎と◯の2車自体は現行ロジックで確定済み。
+    # ◎→◯ / ◯→◎ の両方向を
+    #   内部2車単想定的中率 × 2車単配当数割合
+    # で比較し、1方向だけ採用する。
     # ---------------------------------------------------------
-    _expected_scenarios = []
+    _direction_candidates_v335fz = []
 
-    for _ev_axis in _myoumi_himos:
-        _ev_axis = int(_ev_axis)
-        _srows = []
-        for _src_row in _rows:
-            _src_order = tuple(int(c) for c in (_src_row.get("order") or tuple()))
-            _centered = _center_out_sequence(_src_order, _ev_axis)
-            if len(_centered) < 3:
-                continue
-            try:
-                _refinal, _rdiag = _v335es_finalize_flow_order(
-                    _centered, profile, return_debug=True
-                )
-            except Exception:
-                _refinal, _rdiag = _centered, {}
-            # 期待値軸シナリオなので、軸だけは条件として先頭固定。
-            _refinal = _force_axis_first(_refinal, _ev_axis)
-            _srows.append({
-                "style": str(_src_row.get("style", "")),
-                "ratio": float(_src_row.get("ratio", 0.0) or 0.0),
-                "order": tuple(int(c) for c in _refinal),
-                "diag": dict(_rdiag or {}),
-                "fixed": int(_src_row.get("fixed", 99)),
-            })
-
-        _srows.sort(key=lambda r: (-float(r.get("ratio", 0.0)), int(r.get("fixed", 99))))
-        _srows = _srows[:3]
-        if len(_srows) < 2:
-            _expected_scenarios.append({
-                "axis": _ev_axis,
-                "hit_himo": None,
-                "value_himos": [],
-                "rows": _srows,
-                "reason": "展開別データ不足",
-            })
-            continue
-
-        _scenario_order1 = tuple(int(c) for c in (_srows[0].get("order") or tuple()))
-        _sp1, _sp2, _sp3 = _prob_maps_for_order(_scenario_order1)
-        _scandidates = _scenario_candidate_rows(
-            _ev_axis,
-            _srows,
-            _sp1,
-            _sp2,
-            _sp3,
+    for _first, _second, _base_pref in (
+        (int(_axis), int(_hit_himo), 1),   # 完全同値なら従来の◎→◯を優先
+        (int(_hit_himo), int(_axis), 0),
+    ):
+        _ep = _exacta_prob_with(
+            _first, _second, _p1_map, _p2_map, _p3_map
         )
-
-        # v335fv：期待値軸の2車単ヒモにも100%基準を適用する。
-        # 当該車立ての完全ランダム2車単1点基準
-        #   7車 = 1/42 = 2.38%
-        #   6車 = 1/30 = 3.33%
-        # 以上の「期待値軸→候補」だけをB相当ヒモ候補へ残す。
-        _n_scenario_cars = max(2, len(_cars))
-        _scenario_exacta_target = 1.0 / float(
-            _n_scenario_cars * (_n_scenario_cars - 1)
-        )
-        _SCENARIO_EPS_V335FV = 1e-12
-        _qualified_hit_candidates = []
-        for _r in _scandidates:
-            try:
-                _ep = float(_r.get("eprob", -1.0))
-            except Exception:
-                _ep = -1.0
-            if _ep >= (float(_scenario_exacta_target) - _SCENARIO_EPS_V335FV):
-                _qualified_hit_candidates.append(_r)
-
-        if not _qualified_hit_candidates:
-            _valid_eprobs = []
-            for _r in _scandidates:
-                try:
-                    _ep = float(_r.get("eprob", -1.0))
-                except Exception:
-                    _ep = -1.0
-                if _ep >= 0.0:
-                    _valid_eprobs.append(_ep)
-            _max_ep = max(_valid_eprobs) if _valid_eprobs else None
-            _expected_scenarios.append({
-                "axis": _ev_axis,
-                "hit_himo": None,
-                "value_himos": [],
-                "rows": _srows,
-                "threshold": float(_scenario_exacta_target),
-                "max_exacta_prob": _max_ep,
-                "reason": "2車単100%基準未満",
-            })
-            continue
-
-        # 基準通過後は既存B選定と同じく、軸との2車複想定的中率最大を採用する。
-        _shit, _shit_row = _select_hit_himo(_qualified_hit_candidates)
-        if _shit is None:
-            _expected_scenarios.append({
-                "axis": _ev_axis,
-                "hit_himo": None,
-                "value_himos": [],
-                "rows": _srows,
-                "threshold": float(_scenario_exacta_target),
-                "reason": "的中ヒモ算出不可",
-            })
-            continue
-
-        _svalues, _svalue_rows, _starget = _select_value_himos(
-            _scandidates,
-            _shit,
-            len(_cars),
-        )
-        _expected_scenarios.append({
-            "axis": _ev_axis,
-            "hit_himo": int(_shit),
-            "hit_row": _shit_row,
-            "value_himos": [int(c) for c in _svalues],
-            "value_rows": list(_svalue_rows),
-            "target": float(_starget),
-            "threshold": float(_scenario_exacta_target),
-            "rows": _srows,
-            "p1": _sp1,
-            "p2": _sp2,
-            "p3": _sp3,
-            "reason": "",
+        _dd = _distribution_band_v335fz("2車単", _ep)
+        _direction_candidates_v335fz.append({
+            "first": int(_first),
+            "second": int(_second),
+            "prob": None if _ep is None else float(_ep),
+            "theoretical_odds": _dd.get("theoretical_odds"),
+            "band": _dd.get("band"),
+            "hit_share": float(_dd.get("hit_share", 0.0) or 0.0),
+            "score": float(_dd.get("selection_score", -1.0) or -1.0),
+            "base_pref": int(_base_pref),
         })
 
-    _lines.append("")
-    _lines.append("【基本買目からの期待値軸買目】")
-
-    if not _expected_scenarios:
-        _lines.append("期待値軸なし")
-    else:
-        # 期待値軸の公開買目は3連単のみ。
-        # 1・2着（E→B）の選定自体は従来どおり2車単100%基準を内部で使用する。
-        _lines.append("3連単")
-        for _sc in _expected_scenarios:
-            _ea = int(_sc.get("axis"))
-            _eh = _sc.get("hit_himo")
-
-            if _eh is None:
-                _reason = str(_sc.get("reason") or "算出不可")
-                if _reason == "2車単100%基準未満":
-                    _th = _sc.get("threshold")
-                    _mx = _sc.get("max_exacta_prob")
-                    if _th is not None and _mx is not None:
-                        _lines.append(
-                            f"{_ea}軸：該当なし（1・2着候補 最大 {_prob_text(_mx)}／基準 {_prob_text(_th)}）"
-                        )
-                    elif _th is not None:
-                        _lines.append(
-                            f"{_ea}軸：該当なし（1・2着候補 基準 {_prob_text(_th)}未満）"
-                        )
-                    else:
-                        _lines.append(f"{_ea}軸：該当なし")
-                else:
-                    _lines.append(f"{_ea}軸：{_reason}")
-                continue
-
-            _value_himos = [int(c) for c in (_sc.get("value_himos") or [])]
-            if not _value_himos:
-                _lines.append(f"{_ea}軸：期待値指数100%以上の3着候補なし")
-                continue
-
-            _sp1 = _sc.get("p1", {}) or {}
-            _sp2 = _sc.get("p2", {}) or {}
-            _sp3 = _sc.get("p3", {}) or {}
-            for _c in _value_himos:
-                _tp = _trifecta_prob_with(
-                    _ea, int(_eh), int(_c), _sp1, _sp2, _sp3
-                )
-                _lines.append(
-                    f"{_ea}-{int(_eh)}-{int(_c)}（想定的中率 {_prob_text(_tp)}）"
-                )
-
-    _lines.append("")
-    _lines.append(
-        "※期待値軸買目は、オッズや資金配分に応じて、1・2着を2車単、3車を3連複へ券種変換して購入してください。"
+    _direction_candidates_v335fz.sort(
+        key=lambda r: (
+            -float(r.get("score", -1.0)),
+            -float(r.get("prob", -1.0) if r.get("prob") is not None else -1.0),
+            -int(r.get("base_pref", 0)),
+            int(r.get("first", 99)),
+            int(r.get("second", 99)),
+        )
     )
+    _dir_v335fz = _direction_candidates_v335fz[0]
+
+    _first_v335fz = int(_dir_v335fz["first"])
+    _second_v335fz = int(_dir_v335fz["second"])
+    _exacta_prob_v335fz = _dir_v335fz.get("prob")
+
+    _lines.append("2車単")
+    _lines.append(
+        f"{_first_v335fz}-{_second_v335fz}"
+        f"（想定的中率 {_prob_text(_exacta_prob_v335fz)}"
+        f"／{_selection_diag_v335fz('2車単', _exacta_prob_v335fz)}）"
+    )
+
+    # 折り返し比較は検証用に1行だけ残す。
+    _other_dir_v335fz = _direction_candidates_v335fz[1]
+    _lines.append(
+        "※方向比較 "
+        f"{int(_dir_v335fz['first'])}-{int(_dir_v335fz['second'])}"
+        f"={float(_dir_v335fz['score']) * 100.0:.4f}"
+        " ＞ "
+        f"{int(_other_dir_v335fz['first'])}-{int(_other_dir_v335fz['second'])}"
+        f"={float(_other_dir_v335fz['score']) * 100.0:.4f}"
+    )
+
+    # ---------------------------------------------------------
+    # 3着候補
+    # 決定した1・2着を固定し、残る全車を対象に
+    #   内部3連単想定的中率 × 3連単配当数割合
+    # で順位付け。上位2車だけを採用する。
+    # ---------------------------------------------------------
+    _third_rows_v335fz = []
+    for _c in _cars:
+        _c = int(_c)
+        if _c in (_first_v335fz, _second_v335fz):
+            continue
+
+        _tp = _trifecta_prob_with(
+            _first_v335fz,
+            _second_v335fz,
+            _c,
+            _p1_map,
+            _p2_map,
+            _p3_map,
+        )
+        _td = _distribution_band_v335fz("3連単", _tp)
+
+        _third_rows_v335fz.append({
+            "car": int(_c),
+            "prob": None if _tp is None else float(_tp),
+            "theoretical_odds": _td.get("theoretical_odds"),
+            "band": _td.get("band"),
+            "hit_share": float(_td.get("hit_share", 0.0) or 0.0),
+            "score": float(_td.get("selection_score", -1.0) or -1.0),
+        })
+
+    _third_rows_v335fz.sort(
+        key=lambda r: (
+            -float(r.get("score", -1.0)),
+            -float(r.get("prob", -1.0) if r.get("prob") is not None else -1.0),
+            int(r.get("car", 99)),
+        )
+    )
+
+    _third_selected_v335fz = list(_third_rows_v335fz[:2])
+
+    _lines.append("")
+    _lines.append("3連単")
+
+    if len(_third_selected_v335fz) >= 1:
+        for _r in _third_selected_v335fz:
+            _c = int(_r["car"])
+            _tp = _r.get("prob")
+            _lines.append(
+                f"{_first_v335fz}-{_second_v335fz}-{_c}"
+                f"（想定的中率 {_prob_text(_tp)}"
+                f"／{_selection_diag_v335fz('3連単', _tp)}）"
+            )
+    else:
+        _lines.append("3着候補算出不可")
+
+    _lines.append("")
+    _lines.append("計3点" if len(_third_selected_v335fz) >= 2 else f"計{1 + len(_third_selected_v335fz)}点")
+    _lines.append(
+        "※◎・◯の2車は従来ロジックで固定し、1・2着方向と3着2車だけを内部想定的中率×配当数分布で選抜しています。"
+    )
+    _lines.append(
+        "※配当数分布は2017～2019年のS級・A1/A2班・9車立て集計です。実オッズ入力は使用していません。"
+    )
+
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
