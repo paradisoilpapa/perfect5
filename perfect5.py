@@ -1,3 +1,12 @@
+# v335gd（印再整理・▲配当適合／△期待値／×参考穴版）
+# ・◎=軸、○=現行ヒモ。
+# ・▲=配当適合車。「◎→候補の内部2車単想定的中率×9車換算後配当数割合」が最大の車。
+# ・▲は候補内1位を100とする「配当適合指数」で表示する。
+# ・△=期待値指数100%以上の期待値車。◎○▲との重複は除外して次候補へスライドする。
+# ・×=参考穴。◎○▲△を除いた期待値100%以上候補のうち期待値指数最大。買目には使用しない。
+# ・買目は2車単◎→○▲△、3連複◎-○▲△、3連単◎→○→▲△。
+# ・△不在時のみ、3車確保のため配当適合順位の次点を内部補完する。
+# ・券種別★☆表示と9車換算・配当分布の内部処理はv335gcから維持する。
 # v335gc（券種別おすすめ・2車単3点＋3連複3点＋本線3連単2点版）
 # ・◎を1着軸に固定する。
 # ・相手3車は「現行ヒモ○」「期待値▲」「配当分布×内部2車単確率による最適1車」。
@@ -3684,21 +3693,23 @@ def _v335fl_allow_value_quinella(hit_prob, value_prob):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335gc：券種別おすすめを生成する。
+    """v335gd：印の役割と券種別おすすめを生成する。
 
-    ◎を1着軸に固定。
-    相手3車:
-      B = 現行ヒモ○
-      C = 期待値▲
-      D = 残りから「◎→候補の2車単内部確率×配当数分布」で最適な1車
-    ▲不在時は同じ表選抜で不足分を補完して3車を確保する。
+    ◎ = 軸
+    ○ = 現行ヒモ
+    ▲ = 配当適合車
+        ◎→候補の内部2車単想定的中率×9車換算後配当数割合が最大。
+    △ = 期待値車
+        期待値指数100%以上から◎○▲との重複を除いて採用。
+    × = 参考穴
+        買目には使わず、残る期待値候補の中で期待値指数最大。
 
-    出力:
-      2車単 = ◎→B/C/D の3点
-      3連複 = ◎-BC / ◎-BD / ◎-CD の3点
-      3連単 = ◎→○→C/D の2点
+    買目:
+      2車単 = ◎→○ / ◎→▲ / ◎→△
+      3連複 = ◎-○-▲ / ◎-○-△ / ◎-▲-△
+      3連単 = ◎→○→▲ / ◎→○→△
 
-    ▲/×評価表示および既存の9車換算・配当分布計算は残す。
+    △不在時だけ配当適合順位の次点で買目3車を補完する。
     """
     if not isinstance(profile, dict):
         return None
@@ -4479,42 +4490,15 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         for _r in _myoumi_rows
     ]
 
-    _lines.append(
-        f"◎　{int(_axis)}　軸指数　　　{int(_axis_rank_v335fs)}位・{float(_axis_index_v335fs):.1f}"
-    )
-    _lines.append(
-        f"◯　{int(_hit_himo)}　連対指数　　{int(_hit_rank_v335fs)}位・"
-        + ("算出不可" if _hit_pair_prob_v335fs < 0.0 else f"{_hit_pair_prob_v335fs * 100.0:.1f}%")
-    )
-    if len(_myoumi_himos) >= 1:
-        _lines.append(
-            f"▲　{int(_myoumi_himos[0])}　期待値指数　"
-            + ("算出不可" if _ev_values_v335ft[0] is None else f"{float(_ev_values_v335ft[0]):.1f}%")
-        )
-    else:
-        _lines.append("▲　該当なし　期待値指数　100%以上なし")
-
-    if len(_myoumi_himos) >= 2:
-        _lines.append(
-            f"×　{int(_myoumi_himos[1])}　期待値指数　"
-            + ("算出不可" if _ev_values_v335ft[1] is None else f"{float(_ev_values_v335ft[1]):.1f}%")
-        )
-    else:
-        _lines.append("×　該当なし　期待値指数　100%以上なし")
-
-    _lines.append("")
-    _lines.append("【ヴェロビ分析・券種別オススメ】")
 
     # ---------------------------------------------------------
-    # 相手3車
-    # B = 現行ヒモ○
-    # C = 期待値▲
-    # D = 残り車から配当分布×内部2車単確率で最適
-    # ▲不在時は表選抜上位から不足分を補完する。
+    # v335gd：印の役割を先に確定する
     # ---------------------------------------------------------
     _axis_gc = int(_axis)
     _b_gc = int(_hit_himo)
 
+    # 全候補の「配当適合」評価。
+    # ○は役割が確定しているため、▲選定から除外する。
     _table_rows_gc = []
     for _c in _cars:
         _c = int(_c)
@@ -4538,32 +4522,159 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         )
     )
 
+    # ▲：配当適合車
+    _triangle_gc = None
+    _triangle_score_gc = None
+    if _table_rows_gc:
+        _triangle_gc = int(_table_rows_gc[0]["car"])
+        _triangle_score_gc = float(_table_rows_gc[0].get("score", 0.0) or 0.0)
+
+    # 配当適合指数：候補内最高=100。
+    _triangle_fit_index_gc = None
+    if _triangle_gc is not None and _triangle_score_gc is not None:
+        _max_fit_gc = max(
+            [float(r.get("score", 0.0) or 0.0) for r in _table_rows_gc] or [0.0]
+        )
+        if _max_fit_gc > 0.0:
+            _triangle_fit_index_gc = (
+                float(_triangle_score_gc) / float(_max_fit_gc)
+            ) * 100.0
+
+    # 期待値指数を全候補について作る。
+    _ev_candidate_rows_gd = []
+    for _r in _candidate_rows:
+        try:
+            _car_gd = int(_r.get("car"))
+            _ev_gd = _ev_index_v335fs(
+                _r, _MYOUMI_TARGET_EXACTA_V335FP
+            )
+        except Exception:
+            continue
+        if _ev_gd is None or float(_ev_gd) < 100.0:
+            continue
+        _ev_candidate_rows_gd.append({
+            "car": _car_gd,
+            "ev": float(_ev_gd),
+            "row": _r,
+        })
+
+    # △：従来▲と同じ「100%への超過が小さい側」。
+    # ただし◎○▲との重複は除外する。
+    _delta_gc = None
+    _delta_ev_gc = None
+    _ev_near100_gd = sorted(
+        _ev_candidate_rows_gd,
+        key=lambda r: (
+            abs(float(r["ev"]) - 100.0),
+            float(r["ev"]),
+            int(r["car"]),
+        )
+    )
+    for _r in _ev_near100_gd:
+        _cand = int(_r["car"])
+        if _cand in (_axis_gc, _b_gc):
+            continue
+        if _triangle_gc is not None and _cand == int(_triangle_gc):
+            continue
+        _delta_gc = _cand
+        _delta_ev_gc = float(_r["ev"])
+        break
+
+    # ×：参考穴。買目には使用しない。
+    # 残りの期待値100%以上候補から期待値指数最大。
+    _x_gc = None
+    _x_ev_gc = None
+    _ev_hole_gd = sorted(
+        _ev_candidate_rows_gd,
+        key=lambda r: (
+            -float(r["ev"]),
+            int(r["car"]),
+        )
+    )
+    for _r in _ev_hole_gd:
+        _cand = int(_r["car"])
+        if _cand in (_axis_gc, _b_gc):
+            continue
+        if _triangle_gc is not None and _cand == int(_triangle_gc):
+            continue
+        if _delta_gc is not None and _cand == int(_delta_gc):
+            continue
+        _x_gc = _cand
+        _x_ev_gc = float(_r["ev"])
+        break
+
+    # ---------------------------------------------------------
+    # 公開評価表示
+    # ---------------------------------------------------------
+    _lines.append(
+        f"◎　{int(_axis)}　軸指数　　　　{int(_axis_rank_v335fs)}位・{float(_axis_index_v335fs):.1f}"
+    )
+    _lines.append(
+        f"○　{int(_hit_himo)}　連対指数　　　{int(_hit_rank_v335fs)}位・"
+        + ("算出不可" if _hit_pair_prob_v335fs < 0.0 else f"{_hit_pair_prob_v335fs * 100.0:.1f}%")
+    )
+
+    if _triangle_gc is not None:
+        _lines.append(
+            f"▲　{int(_triangle_gc)}　配当適合指数　"
+            + (
+                "算出不可"
+                if _triangle_fit_index_gc is None
+                else f"1位・{float(_triangle_fit_index_gc):.1f}"
+            )
+        )
+    else:
+        _lines.append("▲　該当なし　配当適合指数　算出不可")
+
+    if _delta_gc is not None:
+        _lines.append(
+            f"△　{int(_delta_gc)}　期待値指数　　{float(_delta_ev_gc):.1f}%"
+        )
+    else:
+        _lines.append("△　該当なし　期待値指数　100%以上なし")
+
+    if _x_gc is not None:
+        _lines.append(
+            f"×　{int(_x_gc)}　穴期待値指数　{float(_x_ev_gc):.1f}%"
+        )
+    else:
+        _lines.append("×　該当なし　穴期待値指数　参考穴なし")
+
+    _lines.append("")
+    _lines.append("【ヴェロビ分析・券種別オススメ】")
+
+    # ---------------------------------------------------------
+    # 買目相手3車
+    # ○ + ▲ + △ を原則とする。
+    # △不在時だけ、配当適合順位の次点で3車を補完する。
+    # ×は参考印だけで買目には使わない。
+    # ---------------------------------------------------------
     _opponents_gc = [_b_gc]
 
-    # C = 期待値▲
-    _c_gc = None
-    if len(_myoumi_himos) >= 1:
-        try:
-            _cand = int(_myoumi_himos[0])
-            if _cand != _axis_gc and _cand not in _opponents_gc:
-                _c_gc = _cand
-                _opponents_gc.append(_cand)
-        except Exception:
-            _c_gc = None
+    if _triangle_gc is not None and int(_triangle_gc) not in _opponents_gc:
+        _opponents_gc.append(int(_triangle_gc))
 
-    # D、および▲不在時の不足分 = 表選抜
+    if _delta_gc is not None and int(_delta_gc) not in _opponents_gc:
+        _opponents_gc.append(int(_delta_gc))
+
+    # △不在などで3車に満たない場合だけ、配当適合順位から補完。
     for _r in _table_rows_gc:
         _cand = int(_r["car"])
         if _cand == _axis_gc or _cand in _opponents_gc:
+            continue
+        if _x_gc is not None and _cand == int(_x_gc):
+            # ×は「買目に入らない参考穴」を厳守する。
             continue
         _opponents_gc.append(_cand)
         if len(_opponents_gc) >= 3:
             break
 
-    # 念のため、表選抜で不足した場合は残車を車番順に補完
+    # それでも不足時は残車から補完。ただし×は除外。
     if len(_opponents_gc) < 3:
         for _c in sorted(int(x) for x in _cars):
             if _c == _axis_gc or _c in _opponents_gc:
+                continue
+            if _x_gc is not None and _c == int(_x_gc):
                 continue
             _opponents_gc.append(_c)
             if len(_opponents_gc) >= 3:
