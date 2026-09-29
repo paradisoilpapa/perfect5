@@ -1,10 +1,14 @@
-# v335gb（券種別★☆簡潔表示版）
-# ・v335gaの買目選抜ロジックは変更しない。
-# ・公開表示の長い理論オッズ／9車換算／配当帯／配当数割合／選抜値／方向比較説明を省略する。
+# v335gc（券種別おすすめ・2車単3点＋3連複3点＋本線3連単2点版）
+# ・◎を1着軸に固定する。
+# ・相手3車は「現行ヒモ○」「期待値▲」「配当分布×内部2車単確率による最適1車」。
+# ・期待値▲が無い場合は、配当分布×内部2車単確率の上位から不足分を補完する。
+# ・2車単は◎→相手3車の3点。
+# ・3連複は◎-相手3車から2車選択の3点。
+# ・3連単は本線として◎→○→残り2車の2点。
 # ・券種見出しに「的中★」「妙味☆」を表示する。
-# ・的中: 10%以上=★★★、1%以上10%未満=★★、1%未満=★。
-# ・妙味: 理論オッズ30倍以上=☆☆☆、10倍以上30倍未満=☆☆、10倍未満=☆。
-# ・妙味判定の理論オッズは内部想定的中率pの逆数1/pを使用し、9車換算値ではない。
+# ・的中: 券種内の想定的中率合計が10%以上=★★★、1%以上10%未満=★★、1%未満=★。
+# ・妙味: 等額買いの理論平均配当(点数÷券種内想定的中率合計)が30倍以上=☆☆☆、10倍以上30倍未満=☆☆、10倍未満=☆。
+# ・9車換算・配当数分布は相手選抜の内部処理として維持し、公開表示は簡潔化する。
 # v335ga（9車換算・配当分布3点固定版）
 # ・v335fzの◎/◯選定、1-2/2-1比較、3着全車比較、最終3点固定は変更しない。
 # ・外部の配当数分布が9車立て集計のため、理論オッズを9車相当に正規化してから配当帯へ照合する。
@@ -3680,21 +3684,21 @@ def _v335fl_allow_value_quinella(hit_prob, value_prob):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335fz：◎/◯の2車を固定し、配当分布補正で最終3点へ絞る。
+    """v335gc：券種別おすすめを生成する。
 
-    1) ◎と◯の選定は従来ロジックを維持。
-    2) ◎→◯ と ◯→◎ の2車単を両方内部計算。
-    3) 各方向を
-         2車単想定的中率 × その理論オッズ帯の2車単配当数割合
-       で比較し、1・2着方向を1本へ決定。
-    4) 決定した1・2着を固定し、残る全車を3着候補として3連単を計算。
-    5) 各3着候補を
-         3連単想定的中率 × その理論オッズ帯の3連単配当数割合
-       で比較し、上位2車だけ採用。
-    6) 最終買目は2車単1点＋3連単2点＝計3点固定。
+    ◎を1着軸に固定。
+    相手3車:
+      B = 現行ヒモ○
+      C = 期待値▲
+      D = 残りから「◎→候補の2車単内部確率×配当数分布」で最適な1車
+    ▲不在時は同じ表選抜で不足分を補完して3車を確保する。
 
-    ▲/×の期待値指数は評価表示として維持するが、
-    想定的中率由来の情報を二重加点しないため最終3点の選抜値には直接掛けない。
+    出力:
+      2車単 = ◎→B/C/D の3点
+      3連複 = ◎-BC / ◎-BD / ◎-CD の3点
+      3連単 = ◎→○→C/D の2点
+
+    ▲/×評価表示および既存の9車換算・配当分布計算は残す。
     """
     if not isinstance(profile, dict):
         return None
@@ -3912,26 +3916,72 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         return "算出不可" if _prob is None else f"{float(_prob) * 100.0:.2f}%"
 
 
-    # v335gb：公開表示用の券種別★☆評価。
-    def _hit_stars_v335gb(_prob):
+    def _trio_prob_with_v335gc(_a, _b, _c, _p1, _p2, _p3):
+        """3連複3車の順列6通りを合算した内部想定的中率。"""
         try:
-            _pct = float(_prob) * 100.0
+            _a, _b, _c = int(_a), int(_b), int(_c)
+            _orders = (
+                (_a, _b, _c), (_a, _c, _b),
+                (_b, _a, _c), (_b, _c, _a),
+                (_c, _a, _b), (_c, _b, _a),
+            )
+            _total = 0.0
+            for _ticket in _orders:
+                _v = _v335br_ticket_probability(_ticket, _p1, _p2, _p3)
+                _total += max(0.0, float(_v))
+            return max(0.0, min(1.0, float(_total)))
         except Exception:
+            return None
+
+    def _group_hit_prob_v335gc(_probs):
+        _total = 0.0
+        _has = False
+        for _p in (_probs or []):
+            if _p is None:
+                continue
+            try:
+                _v = float(_p)
+            except Exception:
+                continue
+            if _v < 0.0:
+                continue
+            _total += _v
+            _has = True
+        return float(_total) if _has else None
+
+    def _hit_stars_v335gc(_group_prob):
+        if _group_prob is None:
             return "★"
+        _pct = float(_group_prob) * 100.0
         if _pct >= 10.0:
             return "★★★"
         if _pct >= 1.0:
             return "★★"
         return "★"
 
-    def _value_stars_v335gb(_prob):
-        try:
-            _p = float(_prob)
-        except Exception:
+    def _group_theoretical_odds_v335gc(_probs):
+        """等額買いグループの理論平均配当 = 点数 / 合計的中率。"""
+        _valid = []
+        for _p in (_probs or []):
+            if _p is None:
+                continue
+            try:
+                _v = float(_p)
+            except Exception:
+                continue
+            if _v > 0.0:
+                _valid.append(_v)
+        if not _valid:
+            return None
+        _sum = sum(_valid)
+        if _sum <= 0.0:
+            return None
+        return float(len(_valid)) / float(_sum)
+
+    def _value_stars_v335gc(_probs):
+        _odds = _group_theoretical_odds_v335gc(_probs)
+        if _odds is None:
             return "☆"
-        if _p <= 0.0:
-            return "☆"
-        _odds = 1.0 / _p
         if _odds >= 30.0:
             return "☆☆☆"
         if _odds >= 10.0:
@@ -4453,95 +4503,34 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("×　該当なし　期待値指数　100%以上なし")
 
     _lines.append("")
-    _lines.append("【ヴェロビ分析による3点買目】")
+    _lines.append("【ヴェロビ分析・券種別オススメ】")
 
     # ---------------------------------------------------------
-    # 1・2着方向
-    # ◎と◯の2車自体は現行ロジックで確定済み。
-    # ◎→◯ / ◯→◎ の両方向を
-    #   内部2車単想定的中率 × 2車単配当数割合
-    # で比較し、1方向だけ採用する。
+    # 相手3車
+    # B = 現行ヒモ○
+    # C = 期待値▲
+    # D = 残り車から配当分布×内部2車単確率で最適
+    # ▲不在時は表選抜上位から不足分を補完する。
     # ---------------------------------------------------------
-    _direction_candidates_v335fz = []
+    _axis_gc = int(_axis)
+    _b_gc = int(_hit_himo)
 
-    for _first, _second, _base_pref in (
-        (int(_axis), int(_hit_himo), 1),   # 完全同値なら従来の◎→◯を優先
-        (int(_hit_himo), int(_axis), 0),
-    ):
-        _ep = _exacta_prob_with(
-            _first, _second, _p1_map, _p2_map, _p3_map
-        )
-        _dd = _distribution_band_v335fz("2車単", _ep)
-        _direction_candidates_v335fz.append({
-            "first": int(_first),
-            "second": int(_second),
-            "prob": None if _ep is None else float(_ep),
-            "theoretical_odds": _dd.get("theoretical_odds"),
-            "band": _dd.get("band"),
-            "hit_share": float(_dd.get("hit_share", 0.0) or 0.0),
-            "score": float(_dd.get("selection_score", -1.0) or -1.0),
-            "base_pref": int(_base_pref),
-        })
-
-    _direction_candidates_v335fz.sort(
-        key=lambda r: (
-            -float(r.get("score", -1.0)),
-            -float(r.get("prob", -1.0) if r.get("prob") is not None else -1.0),
-            -int(r.get("base_pref", 0)),
-            int(r.get("first", 99)),
-            int(r.get("second", 99)),
-        )
-    )
-    _dir_v335fz = _direction_candidates_v335fz[0]
-
-    _first_v335fz = int(_dir_v335fz["first"])
-    _second_v335fz = int(_dir_v335fz["second"])
-    _exacta_prob_v335fz = _dir_v335fz.get("prob")
-
-    _lines.append(
-        f"2車単　的中{_hit_stars_v335gb(_exacta_prob_v335fz)}　"
-        f"妙味{_value_stars_v335gb(_exacta_prob_v335fz)}"
-    )
-    _lines.append(
-        f"{_first_v335fz}-{_second_v335fz}"
-        f"（想定的中率 {_prob_text(_exacta_prob_v335fz)}）"
-    )
-
-    # 方向比較の内部計算は維持するが、公開表示はしない。
-    _other_dir_v335fz = _direction_candidates_v335fz[1]
-
-    # ---------------------------------------------------------
-    # 3着候補
-    # 決定した1・2着を固定し、残る全車を対象に
-    #   内部3連単想定的中率 × 3連単配当数割合
-    # で順位付け。上位2車だけを採用する。
-    # ---------------------------------------------------------
-    _third_rows_v335fz = []
+    _table_rows_gc = []
     for _c in _cars:
         _c = int(_c)
-        if _c in (_first_v335fz, _second_v335fz):
+        if _c in (_axis_gc, _b_gc):
             continue
-
-        _tp = _trifecta_prob_with(
-            _first_v335fz,
-            _second_v335fz,
-            _c,
-            _p1_map,
-            _p2_map,
-            _p3_map,
+        _ep = _exacta_prob_with(
+            _axis_gc, _c, _p1_map, _p2_map, _p3_map
         )
-        _td = _distribution_band_v335fz("3連単", _tp)
-
-        _third_rows_v335fz.append({
+        _dd = _distribution_band_v335fz("2車単", _ep)
+        _table_rows_gc.append({
             "car": int(_c),
-            "prob": None if _tp is None else float(_tp),
-            "theoretical_odds": _td.get("theoretical_odds"),
-            "band": _td.get("band"),
-            "hit_share": float(_td.get("hit_share", 0.0) or 0.0),
-            "score": float(_td.get("selection_score", -1.0) or -1.0),
+            "prob": None if _ep is None else float(_ep),
+            "score": float(_dd.get("selection_score", -1.0) or -1.0),
         })
 
-    _third_rows_v335fz.sort(
+    _table_rows_gc.sort(
         key=lambda r: (
             -float(r.get("score", -1.0)),
             -float(r.get("prob", -1.0) if r.get("prob") is not None else -1.0),
@@ -4549,30 +4538,137 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         )
     )
 
-    _third_selected_v335fz = list(_third_rows_v335fz[:2])
+    _opponents_gc = [_b_gc]
+
+    # C = 期待値▲
+    _c_gc = None
+    if len(_myoumi_himos) >= 1:
+        try:
+            _cand = int(_myoumi_himos[0])
+            if _cand != _axis_gc and _cand not in _opponents_gc:
+                _c_gc = _cand
+                _opponents_gc.append(_cand)
+        except Exception:
+            _c_gc = None
+
+    # D、および▲不在時の不足分 = 表選抜
+    for _r in _table_rows_gc:
+        _cand = int(_r["car"])
+        if _cand == _axis_gc or _cand in _opponents_gc:
+            continue
+        _opponents_gc.append(_cand)
+        if len(_opponents_gc) >= 3:
+            break
+
+    # 念のため、表選抜で不足した場合は残車を車番順に補完
+    if len(_opponents_gc) < 3:
+        for _c in sorted(int(x) for x in _cars):
+            if _c == _axis_gc or _c in _opponents_gc:
+                continue
+            _opponents_gc.append(_c)
+            if len(_opponents_gc) >= 3:
+                break
+
+    _opponents_gc = _opponents_gc[:3]
+
+    # ---------------------------------------------------------
+    # 2車単 ◎→相手3車
+    # ---------------------------------------------------------
+    _exacta_rows_gc = []
+    for _opp in _opponents_gc:
+        _ep = _exacta_prob_with(
+            _axis_gc, int(_opp), _p1_map, _p2_map, _p3_map
+        )
+        _exacta_rows_gc.append({
+            "opp": int(_opp),
+            "prob": None if _ep is None else float(_ep),
+        })
+
+    _exacta_probs_gc = [r["prob"] for r in _exacta_rows_gc]
+    _exacta_group_prob_gc = _group_hit_prob_v335gc(_exacta_probs_gc)
 
     _lines.append("")
-
-    if len(_third_selected_v335fz) >= 1:
-        # 券種見出しの★☆は、表示順位1位の3連単を代表値として判定する。
-        _tri_rep_prob_v335gb = _third_selected_v335fz[0].get("prob")
+    _lines.append(
+        f"2車単　的中{_hit_stars_v335gc(_exacta_group_prob_gc)}　"
+        f"妙味{_value_stars_v335gc(_exacta_probs_gc)}"
+    )
+    for _r in _exacta_rows_gc:
         _lines.append(
-            f"3連単　的中{_hit_stars_v335gb(_tri_rep_prob_v335gb)}　"
-            f"妙味{_value_stars_v335gb(_tri_rep_prob_v335gb)}"
+            f"{_axis_gc}-{int(_r['opp'])}"
+            f"（想定的中率 {_prob_text(_r['prob'])}）"
         )
-        for _r in _third_selected_v335fz:
-            _c = int(_r["car"])
-            _tp = _r.get("prob")
+
+    # ---------------------------------------------------------
+    # 3連複 ◎-相手3車から2車 = 3点
+    # ---------------------------------------------------------
+    _trio_rows_gc = []
+    if len(_opponents_gc) >= 3:
+        _b1, _b2, _b3 = [int(x) for x in _opponents_gc[:3]]
+        for _x, _y in ((_b1, _b2), (_b1, _b3), (_b2, _b3)):
+            _qp = _trio_prob_with_v335gc(
+                _axis_gc, _x, _y, _p1_map, _p2_map, _p3_map
+            )
+            _trio_rows_gc.append({
+                "x": int(_x),
+                "y": int(_y),
+                "prob": None if _qp is None else float(_qp),
+            })
+
+    _trio_probs_gc = [r["prob"] for r in _trio_rows_gc]
+    _trio_group_prob_gc = _group_hit_prob_v335gc(_trio_probs_gc)
+
+    _lines.append("")
+    _lines.append(
+        f"3連複　的中{_hit_stars_v335gc(_trio_group_prob_gc)}　"
+        f"妙味{_value_stars_v335gc(_trio_probs_gc)}"
+    )
+    if _trio_rows_gc:
+        for _r in _trio_rows_gc:
+            _cars_sorted = sorted((_axis_gc, int(_r["x"]), int(_r["y"])))
             _lines.append(
-                f"{_first_v335fz}-{_second_v335fz}-{_c}"
-                f"（想定的中率 {_prob_text(_tp)}）"
+                f"{_cars_sorted[0]}-{_cars_sorted[1]}-{_cars_sorted[2]}"
+                f"（想定的中率 {_prob_text(_r['prob'])}）"
             )
     else:
-        _lines.append("3連単　的中★　妙味☆")
-        _lines.append("3着候補算出不可")
+        _lines.append("算出不可")
+
+    # ---------------------------------------------------------
+    # 3連単本線 ◎→○→残り2車
+    # B=○、C/D=その他2車
+    # ---------------------------------------------------------
+    _trifecta_rows_gc = []
+    if len(_opponents_gc) >= 3:
+        _b_gc = int(_opponents_gc[0])  # 現行ヒモ○
+        for _third_gc in (int(_opponents_gc[1]), int(_opponents_gc[2])):
+            _tp = _trifecta_prob_with(
+                _axis_gc,
+                _b_gc,
+                _third_gc,
+                _p1_map,
+                _p2_map,
+                _p3_map,
+            )
+            _trifecta_rows_gc.append({
+                "third": int(_third_gc),
+                "prob": None if _tp is None else float(_tp),
+            })
+
+    _trifecta_probs_gc = [r["prob"] for r in _trifecta_rows_gc]
+    _trifecta_group_prob_gc = _group_hit_prob_v335gc(_trifecta_probs_gc)
 
     _lines.append("")
-    _lines.append("計3点" if len(_third_selected_v335fz) >= 2 else f"計{1 + len(_third_selected_v335fz)}点")
+    _lines.append(
+        f"3連単　的中{_hit_stars_v335gc(_trifecta_group_prob_gc)}　"
+        f"妙味{_value_stars_v335gc(_trifecta_probs_gc)}"
+    )
+    if _trifecta_rows_gc:
+        for _r in _trifecta_rows_gc:
+            _lines.append(
+                f"{_axis_gc}-{_b_gc}-{int(_r['third'])}"
+                f"（想定的中率 {_prob_text(_r['prob'])}）"
+            )
+    else:
+        _lines.append("算出不可")
 
     return _lines
 
