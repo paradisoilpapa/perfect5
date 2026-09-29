@@ -1,3 +1,11 @@
+# v335ga（9車換算・配当分布3点固定版）
+# ・v335fzの◎/◯選定、1-2/2-1比較、3着全車比較、最終3点固定は変更しない。
+# ・外部の配当数分布が9車立て集計のため、理論オッズを9車相当に正規化してから配当帯へ照合する。
+# ・2車単換算係数 = 72 / [n×(n-1)]。
+# ・3連単換算係数 = 504 / [n×(n-1)×(n-2)]。
+# ・選抜値は従来どおり「ヴェロビ内部想定的中率 × 9車換算後の該当配当帯の配当数割合」。
+# ・内部想定的中率そのものは変更しない。
+# ・実オッズ入力は使用しない。
 # v335fz（配当分布×内部的中率・3点固定版）
 # ・◎/◯の2車選定、想定着順、流れ比率、確率モデルはv335fyから変更しない。
 # ・最終買目は2車単1点＋3連単2点＝計3点固定。
@@ -3946,8 +3954,27 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         ("9999.9～",       float("inf"), 0.08),
     )
 
+    def _nine_car_odds_factor_v335ga(_ticket_type, _n_cars):
+        """当該車立ての理論オッズを9車立て相当へ正規化する係数。"""
+        try:
+            _n = int(_n_cars)
+        except Exception:
+            return 1.0
+
+        if str(_ticket_type) == "2車単":
+            if _n < 2:
+                return 1.0
+            _den = float(_n * (_n - 1))
+            return 72.0 / _den if _den > 0.0 else 1.0
+
+        # 3連単
+        if _n < 3:
+            return 1.0
+        _den = float(_n * (_n - 1) * (_n - 2))
+        return 504.0 / _den if _den > 0.0 else 1.0
+
     def _distribution_band_v335fz(_ticket_type, _prob):
-        """想定的中率p→理論オッズ1/p→該当配当帯・配当数割合。"""
+        """想定的中率p→理論オッズ→9車換算→該当配当帯・配当数割合。"""
         try:
             _p = float(_prob)
         except Exception:
@@ -3956,12 +3983,24 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         if _p <= 0.0:
             return {
                 "theoretical_odds": None,
+                "nine_car_odds": None,
+                "nine_car_factor": 1.0,
                 "band": None,
                 "hit_share": 0.0,
                 "selection_score": -1.0,
             }
 
         _odds = 1.0 / _p
+        try:
+            _n_cars_v335ga = len(_cars)
+        except Exception:
+            _n_cars_v335ga = 9
+
+        _factor = _nine_car_odds_factor_v335ga(
+            _ticket_type, _n_cars_v335ga
+        )
+        _nine_car_odds = float(_odds) * float(_factor)
+
         _table = (
             _PAYOUT_HIT_SHARE_EXACTA_V335FZ
             if str(_ticket_type) == "2車単"
@@ -3971,7 +4010,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _label = None
         _share = 0.0
         for _band_label, _upper, _hit_share in _table:
-            if float(_odds) < float(_upper):
+            if float(_nine_car_odds) < float(_upper):
                 _label = str(_band_label)
                 _share = float(_hit_share)
                 break
@@ -3980,12 +4019,14 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _label = str(_table[-1][0])
             _share = float(_table[-1][2])
 
-        # 配当数割合は百分率なので /100。
-        # この値は確率ではなく「内部想定的中率×歴史的配当帯の厚み」の選抜値。
+        # 内部想定的中率はそのまま。
+        # 配当帯だけ9車相当に正規化して、9車立て配当分布と比較する。
         _score = float(_p) * (float(_share) / 100.0)
 
         return {
             "theoretical_odds": float(_odds),
+            "nine_car_odds": float(_nine_car_odds),
+            "nine_car_factor": float(_factor),
             "band": _label,
             "hit_share": float(_share),
             "selection_score": float(_score),
@@ -3997,6 +4038,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             return "配当分布算出不可"
         return (
             f"理論オッズ {float(_d['theoretical_odds']):.1f}倍"
+            f"／9車換算 {float(_d['nine_car_odds']):.1f}倍"
             f"／配当帯 {_d['band']}倍"
             f"／配当数割合 {float(_d['hit_share']):.3f}%"
             f"／選抜値 {float(_d['selection_score']) * 100.0:.4f}"
@@ -4502,7 +4544,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         "※◎・◯の2車は従来ロジックで固定し、1・2着方向と3着2車だけを内部想定的中率×配当数分布で選抜しています。"
     )
     _lines.append(
-        "※配当数分布は2017～2019年のS級・A1/A2班・9車立て集計です。実オッズ入力は使用していません。"
+        "※配当数分布は2017～2019年のS級・A1/A2班・9車立て集計です。理論オッズを当該車立てから9車相当に正規化して照合しています。実オッズ入力は使用していません。"
     )
 
     return _lines
