@@ -1,13 +1,14 @@
-# v335fu（期待値軸展開追加・2車複廃止版）
+# v335fw（期待値軸買目・券種ダウン版）
 # ・◎/◯/▲/×の基本選定ロジックはv335ftから変更しない。
-# ・基本買目は2車単「◎→◯」1点＋3連単「◯→◎→▲/×」0～2点を維持し、従来の2車複「◎-▲/×」は廃止する。
-# ・▲/×をそれぞれ独立した「期待値軸」として、基本買目とは別の条件付き展開を最大2本追加する。
-# ・期待値軸展開では、既存の順流/逆流/渦と流れ比率は作り直さず固定し、各流れの最終順位を期待値軸中心に「軸→右1→左1→右2→左2…」の順で再配列する。
-# ・再配列後は既存のポイントアップ＋開催日KO処理を再利用するが、期待値軸は条件付き展開の軸として1位に固定し、ヒモ順位だけを再評価する。
-# ・各期待値軸ごとに、◯相当の的中ヒモを「軸との2車複想定的中率最大」で再選定する。
-# ・さらに各期待値軸→候補の2車単内部想定的中率を当該車立ての均等基準=100として再計算し、100%以上だけから期待値ヒモを最大2車再選定する。
-# ・期待値軸買目は2車単「期待値軸→再計算◯」1点、3連単「期待値軸→再計算◯→再計算期待値ヒモ」0～2点を表示する。
-# ・公開表示は【ヴェロビ分析による基本買目】の下に【基本買目からの期待値軸買目】を追加し、予算に応じた券種応用を可能にする。
+# ・基本買目は2車単「◎→◯」1点＋3連単「◯→◎→▲/×」0～2点を維持する。
+# ・期待値軸の成立判定、右→左の中心展開、100%基準、ヒモ選定、3着期待値ヒモ選定はv335fvから変更しない。
+# ・期待値軸側の「買い目を選ぶ基準」は従来どおり2車単／3連単の順序付き評価を使用する。
+# ・購入表示だけ1段階券種を落とし、期待値2車単「A→B」は2車複「A-B」へ変換する。
+# ・期待値3連単「A→B→C」は3連複「A-B-C」へ変換する。
+# ・2車複の想定的中率はA→B＋B→Aを再計算して表示する。
+# ・3連複の想定的中率はA/B/Cの全6順列の3連単確率を合算して再計算して表示する。
+# ・期待値軸が100%基準未満なら従来どおり「該当なし」とし、券種を落とすための補完車は追加しない。
+# ・同一3車から2車複＋3連複が成立する場合、自然にW的中可能な構造となる。
 # v335ft（妙味100%以上限定・出走数基準対応版）
 # ・◎/◯の選定ロジック、買い目の役割はv335fsから変更しない。
 # ・▲/×は「期待値指数100%以上」の車だけを妙味候補にする。100%未満は妙味車として採用しない。
@@ -3644,7 +3645,7 @@ def _v335fl_allow_value_quinella(hit_prob, value_prob):
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
-    """v335fv：基本買目＋期待値軸別の条件付き展開を生成する。
+    """v335fw：基本買目＋期待値軸別の条件付き展開を生成する。
 
     基本評価（v335ftを維持）:
       ・A=◎：想定比率1位流れ＋2位流れの共通軸。
@@ -3667,9 +3668,10 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
       ・E軸→候補の2車単内部想定的中率が、当該車立ての均等基準以上の車だけを
         B相当ヒモ候補として残す。
       ・基準通過車の中から、既存どおりEとの2車複想定的中率最大をB相当ヒモにする。
-      ・基準通過車が0なら、その期待値軸は2車単・3連単とも「該当なし」。
+      ・基準通過車が0なら、その期待値軸は「該当なし」。
       ・C/D相当の期待値ヒモも同じ100%基準で再計算する。
-      ・表示は2車単 E→B と、3連単 E→B→C/D。
+      ・選出基準は2車単 E→B／3連単 E→B→C/D のまま変更しない。
+      ・購入表示だけ2車複 E-B／3連複 E-B-C/Dへ1段階落とす。
 
     表示:
       ・想定着順予想
@@ -3886,6 +3888,20 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     def _trifecta_prob_with(_a, _b, _c, _p1, _p2, _p3):
         try:
             return _v335br_ticket_probability((int(_a), int(_b), int(_c)), _p1, _p2, _p3)
+        except Exception:
+            return None
+
+    def _trio_prob_with(_a, _b, _c, _p1, _p2, _p3):
+        """3連複A-B-Cの想定的中率。3車の全6順列を合算する。"""
+        try:
+            _cars3 = (int(_a), int(_b), int(_c))
+            if len(set(_cars3)) != 3:
+                return None
+            _total = 0.0
+            for _ticket in permutations(_cars3, 3):
+                _p = _v335br_ticket_probability(_ticket, _p1, _p2, _p3)
+                _total += float(_p or 0.0)
+            return max(0.0, min(1.0, float(_total)))
         except Exception:
             return None
 
@@ -4317,7 +4333,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     if not _expected_scenarios:
         _lines.append("期待値軸なし")
     else:
-        _lines.append("2車単")
+        # 選出基準は従来の期待値2車単 E→B のまま。
+        # 購入表示だけ2車複 E-Bへ1段階落とす。
+        _lines.append("2車複")
         for _sc in _expected_scenarios:
             _ea = int(_sc.get("axis"))
             _eh = _sc.get("hit_himo")
@@ -4339,16 +4357,20 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 else:
                     _lines.append(f"{_ea}軸：{_reason}")
                 continue
+
             _sp1 = _sc.get("p1", {}) or {}
             _sp2 = _sc.get("p2", {}) or {}
             _sp3 = _sc.get("p3", {}) or {}
-            _ep = _exacta_prob_with(_ea, int(_eh), _sp1, _sp2, _sp3)
+            _qp = _quinella_prob_with(_ea, int(_eh), _sp1, _sp2, _sp3)
+            _pair = tuple(sorted((int(_ea), int(_eh))))
             _lines.append(
-                f"{_ea}-{int(_eh)}（想定的中率 {_prob_text(_ep)}）"
+                f"{_pair[0]}-{_pair[1]}（想定的中率 {_prob_text(_qp)}）"
             )
 
         _lines.append("")
-        _lines.append("3連単")
+        # 選出基準は従来の期待値3連単 E→B→C/D のまま。
+        # 購入表示だけ3連複 E-B-C/Dへ1段階落とす。
+        _lines.append("3連複")
         for _sc in _expected_scenarios:
             _ea = int(_sc.get("axis"))
             _eh = _sc.get("hit_himo")
@@ -4357,21 +4379,24 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 if _reason == "2車単100%基準未満":
                     _lines.append(f"{_ea}軸：該当なし（2車単ヒモ100%基準未満）")
                 continue
+
             _value_himos = [int(c) for c in (_sc.get("value_himos") or [])]
             if not _value_himos:
                 _lines.append(f"{_ea}軸：期待値指数100%以上の3着候補なし")
                 continue
+
             _sp1 = _sc.get("p1", {}) or {}
             _sp2 = _sc.get("p2", {}) or {}
             _sp3 = _sc.get("p3", {}) or {}
             for _c in _value_himos:
-                _tp = _trifecta_prob_with(_ea, int(_eh), int(_c), _sp1, _sp2, _sp3)
+                _trio_p = _trio_prob_with(_ea, int(_eh), int(_c), _sp1, _sp2, _sp3)
+                _trio = tuple(sorted((int(_ea), int(_eh), int(_c))))
                 _lines.append(
-                    f"{_ea}-{int(_eh)}-{int(_c)}（想定的中率 {_prob_text(_tp)}）"
+                    f"{_trio[0]}-{_trio[1]}-{_trio[2]}（想定的中率 {_prob_text(_trio_p)}）"
                 )
 
     _lines.append("")
-    _lines.append("※予算により３連単を別券種に応用してください")
+    _lines.append("※期待値軸買目は、2車単／3連単の基準で選出し、購入表示のみ2車複／3連複へ落としています")
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
