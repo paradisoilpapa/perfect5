@@ -1,3 +1,14 @@
+# v335gf（券種別・想定的中率可変点数版）
+# ・v335geの◎○▲△×の役割、▲配当適合偏差値、9車換算・配当分布計算は維持する。
+# ・○▲△×は「候補の属性」とし、買う／見送るの最終判定は券種ごとの想定的中率で行う。
+# ・2車単は◎→○▲△×を全候補化。
+# ・3連複は◎固定で○▲△×から2車を選ぶ全組合せを候補化。
+# ・3連単は◎1着固定で○▲△×から2・3着を選ぶ全順列を候補化。
+# ・各券種で候補を想定的中率順に並べ、1位は必ず採用。
+# ・2位以下は「直前採用買目の70%以上」かつ「1位の50%以上」の両方を満たす間だけ採用。
+# ・条件を最初に割った位置で打ち切り。点数上限は設けず、1点～多点をレースごとに可変とする。
+# ・公開表示では採用買目と見送り買目の境界を表示する。
+# ・券種別の的中★／妙味☆は、採用された買目だけで計算する。
 # v335ge（▲配当適合偏差値版）
 # ・v335gdの買目ロジック、印の役割、券種別★☆、9車換算・配当分布処理は変更しない。
 # ・▲の「配当適合指数100固定」を廃止し、同一レースの配当適合候補内で偏差値化する。
@@ -4006,6 +4017,62 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         return "☆"
 
 
+    def _variable_cut_v335gf(_rows):
+        """想定的中率順に並べ、70%継続＋1位比50%下限で可変選抜する。"""
+        _valid = []
+        for _r in (_rows or []):
+            try:
+                _p = float(_r.get("prob"))
+            except Exception:
+                continue
+            if _p < 0.0:
+                continue
+            _rr = dict(_r)
+            _rr["prob"] = float(_p)
+            _valid.append(_rr)
+
+        _valid.sort(
+            key=lambda r: (
+                -float(r.get("prob", -1.0)),
+                str(r.get("sort_key", "")),
+            )
+        )
+        if not _valid:
+            return [], [], []
+
+        _selected = [_valid[0]]
+        _top = float(_valid[0]["prob"])
+        _prev = float(_valid[0]["prob"])
+        _eps = 1e-12
+
+        for _r in _valid[1:]:
+            _p = float(_r["prob"])
+            _keep_prev = _p + _eps >= (0.70 * _prev)
+            _keep_top = _p + _eps >= (0.50 * _top)
+            if _keep_prev and _keep_top:
+                _selected.append(_r)
+                _prev = _p
+            else:
+                break
+
+        _n = len(_selected)
+        return _valid, _selected, _valid[_n:]
+
+    def _role_text_v335gf(_car, _role_by_car):
+        try:
+            return str(_role_by_car.get(int(_car), ""))
+        except Exception:
+            return ""
+
+    def _append_variable_rows_v335gf(_lines_out, _all_rows, _selected_rows, _formatter):
+        """採用列→境界線→見送り列を表示する。"""
+        _sel_n = len(_selected_rows or [])
+        for _i, _r in enumerate(_all_rows or []):
+            if _i == _sel_n and _i < len(_all_rows):
+                _lines_out.append("──── 以下見送り ────")
+            _lines_out.append(_formatter(_r))
+
+
     # ---------------------------------------------------------
     # v335fz：配当数分布
     # ユーザー提示資料
@@ -4669,140 +4736,187 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines.append("【ヴェロビ分析・券種別オススメ】")
 
     # ---------------------------------------------------------
-    # 買目相手3車
-    # ○ + ▲ + △ を原則とする。
-    # △不在時だけ、配当適合順位の次点で3車を補完する。
-    # ×は参考印だけで買目には使わない。
+    # v335gf：○▲△×を候補属性として保持し、
+    # 券種ごとの想定的中率で買目を可変選抜する。
     # ---------------------------------------------------------
-    _opponents_gc = [_b_gc]
+    _role_by_car_gf = {}
+    _candidate_opponents_gf = []
 
-    if _triangle_gc is not None and int(_triangle_gc) not in _opponents_gc:
-        _opponents_gc.append(int(_triangle_gc))
+    def _register_role_gf(_car, _mark):
+        if _car is None:
+            return
+        try:
+            _c = int(_car)
+        except Exception:
+            return
+        if _c == int(_axis_gc):
+            return
+        if _c not in _role_by_car_gf:
+            _role_by_car_gf[_c] = str(_mark)
+            _candidate_opponents_gf.append(_c)
 
-    if _delta_gc is not None and int(_delta_gc) not in _opponents_gc:
-        _opponents_gc.append(int(_delta_gc))
-
-    # △不在などで3車に満たない場合だけ、配当適合順位から補完。
-    for _r in _table_rows_gc:
-        _cand = int(_r["car"])
-        if _cand == _axis_gc or _cand in _opponents_gc:
-            continue
-        if _x_gc is not None and _cand == int(_x_gc):
-            # ×は「買目に入らない参考穴」を厳守する。
-            continue
-        _opponents_gc.append(_cand)
-        if len(_opponents_gc) >= 3:
-            break
-
-    # それでも不足時は残車から補完。ただし×は除外。
-    if len(_opponents_gc) < 3:
-        for _c in sorted(int(x) for x in _cars):
-            if _c == _axis_gc or _c in _opponents_gc:
-                continue
-            if _x_gc is not None and _c == int(_x_gc):
-                continue
-            _opponents_gc.append(_c)
-            if len(_opponents_gc) >= 3:
-                break
-
-    _opponents_gc = _opponents_gc[:3]
+    _register_role_gf(_b_gc, "○")
+    _register_role_gf(_triangle_gc, "▲")
+    _register_role_gf(_delta_gc, "△")
+    _register_role_gf(_x_gc, "×")
 
     # ---------------------------------------------------------
-    # 2車単 ◎→相手3車
+    # 2車単：◎→○▲△×
     # ---------------------------------------------------------
-    _exacta_rows_gc = []
-    for _opp in _opponents_gc:
+    _exacta_candidates_gf = []
+    for _opp in _candidate_opponents_gf:
         _ep = _exacta_prob_with(
-            _axis_gc, int(_opp), _p1_map, _p2_map, _p3_map
+            int(_axis_gc), int(_opp), _p1_map, _p2_map, _p3_map
         )
-        _exacta_rows_gc.append({
+        _exacta_candidates_gf.append({
             "opp": int(_opp),
             "prob": None if _ep is None else float(_ep),
+            "mark": _role_text_v335gf(_opp, _role_by_car_gf),
+            "sort_key": f"{int(_opp):02d}",
         })
 
-    _exacta_probs_gc = [r["prob"] for r in _exacta_rows_gc]
-    _exacta_group_prob_gc = _group_hit_prob_v335gc(_exacta_probs_gc)
+    (
+        _exacta_all_gf,
+        _exacta_selected_gf,
+        _exacta_rejected_gf,
+    ) = _variable_cut_v335gf(_exacta_candidates_gf)
+
+    _exacta_probs_gf = [r["prob"] for r in _exacta_selected_gf]
+    _exacta_group_prob_gf = _group_hit_prob_v335gc(_exacta_probs_gf)
 
     _lines.append("")
     _lines.append(
-        f"2車単　的中{_hit_stars_v335gc(_exacta_group_prob_gc)}　"
-        f"妙味{_value_stars_v335gc(_exacta_probs_gc)}"
+        f"2車単　的中{_hit_stars_v335gc(_exacta_group_prob_gf)}　"
+        f"妙味{_value_stars_v335gc(_exacta_probs_gf)}　"
+        f"採用{len(_exacta_selected_gf)}点"
     )
-    for _r in _exacta_rows_gc:
-        _lines.append(
-            f"{_axis_gc}-{int(_r['opp'])}"
-            f"（想定的中率 {_prob_text(_r['prob'])}）"
+
+    def _fmt_exacta_gf(_r):
+        _mark = str(_r.get("mark", "") or "")
+        _prefix = f"{_mark} " if _mark else ""
+        return (
+            f"{_prefix}{int(_axis_gc)}-{int(_r['opp'])}"
+            f"（想定的中率 {_prob_text(_r.get('prob'))}）"
         )
 
-    # ---------------------------------------------------------
-    # 3連複 ◎-相手3車から2車 = 3点
-    # ---------------------------------------------------------
-    _trio_rows_gc = []
-    if len(_opponents_gc) >= 3:
-        _b1, _b2, _b3 = [int(x) for x in _opponents_gc[:3]]
-        for _x, _y in ((_b1, _b2), (_b1, _b3), (_b2, _b3)):
-            _qp = _trio_prob_with_v335gc(
-                _axis_gc, _x, _y, _p1_map, _p2_map, _p3_map
-            )
-            _trio_rows_gc.append({
-                "x": int(_x),
-                "y": int(_y),
-                "prob": None if _qp is None else float(_qp),
-            })
-
-    _trio_probs_gc = [r["prob"] for r in _trio_rows_gc]
-    _trio_group_prob_gc = _group_hit_prob_v335gc(_trio_probs_gc)
-
-    _lines.append("")
-    _lines.append(
-        f"3連複　的中{_hit_stars_v335gc(_trio_group_prob_gc)}　"
-        f"妙味{_value_stars_v335gc(_trio_probs_gc)}"
-    )
-    if _trio_rows_gc:
-        for _r in _trio_rows_gc:
-            _cars_sorted = sorted((_axis_gc, int(_r["x"]), int(_r["y"])))
-            _lines.append(
-                f"{_cars_sorted[0]}-{_cars_sorted[1]}-{_cars_sorted[2]}"
-                f"（想定的中率 {_prob_text(_r['prob'])}）"
-            )
+    if _exacta_all_gf:
+        _append_variable_rows_v335gf(
+            _lines, _exacta_all_gf, _exacta_selected_gf, _fmt_exacta_gf
+        )
     else:
         _lines.append("算出不可")
 
     # ---------------------------------------------------------
-    # 3連単本線 ◎→○→残り2車
-    # B=○、C/D=その他2車
+    # 3連複：◎固定、○▲△×から2車を選ぶ全組合せ
     # ---------------------------------------------------------
-    _trifecta_rows_gc = []
-    if len(_opponents_gc) >= 3:
-        _b_gc = int(_opponents_gc[0])  # 現行ヒモ○
-        for _third_gc in (int(_opponents_gc[1]), int(_opponents_gc[2])):
+    _trio_candidates_gf = []
+    for _i in range(len(_candidate_opponents_gf)):
+        for _j in range(_i + 1, len(_candidate_opponents_gf)):
+            _x = int(_candidate_opponents_gf[_i])
+            _y = int(_candidate_opponents_gf[_j])
+            _qp = _trio_prob_with_v335gc(
+                int(_axis_gc), _x, _y, _p1_map, _p2_map, _p3_map
+            )
+            _trio_candidates_gf.append({
+                "x": _x,
+                "y": _y,
+                "prob": None if _qp is None else float(_qp),
+                "mark_x": _role_text_v335gf(_x, _role_by_car_gf),
+                "mark_y": _role_text_v335gf(_y, _role_by_car_gf),
+                "sort_key": f"{min(_x,_y):02d}-{max(_x,_y):02d}",
+            })
+
+    (
+        _trio_all_gf,
+        _trio_selected_gf,
+        _trio_rejected_gf,
+    ) = _variable_cut_v335gf(_trio_candidates_gf)
+
+    _trio_probs_gf = [r["prob"] for r in _trio_selected_gf]
+    _trio_group_prob_gf = _group_hit_prob_v335gc(_trio_probs_gf)
+
+    _lines.append("")
+    _lines.append(
+        f"3連複　的中{_hit_stars_v335gc(_trio_group_prob_gf)}　"
+        f"妙味{_value_stars_v335gc(_trio_probs_gf)}　"
+        f"採用{len(_trio_selected_gf)}点"
+    )
+
+    def _fmt_trio_gf(_r):
+        _marks = f"{str(_r.get('mark_x',''))}{str(_r.get('mark_y',''))}"
+        _prefix = f"{_marks} " if _marks else ""
+        _cars_sorted = sorted(
+            (int(_axis_gc), int(_r["x"]), int(_r["y"]))
+        )
+        return (
+            f"{_prefix}{_cars_sorted[0]}-{_cars_sorted[1]}-{_cars_sorted[2]}"
+            f"（想定的中率 {_prob_text(_r.get('prob'))}）"
+        )
+
+    if _trio_all_gf:
+        _append_variable_rows_v335gf(
+            _lines, _trio_all_gf, _trio_selected_gf, _fmt_trio_gf
+        )
+    else:
+        _lines.append("算出不可")
+
+    # ---------------------------------------------------------
+    # 3連単：◎1着固定、○▲△×から2・3着を選ぶ全順列
+    # ---------------------------------------------------------
+    _trifecta_candidates_gf = []
+    for _second in _candidate_opponents_gf:
+        for _third in _candidate_opponents_gf:
+            _second = int(_second)
+            _third = int(_third)
+            if _second == _third:
+                continue
             _tp = _trifecta_prob_with(
-                _axis_gc,
-                _b_gc,
-                _third_gc,
+                int(_axis_gc),
+                _second,
+                _third,
                 _p1_map,
                 _p2_map,
                 _p3_map,
             )
-            _trifecta_rows_gc.append({
-                "third": int(_third_gc),
+            _trifecta_candidates_gf.append({
+                "second": _second,
+                "third": _third,
                 "prob": None if _tp is None else float(_tp),
+                "mark_second": _role_text_v335gf(_second, _role_by_car_gf),
+                "mark_third": _role_text_v335gf(_third, _role_by_car_gf),
+                "sort_key": f"{_second:02d}-{_third:02d}",
             })
 
-    _trifecta_probs_gc = [r["prob"] for r in _trifecta_rows_gc]
-    _trifecta_group_prob_gc = _group_hit_prob_v335gc(_trifecta_probs_gc)
+    (
+        _trifecta_all_gf,
+        _trifecta_selected_gf,
+        _trifecta_rejected_gf,
+    ) = _variable_cut_v335gf(_trifecta_candidates_gf)
+
+    _trifecta_probs_gf = [r["prob"] for r in _trifecta_selected_gf]
+    _trifecta_group_prob_gf = _group_hit_prob_v335gc(_trifecta_probs_gf)
 
     _lines.append("")
     _lines.append(
-        f"3連単　的中{_hit_stars_v335gc(_trifecta_group_prob_gc)}　"
-        f"妙味{_value_stars_v335gc(_trifecta_probs_gc)}"
+        f"3連単　的中{_hit_stars_v335gc(_trifecta_group_prob_gf)}　"
+        f"妙味{_value_stars_v335gc(_trifecta_probs_gf)}　"
+        f"採用{len(_trifecta_selected_gf)}点"
     )
-    if _trifecta_rows_gc:
-        for _r in _trifecta_rows_gc:
-            _lines.append(
-                f"{_axis_gc}-{_b_gc}-{int(_r['third'])}"
-                f"（想定的中率 {_prob_text(_r['prob'])}）"
-            )
+
+    def _fmt_trifecta_gf(_r):
+        _m2 = str(_r.get("mark_second", "") or "")
+        _m3 = str(_r.get("mark_third", "") or "")
+        _marks = f"{_m2}→{_m3}" if (_m2 or _m3) else ""
+        _prefix = f"{_marks} " if _marks else ""
+        return (
+            f"{_prefix}{int(_axis_gc)}-{int(_r['second'])}-{int(_r['third'])}"
+            f"（想定的中率 {_prob_text(_r.get('prob'))}）"
+        )
+
+    if _trifecta_all_gf:
+        _append_variable_rows_v335gf(
+            _lines, _trifecta_all_gf, _trifecta_selected_gf, _fmt_trifecta_gf
+        )
     else:
         _lines.append("算出不可")
 
