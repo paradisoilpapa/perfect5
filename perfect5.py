@@ -1,3 +1,8 @@
+# v335gg（買い目欄・印表示削除版）
+# ・v335gfの可変点数ロジック、70%継続＋1位比50%下限、券種別★☆は変更しない。
+# ・【ヴェロビ評価】の◎○▲△×表示は維持する。
+# ・【ヴェロビ分析・券種別オススメ】では、各買い目の先頭に付けていた○▲△×および○→×等の印表示を削除する。
+# ・買い目欄は「車番＋想定的中率」と採用／見送り境界だけを表示する。
 # v335gf（券種別・想定的中率可変点数版）
 # ・v335geの◎○▲△×の役割、▲配当適合偏差値、9車換算・配当分布計算は維持する。
 # ・○▲△×は「候補の属性」とし、買う／見送るの最終判定は券種ごとの想定的中率で行う。
@@ -4792,10 +4797,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     )
 
     def _fmt_exacta_gf(_r):
-        _mark = str(_r.get("mark", "") or "")
-        _prefix = f"{_mark} " if _mark else ""
         return (
-            f"{_prefix}{int(_axis_gc)}-{int(_r['opp'])}"
+            f"{int(_axis_gc)}-{int(_r['opp'])}"
             f"（想定的中率 {_prob_text(_r.get('prob'))}）"
         )
 
@@ -4843,13 +4846,11 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     )
 
     def _fmt_trio_gf(_r):
-        _marks = f"{str(_r.get('mark_x',''))}{str(_r.get('mark_y',''))}"
-        _prefix = f"{_marks} " if _marks else ""
         _cars_sorted = sorted(
             (int(_axis_gc), int(_r["x"]), int(_r["y"]))
         )
         return (
-            f"{_prefix}{_cars_sorted[0]}-{_cars_sorted[1]}-{_cars_sorted[2]}"
+            f"{_cars_sorted[0]}-{_cars_sorted[1]}-{_cars_sorted[2]}"
             f"（想定的中率 {_prob_text(_r.get('prob'))}）"
         )
 
@@ -4904,12 +4905,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     )
 
     def _fmt_trifecta_gf(_r):
-        _m2 = str(_r.get("mark_second", "") or "")
-        _m3 = str(_r.get("mark_third", "") or "")
-        _marks = f"{_m2}→{_m3}" if (_m2 or _m3) else ""
-        _prefix = f"{_marks} " if _marks else ""
         return (
-            f"{_prefix}{int(_axis_gc)}-{int(_r['second'])}-{int(_r['third'])}"
+            f"{int(_axis_gc)}-{int(_r['second'])}-{int(_r['third'])}"
             f"（想定的中率 {_prob_text(_r.get('prob'))}）"
         )
 
