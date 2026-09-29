@@ -1,3 +1,16 @@
+# v335gi（買い目欄・総合評価点表示版）
+# ・v335ghの候補生成、的中点＋妙味点50:50、70%継続＋1位50%下限、券種別★☆は変更しない。
+# ・買い目欄の「想定的中率」表示を廃止し、候補選抜に実際に使っている「総合評価点」を表示する。
+# ・総合評価点 = (的中点 + 妙味点) / 2。
+# v335gh（的中点＋妙味点・総合点可変候補版）
+# ・v335ggの◎○▲△×、▲配当適合偏差値、券種候補生成は維持する。
+# ・可変区切りを「想定的中率だけ」から「的中点＋妙味点の総合点」へ変更する。
+# ・的中点は券種内1位の想定的中率=100として相対化。
+# ・妙味点は既存V335DS_WEIGHTED_CAR_MYOUMI_MAPと着順適合度から券種内0～100へ順位正規化。
+# ・3連複の妙味rawは、同一3車の6順列における順序付き妙味raw平均を使用する。
+# ・総合点=(的中点+妙味点)/2 の50:50。
+# ・総合点順に並べ、1位は必ず候補。2位以下は「直前候補の70%以上」かつ「1位の50%以上」で継続。
+# ・公開表示の「採用N点」は「候補N点」へ変更する。
 # v335gg（買い目欄・印表示削除版）
 # ・v335gfの可変点数ロジック、70%継続＋1位比50%下限、券種別★☆は変更しない。
 # ・【ヴェロビ評価】の◎○▲△×表示は維持する。
@@ -4023,21 +4036,24 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
 
     def _variable_cut_v335gf(_rows):
-        """想定的中率順に並べ、70%継続＋1位比50%下限で可変選抜する。"""
+        """総合点順に並べ、70%継続＋1位比50%下限で可変候補化する。"""
         _valid = []
         for _r in (_rows or []):
             try:
                 _p = float(_r.get("prob"))
+                _total = float(_r.get("total_score"))
             except Exception:
                 continue
-            if _p < 0.0:
+            if _p < 0.0 or _total < 0.0:
                 continue
             _rr = dict(_r)
             _rr["prob"] = float(_p)
+            _rr["total_score"] = float(_total)
             _valid.append(_rr)
 
         _valid.sort(
             key=lambda r: (
+                -float(r.get("total_score", -1.0)),
                 -float(r.get("prob", -1.0)),
                 str(r.get("sort_key", "")),
             )
@@ -4046,17 +4062,17 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             return [], [], []
 
         _selected = [_valid[0]]
-        _top = float(_valid[0]["prob"])
-        _prev = float(_valid[0]["prob"])
+        _top = float(_valid[0]["total_score"])
+        _prev = float(_valid[0]["total_score"])
         _eps = 1e-12
 
         for _r in _valid[1:]:
-            _p = float(_r["prob"])
-            _keep_prev = _p + _eps >= (0.70 * _prev)
-            _keep_top = _p + _eps >= (0.50 * _top)
+            _s = float(_r["total_score"])
+            _keep_prev = _s + _eps >= (0.70 * _prev)
+            _keep_top = _s + _eps >= (0.50 * _top)
             if _keep_prev and _keep_top:
                 _selected.append(_r)
-                _prev = _p
+                _prev = _s
             else:
                 break
 
@@ -4070,12 +4086,167 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             return ""
 
     def _append_variable_rows_v335gf(_lines_out, _all_rows, _selected_rows, _formatter):
-        """採用列→境界線→見送り列を表示する。"""
+        """候補列→境界線→見送り列を表示する。"""
         _sel_n = len(_selected_rows or [])
         for _i, _r in enumerate(_all_rows or []):
             if _i == _sel_n and _i < len(_all_rows):
                 _lines_out.append("──── 以下見送り ────")
             _lines_out.append(_formatter(_r))
+
+
+    def _position_fit_map_v335gh(_pos_map):
+        """着順適合度を車番間で0～1へ順位正規化。同率は平均順位。"""
+        try:
+            _items = [(int(c), float(v)) for c, v in dict(_pos_map or {}).items()]
+            _n = len(_items)
+            if _n <= 0:
+                return {}
+            if _n == 1:
+                return {_items[0][0]: 1.0}
+
+            _bucket = {}
+            for _car, _p in _items:
+                _bucket.setdefault(round(float(_p), 15), []).append(int(_car))
+
+            _result = {}
+            _rank_start = 1
+            for _p_key in sorted(_bucket.keys(), reverse=True):
+                _cars_same = list(_bucket.get(_p_key, []) or [])
+                _rank_end = _rank_start + len(_cars_same) - 1
+                _avg_rank = (float(_rank_start) + float(_rank_end)) / 2.0
+                _fit = 1.0 - ((float(_avg_rank) - 1.0) / float(_n - 1))
+                _fit = max(0.0, min(1.0, float(_fit)))
+                for _car in _cars_same:
+                    _result[int(_car)] = float(_fit)
+                _rank_start = _rank_end + 1
+            return _result
+        except Exception:
+            return {}
+
+    _fit1_v335gh = _position_fit_map_v335gh(_p1_map)
+    _fit2_v335gh = _position_fit_map_v335gh(_p2_map)
+    _fit3_v335gh = _position_fit_map_v335gh(_p3_map)
+
+    def _ordered_myoumi_raw_v335gh(_ticket):
+        """順序付き券の既存妙味評価×着順適合度の平均。"""
+        try:
+            _ticket = tuple(int(x) for x in (_ticket or tuple()))
+            _fits = (_fit1_v335gh, _fit2_v335gh, _fit3_v335gh)
+            _vals = []
+            for _idx, _car in enumerate(_ticket):
+                if _idx >= len(_fits):
+                    return None
+                _base = float(
+                    _weighted_myoumi_map.get(
+                        int(_car),
+                        _weighted_myoumi_map.get(str(int(_car)), 0.0)
+                    ) or 0.0
+                )
+                _fit = float(_fits[_idx].get(int(_car), 0.0) or 0.0)
+                _vals.append(max(0.0, _base) * max(0.0, min(1.0, _fit)))
+            if not _vals:
+                return None
+            return sum(_vals) / float(len(_vals))
+        except Exception:
+            return None
+
+    def _trio_myoumi_raw_v335gh(_cars3):
+        """3連複は同一3車の6順列の順序付き妙味rawを平均する。"""
+        try:
+            _cars3 = tuple(int(x) for x in (_cars3 or tuple()))
+            if len(_cars3) != 3 or len(set(_cars3)) != 3:
+                return None
+            _vals = []
+            for _perm in permutations(_cars3, 3):
+                _v = _ordered_myoumi_raw_v335gh(_perm)
+                if _v is not None:
+                    _vals.append(float(_v))
+            if not _vals:
+                return None
+            return sum(_vals) / float(len(_vals))
+        except Exception:
+            return None
+
+    def _percentile_score_v335gh(_rows, _raw_key):
+        """raw高い順を0～100へ順位正規化。同率は平均順位。"""
+        try:
+            _vals = []
+            for _i, _r in enumerate(_rows or []):
+                _v = _r.get(_raw_key)
+                if _v is None:
+                    continue
+                _vals.append((_i, float(_v)))
+            _n = len(_vals)
+            if _n <= 0:
+                return {}
+            if _n == 1:
+                return {_vals[0][0]: 100.0}
+
+            _bucket = {}
+            for _i, _v in _vals:
+                _bucket.setdefault(round(float(_v), 15), []).append(int(_i))
+
+            _result = {}
+            _rank_start = 1
+            for _v_key in sorted(_bucket.keys(), reverse=True):
+                _idxs = list(_bucket.get(_v_key, []) or [])
+                _rank_end = _rank_start + len(_idxs) - 1
+                _avg_rank = (float(_rank_start) + float(_rank_end)) / 2.0
+                _score = 100.0 * (
+                    1.0 - ((float(_avg_rank) - 1.0) / float(_n - 1))
+                )
+                _score = max(0.0, min(100.0, float(_score)))
+                for _i in _idxs:
+                    _result[int(_i)] = float(_score)
+                _rank_start = _rank_end + 1
+            return _result
+        except Exception:
+            return {}
+
+    def _attach_total_scores_v335gh(_rows, _ticket_type):
+        """
+        的中点＋妙味点の50:50総合点を付加。
+        的中点：券種内の最大想定的中率=100。
+        妙味点：既存妙味評価×着順適合度を券種内0～100へ順位正規化。
+        """
+        _rows2 = [dict(r) for r in (_rows or [])]
+        if not _rows2:
+            return []
+
+        _max_p = max(
+            [max(0.0, float(r.get("prob", 0.0) or 0.0)) for r in _rows2] or [0.0]
+        )
+
+        for _r in _rows2:
+            _p = max(0.0, float(_r.get("prob", 0.0) or 0.0))
+            _r["hit_score"] = (
+                100.0 * _p / float(_max_p)
+                if _max_p > 0.0 else 0.0
+            )
+
+            if str(_ticket_type) == "2車単":
+                _ticket = (int(_axis_gc), int(_r["opp"]))
+                _r["myoumi_raw"] = _ordered_myoumi_raw_v335gh(_ticket)
+            elif str(_ticket_type) == "3連複":
+                _ticket = (int(_axis_gc), int(_r["x"]), int(_r["y"]))
+                _r["myoumi_raw"] = _trio_myoumi_raw_v335gh(_ticket)
+            else:
+                _ticket = (
+                    int(_axis_gc),
+                    int(_r["second"]),
+                    int(_r["third"]),
+                )
+                _r["myoumi_raw"] = _ordered_myoumi_raw_v335gh(_ticket)
+
+        _myoumi_score_map = _percentile_score_v335gh(_rows2, "myoumi_raw")
+        for _i, _r in enumerate(_rows2):
+            _m = float(_myoumi_score_map.get(int(_i), 50.0))
+            _r["myoumi_score"] = _m
+            _r["total_score"] = (
+                float(_r.get("hit_score", 0.0)) + float(_m)
+            ) / 2.0
+
+        return _rows2
 
 
     # ---------------------------------------------------------
@@ -4742,7 +4913,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     # ---------------------------------------------------------
     # v335gf：○▲△×を候補属性として保持し、
-    # 券種ごとの想定的中率で買目を可変選抜する。
+    # 券種ごとの的中点＋妙味点の総合点で買目候補を可変選抜する。
     # ---------------------------------------------------------
     _role_by_car_gf = {}
     _candidate_opponents_gf = []
@@ -4780,6 +4951,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "sort_key": f"{int(_opp):02d}",
         })
 
+    _exacta_candidates_gf = _attach_total_scores_v335gh(
+        _exacta_candidates_gf, "2車単"
+    )
     (
         _exacta_all_gf,
         _exacta_selected_gf,
@@ -4793,13 +4967,15 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines.append(
         f"2車単　的中{_hit_stars_v335gc(_exacta_group_prob_gf)}　"
         f"妙味{_value_stars_v335gc(_exacta_probs_gf)}　"
-        f"採用{len(_exacta_selected_gf)}点"
+        f"候補{len(_exacta_selected_gf)}点"
     )
 
     def _fmt_exacta_gf(_r):
+        _ts = _r.get("total_score")
+        _ts_text = "算出不可" if _ts is None else f"{float(_ts):.1f}点"
         return (
             f"{int(_axis_gc)}-{int(_r['opp'])}"
-            f"（想定的中率 {_prob_text(_r.get('prob'))}）"
+            f"（総合評価 {_ts_text}）"
         )
 
     if _exacta_all_gf:
@@ -4829,6 +5005,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 "sort_key": f"{min(_x,_y):02d}-{max(_x,_y):02d}",
             })
 
+    _trio_candidates_gf = _attach_total_scores_v335gh(
+        _trio_candidates_gf, "3連複"
+    )
     (
         _trio_all_gf,
         _trio_selected_gf,
@@ -4842,16 +5021,18 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines.append(
         f"3連複　的中{_hit_stars_v335gc(_trio_group_prob_gf)}　"
         f"妙味{_value_stars_v335gc(_trio_probs_gf)}　"
-        f"採用{len(_trio_selected_gf)}点"
+        f"候補{len(_trio_selected_gf)}点"
     )
 
     def _fmt_trio_gf(_r):
         _cars_sorted = sorted(
             (int(_axis_gc), int(_r["x"]), int(_r["y"]))
         )
+        _ts = _r.get("total_score")
+        _ts_text = "算出不可" if _ts is None else f"{float(_ts):.1f}点"
         return (
             f"{_cars_sorted[0]}-{_cars_sorted[1]}-{_cars_sorted[2]}"
-            f"（想定的中率 {_prob_text(_r.get('prob'))}）"
+            f"（総合評価 {_ts_text}）"
         )
 
     if _trio_all_gf:
@@ -4888,6 +5069,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 "sort_key": f"{_second:02d}-{_third:02d}",
             })
 
+    _trifecta_candidates_gf = _attach_total_scores_v335gh(
+        _trifecta_candidates_gf, "3連単"
+    )
     (
         _trifecta_all_gf,
         _trifecta_selected_gf,
@@ -4901,13 +5085,15 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines.append(
         f"3連単　的中{_hit_stars_v335gc(_trifecta_group_prob_gf)}　"
         f"妙味{_value_stars_v335gc(_trifecta_probs_gf)}　"
-        f"採用{len(_trifecta_selected_gf)}点"
+        f"候補{len(_trifecta_selected_gf)}点"
     )
 
     def _fmt_trifecta_gf(_r):
+        _ts = _r.get("total_score")
+        _ts_text = "算出不可" if _ts is None else f"{float(_ts):.1f}点"
         return (
             f"{int(_axis_gc)}-{int(_r['second'])}-{int(_r['third'])}"
-            f"（想定的中率 {_prob_text(_r.get('prob'))}）"
+            f"（総合評価 {_ts_text}）"
         )
 
     if _trifecta_all_gf:
