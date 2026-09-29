@@ -1,3 +1,11 @@
+# v335gk（非本命・構造先行妙味軸版）
+# ・v335gjの買い目ロジック、総合評価点50:50、候補可変条件、○▲△×選定は変更しない。
+# ・従来の共通軸1位を「旧◎」として一度算出し、最終◎は旧◎以外から選び直す。
+# ・最終◎候補は、想定比率上位2流れのどちらかで2位以内に入る車だけに限定する。
+# ・この構造条件を満たす車の中から、既存の車別妙味評価が最も高い車を最終◎にする。
+# ・これにより、全流れで下位の車が期待値指数だけで◎になることを防ぐ。
+# ・構造条件を満たす非旧◎車がない場合のみ、旧◎以外の共通軸順位最上位へフォールバックする。
+# ・最終◎決定後は、その◎を基準に○・▲・△・×、2車単、3連複、3連単を既存v335gjどおり再計算する。
 # v335gj（_p1_map参照順修正版）
 # ・v335giの買い目ロジック、総合評価点、候補表示は変更しない。
 # ・note用簡易出力で _p1_map / _p2_map / _p3_map が生成される前に
@@ -4615,7 +4623,59 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "【ヴェロビ分析による基本買目】",
             "共通軸を算出不可",
         ]
-    _axis = int(min(_axis_candidates, key=_axis_key))
+
+    # v335gk：まず従来ロジックの◎を「旧◎」として確定する。
+    # 最終◎は旧◎以外から、
+    #   1) 上位2流れのどちらかで2位以内＝頭・連対まで届く構造
+    #   2) その構造候補内で既存の車別妙味評価が最大
+    # の順に選ぶ。期待値指数だけで全流れ下位車を軸化しない。
+    _base_axis_v335gk = int(min(_axis_candidates, key=_axis_key))
+
+    def _axis_myoumi_value_v335gk(_car):
+        try:
+            return float(
+                _weighted_myoumi_map.get(
+                    int(_car),
+                    _weighted_myoumi_map.get(str(int(_car)), 0.0)
+                ) or 0.0
+            )
+        except Exception:
+            return 0.0
+
+    _value_axis_pool_v335gk = []
+    for _c in _axis_candidates:
+        _c = int(_c)
+        if _c == int(_base_axis_v335gk):
+            continue
+        _r1 = int(_rank1.get(_c, 999))
+        _r2 = int(_rank2.get(_c, 999))
+        # 上位2流れの少なくとも一方で2位以内。
+        # 「妙味が高いだけの下位車」を軸候補へ入れないための構造条件。
+        if min(_r1, _r2) <= 2:
+            _value_axis_pool_v335gk.append(_c)
+
+    if _value_axis_pool_v335gk:
+        _axis = int(min(
+            _value_axis_pool_v335gk,
+            key=lambda _c: (
+                -_axis_myoumi_value_v335gk(_c),
+                max(int(_rank1.get(int(_c), 999)), int(_rank2.get(int(_c), 999))),
+                int(_rank1.get(int(_c), 999)) + int(_rank2.get(int(_c), 999)),
+                int(_rank1.get(int(_c), 999)),
+                int(_c),
+            ),
+        ))
+    else:
+        # 構造条件を満たす非旧◎車が無い場合だけ、
+        # 旧◎以外の中で従来の共通軸順位が最上位の車へフォールバック。
+        _fallback_axis_pool_v335gk = [
+            int(c) for c in _axis_candidates
+            if int(c) != int(_base_axis_v335gk)
+        ]
+        if _fallback_axis_pool_v335gk:
+            _axis = int(min(_fallback_axis_pool_v335gk, key=_axis_key))
+        else:
+            _axis = int(_base_axis_v335gk)
 
     # 基本世界の想定確率。
     _p1_map, _p2_map, _p3_map = _prob_maps_for_order(_order1)
