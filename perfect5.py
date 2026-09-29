@@ -1,3 +1,10 @@
+# v335gb（券種別★☆簡潔表示版）
+# ・v335gaの買目選抜ロジックは変更しない。
+# ・公開表示の長い理論オッズ／9車換算／配当帯／配当数割合／選抜値／方向比較説明を省略する。
+# ・券種見出しに「的中★」「妙味☆」を表示する。
+# ・的中: 10%以上=★★★、1%以上10%未満=★★、1%未満=★。
+# ・妙味: 理論オッズ30倍以上=☆☆☆、10倍以上30倍未満=☆☆、10倍未満=☆。
+# ・妙味判定の理論オッズは内部想定的中率pの逆数1/pを使用し、9車換算値ではない。
 # v335ga（9車換算・配当分布3点固定版）
 # ・v335fzの◎/◯選定、1-2/2-1比較、3着全車比較、最終3点固定は変更しない。
 # ・外部の配当数分布が9車立て集計のため、理論オッズを9車相当に正規化してから配当帯へ照合する。
@@ -3905,6 +3912,33 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         return "算出不可" if _prob is None else f"{float(_prob) * 100.0:.2f}%"
 
 
+    # v335gb：公開表示用の券種別★☆評価。
+    def _hit_stars_v335gb(_prob):
+        try:
+            _pct = float(_prob) * 100.0
+        except Exception:
+            return "★"
+        if _pct >= 10.0:
+            return "★★★"
+        if _pct >= 1.0:
+            return "★★"
+        return "★"
+
+    def _value_stars_v335gb(_prob):
+        try:
+            _p = float(_prob)
+        except Exception:
+            return "☆"
+        if _p <= 0.0:
+            return "☆"
+        _odds = 1.0 / _p
+        if _odds >= 30.0:
+            return "☆☆☆"
+        if _odds >= 10.0:
+            return "☆☆"
+        return "☆"
+
+
     # ---------------------------------------------------------
     # v335fz：配当数分布
     # ユーザー提示資料
@@ -4464,23 +4498,17 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _second_v335fz = int(_dir_v335fz["second"])
     _exacta_prob_v335fz = _dir_v335fz.get("prob")
 
-    _lines.append("2車単")
+    _lines.append(
+        f"2車単　的中{_hit_stars_v335gb(_exacta_prob_v335fz)}　"
+        f"妙味{_value_stars_v335gb(_exacta_prob_v335fz)}"
+    )
     _lines.append(
         f"{_first_v335fz}-{_second_v335fz}"
-        f"（想定的中率 {_prob_text(_exacta_prob_v335fz)}"
-        f"／{_selection_diag_v335fz('2車単', _exacta_prob_v335fz)}）"
+        f"（想定的中率 {_prob_text(_exacta_prob_v335fz)}）"
     )
 
-    # 折り返し比較は検証用に1行だけ残す。
+    # 方向比較の内部計算は維持するが、公開表示はしない。
     _other_dir_v335fz = _direction_candidates_v335fz[1]
-    _lines.append(
-        "※方向比較 "
-        f"{int(_dir_v335fz['first'])}-{int(_dir_v335fz['second'])}"
-        f"={float(_dir_v335fz['score']) * 100.0:.4f}"
-        " ＞ "
-        f"{int(_other_dir_v335fz['first'])}-{int(_other_dir_v335fz['second'])}"
-        f"={float(_other_dir_v335fz['score']) * 100.0:.4f}"
-    )
 
     # ---------------------------------------------------------
     # 3着候補
@@ -4524,28 +4552,27 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _third_selected_v335fz = list(_third_rows_v335fz[:2])
 
     _lines.append("")
-    _lines.append("3連単")
 
     if len(_third_selected_v335fz) >= 1:
+        # 券種見出しの★☆は、表示順位1位の3連単を代表値として判定する。
+        _tri_rep_prob_v335gb = _third_selected_v335fz[0].get("prob")
+        _lines.append(
+            f"3連単　的中{_hit_stars_v335gb(_tri_rep_prob_v335gb)}　"
+            f"妙味{_value_stars_v335gb(_tri_rep_prob_v335gb)}"
+        )
         for _r in _third_selected_v335fz:
             _c = int(_r["car"])
             _tp = _r.get("prob")
             _lines.append(
                 f"{_first_v335fz}-{_second_v335fz}-{_c}"
-                f"（想定的中率 {_prob_text(_tp)}"
-                f"／{_selection_diag_v335fz('3連単', _tp)}）"
+                f"（想定的中率 {_prob_text(_tp)}）"
             )
     else:
+        _lines.append("3連単　的中★　妙味☆")
         _lines.append("3着候補算出不可")
 
     _lines.append("")
     _lines.append("計3点" if len(_third_selected_v335fz) >= 2 else f"計{1 + len(_third_selected_v335fz)}点")
-    _lines.append(
-        "※◎・◯の2車は従来ロジックで固定し、1・2着方向と3着2車だけを内部想定的中率×配当数分布で選抜しています。"
-    )
-    _lines.append(
-        "※配当数分布は2017～2019年のS級・A1/A2班・9車立て集計です。理論オッズを当該車立てから9車相当に正規化して照合しています。実オッズ入力は使用していません。"
-    )
 
     return _lines
 
