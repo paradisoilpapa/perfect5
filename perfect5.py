@@ -1,7 +1,13 @@
+# v335ge（▲配当適合偏差値版）
+# ・v335gdの買目ロジック、印の役割、券種別★☆、9車換算・配当分布処理は変更しない。
+# ・▲の「配当適合指数100固定」を廃止し、同一レースの配当適合候補内で偏差値化する。
+# ・配当適合偏差値 = 50 + 10×(当該スコア-候補平均)/候補標準偏差。
+# ・候補1車のみ、または標準偏差0の場合は50.0とする。
+# ・◎の軸指数は％ではなく独自スコアなので「点」を付けて表示する。
 # v335gd（印再整理・▲配当適合／△期待値／×参考穴版）
 # ・◎=軸、○=現行ヒモ。
 # ・▲=配当適合車。「◎→候補の内部2車単想定的中率×9車換算後配当数割合」が最大の車。
-# ・▲は候補内1位を100とする「配当適合指数」で表示する。
+# ・▲は同一レース候補内の「配当適合偏差値」で表示する。
 # ・△=期待値指数100%以上の期待値車。◎○▲との重複は除外して次候補へスライドする。
 # ・×=参考穴。◎○▲△を除いた期待値100%以上候補のうち期待値指数最大。買目には使用しない。
 # ・買目は2車単◎→○▲△、3連複◎-○▲△、3連単◎→○→▲△。
@@ -4529,16 +4535,35 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _triangle_gc = int(_table_rows_gc[0]["car"])
         _triangle_score_gc = float(_table_rows_gc[0].get("score", 0.0) or 0.0)
 
-    # 配当適合指数：候補内最高=100。
-    _triangle_fit_index_gc = None
+    # 配当適合偏差値：
+    # 同一レースの配当適合候補スコアを母集団として偏差値化。
+    # 1位が常に100になる旧表示は使わない。
+    _triangle_fit_deviation_gc = None
     if _triangle_gc is not None and _triangle_score_gc is not None:
-        _max_fit_gc = max(
-            [float(r.get("score", 0.0) or 0.0) for r in _table_rows_gc] or [0.0]
-        )
-        if _max_fit_gc > 0.0:
-            _triangle_fit_index_gc = (
-                float(_triangle_score_gc) / float(_max_fit_gc)
-            ) * 100.0
+        _fit_scores_gc = [
+            float(r.get("score", 0.0) or 0.0)
+            for r in _table_rows_gc
+        ]
+        if len(_fit_scores_gc) <= 1:
+            _triangle_fit_deviation_gc = 50.0
+        else:
+            _mean_fit_gc = sum(_fit_scores_gc) / float(len(_fit_scores_gc))
+            _var_fit_gc = sum(
+                (float(x) - float(_mean_fit_gc)) ** 2
+                for x in _fit_scores_gc
+            ) / float(len(_fit_scores_gc))
+            _sd_fit_gc = float(_var_fit_gc) ** 0.5
+            if _sd_fit_gc <= 1e-12:
+                _triangle_fit_deviation_gc = 50.0
+            else:
+                _triangle_fit_deviation_gc = (
+                    50.0
+                    + 10.0
+                    * (
+                        float(_triangle_score_gc) - float(_mean_fit_gc)
+                    )
+                    / float(_sd_fit_gc)
+                )
 
     # 期待値指数を全候補について作る。
     _ev_candidate_rows_gd = []
@@ -4607,7 +4632,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # 公開評価表示
     # ---------------------------------------------------------
     _lines.append(
-        f"◎　{int(_axis)}　軸指数　　　　{int(_axis_rank_v335fs)}位・{float(_axis_index_v335fs):.1f}"
+        f"◎　{int(_axis)}　軸指数　　　　{int(_axis_rank_v335fs)}位・{float(_axis_index_v335fs):.1f}点"
     )
     _lines.append(
         f"○　{int(_hit_himo)}　連対指数　　　{int(_hit_rank_v335fs)}位・"
@@ -4616,15 +4641,15 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     if _triangle_gc is not None:
         _lines.append(
-            f"▲　{int(_triangle_gc)}　配当適合指数　"
+            f"▲　{int(_triangle_gc)}　配当適合偏差値　"
             + (
                 "算出不可"
-                if _triangle_fit_index_gc is None
-                else f"1位・{float(_triangle_fit_index_gc):.1f}"
+                if _triangle_fit_deviation_gc is None
+                else f"1位・{float(_triangle_fit_deviation_gc):.1f}"
             )
         )
     else:
-        _lines.append("▲　該当なし　配当適合指数　算出不可")
+        _lines.append("▲　該当なし　配当適合偏差値　算出不可")
 
     if _delta_gc is not None:
         _lines.append(
