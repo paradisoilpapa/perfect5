@@ -1,3 +1,12 @@
+# v335gs（開催区分切替・会場データ保持版）
+# ・v335grを原本に、開催区分を切り替えてもサイドバーの会場データが消えないよう修正する。
+# ・会場データの保存単位を「競輪場×開催区分×級別」から「競輪場×級別」へ変更する。
+# ・出走数は従来どおり保存キーに含めず、5～9車へ切り替えても入力済み車番データを保持する。
+# ・旧版の「競輪場×開催区分×級別」キー、および旧「競輪場×開催区分×級別×出走数」キーから自動移行する。
+# ・旧開催区分キーの移行は、現在の開催区分を最優先し、見つからない場合は他開催区分の保存値も探索する。
+# ・8・9番車のshadow stateも旧開催区分キーから新しい共通キーへ自動移行する。
+# ・開催区分そのものは、従来どおり天候取得時刻・埋込会場マスタ参照等には使用する。
+# ・◎○▲△×、想定着順、2車軸、2車単、3連複、3連単など予想ロジックは変更しない。
 # v335gr（◎1着軸固定・2車軸相手バランス版）
 # ・v335gqを原本に、◎の役割を「3連系を含む最終1着軸」として固定する。
 # ・2車軸は「◎＋相手1車」。◎を外した2車軸は採用しない。
@@ -6309,55 +6318,126 @@ def _v335ao_is_fuzzy_venue(track_name=None):
 
 st.sidebar.markdown("### 🏟️ 会場データ｜想定的中率用")
 
-# v335co：コードへ会場マスタを増やさず、ここで入力。
-# 会場データの入力状態は「競輪場×開催区分×級別」で保持する。
-# 出走数(n_cars)はウィジェットkeyに含めない。
-# これにより出走数を変更しても、決まり手・車番別N/1着/2着/3着を保持する。
+# v335gs：コードへ会場マスタを増やさず、ここで入力。
+# 会場データの入力状態は「競輪場×級別」で保持する。
+# 開催区分(race_time)は会場データのwidget keyから外す。
+# 出走数(n_cars)も従来どおりwidget keyに含めない。
+# これにより、開催区分・出走数を切り替えても
+# 決まり手・車番別N/1着/2着/3着を保持する。
 _v335bu_class_key = _v335bp_profile_class_key(race_class)
-_v335bu_profile_key = (str(track), str(race_time), str(_v335bu_class_key), int(n_cars))
 
-# 現行の安定キー：n_carsを含めない。
+# 埋込マスタ参照用profile keyは従来どおり開催区分を含める。
+# 手入力データの保持キーだけを開催区分非依存にする。
+_v335bu_profile_key = (
+    str(track),
+    str(race_time),
+    str(_v335bu_class_key),
+    int(n_cars),
+)
+
+# v335gs 現行安定キー：
+# 競輪場×級別。race_time / n_cars を含めない。
 _v335bu_key_prefix = (
-    f"v335bu_{str(track)}_{str(race_time)}_{str(_v335bu_class_key)}"
+    f"v335bu_{str(track)}_{str(_v335bu_class_key)}"
 )
 
-# v335cn以前の旧キー：n_carsを含む。既存セッションの入力値を失わないため移行元としてだけ使う。
-_v335bu_legacy_key_prefix = (
-    f"v335bu_{str(track)}_{str(race_time)}_{str(_v335bu_class_key)}_{int(n_cars)}"
-)
+# 旧v335co～v335grの開催区分依存キーを移行元として保持。
+# 現在選択中の開催区分を最優先し、その後ほかの開催区分も探索する。
+_v335gs_race_times = [
+    str(race_time),
+    *[
+        _rt for _rt in ("モーニング", "デイ", "ナイター", "ミッドナイト")
+        if str(_rt) != str(race_time)
+    ],
+]
+
+_v335gs_old_key_prefixes = [
+    f"v335bu_{str(track)}_{str(_rt)}_{str(_v335bu_class_key)}"
+    for _rt in _v335gs_race_times
+]
+
+# v335cn以前のn_cars依存キーも移行対象。
+_v335gs_legacy_key_prefixes = [
+    f"v335bu_{str(track)}_{str(_rt)}_{str(_v335bu_class_key)}_{int(n_cars)}"
+    for _rt in _v335gs_race_times
+]
+
+def _v335gs_find_old_state_key(_suffix, _shadow=False):
+    """
+    旧開催区分依存キーを探索する。
+    現在の開催区分を最優先し、見つからなければ他開催区分を探す。
+    """
+    _suffix = str(_suffix)
+
+    for _prefix in _v335gs_old_key_prefixes:
+        _key = (
+            f"{_prefix}_shadow_{_suffix}"
+            if _shadow
+            else f"{_prefix}_{_suffix}"
+        )
+        if _key in st.session_state:
+            return _key
+
+    # shadowは旧n_cars依存版では通常使っていないため、
+    # 通常widget stateだけlegacy prefixまで探索する。
+    if not _shadow:
+        for _prefix in _v335gs_legacy_key_prefixes:
+            _key = f"{_prefix}_{_suffix}"
+            if _key in st.session_state:
+                return _key
+
+    return None
 
 def _v335co_migrate_sidebar_state(_suffix):
-    """旧n_cars依存キーの値を、新しい安定キーへ初回だけ移行する。"""
+    """
+    開催区分非依存の新キーへ初回だけ移行する。
+    旧v335co～v335grの開催区分別キー、
+    旧v335cn以前のn_cars依存キーの双方を引き継ぐ。
+    """
     _new_key = f"{_v335bu_key_prefix}_{str(_suffix)}"
-    _old_key = f"{_v335bu_legacy_key_prefix}_{str(_suffix)}"
-    if _new_key not in st.session_state and _old_key in st.session_state:
-        st.session_state[_new_key] = st.session_state[_old_key]
+
+    if _new_key not in st.session_state:
+        _old_key = _v335gs_find_old_state_key(_suffix, _shadow=False)
+        if _old_key is not None:
+            st.session_state[_new_key] = st.session_state[_old_key]
+
     return _new_key
 
-# v335cv：
-# Streamlitは「その実行で描画されなかったwidget key」を後で破棄するため、
-# n_carsを9→7へ切り替えると8・9番車のwidget state自体が消える。
-# widgetとは別のshadow keyへ1～9番車の入力値を退避し、
-# 再び該当車番が表示されたときに復元する。
+# v335gs：
+# Streamlitはその実行で描画されなかったwidget keyを後で破棄するため、
+# 8・9番車は従来どおりwidgetとは別のshadow keyへ退避する。
+# shadow keyも開催区分非依存にし、旧開催区分別shadowから自動移行する。
 def _v335cv_shadow_key(_suffix):
-    return f"{_v335bu_key_prefix}_shadow_{str(_suffix)}"
+    _new_shadow_key = f"{_v335bu_key_prefix}_shadow_{str(_suffix)}"
+
+    if _new_shadow_key not in st.session_state:
+        _old_shadow_key = _v335gs_find_old_state_key(_suffix, _shadow=True)
+        if _old_shadow_key is not None:
+            st.session_state[_new_shadow_key] = st.session_state[_old_shadow_key]
+
+    return _new_shadow_key
 
 def _v335cv_snapshot_car_stats():
     for _car_no in range(1, 10):
         for _field in ("N", "1", "2", "3"):
             _suffix = f"car{int(_car_no)}_{_field}"
-            _widget_key = f"{_v335bu_key_prefix}_{_suffix}"
+
+            # まず旧キーがあれば新しい開催区分非依存キーへ移行。
+            _widget_key = _v335co_migrate_sidebar_state(_suffix)
             _shadow_key = _v335cv_shadow_key(_suffix)
+
             # 車数変更直後のrerunでは、非表示になる8・9番車の旧widget値も
-            # この時点ではまだsession_stateに残っているため、先に退避する。
+            # この時点ではsession_stateに残っているため、先に退避する。
             if _widget_key in st.session_state:
                 st.session_state[_shadow_key] = st.session_state[_widget_key]
 
 def _v335cv_restore_car_state(_suffix):
     _widget_key = _v335co_migrate_sidebar_state(_suffix)
     _shadow_key = _v335cv_shadow_key(_suffix)
+
     if _widget_key not in st.session_state and _shadow_key in st.session_state:
         st.session_state[_widget_key] = st.session_state[_shadow_key]
+
     return _widget_key
 
 _v335cv_snapshot_car_stats()
