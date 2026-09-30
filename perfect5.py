@@ -4107,7 +4107,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _sel_n = len(_selected_rows or [])
         for _i, _r in enumerate(_all_rows or []):
             if _i == _sel_n and _i < len(_all_rows):
-                _lines_out.append("──── 以下見送り ────")
+                _lines_out.append("──── 次点候補 ────")
             _lines_out.append(_formatter(_r))
 
 
