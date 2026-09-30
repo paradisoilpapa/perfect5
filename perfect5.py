@@ -1,9 +1,10 @@
-# v335gm（想定的中率均等基準足切り＋想定オッズ表示版）
+# v335gn（券種別均等確率=期待値100・購入ライン／次点候補版）
 # ・v335glの軸ロジック、○▲△×選定、的中点＋妙味点50:50の総合評価計算は変更しない。
-# ・公開買目の「総合評価点」表示を廃止し、各買目の内部想定的中率pから「想定オッズ=1/p」を表示する。
-# ・候補／次点候補の足切りは総合評価70%継続＋1位比50%下限を廃止し、券種ごとの均等確率以上を候補とする。
+# ・買目候補は券種ごとの均等確率を「期待値指数100%」として再評価し、期待値指数100%以上を購入ラインとする。
+# ・期待値指数100%未満は削除せず「次点候補」として、期待値指数の高い順に表示する。
 # ・均等確率は出走数nに応じて、2車単=1/[n(n-1)]、3連複=1/C(n,3)、3連単=1/[n(n-1)(n-2)]。
-# ・均等確率未満は削除せず「次点候補」として表示し、実オッズが想定オッズ以上なら期待値100%以上の比較材料にできるよう残す。
+# ・公開表示は「期待値指数」を主表示とし、比較用に「想定オッズ=1/p」も併記する。
+# ・「──── 次点候補 ────」は常に表示し、次点が無い場合は「該当なし」と表示する。
 # v335gl（非本命・構造先行妙味軸＋加重平均順位制限版）
 # ・v335gkを原本に、最終◎候補の構造条件だけを追加修正する。
 # ・v335gjの買い目ロジック、総合評価点50:50、候補可変条件、○▲△×選定は変更しない。
@@ -4058,8 +4059,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         return "☆"
 
 
-    def _uniform_prob_floor_v335gm(_ticket_type):
-        """出走数nに対する券種別の均等確率を返す。"""
+    def _uniform_prob_floor_v335gn(_ticket_type):
+        """出走数nに対する券種別の均等確率（期待値指数100%基準）を返す。"""
         try:
             _n = len(set(int(c) for c in (_cars or [])))
         except Exception:
@@ -4068,60 +4069,61 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         if str(_ticket_type) == "2車単":
             if _n < 2:
                 return None
-            _den = _n * (_n - 1)
+            _den = float(_n * (_n - 1))
         elif str(_ticket_type) == "3連複":
             if _n < 3:
                 return None
-            _den = (_n * (_n - 1) * (_n - 2)) / 6.0
+            _den = float(_n * (_n - 1) * (_n - 2)) / 6.0
         elif str(_ticket_type) == "3連単":
             if _n < 3:
                 return None
-            _den = _n * (_n - 1) * (_n - 2)
+            _den = float(_n * (_n - 1) * (_n - 2))
         else:
             return None
 
-        if float(_den) <= 0.0:
+        if _den <= 0.0:
             return None
-        return 1.0 / float(_den)
+        return 1.0 / _den
 
     def _variable_cut_v335gf(_rows, _ticket_type):
-        """想定的中率順に並べ、券種別の均等確率以上を候補化する。"""
+        """期待値指数順に並べ、100%以上を購入ライン、100%未満を次点候補にする。"""
+        _floor = _uniform_prob_floor_v335gn(_ticket_type)
+        if _floor is None or float(_floor) <= 0.0:
+            return [], [], []
+
         _valid = []
         for _r in (_rows or []):
             try:
                 _p = float(_r.get("prob"))
-                _total = float(_r.get("total_score", 0.0) or 0.0)
             except Exception:
                 continue
             if _p < 0.0:
                 continue
+
             _rr = dict(_r)
             _rr["prob"] = float(_p)
-            _rr["total_score"] = float(_total)
+            _rr["ev_index"] = (float(_p) / float(_floor)) * 100.0
             _valid.append(_rr)
 
         _valid.sort(
             key=lambda r: (
+                -float(r.get("ev_index", -1.0)),
                 -float(r.get("prob", -1.0)),
-                -float(r.get("total_score", -1.0)),
+                -float(r.get("total_score", -1.0) or -1.0),
                 str(r.get("sort_key", "")),
             )
         )
         if not _valid:
             return [], [], []
 
-        _floor = _uniform_prob_floor_v335gm(_ticket_type)
-        if _floor is None:
-            return _valid, [], list(_valid)
-
         _eps = 1e-12
         _selected = [
             _r for _r in _valid
-            if float(_r.get("prob", 0.0)) + _eps >= float(_floor)
+            if float(_r.get("ev_index", 0.0)) + _eps >= 100.0
         ]
         _rejected = [
             _r for _r in _valid
-            if float(_r.get("prob", 0.0)) + _eps < float(_floor)
+            if float(_r.get("ev_index", 0.0)) + _eps < 100.0
         ]
         return _selected + _rejected, _selected, _rejected
 
@@ -4132,12 +4134,21 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             return ""
 
     def _append_variable_rows_v335gf(_lines_out, _all_rows, _selected_rows, _formatter):
-        """候補列→境界線→次点候補列を表示する。"""
+        """購入ライン→次点候補ラインを表示する。次点が無い場合も境界線を残す。"""
+        _all_rows = list(_all_rows or [])
         _sel_n = len(_selected_rows or [])
-        for _i, _r in enumerate(_all_rows or []):
-            if _i == _sel_n and _i < len(_all_rows):
-                _lines_out.append("──── 次点候補 ────")
+
+        for _i, _r in enumerate(_all_rows[:_sel_n]):
             _lines_out.append(_formatter(_r))
+
+        _lines_out.append("──── 次点候補 ────")
+
+        _next_rows = _all_rows[_sel_n:]
+        if _next_rows:
+            for _r in _next_rows:
+                _lines_out.append(_formatter(_r))
+        else:
+            _lines_out.append("該当なし")
 
 
     def _position_fit_map_v335gh(_pos_map):
@@ -5036,9 +5047,10 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines.append("【ヴェロビ分析・券種別オススメ】")
 
     # ---------------------------------------------------------
-    # v335gm：○▲△×を候補属性として保持し、
-    # 券種ごとの均等確率以上を候補、未満を次点候補として分ける。
-    # 総合評価点は内部計算として残すが、公開表示と足切りには使用しない。
+    # v335gn：○▲△×を候補属性として保持し、
+    # 券種別の均等確率を期待値指数100%基準として買目を順位付けする。
+    # 100%以上は購入ライン、100%未満は次点候補として残す。
+    # 総合評価点の内部計算自体は変更しない。
     # ---------------------------------------------------------
     _role_by_car_gf = {}
     _candidate_opponents_gf = []
@@ -5096,11 +5108,13 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     )
 
     def _fmt_exacta_gf(_r):
+        _ev = _r.get("ev_index")
+        _ev_text = "算出不可" if _ev is None else f"{float(_ev):.1f}%"
         _odds = _theoretical_odds_v335fy(_r.get("prob"))
         _odds_text = "算出不可" if _odds is None else f"{float(_odds):.1f}倍"
         return (
             f"{int(_axis_gc)}-{int(_r['opp'])}"
-            f"（想定オッズ {_odds_text}）"
+            f"（期待値指数 {_ev_text}／想定オッズ {_odds_text}）"
         )
 
     if _exacta_all_gf:
@@ -5153,11 +5167,13 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _cars_sorted = sorted(
             (int(_axis_gc), int(_r["x"]), int(_r["y"]))
         )
+        _ev = _r.get("ev_index")
+        _ev_text = "算出不可" if _ev is None else f"{float(_ev):.1f}%"
         _odds = _theoretical_odds_v335fy(_r.get("prob"))
         _odds_text = "算出不可" if _odds is None else f"{float(_odds):.1f}倍"
         return (
             f"{_cars_sorted[0]}-{_cars_sorted[1]}-{_cars_sorted[2]}"
-            f"（想定オッズ {_odds_text}）"
+            f"（期待値指数 {_ev_text}／想定オッズ {_odds_text}）"
         )
 
     if _trio_all_gf:
@@ -5214,11 +5230,13 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     )
 
     def _fmt_trifecta_gf(_r):
+        _ev = _r.get("ev_index")
+        _ev_text = "算出不可" if _ev is None else f"{float(_ev):.1f}%"
         _odds = _theoretical_odds_v335fy(_r.get("prob"))
         _odds_text = "算出不可" if _odds is None else f"{float(_odds):.1f}倍"
         return (
             f"{int(_axis_gc)}-{int(_r['second'])}-{int(_r['third'])}"
-            f"（想定オッズ {_odds_text}）"
+            f"（期待値指数 {_ev_text}／想定オッズ {_odds_text}）"
         )
 
     if _trifecta_all_gf:
