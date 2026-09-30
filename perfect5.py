@@ -1,3 +1,12 @@
+# v335gq（2車単・3連単 2車軸方向統一版）
+# ・v335gpを原本に、2車単を旧◎頭固定候補から切り離す。
+# ・2車単は、3連単で採用する「最良2車軸＋最良方向」と完全に同じ1点だけを表示する。
+# ・2車軸は従来どおり、全出走車の全2車組を内部評価し、公開評価◎○▲△×内で最良バランスの1組を採用する。
+# ・方向は従来どおり、その2車の表裏を内部比較し、的中側×順序付き妙味側の方向バランスが高い1方向だけを採用する。
+# ・3連複は同じ2車軸＋現在公開評価に出ている残り車番。
+# ・3連単は2車単と同じ方向固定＋現在公開評価に出ている残り車番。
+# ・全車流し、裏目追加、候補足切りは行わない。
+# ・◎○▲△×、想定着順、確率モデル、配当適合・期待値評価の内部計算は変更しない。
 # v335gp（足切り廃止・3連単2車軸方向1本版）
 # ・v335goを原本に、3連単の2車軸表裏展開を廃止する。
 # ・3連複の2車軸選定、2車単、◎○▲△×、想定着順、確率モデルは変更しない。
@@ -5100,63 +5109,26 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _public_prediction_cars_gf.append(_c)
 
     # ---------------------------------------------------------
-    # 2車単：◎→○▲△×をすべて表示。足切りなし。
+    # v335gq：
+    # 2車単・3連複・3連単を同じ2車軸ロジックへ統一する。
+    #
+    # 1) 全出走車の全2車組を内部評価
+    # 2) 公開評価◎○▲△×内で最良2車軸を1組採用
+    # 3) その2車の方向を内部比較し、1方向だけ採用
+    # 4) 2車単 = 採用方向1点
+    # 5) 3連複 = 同じ2車軸 + 公開評価の残り車番
+    # 6) 3連単 = 2車単と同じ方向 + 公開評価の残り車番
     # ---------------------------------------------------------
-    _exacta_candidates_gf = []
-    for _opp in _candidate_opponents_gf:
-        _ep = _exacta_prob_with(
-            int(_axis_gc), int(_opp), _p1_map, _p2_map, _p3_map
-        )
-        _exacta_candidates_gf.append({
-            "opp": int(_opp),
-            "prob": None if _ep is None else float(_ep),
-            "mark": _role_text_v335gf(_opp, _role_by_car_gf),
-            "sort_key": f"{int(_opp):02d}",
-        })
-
-    _exacta_candidates_gf = _attach_total_scores_v335gh(
-        _exacta_candidates_gf, "2車単"
-    )
-    _exacta_candidates_gf = sorted(
-        _exacta_candidates_gf,
-        key=lambda r: (
-            -float(r.get("total_score", -1.0) or -1.0),
-            -float(r.get("prob", -1.0) if r.get("prob") is not None else -1.0),
-            str(r.get("sort_key", "")),
-        ),
-    )
-
-    _exacta_probs_gf = [
-        r.get("prob") for r in _exacta_candidates_gf
-        if r.get("prob") is not None
-    ]
-    _exacta_group_prob_gf = _group_hit_prob_v335gc(_exacta_probs_gf)
-
-    _lines.append("")
-    _lines.append(
-        f"2車単　的中{_hit_stars_v335gc(_exacta_group_prob_gf)}　"
-        f"妙味{_value_stars_v335gc(_exacta_probs_gf)}　"
-        f"候補{len(_exacta_candidates_gf)}点"
-    )
-
-    if _exacta_candidates_gf:
-        for _r in _exacta_candidates_gf:
-            _lines.append(
-                f"{int(_axis_gc)}-{int(_r['opp'])}"
-                f"（総合評価 {float(_r.get('total_score', 0.0)):.1f}点）"
-            )
-    else:
-        _lines.append("算出不可")
 
     # ---------------------------------------------------------
-    # 3連系共通：全出走車の全2車組を内部評価する。
+    # 2車軸評価：
     # 的中側 = 2車複内部想定的中率をレース内最大=100で相対化。
     # 妙味側 = 2車の表裏それぞれの順序付き妙味raw平均を、
     #          全2車組の中で0～100順位正規化。
     # 2車軸バランス = sqrt(的中点 × 妙味点)。
-    # 最終採用は公開評価車◎○▲△×同士の組だけ。
+    # 内部計算は全出走車。最終採用は公開評価◎○▲△×同士だけ。
     # ---------------------------------------------------------
-    def _pair_myoumi_raw_v335go(_a, _b):
+    def _pair_myoumi_raw_v335gq(_a, _b):
         _vals = []
         for _ticket in ((int(_a), int(_b)), (int(_b), int(_a))):
             _v = _ordered_myoumi_raw_v335gh(_ticket)
@@ -5169,58 +5141,66 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             return None
         return sum(_vals) / float(len(_vals))
 
-    _all_pair_rows_v335go = []
-    _all_cars_v335go = []
+    _all_pair_rows_v335gq = []
+    _all_cars_v335gq = []
+
     for _c in (_cars or []):
         try:
             _ci = int(_c)
         except Exception:
             continue
-        if _ci not in _all_cars_v335go:
-            _all_cars_v335go.append(_ci)
+        if _ci not in _all_cars_v335gq:
+            _all_cars_v335gq.append(_ci)
 
-    for _i in range(len(_all_cars_v335go)):
-        for _j in range(_i + 1, len(_all_cars_v335go)):
-            _a = int(_all_cars_v335go[_i])
-            _b = int(_all_cars_v335go[_j])
+    for _i in range(len(_all_cars_v335gq)):
+        for _j in range(_i + 1, len(_all_cars_v335gq)):
+            _a = int(_all_cars_v335gq[_i])
+            _b = int(_all_cars_v335gq[_j])
+
             _qp = _quinella_prob_with(
                 _a, _b, _p1_map, _p2_map, _p3_map
             )
-            _all_pair_rows_v335go.append({
+
+            _all_pair_rows_v335gq.append({
                 "a": _a,
                 "b": _b,
                 "qprob": None if _qp is None else float(_qp),
-                "myoumi_raw": _pair_myoumi_raw_v335go(_a, _b),
+                "myoumi_raw": _pair_myoumi_raw_v335gq(_a, _b),
             })
 
-    _max_qprob_v335go = max(
+    _max_qprob_v335gq = max(
         [
             max(0.0, float(r.get("qprob", 0.0) or 0.0))
-            for r in _all_pair_rows_v335go
+            for r in _all_pair_rows_v335gq
         ] or [0.0]
     )
-    _pair_myoumi_score_map_v335go = _percentile_score_v335gh(
-        _all_pair_rows_v335go, "myoumi_raw"
+
+    _pair_myoumi_score_map_v335gq = _percentile_score_v335gh(
+        _all_pair_rows_v335gq, "myoumi_raw"
     )
 
-    for _idx, _r in enumerate(_all_pair_rows_v335go):
+    for _idx, _r in enumerate(_all_pair_rows_v335gq):
         _qp = max(0.0, float(_r.get("qprob", 0.0) or 0.0))
+
         _hit_score = (
-            100.0 * _qp / float(_max_qprob_v335go)
-            if _max_qprob_v335go > 0.0 else 0.0
+            100.0 * _qp / float(_max_qprob_v335gq)
+            if _max_qprob_v335gq > 0.0 else 0.0
         )
+
         _myoumi_score = float(
-            _pair_myoumi_score_map_v335go.get(int(_idx), 50.0)
+            _pair_myoumi_score_map_v335gq.get(int(_idx), 50.0)
         )
+
         _balance = (
             max(0.0, float(_hit_score))
             * max(0.0, float(_myoumi_score))
         ) ** 0.5
+
         _r["hit_score"] = float(_hit_score)
         _r["myoumi_score"] = float(_myoumi_score)
         _r["balance_score"] = float(_balance)
 
-    _all_pair_rows_v335go.sort(
+    _all_pair_rows_v335gq.sort(
         key=lambda r: (
             -float(r.get("balance_score", -1.0)),
             -float(r.get("qprob", -1.0) if r.get("qprob") is not None else -1.0),
@@ -5230,105 +5210,45 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         )
     )
 
-    _public_set_v335go = set(int(c) for c in _public_prediction_cars_gf)
-    _axis_pair_row_v335go = next(
+    _public_set_v335gq = set(int(c) for c in _public_prediction_cars_gf)
+
+    _axis_pair_row_v335gq = next(
         (
-            r for r in _all_pair_rows_v335go
-            if int(r.get("a")) in _public_set_v335go
-            and int(r.get("b")) in _public_set_v335go
+            r for r in _all_pair_rows_v335gq
+            if int(r.get("a")) in _public_set_v335gq
+            and int(r.get("b")) in _public_set_v335gq
         ),
         None,
     )
 
-    _pair_a_v335go = None
-    _pair_b_v335go = None
-    _pair_balance_v335go = None
-    if _axis_pair_row_v335go is not None:
-        _pair_a_v335go = int(_axis_pair_row_v335go["a"])
-        _pair_b_v335go = int(_axis_pair_row_v335go["b"])
-        _pair_balance_v335go = float(
-            _axis_pair_row_v335go.get("balance_score", 0.0) or 0.0
+    _pair_a_v335gq = None
+    _pair_b_v335gq = None
+    _pair_balance_v335gq = None
+
+    if _axis_pair_row_v335gq is not None:
+        _pair_a_v335gq = int(_axis_pair_row_v335gq["a"])
+        _pair_b_v335gq = int(_axis_pair_row_v335gq["b"])
+        _pair_balance_v335gq = float(
+            _axis_pair_row_v335gq.get("balance_score", 0.0) or 0.0
         )
 
-    # 3着側は「今公開している車番」だけ。
-    # 全車計算結果から新しい車を公開買目へ追加しない。
-    _third_candidates_v335go = []
-    if _pair_a_v335go is not None and _pair_b_v335go is not None:
-        for _c in _public_prediction_cars_gf:
-            _c = int(_c)
-            if _c in (_pair_a_v335go, _pair_b_v335go):
-                continue
-            if _c not in _third_candidates_v335go:
-                _third_candidates_v335go.append(_c)
-
-    _lines.append("")
-    if _pair_a_v335go is not None and _pair_b_v335go is not None:
-        _lines.append(
-            f"2車軸　{int(_pair_a_v335go)}-{int(_pair_b_v335go)}"
-            f"（バランス指数 {float(_pair_balance_v335go):.1f}）"
-        )
-    else:
-        _lines.append("2車軸　算出不可")
-
     # ---------------------------------------------------------
-    # 3連複：共通2車軸 + 公開評価車の残りだけ。足切りなし。
+    # 2車軸方向評価：
+    # 2車単内部想定的中率と順序付き妙味rawを、
+    # 採用2車の表裏2方向内で相対化し、幾何平均で比較。
+    # 高い1方向だけを2車単・3連単共通方向にする。
     # ---------------------------------------------------------
-    _trio_candidates_gf = []
-    if _pair_a_v335go is not None and _pair_b_v335go is not None:
-        for _third in _third_candidates_v335go:
-            _qp = _trio_prob_with_v335gc(
-                int(_pair_a_v335go),
-                int(_pair_b_v335go),
-                int(_third),
-                _p1_map,
-                _p2_map,
-                _p3_map,
-            )
-            _trio_candidates_gf.append({
-                "third": int(_third),
-                "prob": None if _qp is None else float(_qp),
-            })
+    _dir_first_v335gq = None
+    _dir_second_v335gq = None
+    _dir_score_v335gq = None
+    _dir_exacta_prob_v335gq = None
 
-    _trio_probs_gf = [
-        r.get("prob") for r in _trio_candidates_gf
-        if r.get("prob") is not None
-    ]
-    _trio_group_prob_gf = _group_hit_prob_v335gc(_trio_probs_gf)
-
-    _lines.append("")
-    _lines.append(
-        f"3連複　的中{_hit_stars_v335gc(_trio_group_prob_gf)}　"
-        f"妙味{_value_stars_v335gc(_trio_probs_gf)}　"
-        f"候補{len(_trio_candidates_gf)}点"
-    )
-
-    if _trio_candidates_gf:
-        for _r in _trio_candidates_gf:
-            _ticket = sorted((
-                int(_pair_a_v335go),
-                int(_pair_b_v335go),
-                int(_r["third"]),
-            ))
-            _lines.append(f"{_ticket[0]}-{_ticket[1]}-{_ticket[2]}")
-    else:
-        _lines.append("算出不可")
-
-    # ---------------------------------------------------------
-    # 3連単：共通2車軸の方向を内部評価し、高い向き1本だけ採用。
-    # 3着は公開評価車の残りだけ。足切りなし。
-    # ---------------------------------------------------------
-    _trifecta_candidates_gf = []
-
-    _dir_first_v335gp = None
-    _dir_second_v335gp = None
-    _dir_score_v335gp = None
-
-    if _pair_a_v335go is not None and _pair_b_v335go is not None:
-        _direction_rows_v335gp = []
+    if _pair_a_v335gq is not None and _pair_b_v335gq is not None:
+        _direction_rows_v335gq = []
 
         for _first, _second in (
-            (int(_pair_a_v335go), int(_pair_b_v335go)),
-            (int(_pair_b_v335go), int(_pair_a_v335go)),
+            (int(_pair_a_v335gq), int(_pair_b_v335gq)),
+            (int(_pair_b_v335gq), int(_pair_a_v335gq)),
         ):
             _ep = _exacta_prob_with(
                 int(_first),
@@ -5342,29 +5262,42 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 (int(_first), int(_second))
             )
 
-            _direction_rows_v335gp.append({
+            _direction_rows_v335gq.append({
                 "first": int(_first),
                 "second": int(_second),
                 "exacta_prob": 0.0 if _ep is None else max(0.0, float(_ep)),
                 "myoumi_raw": 0.0 if _my is None else max(0.0, float(_my)),
             })
 
-        _max_ep_v335gp = max(
-            [float(r.get("exacta_prob", 0.0)) for r in _direction_rows_v335gp] or [0.0]
-        )
-        _max_my_v335gp = max(
-            [float(r.get("myoumi_raw", 0.0)) for r in _direction_rows_v335gp] or [0.0]
+        _max_ep_v335gq = max(
+            [
+                float(r.get("exacta_prob", 0.0))
+                for r in _direction_rows_v335gq
+            ] or [0.0]
         )
 
-        for _r in _direction_rows_v335gp:
+        _max_my_v335gq = max(
+            [
+                float(r.get("myoumi_raw", 0.0))
+                for r in _direction_rows_v335gq
+            ] or [0.0]
+        )
+
+        for _r in _direction_rows_v335gq:
             _hit_score = (
-                100.0 * float(_r.get("exacta_prob", 0.0)) / float(_max_ep_v335gp)
-                if _max_ep_v335gp > 0.0 else 0.0
+                100.0
+                * float(_r.get("exacta_prob", 0.0))
+                / float(_max_ep_v335gq)
+                if _max_ep_v335gq > 0.0 else 0.0
             )
+
             _myoumi_score = (
-                100.0 * float(_r.get("myoumi_raw", 0.0)) / float(_max_my_v335gp)
-                if _max_my_v335gp > 0.0 else 0.0
+                100.0
+                * float(_r.get("myoumi_raw", 0.0))
+                / float(_max_my_v335gq)
+                if _max_my_v335gq > 0.0 else 0.0
             )
+
             _balance = (
                 max(0.0, float(_hit_score))
                 * max(0.0, float(_myoumi_score))
@@ -5374,7 +5307,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _r["myoumi_score"] = float(_myoumi_score)
             _r["direction_score"] = float(_balance)
 
-        _direction_rows_v335gp.sort(
+        _direction_rows_v335gq.sort(
             key=lambda r: (
                 -float(r.get("direction_score", -1.0)),
                 -float(r.get("exacta_prob", -1.0)),
@@ -5384,53 +5317,184 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             )
         )
 
-        if _direction_rows_v335gp:
-            _best_dir_v335gp = _direction_rows_v335gp[0]
-            _dir_first_v335gp = int(_best_dir_v335gp["first"])
-            _dir_second_v335gp = int(_best_dir_v335gp["second"])
-            _dir_score_v335gp = float(
-                _best_dir_v335gp.get("direction_score", 0.0) or 0.0
+        if _direction_rows_v335gq:
+            _best_dir_v335gq = _direction_rows_v335gq[0]
+
+            _dir_first_v335gq = int(_best_dir_v335gq["first"])
+            _dir_second_v335gq = int(_best_dir_v335gq["second"])
+            _dir_score_v335gq = float(
+                _best_dir_v335gq.get("direction_score", 0.0) or 0.0
+            )
+            _dir_exacta_prob_v335gq = float(
+                _best_dir_v335gq.get("exacta_prob", 0.0) or 0.0
             )
 
-            for _third in _third_candidates_v335go:
-                _tp = _trifecta_prob_with(
-                    int(_dir_first_v335gp),
-                    int(_dir_second_v335gp),
-                    int(_third),
-                    _p1_map,
-                    _p2_map,
-                    _p3_map,
-                )
-                _trifecta_candidates_gf.append({
-                    "first": int(_dir_first_v335gp),
-                    "second": int(_dir_second_v335gp),
-                    "third": int(_third),
-                    "prob": None if _tp is None else float(_tp),
-                })
+    # ---------------------------------------------------------
+    # 3着候補：
+    # 現在公開している◎○▲△×のうち、2車軸以外だけ。
+    # 内部全車評価から新しい車番を公開買目へ追加しない。
+    # ---------------------------------------------------------
+    _third_candidates_v335gq = []
 
-    _trifecta_probs_gf = [
-        r.get("prob") for r in _trifecta_candidates_gf
+    if _pair_a_v335gq is not None and _pair_b_v335gq is not None:
+        for _c in _public_prediction_cars_gf:
+            _c = int(_c)
+
+            if _c in (_pair_a_v335gq, _pair_b_v335gq):
+                continue
+
+            if _c not in _third_candidates_v335gq:
+                _third_candidates_v335gq.append(_c)
+
+    # ---------------------------------------------------------
+    # 2車単：
+    # 3連単と同じ2車軸・同じ方向の1点だけ。
+    # ---------------------------------------------------------
+    _exacta_probs_v335gq = []
+    if _dir_exacta_prob_v335gq is not None:
+        _exacta_probs_v335gq = [float(_dir_exacta_prob_v335gq)]
+
+    _exacta_group_prob_v335gq = _group_hit_prob_v335gc(
+        _exacta_probs_v335gq
+    )
+
+    # ---------------------------------------------------------
+    # 3連複：
+    # 同じ2車軸 + 公開評価車の残りだけ。足切りなし。
+    # ---------------------------------------------------------
+    _trio_candidates_v335gq = []
+
+    if _pair_a_v335gq is not None and _pair_b_v335gq is not None:
+        for _third in _third_candidates_v335gq:
+            _qp = _trio_prob_with_v335gc(
+                int(_pair_a_v335gq),
+                int(_pair_b_v335gq),
+                int(_third),
+                _p1_map,
+                _p2_map,
+                _p3_map,
+            )
+
+            _trio_candidates_v335gq.append({
+                "third": int(_third),
+                "prob": None if _qp is None else float(_qp),
+            })
+
+    _trio_probs_v335gq = [
+        r.get("prob")
+        for r in _trio_candidates_v335gq
         if r.get("prob") is not None
     ]
-    _trifecta_group_prob_gf = _group_hit_prob_v335gc(_trifecta_probs_gf)
+
+    _trio_group_prob_v335gq = _group_hit_prob_v335gc(
+        _trio_probs_v335gq
+    )
+
+    # ---------------------------------------------------------
+    # 3連単：
+    # 2車単と完全に同じ方向固定 + 公開評価車の残りだけ。
+    # 足切りなし。
+    # ---------------------------------------------------------
+    _trifecta_candidates_v335gq = []
+
+    if _dir_first_v335gq is not None and _dir_second_v335gq is not None:
+        for _third in _third_candidates_v335gq:
+            _tp = _trifecta_prob_with(
+                int(_dir_first_v335gq),
+                int(_dir_second_v335gq),
+                int(_third),
+                _p1_map,
+                _p2_map,
+                _p3_map,
+            )
+
+            _trifecta_candidates_v335gq.append({
+                "first": int(_dir_first_v335gq),
+                "second": int(_dir_second_v335gq),
+                "third": int(_third),
+                "prob": None if _tp is None else float(_tp),
+            })
+
+    _trifecta_probs_v335gq = [
+        r.get("prob")
+        for r in _trifecta_candidates_v335gq
+        if r.get("prob") is not None
+    ]
+
+    _trifecta_group_prob_v335gq = _group_hit_prob_v335gc(
+        _trifecta_probs_v335gq
+    )
+
+    # ---------------------------------------------------------
+    # 公開表示
+    # ---------------------------------------------------------
+    _lines.append("")
+    _lines.append(
+        f"2車単　的中{_hit_stars_v335gc(_exacta_group_prob_v335gq)}　"
+        f"妙味{_value_stars_v335gc(_exacta_probs_v335gq)}　"
+        f"候補{1 if _dir_first_v335gq is not None and _dir_second_v335gq is not None else 0}点"
+    )
+
+    if _dir_first_v335gq is not None and _dir_second_v335gq is not None:
+        _lines.append(
+            f"{int(_dir_first_v335gq)}-{int(_dir_second_v335gq)}"
+            f"（方向バランス指数 {float(_dir_score_v335gq):.1f}）"
+        )
+    else:
+        _lines.append("算出不可")
 
     _lines.append("")
-    if _dir_first_v335gp is not None and _dir_second_v335gp is not None:
+
+    if _pair_a_v335gq is not None and _pair_b_v335gq is not None:
         _lines.append(
-            f"3連単2車軸方向　{int(_dir_first_v335gp)}→{int(_dir_second_v335gp)}"
-            f"（方向バランス指数 {float(_dir_score_v335gp):.1f}）"
+            f"2車軸　{int(_pair_a_v335gq)}-{int(_pair_b_v335gq)}"
+            f"（バランス指数 {float(_pair_balance_v335gq):.1f}）"
+        )
+    else:
+        _lines.append("2車軸　算出不可")
+
+    _lines.append("")
+    _lines.append(
+        f"3連複　的中{_hit_stars_v335gc(_trio_group_prob_v335gq)}　"
+        f"妙味{_value_stars_v335gc(_trio_probs_v335gq)}　"
+        f"候補{len(_trio_candidates_v335gq)}点"
+    )
+
+    if _trio_candidates_v335gq:
+        for _r in _trio_candidates_v335gq:
+            _ticket = sorted((
+                int(_pair_a_v335gq),
+                int(_pair_b_v335gq),
+                int(_r["third"]),
+            ))
+
+            _lines.append(
+                f"{_ticket[0]}-{_ticket[1]}-{_ticket[2]}"
+            )
+    else:
+        _lines.append("算出不可")
+
+    _lines.append("")
+
+    if _dir_first_v335gq is not None and _dir_second_v335gq is not None:
+        _lines.append(
+            f"3連単2車軸方向　"
+            f"{int(_dir_first_v335gq)}→{int(_dir_second_v335gq)}"
+            f"（方向バランス指数 {float(_dir_score_v335gq):.1f}）"
         )
 
     _lines.append(
-        f"3連単　的中{_hit_stars_v335gc(_trifecta_group_prob_gf)}　"
-        f"妙味{_value_stars_v335gc(_trifecta_probs_gf)}　"
-        f"候補{len(_trifecta_candidates_gf)}点"
+        f"3連単　的中{_hit_stars_v335gc(_trifecta_group_prob_v335gq)}　"
+        f"妙味{_value_stars_v335gc(_trifecta_probs_v335gq)}　"
+        f"候補{len(_trifecta_candidates_v335gq)}点"
     )
 
-    if _trifecta_candidates_gf:
-        for _r in _trifecta_candidates_gf:
+    if _trifecta_candidates_v335gq:
+        for _r in _trifecta_candidates_v335gq:
             _lines.append(
-                f"{int(_r['first'])}-{int(_r['second'])}-{int(_r['third'])}"
+                f"{int(_r['first'])}-"
+                f"{int(_r['second'])}-"
+                f"{int(_r['third'])}"
             )
     else:
         _lines.append("算出不可")
