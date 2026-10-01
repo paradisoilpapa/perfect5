@@ -1,7 +1,7 @@
-# v335gu（2車単◎→○▲・2車軸表示削除版）
-# ・v335gtを原本に、2車単を「◎→○」「◎→▲」の最大2点へ修正する。
-# ・○または▲が不在・重複する場合は、成立する買目だけを表示する。
-# ・「2車軸　◎-相手（バランス指数…）」の公開表示は削除する。
+# v335gv（2車単◎→▲1点版）
+# ・v335guを原本に、2車単から「◎→○」を削除し「◎→▲」1点だけにする。
+# ・▲が不在または◎と重複する場合は、2車単を0点とし○への補完は行わない。
+# ・「2車軸　◎-相手（バランス指数…）」は非表示のまま維持する。
 # ・2車軸バランスによる相手選定は3連単の2着固定に使う内部ロジックとして維持する。
 # ・▲－無印ワイド1点、3連複の公開削除、3連単、◎○▲△×、想定着順、ポイントアップ、開催日KOは変更しない。
 # v335gt（▲－無印ワイド1点・3連複公開削除版）
@@ -5281,44 +5281,40 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _pair_qprob_v335gr = _best_pair_v335gr.get("qprob")
 
     # ---------------------------------------------------------
-    # v335gu：2車単は「◎→○」「◎→▲」の最大2点。
-    # 2車軸バランス相手とは切り離し、公開印の○・▲をそのまま使う。
+    # v335gv：2車単は「◎→▲」1点だけ。
+    # ○は2車単から外し、▲が成立しない場合も○へ補完しない。
+    # 3連単の2着固定ロジックは従来どおり変更しない。
     # ---------------------------------------------------------
-    _exacta_candidates_v335gu = []
-    _exacta_seen_v335gu = set()
+    _exacta_candidates_v335gv = []
 
-    for _opp in (_b_gc, _triangle_gc):
-        if _opp is None:
-            continue
+    if _triangle_gc is not None:
         try:
-            _opp = int(_opp)
+            _opp = int(_triangle_gc)
         except Exception:
-            continue
-        if _opp == int(_axis_v335gr) or _opp in _exacta_seen_v335gu:
-            continue
+            _opp = None
 
-        _ep = _exacta_prob_with(
-            int(_axis_v335gr),
-            int(_opp),
-            _p1_map,
-            _p2_map,
-            _p3_map,
-        )
-        _exacta_candidates_v335gu.append({
-            "first": int(_axis_v335gr),
-            "second": int(_opp),
-            "prob": None if _ep is None else float(_ep),
-        })
-        _exacta_seen_v335gu.add(int(_opp))
+        if _opp is not None and _opp != int(_axis_v335gr):
+            _ep = _exacta_prob_with(
+                int(_axis_v335gr),
+                int(_opp),
+                _p1_map,
+                _p2_map,
+                _p3_map,
+            )
+            _exacta_candidates_v335gv.append({
+                "first": int(_axis_v335gr),
+                "second": int(_opp),
+                "prob": None if _ep is None else float(_ep),
+            })
 
-    _exacta_probs_v335gu = [
+    _exacta_probs_v335gv = [
         _r.get("prob")
-        for _r in _exacta_candidates_v335gu
+        for _r in _exacta_candidates_v335gv
         if _r.get("prob") is not None
     ]
 
-    _exacta_group_prob_v335gu = _group_hit_prob_v335gc(
-        _exacta_probs_v335gu
+    _exacta_group_prob_v335gv = _group_hit_prob_v335gc(
+        _exacta_probs_v335gv
     )
 
     # ---------------------------------------------------------
@@ -5463,18 +5459,18 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ---------------------------------------------------------
     _lines.append("")
     _lines.append(
-        f"2車単　的中{_hit_stars_v335gc(_exacta_group_prob_v335gu)}　"
-        f"妙味{_value_stars_v335gc(_exacta_probs_v335gu)}　"
-        f"候補{len(_exacta_candidates_v335gu)}点"
+        f"2車単　的中{_hit_stars_v335gc(_exacta_group_prob_v335gv)}　"
+        f"妙味{_value_stars_v335gc(_exacta_probs_v335gv)}　"
+        f"候補{len(_exacta_candidates_v335gv)}点"
     )
 
-    if _exacta_candidates_v335gu:
-        for _r in _exacta_candidates_v335gu:
+    if _exacta_candidates_v335gv:
+        for _r in _exacta_candidates_v335gv:
             _lines.append(
                 f"{int(_r['first'])}-{int(_r['second'])}"
             )
     else:
-        _lines.append("算出不可（○または▲候補なし）")
+        _lines.append("算出不可（▲候補なし）")
 
     _lines.append("")
     _lines.append(
