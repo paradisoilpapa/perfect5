@@ -1,3 +1,11 @@
+# v335gt（▲－無印ワイド1点・3連複公開削除版）
+# ・v335gsを原本に、ワイド1点を追加する。
+# ・ワイドは▲を固定軸とし、相手は公開評価◎○▲△×の付いていない無印車だけを候補にする。
+# ・各無印車について、順流／逆流／渦それぞれの「ポイントアップ＋開催日KO後の最終着順」を想定比率で加重平均する。
+# ・加重平均順位が最も小さい（＝最終着順評価が高い）無印車を1車だけ採用し、ワイド「▲－無印」1点とする。
+# ・加重平均順位が同じ場合は、想定比率上位流れ→次位流れ→第3流れの最終順位、最後に車番で決定する。
+# ・3連複は公開の推奨買目から削除する（互換性のため内部計算ヘルパーは残す）。
+# ・2車単、2車軸、3連単、◎○▲△×、想定着順、ポイントアップ、開催日KO、確率モデルは変更しない。
 # v335gs（開催区分切替・会場データ保持版）
 # ・v335grを原本に、開催区分を切り替えてもサイドバーの会場データが消えないよう修正する。
 # ・会場データの保存単位を「競輪場×開催区分×級別」から「競輪場×級別」へ変更する。
@@ -5093,9 +5101,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines.append("【ヴェロビ分析・券種別オススメ】")
 
     # ---------------------------------------------------------
-    # v335go：足切りを廃止。
-    # 2車単は公開評価車をすべて候補化。
-    # 3連複／3連単は「的中×妙味」の2車軸バランスで共通軸を1組選ぶ。
+    # v335gt：v335grの2車軸・2車単・3連単は維持。
+    # 3連複は公開買目から削除し、▲－無印ワイド1点を追加する。
+    # ワイド相手はポイントアップ＋開催日KO後の流れ別最終順位を比率加重して選ぶ。
     #
     # 内部の2車組評価は全出走車で行うが、
     # 実際の2車軸・3着候補は公開評価に出ている◎○▲△×だけを使う。
@@ -5376,6 +5384,59 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     )
 
     # ---------------------------------------------------------
+    # v335gt：▲－無印ワイド 1点
+    #
+    # ▲を固定し、公開評価◎○▲△×が付いていない無印車だけを候補化。
+    # 相手選定は新しい妙味指数を作らず、既存の各流れについて
+    # 「ポイントアップ＋開催日KO」まで通した最終着順をそのまま利用する。
+    # 3流れの想定比率で最終順位を加重平均し、平均順位が最小の1車を採用。
+    # ---------------------------------------------------------
+    _wide_axis_v335gt = None
+    _wide_opp_v335gt = None
+    _wide_avg_rank_v335gt = None
+
+    if _triangle_gc is not None:
+        try:
+            _wide_axis_v335gt = int(_triangle_gc)
+        except Exception:
+            _wide_axis_v335gt = None
+
+    if _wide_axis_v335gt is not None:
+        _marked_cars_v335gt = set(int(c) for c in (_public_prediction_cars_gf or []))
+        _unmarked_cars_v335gt = [
+            int(c) for c in (_cars or [])
+            if int(c) not in _marked_cars_v335gt
+            and int(c) != int(_wide_axis_v335gt)
+        ]
+
+        if _unmarked_cars_v335gt:
+            def _wide_unmarked_key_v335gt(_car):
+                _car = int(_car)
+                _avg = float(_weighted_avg_rank_v335gl(_car))
+                _flow_ranks = []
+                for _sr in (_rows or []):
+                    try:
+                        _order = tuple(int(x) for x in (_sr.get("order") or tuple()))
+                        _rk = int(_order.index(_car)) + 1 if _car in _order else 999
+                    except Exception:
+                        _rk = 999
+                    _flow_ranks.append(int(_rk))
+                while len(_flow_ranks) < 3:
+                    _flow_ranks.append(999)
+                return (
+                    float(_avg),
+                    int(_flow_ranks[0]),
+                    int(_flow_ranks[1]),
+                    int(_flow_ranks[2]),
+                    int(_car),
+                )
+
+            _wide_opp_v335gt = int(min(_unmarked_cars_v335gt, key=_wide_unmarked_key_v335gt))
+            _wide_avg_rank_v335gt = float(
+                _weighted_avg_rank_v335gl(_wide_opp_v335gt)
+            )
+
+    # ---------------------------------------------------------
     # 公開表示
     # ---------------------------------------------------------
     _lines.append("")
@@ -5405,24 +5466,16 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _lines.append("")
     _lines.append(
-        f"3連複　的中{_hit_stars_v335gc(_trio_group_prob_v335gr)}　"
-        f"妙味{_value_stars_v335gc(_trio_probs_v335gr)}　"
-        f"候補{len(_trio_candidates_v335gr)}点"
+        f"ワイド　候補{1 if (_wide_axis_v335gt is not None and _wide_opp_v335gt is not None) else 0}点"
     )
 
-    if _trio_candidates_v335gr:
-        for _r in _trio_candidates_v335gr:
-            _ticket = sorted((
-                int(_axis_v335gr),
-                int(_partner_v335gr),
-                int(_r["third"]),
-            ))
-
-            _lines.append(
-                f"{_ticket[0]}-{_ticket[1]}-{_ticket[2]}"
-            )
+    if _wide_axis_v335gt is not None and _wide_opp_v335gt is not None:
+        _lines.append(
+            f"{int(_wide_axis_v335gt)}-{int(_wide_opp_v335gt)}"
+            f"（▲－無印／最終着順加重平均 {float(_wide_avg_rank_v335gt):.2f}位）"
+        )
     else:
-        _lines.append("算出不可")
+        _lines.append("算出不可（▲または無印候補なし）")
 
     _lines.append("")
     _lines.append(
