@@ -1,3 +1,9 @@
+# v335gu（2車単◎→○▲・2車軸表示削除版）
+# ・v335gtを原本に、2車単を「◎→○」「◎→▲」の最大2点へ修正する。
+# ・○または▲が不在・重複する場合は、成立する買目だけを表示する。
+# ・「2車軸　◎-相手（バランス指数…）」の公開表示は削除する。
+# ・2車軸バランスによる相手選定は3連単の2着固定に使う内部ロジックとして維持する。
+# ・▲－無印ワイド1点、3連複の公開削除、3連単、◎○▲△×、想定着順、ポイントアップ、開催日KOは変更しない。
 # v335gt（▲－無印ワイド1点・3連複公開削除版）
 # ・v335gsを原本に、ワイド1点を追加する。
 # ・ワイドは▲を固定軸とし、相手は公開評価◎○▲△×の付いていない無印車だけを候補にする。
@@ -5101,12 +5107,13 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines.append("【ヴェロビ分析・券種別オススメ】")
 
     # ---------------------------------------------------------
-    # v335gt：v335grの2車軸・2車単・3連単は維持。
-    # 3連複は公開買目から削除し、▲－無印ワイド1点を追加する。
-    # ワイド相手はポイントアップ＋開催日KO後の流れ別最終順位を比率加重して選ぶ。
+    # v335gu：
+    # 2車単は「◎→○」「◎→▲」の最大2点。
+    # 2車軸の公開表示は削除するが、3連単の2着固定に使う内部選定は維持。
+    # v335gtの▲－無印ワイド1点、3連複公開削除、3連単は変更しない。
     #
     # 内部の2車組評価は全出走車で行うが、
-    # 実際の2車軸・3着候補は公開評価に出ている◎○▲△×だけを使う。
+    # 3連単の2車軸・3着候補は公開評価に出ている◎○▲△×だけを使う。
     # ---------------------------------------------------------
     _role_by_car_gf = {}
     _candidate_opponents_gf = []
@@ -5274,29 +5281,44 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _pair_qprob_v335gr = _best_pair_v335gr.get("qprob")
 
     # ---------------------------------------------------------
-    # 2車単は方向比較をしない。
-    # ◎が最終1着軸なので、必ず ◎→相手。
+    # v335gu：2車単は「◎→○」「◎→▲」の最大2点。
+    # 2車軸バランス相手とは切り離し、公開印の○・▲をそのまま使う。
     # ---------------------------------------------------------
-    _exacta_prob_v335gr = None
+    _exacta_candidates_v335gu = []
+    _exacta_seen_v335gu = set()
 
-    if _partner_v335gr is not None:
+    for _opp in (_b_gc, _triangle_gc):
+        if _opp is None:
+            continue
+        try:
+            _opp = int(_opp)
+        except Exception:
+            continue
+        if _opp == int(_axis_v335gr) or _opp in _exacta_seen_v335gu:
+            continue
+
         _ep = _exacta_prob_with(
             int(_axis_v335gr),
-            int(_partner_v335gr),
+            int(_opp),
             _p1_map,
             _p2_map,
             _p3_map,
         )
-        _exacta_prob_v335gr = None if _ep is None else float(_ep)
+        _exacta_candidates_v335gu.append({
+            "first": int(_axis_v335gr),
+            "second": int(_opp),
+            "prob": None if _ep is None else float(_ep),
+        })
+        _exacta_seen_v335gu.add(int(_opp))
 
-    _exacta_probs_v335gr = (
-        [float(_exacta_prob_v335gr)]
-        if _exacta_prob_v335gr is not None
-        else []
-    )
+    _exacta_probs_v335gu = [
+        _r.get("prob")
+        for _r in _exacta_candidates_v335gu
+        if _r.get("prob") is not None
+    ]
 
-    _exacta_group_prob_v335gr = _group_hit_prob_v335gc(
-        _exacta_probs_v335gr
+    _exacta_group_prob_v335gu = _group_hit_prob_v335gc(
+        _exacta_probs_v335gu
     )
 
     # ---------------------------------------------------------
@@ -5441,28 +5463,18 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ---------------------------------------------------------
     _lines.append("")
     _lines.append(
-        f"2車単　的中{_hit_stars_v335gc(_exacta_group_prob_v335gr)}　"
-        f"妙味{_value_stars_v335gc(_exacta_probs_v335gr)}　"
-        f"候補{1 if _partner_v335gr is not None else 0}点"
+        f"2車単　的中{_hit_stars_v335gc(_exacta_group_prob_v335gu)}　"
+        f"妙味{_value_stars_v335gc(_exacta_probs_v335gu)}　"
+        f"候補{len(_exacta_candidates_v335gu)}点"
     )
 
-    if _partner_v335gr is not None:
-        _lines.append(
-            f"{int(_axis_v335gr)}-{int(_partner_v335gr)}"
-            f"（2車軸バランス指数 {float(_pair_balance_v335gr):.1f}）"
-        )
+    if _exacta_candidates_v335gu:
+        for _r in _exacta_candidates_v335gu:
+            _lines.append(
+                f"{int(_r['first'])}-{int(_r['second'])}"
+            )
     else:
-        _lines.append("算出不可")
-
-    _lines.append("")
-
-    if _partner_v335gr is not None:
-        _lines.append(
-            f"2車軸　◎{int(_axis_v335gr)}-{int(_partner_v335gr)}"
-            f"（バランス指数 {float(_pair_balance_v335gr):.1f}）"
-        )
-    else:
-        _lines.append("2車軸　算出不可")
+        _lines.append("算出不可（○または▲候補なし）")
 
     _lines.append("")
     _lines.append(
