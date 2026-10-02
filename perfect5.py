@@ -1,3 +1,9 @@
+# v335hg（3連複公開廃止・2車単逆目／3連単▲△2着版）
+# ・2車単 = ▲△－◎（2点）。
+# ・3連複は公開買目から廃止。
+# ・3連単 = ◎－▲△－○▲△（通常4点）。
+# ・各券種見出しと「※偏差値は◎軸内での比較です」を別行表示。
+# ・◎○▲△の選定、偏差値計算、その他ロジックは変更しない。
 # v335hf（△＝◎との的中・妙味バランス修正版）
 # ・◎＝素直な共通軸、○＝的中重視、▲＝配当適合、△＝◎との的中・妙味50:50バランス。
 # ・△は◎○▲を除く全車を対象に、◎→候補の2車単「的中偏差値」と「妙味偏差値」の平均が最大の1車。
@@ -5234,12 +5240,12 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ---------------------------------------------------------
     _ticket_devs_v335ha = _ticket_deviation_maps_v335ha()
 
-    # 2車単：◎－○▲△
+    # v335hg：2車単は ▲△－◎ の逆目2点。
     _exacta_candidates_v335ha = []
-    for _opp in (_b_gc, _triangle_gc, _delta_gc):
-        if _opp is None:
+    for _first in (_triangle_gc, _delta_gc):
+        if _first is None:
             continue
-        _ticket = (int(_axis_gc), int(_opp))
+        _ticket = (int(_first), int(_axis_gc))
         if len(set(_ticket)) < 2:
             continue
         _exacta_candidates_v335ha.append({
@@ -5269,17 +5275,17 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 "value_dev": _ticket_devs_v335ha["3連複_value"].get(_key),
             })
 
-    # 3連単：◎－○▲△－▲△
+    # v335hg：3連単は ◎－▲△－○▲△。
     _trifecta_candidates_v335ha = []
     _second_v335ha = []
-    for _c in (_b_gc, _triangle_gc, _delta_gc):
+    for _c in (_triangle_gc, _delta_gc):
         if _c is None:
             continue
         _c = int(_c)
         if _c not in _second_v335ha:
             _second_v335ha.append(_c)
     _third_v335ha = []
-    for _c in (_triangle_gc, _delta_gc):
+    for _c in (_b_gc, _triangle_gc, _delta_gc):
         if _c is None:
             continue
         _c = int(_c)
@@ -5343,7 +5349,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         return "算出不可" if _v is None else f"{float(_v):.1f}"
 
     _lines.append("")
-    _lines.append(f"2車単　候補{len(_exacta_candidates_v335ha)}点　※偏差値は◎軸内での比較です")
+    _lines.append(f"2車単　候補{len(_exacta_candidates_v335ha)}点　▲△－◎")
+    _lines.append("※偏差値は◎軸内での比較です")
     if _exacta_candidates_v335ha:
         for _r in _exacta_candidates_v335ha:
             _lines.append(
@@ -5355,19 +5362,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("算出不可")
 
     _lines.append("")
-    _lines.append(f"3連複　候補{len(_trio_candidates_v335ha)}点　※偏差値は◎軸内での比較です")
-    if _trio_candidates_v335ha:
-        for _r in _trio_candidates_v335ha:
-            _lines.append(
-                "-".join(str(c) for c in _r["ticket"])
-                + f"　的中{_dev_text_v335ha(_r.get('hit_dev'))}"
-                + f"　妙味{_dev_text_v335ha(_r.get('value_dev'))}"
-            )
-    else:
-        _lines.append("算出不可")
-
-    _lines.append("")
-    _lines.append(f"3連単　候補{len(_trifecta_candidates_v335ha)}点　※偏差値は◎軸内での比較です")
+    _lines.append(f"3連単　候補{len(_trifecta_candidates_v335ha)}点　◎－▲△－○▲△")
+    _lines.append("※偏差値は◎軸内での比較です")
     if _trifecta_candidates_v335ha:
         for _r in _trifecta_candidates_v335ha:
             _lines.append(
