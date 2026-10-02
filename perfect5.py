@@ -1,4 +1,8 @@
-# v335ht（外部AI非介入・note簡易出力復旧版）
+# v335hu（最終着順マップ一本化版）
+# ・詳細表示／◎○▲△選定／note簡易出力が別々の着順経路を参照していた二重化を解消。
+# ・STYLE_SEQ_MAP（シナリオ順位）を現行のポイントアップ＋開催日KOまで1回だけ通した V335_FINAL_STYLE_SEQ_MAP を唯一の公開最終順位として保存。
+# ・詳細の順流／渦／逆流、採用流れ、◎○▲△、2車単／3連単、note簡易出力はすべて同じ V335_FINAL_STYLE_SEQ_MAP を参照。
+# ・外部AI印は引き続き予想非介入。ガールズ／アドバンス単騎処理、4ライン以上処理、買目構造は変更しない。
 # ・v335hsで外部AI印を予想計算から切り離した結果、旧固定フォーメーション前処理が「AI印あり2車」を要求して停止していた不整合を修正。
 # ・旧固定フォーメーション表示用A/B候補は、外部AI印ではなく採用流れの内部着順1位・2位をそのまま使用する。
 # ・note用簡易出力は旧三連複購入スナップショットに依存せず、現行のヴェロビ公開ロジック（想定着順→◎○▲△→2車単2点＋3連単4点）から直接生成する。
@@ -3912,6 +3916,57 @@ def _v335es_finalize_flow_order(flow_order, profile, return_debug=False):
     return _final_order
 
 
+
+def _v335hu_build_final_style_seq_map(style_map, profile):
+    """v335hu: 公開予想で使う三流れ最終順位を1か所で確定する。
+
+    STYLE_SEQ_MAP はシナリオ生成直後の順位。
+    ここで現行 _v335es_finalize_flow_order() を各流れへ1回だけ適用し、
+    詳細表示・印選定・note簡易出力が同じ最終順位を見るようにする。
+    """
+    _src = style_map if isinstance(style_map, dict) else {}
+    _out = {}
+    for _style in ("順流", "渦", "逆流"):
+        _seq = _v281_unique_sequence(_src.get(_style, []) or [])
+        if not _seq:
+            _out[_style] = []
+            continue
+        try:
+            if isinstance(profile, dict) and profile:
+                _final = _v335es_finalize_flow_order(_seq, profile, return_debug=False)
+            else:
+                _final = tuple(int(x) for x in _seq)
+        except Exception:
+            _final = tuple(int(x) for x in _seq)
+        _out[_style] = [int(x) for x in (_final or tuple())]
+    return _out
+
+
+def _v335hu_current_final_style_seq_map():
+    """保存済み最終マップを優先。未生成時だけその場で同じ方法で生成する。"""
+    _saved = globals().get("V335_FINAL_STYLE_SEQ_MAP", {}) or {}
+    if isinstance(_saved, dict) and any(_saved.get(k) for k in ("順流", "渦", "逆流")):
+        return dict(_saved)
+    _raw = globals().get("STYLE_SEQ_MAP", {}) or {}
+    try:
+        _cars = []
+        for _style in ("順流", "渦", "逆流"):
+            for _c in (_raw.get(_style, []) or []):
+                _ci = int(_c)
+                if _ci not in _cars:
+                    _cars.append(_ci)
+        _profile = _v335bp_get_venue_profile(
+            track_name=str(globals().get("track") or globals().get("place") or "").strip(),
+            race_time_name=str(globals().get("race_time", "") or "").strip(),
+            race_class_name=str(globals().get("race_class", "") or "").strip(),
+            field_n=len(_cars),
+        )
+    except Exception:
+        _profile = None
+    _final_map = _v335hu_build_final_style_seq_map(_raw, _profile)
+    globals()["V335_FINAL_STYLE_SEQ_MAP"] = dict(_final_map)
+    return dict(_final_map)
+
 def _v335fl_allow_value_quinella(hit_prob, value_prob):
     """妙味ヒモ側の2車複を4点目として追加するかを固定条件で判定する。
 
@@ -3961,8 +4016,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _race_class_v335hl = str(race_class or "").strip()
     _single_flow_class_v335hl = _race_class_v335hl in ("ガールズ", "アドバンス")
 
-    # v335hs：外部AI印の重圧補正は参考表示専用。公開予想はヴェロビ内部のSTYLE_SEQ_MAPだけを使う。
-    _style_map = globals().get("STYLE_SEQ_MAP", {}) or {}
+    # v335hu：公開予想は保存済みの「最終三流れマップ」だけを使う。
+    # STYLE_SEQ_MAP をここで再度finalizeすると詳細表示と二重化するため、再計算しない。
+    _style_map = _v335hu_current_final_style_seq_map()
     if not isinstance(_style_map, dict):
         return None
 
@@ -4009,7 +4065,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _seq = _v281_unique_sequence(_style_map.get(_style, []) or [])
         if len(_seq) < 3:
             continue
-        _final, _diag = _v335es_finalize_flow_order(_seq, profile, return_debug=True)
+        # v335hu：_style_map は既にポイントアップ＋開催日KO後の最終順位。
+        _final = tuple(int(c) for c in _seq)
+        _diag = {}
         if len(_final) < 3:
             continue
         _rows.append({
@@ -11617,6 +11675,27 @@ try:
         }
         globals()["STYLE_SEQ_MAP"] = dict(globals().get("STYLE_SCENARIO_SEQ_MAP", {}) or {})
 
+        # v335hu：ここで三流れの「公開最終順位」を一度だけ確定する。
+        # 以後、詳細表示・採用流れ・印・買目・note簡易出力はこのマップを共通参照する。
+        try:
+            _v335hu_cars = []
+            for _v335hu_style in ("順流", "渦", "逆流"):
+                for _v335hu_car in (globals()["STYLE_SEQ_MAP"].get(_v335hu_style, []) or []):
+                    _v335hu_ci = int(_v335hu_car)
+                    if _v335hu_ci not in _v335hu_cars:
+                        _v335hu_cars.append(_v335hu_ci)
+            _v335hu_profile = _v335bp_get_venue_profile(
+                track_name=str(globals().get("track") or globals().get("place") or "").strip(),
+                race_time_name=str(globals().get("race_time", "") or "").strip(),
+                race_class_name=str(globals().get("race_class", "") or "").strip(),
+                field_n=len(_v335hu_cars),
+            )
+            globals()["V335_FINAL_STYLE_SEQ_MAP"] = _v335hu_build_final_style_seq_map(
+                globals()["STYLE_SEQ_MAP"], _v335hu_profile
+            )
+        except Exception:
+            globals()["V335_FINAL_STYLE_SEQ_MAP"] = dict(globals().get("STYLE_SEQ_MAP", {}) or {})
+
         # ======================================================
         # 戦法別着順予想を全表示
         # ※ここでは推奨戦法がまだ確定していないため、強調はしない。
@@ -11627,14 +11706,15 @@ try:
                 _xs = [int(x) for x in (_seq or []) if str(x).isdigit()]
                 return " → ".join(str(x) for x in _xs) if _xs else "該当なし"
 
+            _v335hu_display_map = _v335hu_current_final_style_seq_map()
             note_sections.append("【順流メイン着順予想】")
-            note_sections.append(_fmt_seq_full(out_j))
+            note_sections.append(_fmt_seq_full(_v335hu_display_map.get("順流", [])))
             note_sections.append("")
             note_sections.append("【渦メイン着順予想】")
-            note_sections.append(_fmt_seq_full(out_v))
+            note_sections.append(_fmt_seq_full(_v335hu_display_map.get("渦", [])))
             note_sections.append("")
             note_sections.append("【逆流メイン着順予想】")
-            note_sections.append(_fmt_seq_full(out_u))
+            note_sections.append(_fmt_seq_full(_v335hu_display_map.get("逆流", [])))
             note_sections.append("")
         except Exception as _e:
             note_sections.append(f"※戦法別着順予想表示エラー：{_e}")
@@ -12140,7 +12220,7 @@ try:
         # 推奨戦法と着順予想を現行サマリーへ渡す
         # =====================================================
         try:
-            _style_seq_map_for_display = globals().get("STYLE_SEQ_MAP", {}) or {}
+            _style_seq_map_for_display = _v335hu_current_final_style_seq_map()
             _recommended_seq = _style_seq_map_for_display.get(recommend_style, []) or []
             if not _recommended_seq:
                 _fallback_map = {
@@ -20181,7 +20261,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
             # 採用流れ上位からAI印あり2車を抽出して低評価側を軸にし、同ライン必須＋採用流れ着順上位をヒモにする。
             _v281_fixed_plan = _v281_build_fixed_flow_plan(
                 # v335hs：外部AI印の補正順位ではなく、ヴェロビ内部三流れを使用する。
-                globals().get("STYLE_SEQ_MAP", {}) or {},
+                _v335hu_current_final_style_seq_map(),
                 _flow_ratio_map_for_trio(),
                 {},
                 globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {},
@@ -20195,7 +20275,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
             # 元順位の直後に、三流れの重圧補正順位と採用流れの最終候補を表示する。
             try:
                 # v335ht：詳細表示も外部AI補正順位を参照しない。
-                _pressure_map = globals().get("STYLE_SEQ_MAP", {}) or {}
+                _pressure_map = _v335hu_current_final_style_seq_map()
                 _pressure_lines = []
                 _adopted = str((_v281_fixed_plan or {}).get("adopted_style", "") or "未判定")
                 _final_seq = _v281_unique_sequence(
@@ -20576,7 +20656,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
 # 元の三流れ予想は参考表示として保持し、買い目用には重圧補正後順位を別生成する。
 AI_PRESSURE_STYLE_SEQ_MAP = _build_ai_pressure_style_seq_map(
-    globals().get("STYLE_SEQ_MAP", {}) or {},
+    _v335hu_current_final_style_seq_map(),
     market_mark_map or {},
     globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {},
 )
