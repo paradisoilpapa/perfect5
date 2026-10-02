@@ -1,3 +1,9 @@
+# v335gy（素直な◎○・4車印・3連単フォーメーション版）
+# ・v335gxを原本に、v335glで追加された「旧◎以外から妙味軸へ選び直す処理」を停止する。
+# ・◎は上位2流れの共通順位から決める従来の素直な共通軸（_base_axis_v335gl）をそのまま採用する。
+# ・○は、その◎を確定した後に既存の連対ヒモ選定を再計算して採用する。単純な表示上の車番swapではない。
+# ・▲／△の4車印化、ガールズ・アドバンスの△補完、3連単「◎○－◎○X－○▲」はv335gxのまま維持する。
+# ・2車単◎→▲、▲－無印ワイド、想定着順、確率モデル、その他のロジックは変更しない。
 # v335gx（4車印・ガールズ△補完・3連単フォーメーション版）
 # ・◎／○は現行ロジックを維持。公開印は◎○▲△の4車とし、×は公開しない。
 # ・通常競輪の▲は◎ライン未選出車を優先。4車以上ラインは前から3車以内だけを候補にし、候補なしなら既存▲へ戻す。
@@ -4734,29 +4740,23 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "共通軸を算出不可",
         ]
 
-    # v335gl：まず従来ロジックの◎を「旧◎」として確定する。
-    # 最終◎は旧◎以外から、
-    #   1) 想定比率上位2流れのどちらかで2位以内
-    #   2) 全成立流れの比率加重平均順位が3.5位以内
-    #   3) その構造候補内で既存の車別妙味評価が最大
-    # の順に選ぶ。
-    # これにより、期待値だけ高い全流れ下位車と、
-    # 1流れだけ上位・他流れ大幅下位の車を軸化しない。
+    # ---------------------------------------------------------
+    # v335gy：◎を「素直な共通軸」へ戻す。
+    #
+    # v335glでは、いったん算出した従来◎（共通軸）を旧◎として、
+    # 旧◎以外から妙味評価で最終◎を選び直していた。
+    # v335gyではこの再選抜を行わず、上位2流れの共通順位から
+    # _axis_key で決まる従来◎を、そのまま最終◎として採用する。
+    #
+    # ○はこの◎を基準に、直後の既存 _select_hit_himo() で再計算する。
+    # したがって「表示上の◎○を単純swap」するのではなく、
+    # ◎を素直な軸へ戻したうえで○も既存ロジックどおり再選定する。
+    # ---------------------------------------------------------
     _base_axis_v335gl = int(min(_axis_candidates, key=_axis_key))
-
-    def _axis_myoumi_value_v335gl(_car):
-        try:
-            return float(
-                _weighted_myoumi_map.get(
-                    int(_car),
-                    _weighted_myoumi_map.get(str(int(_car)), 0.0)
-                ) or 0.0
-            )
-        except Exception:
-            return 0.0
+    _axis = int(_base_axis_v335gl)
 
     def _weighted_avg_rank_v335gl(_car):
-        """全成立流れの想定比率で加重した着順平均。算出不能時は999。"""
+        """全成立流れの想定比率で加重した着順平均。ワイド等の既存処理用。"""
         _car = int(_car)
         _num = 0.0
         _den = 0.0
@@ -4774,40 +4774,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         if _den <= 0.0:
             return 999.0
         return _num / _den
-
-    _value_axis_pool_v335gl = []
-    _axis_avg_rank_map_v335gl = {}
-    for _c in _axis_candidates:
-        _c = int(_c)
-        if _c == int(_base_axis_v335gl):
-            continue
-        _r1 = int(_rank1.get(_c, 999))
-        _r2 = int(_rank2.get(_c, 999))
-        _avg_rank = float(_weighted_avg_rank_v335gl(_c))
-        _axis_avg_rank_map_v335gl[_c] = _avg_rank
-
-        # 第1条件：上位2流れの少なくとも一方で2位以内。
-        # 第2条件：全成立流れの比率加重平均順位が3.5位以内。
-        # 防府1Rの7（2位/5位/5位）のような一流れ偏重軸を除外する。
-        if min(_r1, _r2) <= 2 and _avg_rank <= 3.5:
-            _value_axis_pool_v335gl.append(_c)
-
-    if _value_axis_pool_v335gl:
-        _axis = int(min(
-            _value_axis_pool_v335gl,
-            key=lambda _c: (
-                -_axis_myoumi_value_v335gl(_c),
-                float(_axis_avg_rank_map_v335gl.get(int(_c), 999.0)),
-                max(int(_rank1.get(int(_c), 999)), int(_rank2.get(int(_c), 999))),
-                int(_rank1.get(int(_c), 999)) + int(_rank2.get(int(_c), 999)),
-                int(_rank1.get(int(_c), 999)),
-                int(_c),
-            ),
-        ))
-    else:
-        # 条件を満たす非旧◎が無いレースでは、
-        # 妙味目的だけで無理に軸を下げず、従来の旧◎をそのまま維持する。
-        _axis = int(_base_axis_v335gl)
 
     # 基本世界の想定確率。
     _p1_map, _p2_map, _p3_map = _prob_maps_for_order(_order1)
