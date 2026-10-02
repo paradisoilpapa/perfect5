@@ -1,3 +1,10 @@
+# v335hm（ガールズ・アドバンス単騎確率一本化版）
+# ・ガールズ／アドバンスは「単騎100%」の最終順位を唯一の確率母体にする。
+# ・通常競輪用のライン勢力比・ライン内役割・ライン関係タイブレークを、ガールズ／アドバンスの確率計算から完全に外す。
+# ・単騎順位から1着/2着/3着の位置別重みを作り、同じ1流れから◎○▲△・2車単/3連単の的中想定順位まで計算する。
+# ・ガールズ／アドバンスの△「妙味」は旧ライン/3流れ由来の車別妙味を使わず、同じ単騎確率から算出した配当適合値を使用する。
+# ・通常競輪の3流れ・ラインロジック・公開買目（2車単2点＋3連単4点）は変更しない。
+
 # v335hl（ガールズ・アドバンス単騎1流れ・直接級別判定版）
 # ・ガールズ／アドバンスはライン戦ではないため、順流・渦・逆流の3流れ加重を廃止。
 # ・ガールズ／アドバンスは既存の順流側最終着順を「単騎100%」の1流れとして、◎○▲△・確率・買目順位を計算。
@@ -2833,7 +2840,7 @@ race_class = st.sidebar.selectbox(
     index=0,
     key="race_class",
 )
-st.sidebar.caption("ロジック版：v335hl")
+st.sidebar.caption("ロジック版：v335hm")
 
 # ==============================
 # v335bc: サイドバー会場評価を過去のA/B/C/D表示へ復帰
@@ -4036,7 +4043,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 _cars.append(_c)
 
     # ---------------------------------------------------------
-    # ライン情報（基本軸・期待値軸の両方で共通利用）
+    # ライン情報（通常競輪のみ）。
+    # v335hm：ガールズ／アドバンスは全車単騎なので、ここへライン情報を持ち込まない。
     # ---------------------------------------------------------
     _line_groups = []
 
@@ -4055,18 +4063,19 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         except Exception:
             pass
 
-    try:
-        _line_def = globals().get("line_def", {}) or {}
-        if isinstance(_line_def, dict):
-            for _members in _line_def.values():
+    if not _single_flow_class_v335hl:
+        try:
+            _line_def = globals().get("line_def", {}) or {}
+            if isinstance(_line_def, dict):
+                for _members in _line_def.values():
+                    _push_line(_members)
+        except Exception:
+            pass
+        try:
+            for _members in (globals().get("all_lines", []) or []):
                 _push_line(_members)
-    except Exception:
-        pass
-    try:
-        for _members in (globals().get("all_lines", []) or []):
-            _push_line(_members)
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     _weighted_hit_map = dict(globals().get("V335DS_WEIGHTED_CAR_HIT_MAP", {}) or {})
     _weighted_myoumi_map = dict(globals().get("V335DS_WEIGHTED_CAR_MYOUMI_MAP", {}) or {})
@@ -4116,9 +4125,42 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _rest = [int(c) for c in (_order or tuple()) if int(c) != _axis_car]
         return tuple([_axis_car] + _rest)
 
+    def _single_flow_position_probability_map_v335hm(_order, _finish_pos):
+        """
+        ガールズ／アドバンス専用。
+        単騎100%の最終順位だけを使って着順別の確率重みを作る。
+
+        ・1着は単騎順位1位を最大
+        ・2着は単騎順位2位を最大
+        ・3着は単騎順位3位を最大
+        ・ライン勢力比、ライン内役割、通常競輪のライン文脈補正は一切使わない
+
+        重みは n - |単騎順位 - 対象着順|（最低1）の単純な順位距離。
+        これを全車で正規化し、既存の条件付き順序確率へ渡す。
+        """
+        _o = tuple(int(c) for c in (_order or tuple()))
+        if not _o:
+            return {}
+        _n = len(_o)
+        _pos = max(1, min(3, int(_finish_pos)))
+        _raw = {}
+        for _rank, _car in enumerate(_o, start=1):
+            _raw[int(_car)] = float(max(1, _n - abs(int(_rank) - int(_pos))))
+        _total = sum(_raw.values())
+        if _total <= 0.0:
+            _eq = 1.0 / float(_n)
+            return {int(c): _eq for c in _o}
+        return {int(c): float(_raw[int(c)]) / float(_total) for c in _o}
+
     def _prob_maps_for_order(_order):
         try:
             _o = tuple(int(c) for c in (_order or tuple()))
+            if _single_flow_class_v335hl:
+                return (
+                    _single_flow_position_probability_map_v335hm(_o, 1),
+                    _single_flow_position_probability_map_v335hm(_o, 2),
+                    _single_flow_position_probability_map_v335hm(_o, 3),
+                )
             return (
                 _v335br_position_probability_map(profile, _o, 1),
                 _v335br_position_probability_map(profile, _o, 2),
@@ -4438,10 +4480,15 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _p = _exacta_prob_with(
                 _t[0], _t[1], _p1_map, _p2_map, _p3_map
             )
-            _m = _ordered_myoumi_raw_v335gh(_t)
+            if _single_flow_class_v335hl:
+                _m = None if _p is None else float(
+                    _distribution_band_v335fz("2車単", _p).get("selection_score", -1.0)
+                )
+            else:
+                _m = _ordered_myoumi_raw_v335gh(_t)
             if _p is not None:
                 _ex_hit[_t] = float(_p)
-            if _m is not None:
+            if _m is not None and float(_m) >= 0.0:
                 _ex_val[_t] = float(_m)
 
         # 3連複：◎を必ず含む全組合せ
@@ -4457,7 +4504,27 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 _p = _trio_prob_with_v335gc(
                     _t[0], _t[1], _t[2], _p1_map, _p2_map, _p3_map
                 )
-                _m = _trio_myoumi_raw_v335gh(_t)
+                if _single_flow_class_v335hl:
+                    # 3連複は公開買目では使わない。内部整合用として、
+                    # 6順列の3連単配当適合値を平均し、同じ単騎確率だけから値を作る。
+                    _vals_v335hm = []
+                    for _perm_v335hm in permutations(_t, 3):
+                        _pp_v335hm = _trifecta_prob_with(
+                            _perm_v335hm[0], _perm_v335hm[1], _perm_v335hm[2],
+                            _p1_map, _p2_map, _p3_map
+                        )
+                        if _pp_v335hm is not None:
+                            _sv_v335hm = _distribution_band_v335fz(
+                                "3連単", _pp_v335hm
+                            ).get("selection_score", -1.0)
+                            try:
+                                if float(_sv_v335hm) >= 0.0:
+                                    _vals_v335hm.append(float(_sv_v335hm))
+                            except Exception:
+                                pass
+                    _m = (sum(_vals_v335hm) / float(len(_vals_v335hm))) if _vals_v335hm else None
+                else:
+                    _m = _trio_myoumi_raw_v335gh(_t)
                 if _p is not None:
                     _trio_hit[_t] = float(_p)
                 if _m is not None:
@@ -4473,10 +4540,15 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 _p = _trifecta_prob_with(
                     _t[0], _t[1], _t[2], _p1_map, _p2_map, _p3_map
                 )
-                _m = _ordered_myoumi_raw_v335gh(_t)
+                if _single_flow_class_v335hl:
+                    _m = None if _p is None else float(
+                        _distribution_band_v335fz("3連単", _p).get("selection_score", -1.0)
+                    )
+                else:
+                    _m = _ordered_myoumi_raw_v335gh(_t)
                 if _p is not None:
                     _tf_hit[_t] = float(_p)
-                if _m is not None:
+                if _m is not None and float(_m) >= 0.0:
                     _tf_val[_t] = float(_m)
 
         return {
@@ -4835,7 +4907,11 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 continue
             _q = _quinella_prob_with(_axis_car, _c, _p1, _p2, _p3)
             _e = _exacta_prob_with(_axis_car, _c, _p1, _p2, _p3)
-            _rel = _line_relation_for(_axis_car, _c)
+            _rel = (
+                {"same": False, "behind": False, "adjacent_behind": False, "distance": 99}
+                if _single_flow_class_v335hl
+                else _line_relation_for(_axis_car, _c)
+            )
             _r1 = int(_sr1.get(_c, 999))
             _r2 = int(_sr2.get(_c, 999))
             _r3 = int(_sr3.get(_c, 999))
@@ -18457,7 +18533,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
             def _weighted_car_score_map_from_flows(_summary, _value_key):
                 """v335hi: 通常戦は3流れ加重、ガールズ／アドバンスは順流100%で車番別評価を作る。"""
-                if bool(globals().get("is_girls_like", False)):
+                _rc_v335hm = str(globals().get("race_class", "") or "").strip()
+                if _rc_v335hm in ("ガールズ", "アドバンス"):
                     _ratio = {"順流": 1.0, "逆流": 0.0, "渦": 0.0}
                 else:
                     _ratio = _flow_ratio_map_for_trio()
