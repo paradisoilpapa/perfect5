@@ -1,3 +1,10 @@
+# v335hq（4ライン以上・その他ライン固定後方化解除版）
+# ・4ライン以上の通常競輪では、勢力4位以下を「その他」として常時最後尾へ置く処理をやめる。
+# ・4ライン以上では、全ラインを各ライン内の個人KO使用スコア最上位→ライン勢力比の順で仮想隊列へ並べ、全ラインに前進機会を与える。
+# ・旧FR／旧渦／旧逆流に該当する「その他」ラインは、その元流れをKO内だけ復元して流れ補正を受けられるようにする。
+# ・4ライン以上では「三流れ代表ラインの誰かを必ず1着へ固定」する処理を解除し、KO結果をそのまま1着候補へ反映する。
+# ・3ライン以下の通常競輪、ガールズ／アドバンス単騎ロジック、◎○▲△、公開買目はv335hpから変更しない。
+
 # v335hp（ガールズ・アドバンス◎○＝単騎着順1・2位固定版）
 # ・ガールズ／アドバンス限定で、単騎100%の想定着順1位を◎、2位を○としてそのまま採用する。
 # ・○は連対指数による再選抜を行わない。連対指数は表示用の参考値としてのみ残す。
@@ -10618,11 +10625,27 @@ try:
         def _infer_line_zone(ln):
             s = _norm_line(ln)
 
-            # 新方式：ライン評価グループを優先
+            # v335hq:
+            # 4ライン以上では、v283で「その他」へ落ちたラインでも
+            # 旧FR／旧渦／旧逆流に由来する場合は、KO内だけ元流れを復元する。
+            # 表示上のLINE_ZONE_MAPや3流れ代表そのものは変更しない。
             try:
                 zmap = globals().get("LINE_ZONE_MAP", {})
                 if isinstance(zmap, dict) and s in zmap:
-                    return zmap.get(s, "その他")
+                    _z = str(zmap.get(s, "その他") or "その他")
+                    if _z != "その他":
+                        return _z
+
+                    _line_count = len([x for x in (all_lines or []) if x])
+                    if _line_count >= 4:
+                        for _item in (globals().get("OTHER_LINE_ITEMS_FOR_THIRD", []) or []):
+                            _key = _norm_line((_item or {}).get("line", []))
+                            if _key != s:
+                                continue
+                            _origin = str((_item or {}).get("origin_zone", "") or "")
+                            if _origin in ("順流", "渦", "逆流"):
+                                return _origin
+                    return "その他"
             except Exception:
                 pass
 
@@ -11153,23 +11176,61 @@ try:
             return []
 
         def _scenario_queue_for_main(_main_line, _zone_order):
-            """主役ラインを先頭に置いた仮想隊列。残りはゾーン順＋FR順で並べる。"""
+            """
+            仮想隊列を作る。
+
+            v335hq:
+            ・3ライン以下は従来どおり、主役ライン→ゾーン順＋FR順。
+            ・4ライン以上は「その他=常時最後尾」をやめ、全ラインを
+              ライン内の個人KO最上位→ライン勢力比の順で並べる。
+              これにより4番手以下のラインもKOで前へ出られる。
+            """
             main = _scenario_line_digits(_main_line)
             main_key = _scenario_line_key(main)
             queue = []
             seen_cars = set()
 
+            try:
+                lines_src = [ln for ln in list(all_lines or []) if ln]
+            except Exception:
+                lines_src = []
+
+            # v335hq：4ライン以上は全ライン開放。
+            # ラインの初期位置を「三流れ代表か否か」ではなく、
+            # そのラインで最も高い個人KO使用スコアを第一基準にする。
+            if len(lines_src) >= 4:
+                def _open_line_key(_ln):
+                    _members = _scenario_line_digits(_ln)
+                    _best = max(
+                        [float(score_map.get(int(c), 0.0)) for c in _members] or [0.0]
+                    )
+                    _fr = float(_lfr(_ln))
+                    return (-_best, -_fr, _scenario_line_key(_ln))
+
+                for ln in sorted(lines_src, key=_open_line_key):
+                    for c in _scenario_line_digits(ln):
+                        if int(c) not in seen_cars:
+                            seen_cars.add(int(c))
+                            queue.append(int(c))
+
+                try:
+                    tail = sorted(
+                        [int(c) for c in score_map.keys() if int(c) not in seen_cars],
+                        key=lambda c: float(score_map.get(c, 0.0)),
+                        reverse=True,
+                    )
+                    queue.extend(tail)
+                except Exception:
+                    pass
+                return queue
+
+            # 3ライン以下はv335hpまでの処理をそのまま維持。
             for c in main:
                 if int(c) not in seen_cars:
                     seen_cars.add(int(c))
                     queue.append(int(c))
 
-            # all_linesが取れる場合はライン単位、無い場合は既存のSTYLE_SEQ_MAP相当で補完。
             used_line_keys = {main_key} if main_key else set()
-            try:
-                lines_src = list(all_lines or [])
-            except Exception:
-                lines_src = []
 
             bucket = {"順流": [], "渦": [], "逆流": [], "その他": []}
             for ln in lines_src:
@@ -11177,7 +11238,6 @@ try:
                 if key and key in used_line_keys:
                     continue
                 z = _infer_line_zone(ln)
-                # U_lineは逆流シナリオでは既に主役として使うため、渦側に重複させない。
                 bucket.setdefault(z, []).append(ln)
 
             for z in (_zone_order or []):
@@ -11241,6 +11301,10 @@ try:
             """
             シナリオの前提として、主役ラインのいずれかを1着候補へ置く。
 
+            v335hq:
+            4ライン以上では三流れ代表外のラインにも1着機会を残すため、
+            この「代表ライン1着固定」は行わずKO結果をそのまま返す。
+
             v196:
             1着候補だけを先頭へ上げても、同ライン相手が後方へ沈むと
             「そのラインが主役になった展開」として買目妙味が効かない。
@@ -11251,6 +11315,12 @@ try:
             main = _scenario_line_digits(_main_line)
             if not xs or not main:
                 return xs
+
+            try:
+                if len([ln for ln in (all_lines or []) if ln]) >= 4:
+                    return xs
+            except Exception:
+                pass
 
             main_set = {int(c) for c in main}
             head = int(xs[0]) if int(xs[0]) in main_set else _scenario_best_head_from_main_line(main)
