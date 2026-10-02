@@ -1,3 +1,9 @@
+# v335hp（ガールズ・アドバンス◎○＝単騎着順1・2位固定版）
+# ・ガールズ／アドバンス限定で、単騎100%の想定着順1位を◎、2位を○としてそのまま採用する。
+# ・○は連対指数による再選抜を行わない。連対指数は表示用の参考値としてのみ残す。
+# ・▲は◎○を除いた候補から配当適合、△は◎○▲を除いた候補からv335hoの的中×妙味バランスで選ぶ。
+# ・通常競輪の◎○選定、単騎確率モデル、公開買目（2車単2点＋3連単4点）は変更しない。
+
 # v335ho（△実買目・的中役割一致版）
 # ・△の候補範囲（◎○▲を除く全車）と妙味評価はv335hnから変更しない。
 # ・△の「的中」は、旧来の◎→候補2車単1本ではなく、実際に△を使う3買目の内部想定的中率を合算して評価する。
@@ -5122,6 +5128,11 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _base_axis_v335gl = int(min(_axis_candidates, key=_axis_key))
     _axis = int(_base_axis_v335gl)
 
+    # v335hp：ガールズ／アドバンスは単騎100%の想定着順をそのまま印へ使う。
+    # ◎＝単騎順位1位。通常競輪は従来の共通軸ロジックを維持する。
+    if _single_flow_class_v335hl and len(_order1) >= 1:
+        _axis = int(_order1[0])
+
     def _weighted_avg_rank_v335gl(_car):
         """全成立流れの想定比率で加重した着順平均。ワイド等の既存処理用。"""
         _car = int(_car)
@@ -5171,8 +5182,17 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "ヒモ候補不足のため算出不可",
         ]
 
-    # B：的中重視ヒモ。
-    _hit_himo, _hit_row = _select_hit_himo(_candidate_rows)
+    # B：○。
+    # v335hp：ガールズ／アドバンスは単騎順位2位をそのまま○に固定する。
+    # 連対指数(qprob)は○の再選抜には使わず、表示用の参考値としてのみ保持する。
+    if _single_flow_class_v335hl and len(_order1) >= 2:
+        _hit_himo = int(_order1[1])
+        _hit_row = next(
+            (r for r in _candidate_rows if int(r.get("car")) == int(_hit_himo)),
+            None,
+        )
+    else:
+        _hit_himo, _hit_row = _select_hit_himo(_candidate_rows)
     if _hit_himo is None or _hit_row is None:
         return [
             "【想定着順予想】",
@@ -5605,10 +5625,18 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines.append(
         f"◎　{int(_axis_gc)}　想定1着率　　　{_axis_p1_v335hd * 100.0:.1f}%"
     )
-    _lines.append(
-        f"○　{int(_hit_himo)}　連対指数　　　{int(_hit_rank_v335fs)}位・"
-        + ("算出不可" if _hit_pair_prob_v335fs < 0.0 else f"{_hit_pair_prob_v335fs * 100.0:.1f}%")
-    )
+    if _single_flow_class_v335hl:
+        # v335hp：ガールズ／アドバンスの○は単騎想定2着で選ぶ。
+        # 連対指数は選抜順位ではなく参考値として表示する。
+        _lines.append(
+            f"○　{int(_hit_himo)}　想定2着　　　　連対指数 "
+            + ("算出不可" if _hit_pair_prob_v335fs < 0.0 else f"{_hit_pair_prob_v335fs * 100.0:.1f}%")
+        )
+    else:
+        _lines.append(
+            f"○　{int(_hit_himo)}　連対指数　　　{int(_hit_rank_v335fs)}位・"
+            + ("算出不可" if _hit_pair_prob_v335fs < 0.0 else f"{_hit_pair_prob_v335fs * 100.0:.1f}%")
+        )
 
     if _triangle_gc is not None:
         _lines.append(
