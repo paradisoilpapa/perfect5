@@ -1,3 +1,11 @@
+# v335ho（△実買目・的中役割一致版）
+# ・△の候補範囲（◎○▲を除く全車）と妙味評価はv335hnから変更しない。
+# ・△の「的中」は、旧来の◎→候補2車単1本ではなく、実際に△を使う3買目の内部想定的中率を合算して評価する。
+#   ① △→◎ の2車単、② ◎→△→○ の3連単、③ ◎→△→▲ の3連単。
+# ・3買目は互いに同時的中しないため、内部想定的中率の合計を「△としての的中力」とし、候補間で偏差値化する。
+# ・△バランス = （実買目的中偏差値 + 従来の妙味偏差値）/2 を維持する。
+# ・◎○▲、ガールズ／アドバンス単騎確率、通常競輪、公開買目（2車単2点＋3連単4点）は変更しない。
+
 # v335hn（ガールズ・アドバンス単騎・個体差確率版）
 # ・ガールズ／アドバンスは「単騎100%」の1流れを維持する。
 # ・v335hmの順位距離だけで作る固定確率テンプレートを廃止する。
@@ -2842,7 +2850,7 @@ race_class = st.sidebar.selectbox(
     index=0,
     key="race_class",
 )
-st.sidebar.caption("ロジック版：v335hn")
+st.sidebar.caption("ロジック版：v335ho")
 
 # ==============================
 # v335bc: サイドバー会場評価を過去のA/B/C/D表示へ復帰
@@ -5389,13 +5397,17 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         })
 
     # ---------------------------------------------------------
-    # v335hf △：◎との「的中・妙味」50:50バランス
+    # v335ho △：実際に△を使う買目と「的中」評価を一致させる。
     #   1) ◎○▲を除く全車を候補にする。ライン所属による優先・除外はしない。
-    #   2) ◎→候補の2車単について、◎軸内の「的中偏差値」「妙味偏差値」を取得する。
-    #   3) バランス点 = (的中偏差値 + 妙味偏差値) / 2。
-    #   4) バランス点最大の1車を△にする。
+    #   2) 候補ごとに、実際に購入する次の3買目の内部想定的中率を合算する。
+    #        ① 候補→◎       （2車単）
+    #        ② ◎→候補→○   （3連単）
+    #        ③ ◎→候補→▲   （3連単）
+    #      3買目は互いに同時的中しないため、合計確率を「△としての的中力」とする。
+    #   3) その合計確率を△候補間で偏差値化し「的中偏差値」とする。
+    #   4) 妙味偏差値はv335hnまでの既存値（◎→候補2車単の妙味評価）を維持する。
+    #   5) バランス点 = (実買目的中偏差値 + 妙味偏差値) / 2。
     #      同点時は弱い側(min値)→的中→妙味→車番小の順で決定する。
-    #   ※旧v335gzの「◎同ラインならqprob最大」というライン保護は使用しない。
     # ---------------------------------------------------------
     _delta_gc = None
     _delta_balance_v335hf = None
@@ -5403,19 +5415,76 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _delta_value_dev_v335hf = None
 
     _delta_devs_v335hf = _ticket_deviation_maps_v335ha()
-    _delta_hit_map_v335hf = _delta_devs_v335hf.get("2車単_hit", {}) or {}
     _delta_value_map_v335hf = _delta_devs_v335hf.get("2車単_value", {}) or {}
 
-    _delta_rows_v335hf = []
     _used_marks_v335hf = {int(_axis_gc), int(_b_gc)}
     if _triangle_gc is not None:
         _used_marks_v335hf.add(int(_triangle_gc))
 
+    # まず候補ごとの「実買目3本の合計的中率」をrawで作り、
+    # 候補間だけを母集団として偏差値化する。
+    _delta_hit_raw_v335ho = {}
+    _delta_candidate_cars_v335ho = []
     for _cand in (int(c) for c in (_cars or [])):
         if int(_cand) in _used_marks_v335hf:
             continue
+
+        _parts_v335ho = []
+
+        # ① △→◎（2車単）
+        _p_reverse_v335ho = _exacta_prob_with(
+            int(_cand), int(_axis_gc), _p1_map, _p2_map, _p3_map
+        )
+        if _p_reverse_v335ho is not None:
+            try:
+                _pv = float(_p_reverse_v335ho)
+                if math.isfinite(_pv) and _pv >= 0.0:
+                    _parts_v335ho.append(_pv)
+            except Exception:
+                pass
+
+        # ② ◎→△→○（3連単）
+        if int(_b_gc) not in {int(_axis_gc), int(_cand)}:
+            _p_axis_delta_hit_v335ho = _trifecta_prob_with(
+                int(_axis_gc), int(_cand), int(_b_gc),
+                _p1_map, _p2_map, _p3_map
+            )
+            if _p_axis_delta_hit_v335ho is not None:
+                try:
+                    _pv = float(_p_axis_delta_hit_v335ho)
+                    if math.isfinite(_pv) and _pv >= 0.0:
+                        _parts_v335ho.append(_pv)
+                except Exception:
+                    pass
+
+        # ③ ◎→△→▲（3連単）
+        if (
+            _triangle_gc is not None
+            and int(_triangle_gc) not in {int(_axis_gc), int(_cand), int(_b_gc)}
+        ):
+            _p_axis_delta_triangle_v335ho = _trifecta_prob_with(
+                int(_axis_gc), int(_cand), int(_triangle_gc),
+                _p1_map, _p2_map, _p3_map
+            )
+            if _p_axis_delta_triangle_v335ho is not None:
+                try:
+                    _pv = float(_p_axis_delta_triangle_v335ho)
+                    if math.isfinite(_pv) and _pv >= 0.0:
+                        _parts_v335ho.append(_pv)
+                except Exception:
+                    pass
+
+        if not _parts_v335ho:
+            continue
+        _delta_candidate_cars_v335ho.append(int(_cand))
+        _delta_hit_raw_v335ho[int(_cand)] = float(sum(_parts_v335ho))
+
+    _delta_hit_dev_map_v335ho = _deviation_map_v335ha(_delta_hit_raw_v335ho)
+
+    _delta_rows_v335hf = []
+    for _cand in _delta_candidate_cars_v335ho:
         _ticket_v335hf = (int(_axis_gc), int(_cand))
-        _hit_v335hf = _delta_hit_map_v335hf.get(_ticket_v335hf)
+        _hit_v335hf = _delta_hit_dev_map_v335ho.get(int(_cand))
         _value_v335hf = _delta_value_map_v335hf.get(_ticket_v335hf)
         if _hit_v335hf is None or _value_v335hf is None:
             continue
@@ -5432,6 +5501,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "hit": _hit_v335hf,
             "value": _value_v335hf,
             "balance": float(_balance_v335hf),
+            "hit_raw": float(_delta_hit_raw_v335ho.get(int(_cand), 0.0)),
         })
 
     if _delta_rows_v335hf:
