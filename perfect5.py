@@ -1,3 +1,11 @@
+# v335hb（◎軸的中妙味偏差値版）
+# ・v335haの偏差値母集団だけを変更。
+# ・2車単：◎1着固定の全相手（7車なら6通り）を母集団。
+# ・3連複：◎を必ず含む全組合せ（7車なら15通り）を母集団。
+# ・3連単：◎1着固定の全2・3着順列（7車なら30通り）を母集団。
+# ・平均50・標準偏差10。
+# ・表示名を「◎軸的中偏差値」「◎軸妙味偏差値」に変更。
+# ・◎○▲△、2車単3点、3連複3点、3連単4点のフォーメーションは変更しない。
 # v335ha（3券種・的中妙味偏差値版）
 # ・v335gzを原本に券種別おすすめを整理。
 # ・2車単 = ◎－○▲△（3点）
@@ -4347,55 +4355,66 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         }
 
     def _ticket_deviation_maps_v335ha():
-        """各券種の全成立買目を母集団に、的中・妙味を偏差値化する。"""
-        _cars_all = tuple(int(c) for c in (_cars or []))
+        """
+        v335hb：
+        ◎を固定した買目だけを母集団として、的中・妙味を偏差値化する。
 
+        2車単：◎→相手（7車なら6通り）
+        3連複：◎を含む3車組（7車なら15通り）
+        3連単：◎1着固定（7車なら30通り）
+        """
+        _cars_all = tuple(int(c) for c in (_cars or []))
+        _axis_v335hb = int(_axis_gc)
+
+        # 2車単：◎→相手のみ
         _ex_hit, _ex_val = {}, {}
-        for _a in _cars_all:
-            for _b in _cars_all:
-                if _a == _b:
+        for _b in _cars_all:
+            if int(_b) == _axis_v335hb:
+                continue
+            _t = (_axis_v335hb, int(_b))
+            _p = _exacta_prob_with(
+                _t[0], _t[1], _p1_map, _p2_map, _p3_map
+            )
+            _m = _ordered_myoumi_raw_v335gh(_t)
+            if _p is not None:
+                _ex_hit[_t] = float(_p)
+            if _m is not None:
+                _ex_val[_t] = float(_m)
+
+        # 3連複：◎を必ず含む全組合せ
+        _others = [int(c) for c in _cars_all if int(c) != _axis_v335hb]
+        _trio_hit, _trio_val = {}, {}
+        for _i in range(len(_others)):
+            for _j in range(_i + 1, len(_others)):
+                _t = tuple(sorted((
+                    _axis_v335hb,
+                    int(_others[_i]),
+                    int(_others[_j]),
+                )))
+                _p = _trio_prob_with_v335gc(
+                    _t[0], _t[1], _t[2], _p1_map, _p2_map, _p3_map
+                )
+                _m = _trio_myoumi_raw_v335gh(_t)
+                if _p is not None:
+                    _trio_hit[_t] = float(_p)
+                if _m is not None:
+                    _trio_val[_t] = float(_m)
+
+        # 3連単：◎1着固定、2・3着は残り車の全順列
+        _tf_hit, _tf_val = {}, {}
+        for _b in _others:
+            for _c in _others:
+                if int(_c) == int(_b):
                     continue
-                _t = (int(_a), int(_b))
-                _p = _exacta_prob_with(_a, _b, _p1_map, _p2_map, _p3_map)
+                _t = (_axis_v335hb, int(_b), int(_c))
+                _p = _trifecta_prob_with(
+                    _t[0], _t[1], _t[2], _p1_map, _p2_map, _p3_map
+                )
                 _m = _ordered_myoumi_raw_v335gh(_t)
                 if _p is not None:
-                    _ex_hit[_t] = float(_p)
+                    _tf_hit[_t] = float(_p)
                 if _m is not None:
-                    _ex_val[_t] = float(_m)
-
-        _trio_hit, _trio_val = {}, {}
-        for _i in range(len(_cars_all)):
-            for _j in range(_i + 1, len(_cars_all)):
-                for _k in range(_j + 1, len(_cars_all)):
-                    _t = tuple(sorted((
-                        int(_cars_all[_i]), int(_cars_all[_j]), int(_cars_all[_k])
-                    )))
-                    _p = _trio_prob_with_v335gc(
-                        _t[0], _t[1], _t[2], _p1_map, _p2_map, _p3_map
-                    )
-                    _m = _trio_myoumi_raw_v335gh(_t)
-                    if _p is not None:
-                        _trio_hit[_t] = float(_p)
-                    if _m is not None:
-                        _trio_val[_t] = float(_m)
-
-        _tf_hit, _tf_val = {}, {}
-        for _a in _cars_all:
-            for _b in _cars_all:
-                if _b == _a:
-                    continue
-                for _c in _cars_all:
-                    if _c == _a or _c == _b:
-                        continue
-                    _t = (int(_a), int(_b), int(_c))
-                    _p = _trifecta_prob_with(
-                        _a, _b, _c, _p1_map, _p2_map, _p3_map
-                    )
-                    _m = _ordered_myoumi_raw_v335gh(_t)
-                    if _p is not None:
-                        _tf_hit[_t] = float(_p)
-                    if _m is not None:
-                        _tf_val[_t] = float(_m)
+                    _tf_val[_t] = float(_m)
 
         return {
             "2車単_hit": _deviation_map_v335ha(_ex_hit),
@@ -5331,8 +5350,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         for _r in _exacta_candidates_v335ha:
             _lines.append(
                 f"{int(_r['first'])}-{int(_r['second'])}"
-                f"　的中偏差値 {_dev_text_v335ha(_r.get('hit_dev'))}"
-                f"　妙味偏差値 {_dev_text_v335ha(_r.get('value_dev'))}"
+                f"　◎軸的中偏差値 {_dev_text_v335ha(_r.get('hit_dev'))}"
+                f"　◎軸妙味偏差値 {_dev_text_v335ha(_r.get('value_dev'))}"
             )
     else:
         _lines.append("算出不可")
@@ -5343,8 +5362,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         for _r in _trio_candidates_v335ha:
             _lines.append(
                 "-".join(str(c) for c in _r["ticket"])
-                + f"　的中偏差値 {_dev_text_v335ha(_r.get('hit_dev'))}"
-                + f"　妙味偏差値 {_dev_text_v335ha(_r.get('value_dev'))}"
+                + f"　◎軸的中偏差値 {_dev_text_v335ha(_r.get('hit_dev'))}"
+                + f"　◎軸妙味偏差値 {_dev_text_v335ha(_r.get('value_dev'))}"
             )
     else:
         _lines.append("算出不可")
@@ -5355,8 +5374,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         for _r in _trifecta_candidates_v335ha:
             _lines.append(
                 "-".join(str(c) for c in _r["ticket"])
-                + f"　的中偏差値 {_dev_text_v335ha(_r.get('hit_dev'))}"
-                + f"　妙味偏差値 {_dev_text_v335ha(_r.get('value_dev'))}"
+                + f"　◎軸的中偏差値 {_dev_text_v335ha(_r.get('hit_dev'))}"
+                + f"　◎軸妙味偏差値 {_dev_text_v335ha(_r.get('value_dev'))}"
             )
     else:
         _lines.append("算出不可")
