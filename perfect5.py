@@ -1,3 +1,12 @@
+# v335gz（△ライン保護・3連単4点フォメ版）
+# ・v335gyを原本に、△を「ライン保護＋◎との期待値補完」へ変更。
+# ・△候補は◎○▲を除く無印車。
+# ・通常競輪で無印に◎同ライン車が残る場合、その同ライン候補内から◎との2車関係の想定的中率(qprob)最大を△にする。
+# ・◎同ラインの無印車がいない場合、無印全体から◎→候補の期待値指数最大を△にする。
+# ・ガールズ／アドバンスはラインなし扱いなので、無印全体から◎との期待値指数最大を△にする。
+# ・期待値100%以上は△採用の足切り条件にしない。
+# ・3連単を「◎－○▲△－▲△」へ変更。重複車番は除外し、通常4点。
+# ・◎○▲、2車単◎→▲、▲－無印ワイド、想定着順、確率モデルは変更しない。
 # v335gy（素直な◎○・4車印・3連単フォーメーション版）
 # ・v335gxを原本に、v335glで追加された「旧◎以外から妙味軸へ選び直す処理」を停止する。
 # ・◎は上位2流れの共通順位から決める従来の素直な共通軸（_base_axis_v335gl）をそのまま採用する。
@@ -5024,45 +5033,81 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "row": _r,
         })
 
-    # △：必ず4車目を作る。
-    # ガールズ／アドバンス：ラインを使わず、◎○▲以外から100%に最も近い期待値車。
-    # 通常競輪：◎○▲の所属ラインをすべて除外し、残りから同基準で1車。
+    # ---------------------------------------------------------
+    # v335gz △：
+    #   1) ◎○▲を除く無印車を候補にする。
+    #   2) 通常競輪で◎同ラインの無印が残っていれば、
+    #      その中から◎との2車関係の想定的中率(qprob)最大を採用。
+    #   3) 同ライン無印がいない場合（ガールズ／アドバンスを含む）は、
+    #      無印全体から◎→候補の期待値指数最大を採用。
+    #   4) 期待値100%以上による足切りはしない。
+    # ---------------------------------------------------------
     _delta_gc = None
     _delta_ev_gc = None
+    _delta_hit_prob_v335gz = None
+    _delta_mode_v335gz = None
 
-    def _same_line_v335gx(_a, _b):
+    def _same_line_v335gz(_a, _b):
         try:
             return bool(_line_relation_for(int(_a), int(_b)).get("same", False))
         except Exception:
             return False
 
-    _delta_rows_v335gx = []
+    # car -> 元の候補row(qprob/eprob等) を保持。
+    _candidate_row_by_car_v335gz = {}
+    for _r in (_candidate_rows or []):
+        try:
+            _candidate_row_by_car_v335gz[int(_r.get("car"))] = _r
+        except Exception:
+            pass
+
+    _unmarked_delta_rows_v335gz = []
     for _r in _ev_all_rows_v335gx:
         _cand = int(_r["car"])
         if _cand in {int(_axis_gc), int(_b_gc)}:
             continue
         if _triangle_gc is not None and _cand == int(_triangle_gc):
             continue
+        _unmarked_delta_rows_v335gz.append(_r)
 
-        if not _is_girls_like_v335gx:
-            _blocked_marks_v335gx = [int(_axis_gc), int(_b_gc)]
-            if _triangle_gc is not None:
-                _blocked_marks_v335gx.append(int(_triangle_gc))
-            if any(_same_line_v335gx(_cand, _m) for _m in _blocked_marks_v335gx):
-                continue
+    # 通常競輪のみ、◎同ラインの無印を最優先。
+    _same_line_delta_rows_v335gz = []
+    if not _is_girls_like_v335gx:
+        _same_line_delta_rows_v335gz = [
+            _r for _r in _unmarked_delta_rows_v335gz
+            if _same_line_v335gz(int(_axis_gc), int(_r["car"]))
+        ]
 
-        _delta_rows_v335gx.append(_r)
+    if _same_line_delta_rows_v335gz:
+        # 同ラインは配当妙味ではなく「当てるためのライン保護」。
+        # ◎との2車関係の想定的中率 qprob が最大の車を採用。
+        def _delta_same_line_key_v335gz(_r):
+            _car = int(_r["car"])
+            _base = _candidate_row_by_car_v335gz.get(_car, {}) or {}
+            try:
+                _qprob = float(_base.get("qprob", -1.0))
+            except Exception:
+                _qprob = -1.0
+            return (_qprob, -int(_car))
 
-    _delta_rows_v335gx.sort(
-        key=lambda r: (
-            abs(float(r["ev"]) - 100.0),
-            -float(r["ev"]),
-            int(r["car"]),
+        _best = max(_same_line_delta_rows_v335gz, key=_delta_same_line_key_v335gz)
+        _delta_gc = int(_best["car"])
+        _delta_ev_gc = float(_best["ev"])
+        _base = _candidate_row_by_car_v335gz.get(int(_delta_gc), {}) or {}
+        try:
+            _delta_hit_prob_v335gz = float(_base.get("qprob", -1.0))
+        except Exception:
+            _delta_hit_prob_v335gz = None
+        _delta_mode_v335gz = "line_hit"
+    elif _unmarked_delta_rows_v335gz:
+        # 同ライン無印がいない場合は、◎との期待値指数が最大の1車。
+        _best = max(
+            _unmarked_delta_rows_v335gz,
+            key=lambda r: (float(r["ev"]), -int(r["car"])),
         )
-    )
-    if _delta_rows_v335gx:
-        _delta_gc = int(_delta_rows_v335gx[0]["car"])
-        _delta_ev_gc = float(_delta_rows_v335gx[0]["ev"])
+        _delta_gc = int(_best["car"])
+        _delta_ev_gc = float(_best["ev"])
+        _delta_mode_v335gz = "ev"
 
     # v335gx：公開×は廃止。
     _x_gc = None
@@ -5092,11 +5137,21 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("▲　該当なし　配当適合偏差値　算出不可")
 
     if _delta_gc is not None:
-        _lines.append(
-            f"△　{int(_delta_gc)}　期待値指数　　{float(_delta_ev_gc):.1f}%"
-        )
+        if _delta_mode_v335gz == "line_hit":
+            _delta_hit_txt_v335gz = (
+                "算出不可"
+                if _delta_hit_prob_v335gz is None or float(_delta_hit_prob_v335gz) < 0.0
+                else f"{float(_delta_hit_prob_v335gz) * 100.0:.1f}%"
+            )
+            _lines.append(
+                f"△　{int(_delta_gc)}　ライン連対指数　{_delta_hit_txt_v335gz}"
+            )
+        else:
+            _lines.append(
+                f"△　{int(_delta_gc)}　期待値指数　　{float(_delta_ev_gc):.1f}%"
+            )
     else:
-        _lines.append("△　該当なし　期待値指数　候補なし")
+        _lines.append("△　該当なし　候補なし")
 
     _lines.append("")
     _lines.append("【ヴェロビ分析・券種別オススメ】")
@@ -5361,38 +5416,43 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     )
 
     # ---------------------------------------------------------
-    # v335gx 3連単フォーメーション
-    # 1列目 = ◎○
-    # 2列目 = ◎○X
-    # 3列目 = ○▲
-    # X = ◎ラインから選ばれた▲。◎ライン車を追加できない場合は△。
+    # v335gz 3連単フォーメーション
+    # 1列目 = ◎
+    # 2列目 = ○▲△
+    # 3列目 = ▲△
+    # 記号：◎－○▲△－▲△
     # 同一車が同一買目内で重複する組合せは除外する。
+    # 通常は最大4点。
     # ---------------------------------------------------------
     _trifecta_candidates_v335gr = []
-    _formation_x_v335gx = (
-        int(_triangle_gc)
-        if (_triangle_gc is not None and _triangle_from_axis_line_v335gx)
-        else (int(_delta_gc) if _delta_gc is not None else None)
-    )
 
-    _first_col_v335gx = [int(_axis_gc), int(_b_gc)]
-    _second_col_v335gx = [int(_axis_gc), int(_b_gc)]
-    if _formation_x_v335gx is not None and _formation_x_v335gx not in _second_col_v335gx:
-        _second_col_v335gx.append(int(_formation_x_v335gx))
-    _third_col_v335gx = [int(_b_gc)]
-    if _triangle_gc is not None and int(_triangle_gc) not in _third_col_v335gx:
-        _third_col_v335gx.append(int(_triangle_gc))
+    _first_col_v335gz = [int(_axis_gc)]
+    _second_col_v335gz = []
+    for _c in (_b_gc, _triangle_gc, _delta_gc):
+        if _c is None:
+            continue
+        _c = int(_c)
+        if _c not in _second_col_v335gz:
+            _second_col_v335gz.append(_c)
 
-    _seen_tf_v335gx = set()
-    for _first in _first_col_v335gx:
-        for _second in _second_col_v335gx:
-            for _third in _third_col_v335gx:
+    _third_col_v335gz = []
+    for _c in (_triangle_gc, _delta_gc):
+        if _c is None:
+            continue
+        _c = int(_c)
+        if _c not in _third_col_v335gz:
+            _third_col_v335gz.append(_c)
+
+    _seen_tf_v335gz = set()
+    for _first in _first_col_v335gz:
+        for _second in _second_col_v335gz:
+            for _third in _third_col_v335gz:
                 _ticket = (int(_first), int(_second), int(_third))
                 if len(set(_ticket)) < 3:
                     continue
-                if _ticket in _seen_tf_v335gx:
+                if _ticket in _seen_tf_v335gz:
                     continue
-                _seen_tf_v335gx.add(_ticket)
+                _seen_tf_v335gz.add(_ticket)
                 _tp = _trifecta_prob_with(
                     int(_first), int(_second), int(_third),
                     _p1_map, _p2_map, _p3_map,
