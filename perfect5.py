@@ -1,8 +1,10 @@
-# v335hm（ガールズ・アドバンス単騎確率一本化版）
-# ・ガールズ／アドバンスは「単騎100%」の最終順位を唯一の確率母体にする。
-# ・通常競輪用のライン勢力比・ライン内役割・ライン関係タイブレークを、ガールズ／アドバンスの確率計算から完全に外す。
-# ・単騎順位から1着/2着/3着の位置別重みを作り、同じ1流れから◎○▲△・2車単/3連単の的中想定順位まで計算する。
-# ・ガールズ／アドバンスの△「妙味」は旧ライン/3流れ由来の車別妙味を使わず、同じ単騎確率から算出した配当適合値を使用する。
+# v335hn（ガールズ・アドバンス単騎・個体差確率版）
+# ・ガールズ／アドバンスは「単騎100%」の1流れを維持する。
+# ・v335hmの順位距離だけで作る固定確率テンプレートを廃止する。
+# ・1/2/3着確率は、各選手のSBなし個人スコア(v_wo)＋車番別着率＋本人の脚質適合を幾何平均して算出する。
+# ・ライン勢力比、ライン内役割、ライン文脈、単騎=捲り固定の役割補正はガールズ／アドバンス確率へ入れない。
+# ・したがって同じ単騎順位でも、選手間の実力差・脚質差・会場適合差により確率値はレースごとに変わる。
+# ・◎は単騎順位の素直な軸、○▲△と買目順位はこの個体差付き単騎確率から計算する。
 # ・通常競輪の3流れ・ラインロジック・公開買目（2車単2点＋3連単4点）は変更しない。
 
 # v335hl（ガールズ・アドバンス単騎1流れ・直接級別判定版）
@@ -2840,7 +2842,7 @@ race_class = st.sidebar.selectbox(
     index=0,
     key="race_class",
 )
-st.sidebar.caption("ロジック版：v335hm")
+st.sidebar.caption("ロジック版：v335hn")
 
 # ==============================
 # v335bc: サイドバー会場評価を過去のA/B/C/D表示へ復帰
@@ -4125,30 +4127,124 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _rest = [int(c) for c in (_order or tuple()) if int(c) != _axis_car]
         return tuple([_axis_car] + _rest)
 
-    def _single_flow_position_probability_map_v335hm(_order, _finish_pos):
+    def _single_strength_factor_v335hn(_cars, _final_order):
         """
-        ガールズ／アドバンス専用。
-        単騎100%の最終順位だけを使って着順別の確率重みを作る。
+        ガールズ／アドバンス専用の個人地力係数。
 
-        ・1着は単騎順位1位を最大
-        ・2着は単騎順位2位を最大
-        ・3着は単騎順位3位を最大
-        ・ライン勢力比、ライン内役割、通常競輪のライン文脈補正は一切使わない
+        SBなし個人スコア v_wo を最優先で使う。
+        v_wo が取れない場合だけ scores → KO_SCORE_MAP_FOR_SANTEN の順でフォールバックする。
+        レース内z化→exp(z)で正値へ変換し、順位テンプレートではなく個体差を確率へ残す。
+        """
+        _cars = tuple(int(c) for c in (_cars or tuple()))
+        _rank = {int(c): i for i, c in enumerate((_final_order or tuple()), start=1)}
 
-        重みは n - |単騎順位 - 対象着順|（最低1）の単純な順位距離。
-        これを全車で正規化し、既存の条件付き順序確率へ渡す。
+        _src = globals().get("v_wo", {}) or globals().get("scores", {}) or globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {}
+        _vals = []
+        for _car in _cars:
+            _v = _v335br_safe_float(
+                _src.get(int(_car), _src.get(str(int(_car)), 0.0)),
+                0.0,
+            )
+            _vals.append((int(_car), float(_v)))
+
+        _nums = [float(v) for _, v in _vals]
+        if not _nums:
+            return {}
+        _mu = sum(_nums) / float(len(_nums))
+        _var = sum((float(v) - _mu) ** 2 for v in _nums) / float(len(_nums))
+        _sd = math.sqrt(max(_var, 0.0))
+
+        _out = {}
+        for _car, _v in _vals:
+            if _sd > 1e-12:
+                _z = (float(_v) - _mu) / _sd
+                _z = max(-2.0, min(2.0, float(_z)))
+                _factor = math.exp(_z)
+            else:
+                # 個人スコアが完全同値のときだけ、単騎順位を極小タイブレークに使う。
+                _r = int(_rank.get(int(_car), len(_cars)))
+                _factor = 1.0 + max(0.0, (len(_cars) - _r)) * 1e-6
+            _out[int(_car)] = max(float(_factor), 1e-9)
+        return _out
+
+    def _single_rider_tactic_factor_v335hn(_profile, _cars, _finish_pos):
+        """
+        ガールズ／アドバンス専用の脚質適合。
+
+        本人の逃/捲/差/マ構成 × 会場決まり手だけを見る。
+        通常競輪の「今日のライン内役割」や single=捲り固定は使わない。
+        3着は会場決まり手表がないため中立1.0。
+        """
+        _cars = tuple(int(c) for c in (_cars or tuple()))
+        if int(_finish_pos) == 3:
+            return {int(c): 1.0 for c in _cars}
+
+        _vk = (_profile or {}).get("kimarite", {}) or {}
+        if int(_finish_pos) == 1:
+            _venue = {
+                "逃": max(0.0, _v335br_safe_float(_vk.get("win_escape", 0.0), 0.0)),
+                "捲": max(0.0, _v335br_safe_float(_vk.get("win_makuri", 0.0), 0.0)),
+                "差": max(0.0, _v335br_safe_float(_vk.get("win_sashi", 0.0), 0.0)),
+                "マ": max(0.0, _v335br_safe_float(_vk.get("win_sashi", 0.0), 0.0)),
+            }
+        else:
+            _venue = {
+                "逃": max(0.0, _v335br_safe_float(_vk.get("sec_escape", 0.0), 0.0)),
+                "捲": max(0.0, _v335br_safe_float(_vk.get("sec_makuri", 0.0), 0.0)),
+                "差": max(0.0, _v335br_safe_float(_vk.get("sec_sashi", 0.0), 0.0)),
+                "マ": max(0.0, _v335br_safe_float(_vk.get("sec_mark", 0.0), 0.0)),
+            }
+
+        # 会場決まり手が未入力なら脚質差を無理に作らず中立。
+        if sum(float(v) for v in _venue.values()) <= 1e-12:
+            return {int(c): 1.0 for c in _cars}
+
+        _raw = {}
+        for _car in _cars:
+            _prof = _v335br_rider_tactic_profile(int(_car))
+            _fit = sum(
+                float(_prof.get(k, 0.0)) * float(_venue.get(k, 0.0))
+                for k in ("逃", "捲", "差", "マ")
+            )
+            _raw[int(_car)] = max(float(_fit), 1e-9)
+
+        _mean = sum(_raw.values()) / float(len(_raw)) if _raw else 0.0
+        if _mean <= 1e-12:
+            return {int(c): 1.0 for c in _cars}
+        return {
+            int(c): max(float(_raw.get(int(c), _mean)) / float(_mean), 1e-9)
+            for c in _cars
+        }
+
+    def _single_flow_position_probability_map_v335hn(_order, _finish_pos):
+        """
+        ガールズ／アドバンス専用の着順別個人確率。
+
+        v335hmの n-|順位-着順| という順位固定テンプレートは使わない。
+        代わりに、通常確率モデルからライン要素だけを除いた3信号を使う。
+          1) SBなし個人スコア(v_wo)
+          2) 会場の車番別1/2/3着率
+          3) 本人の脚質構成×会場決まり手
+        3信号を幾何平均し、全車で正規化する。
         """
         _o = tuple(int(c) for c in (_order or tuple()))
         if not _o:
             return {}
-        _n = len(_o)
-        _pos = max(1, min(3, int(_finish_pos)))
+
+        _sf_map = _single_strength_factor_v335hn(_o, _o)
+        _cf_map = _v335br_car_number_position_factor(profile, _o, _finish_pos)
+        _tf_map = _single_rider_tactic_factor_v335hn(profile, _o, _finish_pos)
+
         _raw = {}
-        for _rank, _car in enumerate(_o, start=1):
-            _raw[int(_car)] = float(max(1, _n - abs(int(_rank) - int(_pos))))
+        for _car in _o:
+            _sf = max(float(_sf_map.get(int(_car), 1.0)), 1e-9)
+            _cf = max(float(_cf_map.get(int(_car), 1.0)), 1e-9)
+            _tf = max(float(_tf_map.get(int(_car), 1.0)), 1e-9)
+            _raw[int(_car)] = max((_sf * _cf * _tf) ** (1.0 / 3.0), 1e-12)
+
         _total = sum(_raw.values())
         if _total <= 0.0:
-            _eq = 1.0 / float(_n)
+            _eq = 1.0 / float(len(_o))
             return {int(c): _eq for c in _o}
         return {int(c): float(_raw[int(c)]) / float(_total) for c in _o}
 
@@ -4157,9 +4253,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _o = tuple(int(c) for c in (_order or tuple()))
             if _single_flow_class_v335hl:
                 return (
-                    _single_flow_position_probability_map_v335hm(_o, 1),
-                    _single_flow_position_probability_map_v335hm(_o, 2),
-                    _single_flow_position_probability_map_v335hm(_o, 3),
+                    _single_flow_position_probability_map_v335hn(_o, 1),
+                    _single_flow_position_probability_map_v335hn(_o, 2),
+                    _single_flow_position_probability_map_v335hn(_o, 3),
                 )
             return (
                 _v335br_position_probability_map(profile, _o, 1),
