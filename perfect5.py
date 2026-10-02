@@ -1,12 +1,10 @@
-# v335gw（公開印4車・▲◎ライン優先・△別ライン版）
-# ・v335gvを原本に、公開するヴェロビ評価を◎○▲△の4車へ変更し、×を公開評価・公開買目候補から削除する。
-# ・◎と○の選定ロジックは変更しない。
-# ・▲は◎ライン内で◎○に未選出の車を優先し、既存の▲評価（配当適合）順位で1車選ぶ。
-# ・◎ラインが4車以上の場合、▲候補はライン前方3車以内に限定し、4番手以降は候補から除外する。
-# ・上記条件の◎ライン▲候補が存在しない場合だけ、従来コードの▲をそのまま採用する。
-# ・△は◎○▲が所属するラインを除外した車だけを候補とし、従来の△評価（期待値指数100%以上・100%への超過が小さい順）で1車選ぶ。
-# ・△条件を満たす別ライン車が存在しない場合は該当なしとし、禁止ラインからの補完は行わない。
-# ・2車単◎→▲1点、▲－無印ワイド1点、3連複公開削除、3連単2着固定、◎○の選定、想定着順、ポイントアップ、開催日KO、確率モデルは変更しない。
+# v335gx（4車印・ガールズ△補完・3連単フォーメーション版）
+# ・◎／○は現行ロジックを維持。公開印は◎○▲△の4車とし、×は公開しない。
+# ・通常競輪の▲は◎ライン未選出車を優先。4車以上ラインは前から3車以内だけを候補にし、候補なしなら既存▲へ戻す。
+# ・通常競輪の△は◎○▲の各所属ライン以外から1車を選ぶ。期待値100%未満でも4車化のため1車採用する。
+# ・ガールズ／アドバンスはライン選抜を使わず▲は既存▲、△は◎○▲を除く車から既存期待値指数の100%への近さで1車採用し、100%未満も許容する。
+# ・3連単は ◎○－◎○X－○▲。X=◎ラインから選ばれた▲、◎ライン車を追加できない場合は△。同一車重複の着順は除外する。
+# ・2車単◎→▲、▲－無印ワイド、想定着順、◎○本体、確率モデルは変更しない。
 # v335gv（2車単◎→▲1点版）
 # ・v335guを原本に、2車単から「◎→○」を削除し「◎→▲」1点だけにする。
 # ・▲が不在または◎と重複する場合は、2車単を0点とし○への補完は行わない。
@@ -4975,59 +4973,41 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         )
     )
 
-    # v335gw：▲は◎ライン内の未選出車を優先する。
-    # 4車以上ラインでは前方3車以内だけを候補にし、4番手以降は除外。
-    # 条件に合う◎ライン車がいない場合だけ、従来▲へフォールバックする。
+    # v335gx：▲は通常競輪では◎ライン未選出車を優先。
+    # 4車以上ラインは前から3車以内のみ候補。該当なし／ガールズ系は既存▲へ戻す。
     _triangle_gc = None
     _triangle_score_gc = None
+    _triangle_from_axis_line_v335gx = False
 
-    def _line_for_car_v335gw(_car):
-        try:
-            _car = int(_car)
-        except Exception:
-            return None
-        for _line in (_line_groups or []):
-            try:
-                _seq = [int(x) for x in (_line or [])]
-            except Exception:
-                continue
-            if _car in _seq:
-                return tuple(_seq)
-        return None
-
-    _axis_line_v335gw = _line_for_car_v335gw(_axis_gc)
-    _triangle_line_candidates_v335gw = []
-
-    if _axis_line_v335gw is not None and len(_axis_line_v335gw) >= 2:
-        # 4車以上ラインは「前から3車以内」。3車以下はライン全体。
-        _triangle_scope_v335gw = (
-            tuple(_axis_line_v335gw[:3])
-            if len(_axis_line_v335gw) >= 4
-            else tuple(_axis_line_v335gw)
+    _is_girls_like_v335gx = bool(globals().get("is_girls_like", False))
+    if not _is_girls_like_v335gx:
+        _axis_line_v335gx = next(
+            (list(map(int, _ln)) for _ln in _line_groups if int(_axis_gc) in list(map(int, _ln))),
+            [],
         )
-        _triangle_line_candidates_v335gw = [
-            int(c) for c in _triangle_scope_v335gw
-            if int(c) not in {int(_axis_gc), int(_b_gc)}
-        ]
-
-    if _triangle_line_candidates_v335gw:
-        _triangle_line_set_v335gw = set(_triangle_line_candidates_v335gw)
-        _triangle_rows_v335gw = [
-            r for r in _table_rows_gc
-            if int(r.get("car")) in _triangle_line_set_v335gw
-        ]
-        if _triangle_rows_v335gw:
-            _triangle_gc = int(_triangle_rows_v335gw[0]["car"])
-            _triangle_score_gc = float(
-                _triangle_rows_v335gw[0].get("score", 0.0) or 0.0
+        if _axis_line_v335gx:
+            _front_scope_v335gx = (
+                _axis_line_v335gx[:3]
+                if len(_axis_line_v335gx) >= 4
+                else list(_axis_line_v335gx)
             )
+            _tri_allowed_v335gx = {
+                int(c) for c in _front_scope_v335gx
+                if int(c) not in {int(_axis_gc), int(_b_gc)}
+            }
+            _tri_rows_v335gx = [
+                r for r in _table_rows_gc
+                if int(r.get("car")) in _tri_allowed_v335gx
+            ]
+            if _tri_rows_v335gx:
+                _triangle_gc = int(_tri_rows_v335gx[0]["car"])
+                _triangle_score_gc = float(_tri_rows_v335gx[0].get("score", 0.0) or 0.0)
+                _triangle_from_axis_line_v335gx = True
 
-    # ◎ラインから▲を選べない場合は、既存コードの▲をそのまま採用。
+    # ◎ラインから選べない場合は従来の▲（配当適合1位）へフォールバック。
     if _triangle_gc is None and _table_rows_gc:
         _triangle_gc = int(_table_rows_gc[0]["car"])
-        _triangle_score_gc = float(
-            _table_rows_gc[0].get("score", 0.0) or 0.0
-        )
+        _triangle_score_gc = float(_table_rows_gc[0].get("score", 0.0) or 0.0)
 
     # 配当適合偏差値：
     # 同一レースの配当適合候補スコアを母集団として偏差値化。
@@ -5059,8 +5039,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     / float(_sd_fit_gc)
                 )
 
-    # 期待値指数を全候補について作る。
-    _ev_candidate_rows_gd = []
+    # 期待値指数を全候補について作る。v335gxでは△の4車化のため
+    # 100%未満も候補値として保持する。
+    _ev_all_rows_v335gx = []
     for _r in _candidate_rows:
         try:
             _car_gd = int(_r.get("car"))
@@ -5069,47 +5050,55 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             )
         except Exception:
             continue
-        if _ev_gd is None or float(_ev_gd) < 100.0:
+        if _ev_gd is None:
             continue
-        _ev_candidate_rows_gd.append({
+        _ev_all_rows_v335gx.append({
             "car": _car_gd,
             "ev": float(_ev_gd),
             "row": _r,
         })
 
-    # v335gw：△は◎○▲が所属するライン以外から1車。
-    # 車の評価方法は従来△のまま（期待値指数100%以上の中で100%への超過が小さい順）。
+    # △：必ず4車目を作る。
+    # ガールズ／アドバンス：ラインを使わず、◎○▲以外から100%に最も近い期待値車。
+    # 通常競輪：◎○▲の所属ラインをすべて除外し、残りから同基準で1車。
     _delta_gc = None
     _delta_ev_gc = None
 
-    _excluded_line_cars_v335gw = set()
-    for _marked_car_v335gw in (_axis_gc, _b_gc, _triangle_gc):
-        if _marked_car_v335gw is None:
-            continue
-        _ln_v335gw = _line_for_car_v335gw(_marked_car_v335gw)
-        if _ln_v335gw is None:
-            # 単騎はその車自身だけを除外対象とする。
-            _excluded_line_cars_v335gw.add(int(_marked_car_v335gw))
-        else:
-            _excluded_line_cars_v335gw.update(int(c) for c in _ln_v335gw)
+    def _same_line_v335gx(_a, _b):
+        try:
+            return bool(_line_relation_for(int(_a), int(_b)).get("same", False))
+        except Exception:
+            return False
 
-    _ev_near100_gd = sorted(
-        _ev_candidate_rows_gd,
+    _delta_rows_v335gx = []
+    for _r in _ev_all_rows_v335gx:
+        _cand = int(_r["car"])
+        if _cand in {int(_axis_gc), int(_b_gc)}:
+            continue
+        if _triangle_gc is not None and _cand == int(_triangle_gc):
+            continue
+
+        if not _is_girls_like_v335gx:
+            _blocked_marks_v335gx = [int(_axis_gc), int(_b_gc)]
+            if _triangle_gc is not None:
+                _blocked_marks_v335gx.append(int(_triangle_gc))
+            if any(_same_line_v335gx(_cand, _m) for _m in _blocked_marks_v335gx):
+                continue
+
+        _delta_rows_v335gx.append(_r)
+
+    _delta_rows_v335gx.sort(
         key=lambda r: (
             abs(float(r["ev"]) - 100.0),
-            float(r["ev"]),
+            -float(r["ev"]),
             int(r["car"]),
         )
     )
-    for _r in _ev_near100_gd:
-        _cand = int(_r["car"])
-        if _cand in _excluded_line_cars_v335gw:
-            continue
-        _delta_gc = _cand
-        _delta_ev_gc = float(_r["ev"])
-        break
+    if _delta_rows_v335gx:
+        _delta_gc = int(_delta_rows_v335gx[0]["car"])
+        _delta_ev_gc = float(_delta_rows_v335gx[0]["ev"])
 
-    # v335gw：公開印は◎○▲△の4車。×は作らない。
+    # v335gx：公開×は廃止。
     _x_gc = None
     _x_ev_gc = None
 
@@ -5141,7 +5130,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             f"△　{int(_delta_gc)}　期待値指数　　{float(_delta_ev_gc):.1f}%"
         )
     else:
-        _lines.append("△　該当なし　期待値指数　100%以上なし")
+        _lines.append("△　該当なし　期待値指数　候補なし")
 
     _lines.append("")
     _lines.append("【ヴェロビ分析・券種別オススメ】")
@@ -5358,7 +5347,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     # ---------------------------------------------------------
     # 3着候補：
-    # 現在公開している◎○▲△のうち、◎と相手以外だけ。
+    # 現在公開している◎○▲△×のうち、◎と相手以外だけ。
     # 全車内部評価から新しい車番は追加しない。
     # ---------------------------------------------------------
     _third_candidates_v335gr = []
@@ -5406,29 +5395,48 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     )
 
     # ---------------------------------------------------------
-    # 3連単：
-    # ◎→相手を1・2着固定。
-    # 裏目・方向比較なし。
+    # v335gx 3連単フォーメーション
+    # 1列目 = ◎○
+    # 2列目 = ◎○X
+    # 3列目 = ○▲
+    # X = ◎ラインから選ばれた▲。◎ライン車を追加できない場合は△。
+    # 同一車が同一買目内で重複する組合せは除外する。
     # ---------------------------------------------------------
     _trifecta_candidates_v335gr = []
+    _formation_x_v335gx = (
+        int(_triangle_gc)
+        if (_triangle_gc is not None and _triangle_from_axis_line_v335gx)
+        else (int(_delta_gc) if _delta_gc is not None else None)
+    )
 
-    if _partner_v335gr is not None:
-        for _third in _third_candidates_v335gr:
-            _tp = _trifecta_prob_with(
-                int(_axis_v335gr),
-                int(_partner_v335gr),
-                int(_third),
-                _p1_map,
-                _p2_map,
-                _p3_map,
-            )
+    _first_col_v335gx = [int(_axis_gc), int(_b_gc)]
+    _second_col_v335gx = [int(_axis_gc), int(_b_gc)]
+    if _formation_x_v335gx is not None and _formation_x_v335gx not in _second_col_v335gx:
+        _second_col_v335gx.append(int(_formation_x_v335gx))
+    _third_col_v335gx = [int(_b_gc)]
+    if _triangle_gc is not None and int(_triangle_gc) not in _third_col_v335gx:
+        _third_col_v335gx.append(int(_triangle_gc))
 
-            _trifecta_candidates_v335gr.append({
-                "first": int(_axis_v335gr),
-                "second": int(_partner_v335gr),
-                "third": int(_third),
-                "prob": None if _tp is None else float(_tp),
-            })
+    _seen_tf_v335gx = set()
+    for _first in _first_col_v335gx:
+        for _second in _second_col_v335gx:
+            for _third in _third_col_v335gx:
+                _ticket = (int(_first), int(_second), int(_third))
+                if len(set(_ticket)) < 3:
+                    continue
+                if _ticket in _seen_tf_v335gx:
+                    continue
+                _seen_tf_v335gx.add(_ticket)
+                _tp = _trifecta_prob_with(
+                    int(_first), int(_second), int(_third),
+                    _p1_map, _p2_map, _p3_map,
+                )
+                _trifecta_candidates_v335gr.append({
+                    "first": int(_first),
+                    "second": int(_second),
+                    "third": int(_third),
+                    "prob": None if _tp is None else float(_tp),
+                })
 
     _trifecta_probs_v335gr = [
         r.get("prob")
@@ -5443,7 +5451,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ---------------------------------------------------------
     # v335gt：▲－無印ワイド 1点
     #
-    # ▲を固定し、公開評価◎○▲△が付いていない無印車だけを候補化。
+    # ▲を固定し、公開評価◎○▲△×が付いていない無印車だけを候補化。
     # 相手選定は新しい妙味指数を作らず、既存の各流れについて
     # 「ポイントアップ＋開催日KO」まで通した最終着順をそのまま利用する。
     # 3流れの想定比率で最終順位を加重平均し、平均順位が最小の1車を採用。
