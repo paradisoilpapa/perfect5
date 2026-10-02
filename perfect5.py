@@ -1,3 +1,8 @@
+# v335hc（偏差値表示簡潔版）
+# ・v335hbから表示だけを簡潔化。
+# ・各券種見出しに「※偏差値は◎軸内での比較です」を表示。
+# ・各買目は「的中xx.x　妙味xx.x」と表示。
+# ・偏差値の計算、◎○▲△、各券種フォーメーションは変更しない。
 # v335hb（◎軸的中妙味偏差値版）
 # ・v335haの偏差値母集団だけを変更。
 # ・2車単：◎1着固定の全相手（7車なら6通り）を母集団。
@@ -5345,37 +5350,37 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         return "算出不可" if _v is None else f"{float(_v):.1f}"
 
     _lines.append("")
-    _lines.append(f"2車単　候補{len(_exacta_candidates_v335ha)}点")
+    _lines.append(f"2車単　候補{len(_exacta_candidates_v335ha)}点　※偏差値は◎軸内での比較です")
     if _exacta_candidates_v335ha:
         for _r in _exacta_candidates_v335ha:
             _lines.append(
                 f"{int(_r['first'])}-{int(_r['second'])}"
-                f"　◎軸的中偏差値 {_dev_text_v335ha(_r.get('hit_dev'))}"
-                f"　◎軸妙味偏差値 {_dev_text_v335ha(_r.get('value_dev'))}"
+                f"　的中{_dev_text_v335ha(_r.get('hit_dev'))}"
+                f"　妙味{_dev_text_v335ha(_r.get('value_dev'))}"
             )
     else:
         _lines.append("算出不可")
 
     _lines.append("")
-    _lines.append(f"3連複　候補{len(_trio_candidates_v335ha)}点")
+    _lines.append(f"3連複　候補{len(_trio_candidates_v335ha)}点　※偏差値は◎軸内での比較です")
     if _trio_candidates_v335ha:
         for _r in _trio_candidates_v335ha:
             _lines.append(
                 "-".join(str(c) for c in _r["ticket"])
-                + f"　◎軸的中偏差値 {_dev_text_v335ha(_r.get('hit_dev'))}"
-                + f"　◎軸妙味偏差値 {_dev_text_v335ha(_r.get('value_dev'))}"
+                + f"　的中{_dev_text_v335ha(_r.get('hit_dev'))}"
+                + f"　妙味{_dev_text_v335ha(_r.get('value_dev'))}"
             )
     else:
         _lines.append("算出不可")
 
     _lines.append("")
-    _lines.append(f"3連単　候補{len(_trifecta_candidates_v335ha)}点")
+    _lines.append(f"3連単　候補{len(_trifecta_candidates_v335ha)}点　※偏差値は◎軸内での比較です")
     if _trifecta_candidates_v335ha:
         for _r in _trifecta_candidates_v335ha:
             _lines.append(
                 "-".join(str(c) for c in _r["ticket"])
-                + f"　◎軸的中偏差値 {_dev_text_v335ha(_r.get('hit_dev'))}"
-                + f"　◎軸妙味偏差値 {_dev_text_v335ha(_r.get('value_dev'))}"
+                + f"　的中{_dev_text_v335ha(_r.get('hit_dev'))}"
+                + f"　妙味{_dev_text_v335ha(_r.get('value_dev'))}"
             )
     else:
         _lines.append("算出不可")
