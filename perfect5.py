@@ -1,3 +1,12 @@
+# v335gw（公開印4車・▲◎ライン優先・△別ライン版）
+# ・v335gvを原本に、公開するヴェロビ評価を◎○▲△の4車へ変更し、×を公開評価・公開買目候補から削除する。
+# ・◎と○の選定ロジックは変更しない。
+# ・▲は◎ライン内で◎○に未選出の車を優先し、既存の▲評価（配当適合）順位で1車選ぶ。
+# ・◎ラインが4車以上の場合、▲候補はライン前方3車以内に限定し、4番手以降は候補から除外する。
+# ・上記条件の◎ライン▲候補が存在しない場合だけ、従来コードの▲をそのまま採用する。
+# ・△は◎○▲が所属するラインを除外した車だけを候補とし、従来の△評価（期待値指数100%以上・100%への超過が小さい順）で1車選ぶ。
+# ・△条件を満たす別ライン車が存在しない場合は該当なしとし、禁止ラインからの補完は行わない。
+# ・2車単◎→▲1点、▲－無印ワイド1点、3連複公開削除、3連単2着固定、◎○の選定、想定着順、ポイントアップ、開催日KO、確率モデルは変更しない。
 # v335gv（2車単◎→▲1点版）
 # ・v335guを原本に、2車単から「◎→○」を削除し「◎→▲」1点だけにする。
 # ・▲が不在または◎と重複する場合は、2車単を0点とし○への補完は行わない。
@@ -4966,12 +4975,59 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         )
     )
 
-    # ▲：配当適合車
+    # v335gw：▲は◎ライン内の未選出車を優先する。
+    # 4車以上ラインでは前方3車以内だけを候補にし、4番手以降は除外。
+    # 条件に合う◎ライン車がいない場合だけ、従来▲へフォールバックする。
     _triangle_gc = None
     _triangle_score_gc = None
-    if _table_rows_gc:
+
+    def _line_for_car_v335gw(_car):
+        try:
+            _car = int(_car)
+        except Exception:
+            return None
+        for _line in (_line_groups or []):
+            try:
+                _seq = [int(x) for x in (_line or [])]
+            except Exception:
+                continue
+            if _car in _seq:
+                return tuple(_seq)
+        return None
+
+    _axis_line_v335gw = _line_for_car_v335gw(_axis_gc)
+    _triangle_line_candidates_v335gw = []
+
+    if _axis_line_v335gw is not None and len(_axis_line_v335gw) >= 2:
+        # 4車以上ラインは「前から3車以内」。3車以下はライン全体。
+        _triangle_scope_v335gw = (
+            tuple(_axis_line_v335gw[:3])
+            if len(_axis_line_v335gw) >= 4
+            else tuple(_axis_line_v335gw)
+        )
+        _triangle_line_candidates_v335gw = [
+            int(c) for c in _triangle_scope_v335gw
+            if int(c) not in {int(_axis_gc), int(_b_gc)}
+        ]
+
+    if _triangle_line_candidates_v335gw:
+        _triangle_line_set_v335gw = set(_triangle_line_candidates_v335gw)
+        _triangle_rows_v335gw = [
+            r for r in _table_rows_gc
+            if int(r.get("car")) in _triangle_line_set_v335gw
+        ]
+        if _triangle_rows_v335gw:
+            _triangle_gc = int(_triangle_rows_v335gw[0]["car"])
+            _triangle_score_gc = float(
+                _triangle_rows_v335gw[0].get("score", 0.0) or 0.0
+            )
+
+    # ◎ラインから▲を選べない場合は、既存コードの▲をそのまま採用。
+    if _triangle_gc is None and _table_rows_gc:
         _triangle_gc = int(_table_rows_gc[0]["car"])
-        _triangle_score_gc = float(_table_rows_gc[0].get("score", 0.0) or 0.0)
+        _triangle_score_gc = float(
+            _table_rows_gc[0].get("score", 0.0) or 0.0
+        )
 
     # 配当適合偏差値：
     # 同一レースの配当適合候補スコアを母集団として偏差値化。
@@ -5021,10 +5077,22 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "row": _r,
         })
 
-    # △：従来▲と同じ「100%への超過が小さい側」。
-    # ただし◎○▲との重複は除外する。
+    # v335gw：△は◎○▲が所属するライン以外から1車。
+    # 車の評価方法は従来△のまま（期待値指数100%以上の中で100%への超過が小さい順）。
     _delta_gc = None
     _delta_ev_gc = None
+
+    _excluded_line_cars_v335gw = set()
+    for _marked_car_v335gw in (_axis_gc, _b_gc, _triangle_gc):
+        if _marked_car_v335gw is None:
+            continue
+        _ln_v335gw = _line_for_car_v335gw(_marked_car_v335gw)
+        if _ln_v335gw is None:
+            # 単騎はその車自身だけを除外対象とする。
+            _excluded_line_cars_v335gw.add(int(_marked_car_v335gw))
+        else:
+            _excluded_line_cars_v335gw.update(int(c) for c in _ln_v335gw)
+
     _ev_near100_gd = sorted(
         _ev_candidate_rows_gd,
         key=lambda r: (
@@ -5035,36 +5103,15 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     )
     for _r in _ev_near100_gd:
         _cand = int(_r["car"])
-        if _cand in (_axis_gc, _b_gc):
-            continue
-        if _triangle_gc is not None and _cand == int(_triangle_gc):
+        if _cand in _excluded_line_cars_v335gw:
             continue
         _delta_gc = _cand
         _delta_ev_gc = float(_r["ev"])
         break
 
-    # ×：参考穴。買目には使用しない。
-    # 残りの期待値100%以上候補から期待値指数最大。
+    # v335gw：公開印は◎○▲△の4車。×は作らない。
     _x_gc = None
     _x_ev_gc = None
-    _ev_hole_gd = sorted(
-        _ev_candidate_rows_gd,
-        key=lambda r: (
-            -float(r["ev"]),
-            int(r["car"]),
-        )
-    )
-    for _r in _ev_hole_gd:
-        _cand = int(_r["car"])
-        if _cand in (_axis_gc, _b_gc):
-            continue
-        if _triangle_gc is not None and _cand == int(_triangle_gc):
-            continue
-        if _delta_gc is not None and _cand == int(_delta_gc):
-            continue
-        _x_gc = _cand
-        _x_ev_gc = float(_r["ev"])
-        break
 
     # ---------------------------------------------------------
     # 公開評価表示
@@ -5095,13 +5142,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         )
     else:
         _lines.append("△　該当なし　期待値指数　100%以上なし")
-
-    if _x_gc is not None:
-        _lines.append(
-            f"×　{int(_x_gc)}　穴期待値指数　{float(_x_ev_gc):.1f}%"
-        )
-    else:
-        _lines.append("×　該当なし　穴期待値指数　参考穴なし")
 
     _lines.append("")
     _lines.append("【ヴェロビ分析・券種別オススメ】")
@@ -5134,7 +5174,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _register_role_gf(_b_gc, "○")
     _register_role_gf(_triangle_gc, "▲")
     _register_role_gf(_delta_gc, "△")
-    _register_role_gf(_x_gc, "×")
 
     # 公開評価に実際に出している車番だけを、表示順のまま保持する。
     _public_prediction_cars_gf = [int(_axis_gc)]
@@ -5319,7 +5358,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     # ---------------------------------------------------------
     # 3着候補：
-    # 現在公開している◎○▲△×のうち、◎と相手以外だけ。
+    # 現在公開している◎○▲△のうち、◎と相手以外だけ。
     # 全車内部評価から新しい車番は追加しない。
     # ---------------------------------------------------------
     _third_candidates_v335gr = []
@@ -5404,7 +5443,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ---------------------------------------------------------
     # v335gt：▲－無印ワイド 1点
     #
-    # ▲を固定し、公開評価◎○▲△×が付いていない無印車だけを候補化。
+    # ▲を固定し、公開評価◎○▲△が付いていない無印車だけを候補化。
     # 相手選定は新しい妙味指数を作らず、既存の各流れについて
     # 「ポイントアップ＋開催日KO」まで通した最終着順をそのまま利用する。
     # 3流れの想定比率で最終順位を加重平均し、平均順位が最小の1車を採用。
