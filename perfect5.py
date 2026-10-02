@@ -1,3 +1,9 @@
+# v335hi（ガールズ・アドバンス単一流れ化版）
+# ・ガールズ／アドバンスはライン戦ではないため、順流・渦・逆流の3流れ加重を廃止。
+# ・ガールズ／アドバンスは既存の順流側最終着順を「単騎100%」の1流れとして、◎○▲△・確率・買目順位を計算。
+# ・ガールズ／アドバンスの車別的中／妙味の流れ加重も順流100%だけを使用。
+# ・通常競輪は従来どおり順流・逆流・渦の3流れを維持。
+# ・公開買目はv335hhのまま：2車単＝▲△－◎（2点）、3連単＝◎－▲△－○▲△（4点）。
 # v335hh（全買目・的中想定順位表示版）
 # ・公開買目は v335hg のまま：2車単＝▲△－◎（2点）、3連単＝◎－▲△－○▲△（4点）。
 # ・3連複は公開しない。
@@ -3963,7 +3969,29 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _rows.sort(key=lambda r: (-float(r["ratio"]), int(r["fixed"])))
     _rows = _rows[:3]
-    if len(_rows) < 2:
+
+    # v335hi：ガールズ／アドバンスはライン戦ではないため1流れだけで評価する。
+    # 3流れの加重統合は行わず、既存の順流側最終着順を単騎戦の基準順位として100%採用する。
+    _single_flow_v335hi = bool(globals().get("is_girls_like", False))
+    if _single_flow_v335hi:
+        _single_row_v335hi = next(
+            (dict(r) for r in _rows if str(r.get("style")) == "順流"),
+            (dict(_rows[0]) if _rows else None),
+        )
+        if not _single_row_v335hi:
+            return [
+                "【想定着順予想】",
+                "単騎戦データ不足",
+                "",
+                "【ヴェロビ分析による基本買目】",
+                "単一流れを算出不可",
+            ]
+        _single_row_v335hi["style"] = "単騎"
+        _single_row_v335hi["ratio"] = 1.0
+        _single_row_v335hi["fixed"] = 0
+        _rows = [_single_row_v335hi]
+
+    if not _rows or (not _single_flow_v335hi and len(_rows) < 2):
         return [
             "【想定着順予想】",
             "展開別データ不足",
@@ -3972,18 +4000,19 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "上位2流れ不足のため算出不可",
         ]
 
-    _flow1, _flow2 = _rows[0], _rows[1]
-    _flow3 = _rows[2] if len(_rows) >= 3 else None
+    _flow1 = _rows[0]
+    _flow2 = _rows[0] if _single_flow_v335hi else _rows[1]
+    _flow3 = None if _single_flow_v335hi else (_rows[2] if len(_rows) >= 3 else None)
     _order1 = tuple(int(c) for c in (_flow1.get("order") or tuple()))
-    _order2 = tuple(int(c) for c in (_flow2.get("order") or tuple()))
-    _order3 = tuple(int(c) for c in ((_flow3 or {}).get("order") or tuple()))
-    if len(_order1) < 3 or len(_order2) < 3:
+    _order2 = _order1 if _single_flow_v335hi else tuple(int(c) for c in (_flow2.get("order") or tuple()))
+    _order3 = _order1 if _single_flow_v335hi else tuple(int(c) for c in ((_flow3 or {}).get("order") or tuple()))
+    if len(_order1) < 3 or (not _single_flow_v335hi and len(_order2) < 3):
         return [
             "【想定着順予想】",
             "展開別データ不足",
             "",
             "【ヴェロビ分析による基本買目】",
-            "上位2流れの順位不足のため算出不可",
+            "順位不足のため算出不可",
         ]
 
     def _rank_map(_order):
@@ -4931,9 +4960,14 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _p1_map, _p2_map, _p3_map = _prob_maps_for_order(_order1)
 
     # 基本世界の候補行。
+    _scenario_rows_v335hi = (
+        [_rows[0], _rows[0], _rows[0]]
+        if _single_flow_v335hi and _rows
+        else _rows
+    )
     _candidate_rows = _scenario_candidate_rows(
         _axis,
-        _rows,
+        _scenario_rows_v335hi,
         _p1_map,
         _p2_map,
         _p3_map,
@@ -18416,8 +18450,11 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                     return False
 
             def _weighted_car_score_map_from_flows(_summary, _value_key):
-                """v223: 各流れの車番別平均評価×流れ比率を車番ごとに合算する共通関数。"""
-                _ratio = _flow_ratio_map_for_trio()
+                """v335hi: 通常戦は3流れ加重、ガールズ／アドバンスは順流100%で車番別評価を作る。"""
+                if bool(globals().get("is_girls_like", False)):
+                    _ratio = {"順流": 1.0, "逆流": 0.0, "渦": 0.0}
+                else:
+                    _ratio = _flow_ratio_map_for_trio()
                 _per_car = {}
                 try:
                     for _style_name, _rows in (_summary or []):
