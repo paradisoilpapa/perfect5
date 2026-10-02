@@ -1,3 +1,11 @@
+# v335hs（通常競輪4分戦以上・全ライン参加／外部AI印非介入版）
+# ・7/8/9車を問わず4ライン以上では、各流れの主役ラインを起点にしつつ残り全ラインを内部KOスコア＋ライン勢力で参加させる。
+# ・勢力4位以下も自ライン勢力のサブFRボーナスを受けるため、「その他」扱いだけで構造的に不利にならない。
+# ・4ライン以上の主役ラインは完全1着固定にせず、KO後に外部ラインが既存KO閾値相当を上回った場合は1着を許容する。届かない場合は流れの主役を維持する。
+# ・WINTICKET等の外部AI印は参考表示専用。想定着順、◎○▲△、買目選定には使用しない。
+# ・通常競輪△の妙味も外部印由来の加重点を使わず、ヴェロビ内部想定確率→配当帯適合だけで算出する。
+# ・ガールズ／アドバンスの単騎100%・◎○＝単騎1/2位、公開6点買目はv335hp以降の仕様を維持。
+
 # v335hr（4ライン以上・三流れ保持＋その他ライン開放版）
 # ・4ライン以上の通常競輪では、順流／渦／逆流それぞれの主役ラインを仮想隊列の先頭に置き、三流れの違いを保持する。
 # ・主役ライン以外は「その他」を含め、各ライン内の個人KO使用スコア最上位→ライン勢力比で並べる。勢力4位以下を常時最後尾へ固定しない。
@@ -3946,7 +3954,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _race_class_v335hl = str(race_class or "").strip()
     _single_flow_class_v335hl = _race_class_v335hl in ("ガールズ", "アドバンス")
 
-    _style_map = globals().get("AI_PRESSURE_STYLE_SEQ_MAP", {}) or globals().get("STYLE_SEQ_MAP", {}) or {}
+    # v335hs：外部AI印の重圧補正は参考表示専用。公開予想はヴェロビ内部のSTYLE_SEQ_MAPだけを使う。
+    _style_map = globals().get("STYLE_SEQ_MAP", {}) or {}
     if not isinstance(_style_map, dict):
         return None
 
@@ -4514,25 +4523,27 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         )
 
     def _ordered_myoumi_raw_v335gh(_ticket):
-        """順序付き券の既存妙味評価×着順適合度の平均。"""
+        """v335hs：外部AI印を使わず、内部想定確率→配当帯適合だけで順序付き券の妙味を作る。"""
         try:
             _ticket = tuple(int(x) for x in (_ticket or tuple()))
-            _fits = _current_fit_maps_v335gj()
-            _vals = []
-            for _idx, _car in enumerate(_ticket):
-                if _idx >= len(_fits):
-                    return None
-                _base = float(
-                    _weighted_myoumi_map.get(
-                        int(_car),
-                        _weighted_myoumi_map.get(str(int(_car)), 0.0)
-                    ) or 0.0
+            if len(_ticket) == 2 and len(set(_ticket)) == 2:
+                _p = _exacta_prob_with(
+                    _ticket[0], _ticket[1], _p1_map, _p2_map, _p3_map
                 )
-                _fit = float(_fits[_idx].get(int(_car), 0.0) or 0.0)
-                _vals.append(max(0.0, _base) * max(0.0, min(1.0, _fit)))
-            if not _vals:
+                if _p is None:
+                    return None
+                _v = _distribution_band_v335fz("2車単", _p).get("selection_score", -1.0)
+            elif len(_ticket) == 3 and len(set(_ticket)) == 3:
+                _p = _trifecta_prob_with(
+                    _ticket[0], _ticket[1], _ticket[2], _p1_map, _p2_map, _p3_map
+                )
+                if _p is None:
+                    return None
+                _v = _distribution_band_v335fz("3連単", _p).get("selection_score", -1.0)
+            else:
                 return None
-            return sum(_vals) / float(len(_vals))
+            _v = float(_v)
+            return _v if math.isfinite(_v) and _v >= 0.0 else None
         except Exception:
             return None
 
@@ -5069,7 +5080,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 int(bool(r.get("adjacent_behind", False))),
                 int(bool(r.get("behind", False))),
                 int(bool(r.get("same_line", False))),
-                float(r.get("hit_value", 0.0)),
+                # v335hs：外部AI印を含み得る旧加重hit_valueは○選抜に使わない。
                 -int(r.get("max12", 999)),
                 -int(r.get("sum12", 999)),
                 -int(r.get("car", 99)),
@@ -5274,7 +5285,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 -int(bool(r.get("adjacent_behind", False))),
                 -int(bool(r.get("behind", False))),
                 -int(bool(r.get("same_line", False))),
-                -float(r.get("hit_value", 0.0)),
+                # v335hs：○順位表示も外部AI印由来hit_valueを使わない。
                 int(r.get("max12", 999)),
                 int(r.get("sum12", 999)),
                 int(r.get("car", 99)),
@@ -10693,14 +10704,20 @@ try:
 
         _car_line_size = {}
         _car_line_pos = {}
+        _car_line_fr = {}
 
         for ln in (all_lines or []):
             ds = _digits_of_line(ln)
             sz = len(ds)
+            try:
+                _own_fr = max(0.0, float(_lfr(ln)))
+            except Exception:
+                _own_fr = 0.0
 
             for idx, c in enumerate(ds):
                 _car_line_size[int(c)] = sz if sz > 0 else 1
                 _car_line_pos[int(c)] = int(idx)
+                _car_line_fr[int(c)] = float(_own_fr)
 
         def _pos_adj_for_car(car):
             """
@@ -10733,11 +10750,21 @@ try:
 
         def _fr_bonus_for_car(car, main_zone):
             z = _car_zone_map.get(int(car), "その他")
-            z_fr = {
-                "順流": float(_lfr(FR_line) if FR_line else 0.0),
-                "渦":   float(_lfr(VTX_line) if VTX_line else 0.0),
-                "逆流": float(_lfr(U_line) if U_line else 0.0),
-            }.get(z, 0.0)
+            try:
+                _line_count_v335hs = len([ln for ln in (all_lines or []) if ln])
+            except Exception:
+                _line_count_v335hs = 0
+
+            if _line_count_v335hs >= 4:
+                # v335hs：4分戦以上は、代表3ライン以外も自ラインの勢力値を持つ。
+                # 「その他」だからFR=0になる旧構造を廃止する。
+                z_fr = float(_car_line_fr.get(int(car), 0.0) or 0.0)
+            else:
+                z_fr = {
+                    "順流": float(_lfr(FR_line) if FR_line else 0.0),
+                    "渦":   float(_lfr(VTX_line) if VTX_line else 0.0),
+                    "逆流": float(_lfr(U_line) if U_line else 0.0),
+                }.get(z, 0.0)
 
             k = _FR_K_MAIN if z == main_zone else _FR_K_SUB
             sz = float(_car_line_size.get(int(car), 1) or 1.0)
@@ -11339,13 +11366,43 @@ try:
             if not xs or not main:
                 return xs
 
+            _four_plus_v335hs = False
             try:
-                if len([ln for ln in (all_lines or []) if ln]) >= 4:
-                    return xs
+                _four_plus_v335hs = len([ln for ln in (all_lines or []) if ln]) >= 4
             except Exception:
-                pass
+                _four_plus_v335hs = False
 
             main_set = {int(c) for c in main}
+
+            # v335hs：4分戦以上は「主役ライン完全固定」でも「主役無視」でもなくソフト判定。
+            # KO後に別ラインが頭まで上がった場合、その内部スコア差が既存KOの1回分閾値
+            # （base_k * sigma / class_spread）以上なら、その別ライン1着をそのまま認める。
+            # 閾値未満なら、その流れの主役ラインを1着へ戻して三流れの意味を維持する。
+            if _four_plus_v335hs and int(xs[0]) not in main_set:
+                _main_best_v335hs = _scenario_best_head_from_main_line(main)
+                if _main_best_v335hs is not None and int(_main_best_v335hs) in xs:
+                    try:
+                        _vals_v335hs = [float(score_map.get(int(c), 0.0)) for c in xs]
+                        _mu_v335hs = sum(_vals_v335hs) / float(len(_vals_v335hs)) if _vals_v335hs else 0.0
+                        _var_v335hs = (
+                            sum((v - _mu_v335hs) ** 2 for v in _vals_v335hs) / float(len(_vals_v335hs))
+                            if _vals_v335hs else 0.0
+                        )
+                        _sigma_v335hs = max(float(_var_v335hs) ** 0.5, 1e-6)
+                        _rc_v335hs = str(globals().get("race_class", "Ａ級") or "Ａ級")
+                        _spread_v335hs = {
+                            "Ｓ級": 1.00, "Ａ級": 0.90, "Ａ級チャレンジ": 0.80,
+                            "ガールズ": 0.85, "アドバンス": 0.85,
+                        }.get(_rc_v335hs, 0.90)
+                        _base_k_v335hs = float(globals().get("ko_base_k", 0.040) or 0.040)
+                        _need_v335hs = _base_k_v335hs * _sigma_v335hs / max(float(_spread_v335hs), 1e-6)
+                        _outside_score_v335hs = float(score_map.get(int(xs[0]), 0.0))
+                        _main_score_v335hs = float(score_map.get(int(_main_best_v335hs), 0.0))
+                        if _outside_score_v335hs >= _main_score_v335hs + _need_v335hs:
+                            return xs
+                    except Exception:
+                        pass
+
             head = int(xs[0]) if int(xs[0]) in main_set else _scenario_best_head_from_main_line(main)
             if head is None or int(head) not in xs:
                 return xs
@@ -16664,7 +16721,8 @@ def _v335p_build_five_car_line_fallback_formations(plan):
             return tuple()
 
         # 単騎は従来どおり、いずれかの流れで1着候補になったものだけ対象。
-        style_map = globals().get("AI_PRESSURE_STYLE_SEQ_MAP", {}) or globals().get("STYLE_SEQ_MAP", {}) or {}
+        # v335hs：外部AI印は買目構造へ介入させない。
+        style_map = globals().get("STYLE_SEQ_MAP", {}) or {}
         flow_first_cars = set()
         for style_sequence in (style_map or {}).values():
             normalized = [int(car) for car in _v281_unique_sequence(style_sequence or [])]
@@ -20103,9 +20161,10 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
             # v285：2車換算勢力上位3組だけで三流れを構成し、勢力最上位の流れを採用する。
             # 採用流れ上位からAI印あり2車を抽出して低評価側を軸にし、同ライン必須＋採用流れ着順上位をヒモにする。
             _v281_fixed_plan = _v281_build_fixed_flow_plan(
-                globals().get("AI_PRESSURE_STYLE_SEQ_MAP", {}) or globals().get("STYLE_SEQ_MAP", {}) or {},
+                # v335hs：外部AI印の補正順位ではなく、ヴェロビ内部三流れを使用する。
+                globals().get("STYLE_SEQ_MAP", {}) or {},
                 _flow_ratio_map_for_trio(),
-                mark_map or {},
+                {},
                 globals().get("KO_SCORE_MAP_FOR_SANTEN", {}) or {},
                 globals().get("line_def", {}) or {},
                 globals().get("LINE_TWO_CAR_STRENGTH_MAP", {}) or {},
@@ -20133,8 +20192,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                     _pressure_lines.append("")
                 globals()["AI_PRESSURE_DISPLAY_BLOCK"] = "\n".join(_pressure_lines).strip()
                 globals()["AI_PRESSURE_FINAL_CANDIDATE_BLOCK"] = "\n".join([
-                    "【最終予想候補】",
-                    f"採用流れ={_adopted}",
+                    "【外部AI印・参考比較（予想非介入）】",
+                    f"参考流れ={_adopted}",
                     " → ".join(str(x) for x in _final_seq) if _final_seq else "該当なし",
                 ]).strip()
             except Exception:
