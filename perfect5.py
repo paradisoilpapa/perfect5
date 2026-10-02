@@ -3972,7 +3972,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     # v335hi：ガールズ／アドバンスはライン戦ではないため1流れだけで評価する。
     # 3流れの加重統合は行わず、既存の順流側最終着順を単騎戦の基準順位として100%採用する。
-    _single_flow_v335hi = str(globals().get("race_class", "")) in ("ガールズ", "アドバンス")
+    _single_flow_v335hi = str(st.session_state.get("race_class", globals().get("race_class", "")) or "").strip() in ("ガールズ", "アドバンス")
     if _single_flow_v335hi:
         _single_row_v335hi = next(
             (dict(r) for r in _rows if str(r.get("style")) == "順流"),
@@ -5131,7 +5131,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _triangle_score_gc = None
     _triangle_from_axis_line_v335gx = False
 
-    _is_girls_like_v335gx = str(globals().get("race_class", "")) in ("ガールズ", "アドバンス")
+    _is_girls_like_v335gx = str(st.session_state.get("race_class", globals().get("race_class", "")) or "").strip() in ("ガールズ", "アドバンス")
     if not _is_girls_like_v335gx:
         _axis_line_v335gx = next(
             (list(map(int, _ln)) for _ln in _line_groups if int(_axis_gc) in list(map(int, _ln))),
