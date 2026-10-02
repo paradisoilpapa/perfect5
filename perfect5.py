@@ -1,3 +1,8 @@
+# v335he（長ライン前3車制限・△整合修正版）
+# ・v335hdを原本に、通常競輪の△ライン保護だけを修正。
+# ・4車以上の◎ラインは、▲と同じく前から3車以内だけを△候補にする。
+# ・4番手以降の◎ライン車は、期待値フォールバックでも△へ復活させない。
+# ・◎○▲の選定、ガールズ／アドバンス、偏差値計算、各券種フォーメーションは変更しない。
 # v335hd（◎想定1着率表示版）
 # ・v335hcから◎の公開表示だけを変更。
 # ・「軸指数 1位・100.0点」を廃止し、既存内部p1による「想定1着率 xx.x%」を表示。
@@ -5186,12 +5191,40 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             pass
 
     _unmarked_delta_rows_v335gz = []
+
+    # v335he：▲で既に採用している「4車以上の◎ラインは前から3車以内」
+    # を△にも同じく適用する。長ライン4番手以降を△で復活させない。
+    _axis_line_front_scope_v335he = set()
+    _axis_line_all_v335he = set()
+    if not _is_girls_like_v335gx:
+        try:
+            _axis_line_all_v335he = {int(c) for c in (_axis_line_v335gx or [])}
+            _axis_line_front_scope_v335he = {
+                int(c) for c in (
+                    (_axis_line_v335gx[:3] if len(_axis_line_v335gx) >= 4 else _axis_line_v335gx)
+                    or []
+                )
+            }
+        except Exception:
+            _axis_line_all_v335he = set()
+            _axis_line_front_scope_v335he = set()
+
     for _r in _ev_all_rows_v335gx:
         _cand = int(_r["car"])
         if _cand in {int(_axis_gc), int(_b_gc)}:
             continue
         if _triangle_gc is not None and _cand == int(_triangle_gc):
             continue
+
+        # 通常競輪の4車以上◎ラインでは、4番手以降を△候補から除外。
+        if (
+            not _is_girls_like_v335gx
+            and len(_axis_line_all_v335he) >= 4
+            and _cand in _axis_line_all_v335he
+            and _cand not in _axis_line_front_scope_v335he
+        ):
+            continue
+
         _unmarked_delta_rows_v335gz.append(_r)
 
     # 通常競輪のみ、◎同ラインの無印を最優先。
