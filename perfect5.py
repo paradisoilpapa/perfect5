@@ -1,3 +1,10 @@
+# v335ht（外部AI非介入・note簡易出力復旧版）
+# ・v335hsで外部AI印を予想計算から切り離した結果、旧固定フォーメーション前処理が「AI印あり2車」を要求して停止していた不整合を修正。
+# ・旧固定フォーメーション表示用A/B候補は、外部AI印ではなく採用流れの内部着順1位・2位をそのまま使用する。
+# ・note用簡易出力は旧三連複購入スナップショットに依存せず、現行のヴェロビ公開ロジック（想定着順→◎○▲△→2車単2点＋3連単4点）から直接生成する。
+# ・詳細表示の「AI重圧補正後」も外部AI補正マップを参照せず、内部STYLE_SEQ_MAPを表示する。
+# ・v335hsの4ライン以上全ライン参加、ガールズ／アドバンス単騎100%、公開6点ロジックは変更しない。
+
 # v335hs（通常競輪4分戦以上・全ライン参加／外部AI印非介入版）
 # ・7/8/9車を問わず4ライン以上では、各流れの主役ラインを起点にしつつ残り全ラインを内部KOスコア＋ライン勢力で参加させる。
 # ・勢力4位以下も自ライン勢力のサブFRボーナスを受けるため、「その他」扱いだけで構造的に不利にならない。
@@ -15107,66 +15114,27 @@ def _v281_build_fixed_flow_plan(
             "ticket_reason": f"{adopted_style}着順予想から軸候補を取得できないため生成不可",
         }
 
-    # 採用流れの上位からAI印あり車だけを順に2車抽出する。
-    # AI無印車は軸比較から外すが、後段の同ライン保護・採用流れ着順ヒモには残す。
+    # v335ht：外部AI印は予想非介入。
+    # 旧固定フォーメーション前処理も、採用流れの内部着順1位・2位をそのままA/B候補にする。
+    # これにより7/8/9車のいずれでも「AI印あり2車」がないことを理由に生成停止しない。
     axis_pair = []
     skipped_unmarked_axis = []
-    for idx, car in enumerate(adopted_sequence, start=1):
+    for idx, car in enumerate(_v281_unique_sequence(adopted_sequence)[:2], start=1):
         car = int(car)
-        mark = _v281_mark_for_car(mark_map, car)
-        if not mark:
-            skipped_unmarked_axis.append(car)
-            continue
         axis_pair.append({
             "car": car,
             "rank": idx,
-            "mark": mark,
-            "ai_rank": _v281_ai_rank(mark),
+            "mark": "",
+            "ai_rank": 4,
             "score": _v281_map_float(ko_map, car, 0.0),
         })
-        if len(axis_pair) >= 2:
-            break
-
-    # v333：現行の最終A・Bは採用流れ順位から決めるが、旧前処理には
-    # 「AI印あり候補が2車必要」という停止条件が残っている。
-    # 9車立てだけは、AI印が2車未満なら採用流れ1位・2位を前段候補として補完し、
-    # Eライン型フォーメーションの生成まで処理を継続する。
-    # v334：加えて、ガールズ／アドバンスなど有効な2車以上のラインが
-    # 1本もない全員単騎戦も同じ旧停止条件にかかるため、車数を問わず補完する。
-    # 通常の7車ライン戦は従来分岐を一切変えない。
-    if isinstance(line_def_obj, dict):
-        _v334_line_values = list(line_def_obj.values())
-    elif isinstance(line_def_obj, (list, tuple)):
-        _v334_line_values = list(line_def_obj)
-    else:
-        _v334_line_values = []
-    _v334_all_single_race = bool(_v334_line_values) and all(
-        len(_v281_unique_sequence(members)) == 1
-        for members in _v334_line_values
-    )
-    _v334_fallback_allowed = bool(
-        len(_v281_unique_sequence(adopted_sequence)) == 9
-        or _v334_all_single_race
-    )
-    if len(axis_pair) < 2 and _v334_fallback_allowed:
-        axis_pair = []
-        for idx, car in enumerate(_v281_unique_sequence(adopted_sequence)[:2], start=1):
-            car = int(car)
-            mark = _v281_mark_for_car(mark_map, car)
-            axis_pair.append({
-                "car": car,
-                "rank": idx,
-                "mark": mark,
-                "ai_rank": _v281_ai_rank(mark) if mark else 4,
-                "score": _v281_map_float(ko_map, car, 0.0),
-            })
 
     if len(axis_pair) < 2:
         return {
             **base_result,
-            "status": "insufficient_marked_axis_candidates",
+            "status": "insufficient_internal_axis_candidates",
             "axis_pair": tuple(axis_pair),
-            "skipped_unmarked_axis": tuple(skipped_unmarked_axis),
+            "skipped_unmarked_axis": tuple(),
             "axis": 0,
             "secondary_axis": 0,
             "axis_score": 0.0,
@@ -15183,16 +15151,12 @@ def _v281_build_fixed_flow_plan(
             "ticket_groups": tuple(),
             "ticket_count": 0,
             "ticket_family": "3連複CD－ACD－ABCDE",
-            "ticket_reason": f"{adopted_style}着順予想からAI印ありの軸候補を2車取得できないため生成不可",
+            "ticket_reason": f"{adopted_style}内部着順から上位2車を取得できないため生成不可",
         }
 
-    # AI印あり2車のうちAI評価が低い方をAに採用。もう一方をBにする。
-    # 入力仕様上、◎／〇／△／×は重複しない。
-    axis_row = max(axis_pair, key=lambda row: int(row.get("ai_rank", 4)))
-    secondary_axis_row = next(
-        row for row in axis_pair
-        if int(row.get("car")) != int(axis_row.get("car"))
-    )
+    # v335ht：A/Bの向きも外部AI評価で反転させず、内部着順1位→2位の順で固定する。
+    axis_row = dict(axis_pair[0])
+    secondary_axis_row = dict(axis_pair[1])
     axis = int(axis_row.get("car"))
     secondary_axis = int(secondary_axis_row.get("car"))
     axis_score = float(axis_row.get("score", 0.0) or 0.0)
@@ -17558,8 +17522,63 @@ def _v335k_build_top12_five_point_plan(plan, trio_plan):
         return {}
 
 def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
-    """v335aq推奨（専用順位＝最終着順予想）をnote公開用に整形する。"""
+    """現行ヴェロビ公開ロジックをnote貼り付け用に直接整形する。"""
     try:
+        # v335ht：旧三連複購入スナップショットへの依存を廃止。
+        # 現行のSTYLE_SEQ_MAP→◎○▲△→2車単2点＋3連単4点をそのまま簡易出力する。
+        venue = str(globals().get("track") or globals().get("place") or "").strip()
+        race_no_raw = str(globals().get("race_no") or "").strip()
+        race_no_text = race_no_raw if not race_no_raw or race_no_raw.endswith("R") else f"{race_no_raw}R"
+        race_title = f"{venue}{race_no_text}" or "レース名未設定"
+        queue_groups = re.findall(r"[1-9]+", str(queue_source or ""))
+        queue_text = "　".join(queue_groups) if queue_groups else "未設定"
+
+        _current_order = []
+        _seen_current = set()
+        if isinstance(plan, dict):
+            for _c in (plan.get("adopted_sequence", tuple()) or tuple()):
+                try:
+                    _ci = int(_c)
+                except Exception:
+                    continue
+                if _ci not in _seen_current:
+                    _seen_current.add(_ci)
+                    _current_order.append(_ci)
+        _style_map_now = globals().get("STYLE_SEQ_MAP", {}) or {}
+        if isinstance(_style_map_now, dict):
+            for _style_now in ("順流", "逆流", "渦"):
+                for _c in (_style_map_now.get(_style_now, []) or []):
+                    try:
+                        _ci = int(_c)
+                    except Exception:
+                        continue
+                    if _ci not in _seen_current:
+                        _seen_current.add(_ci)
+                        _current_order.append(_ci)
+
+        if len(_current_order) < 3:
+            return "note用簡易出力生成不可：内部着順未確定"
+
+        _current_lines = _v335br_hit_top_lines(
+            tuple(_current_order),
+            track_name=str(globals().get("track") or globals().get("place") or "").strip(),
+            race_time_name=str(globals().get("race_time", "") or "").strip(),
+            race_class_name=str(globals().get("race_class", "") or "").strip(),
+            field_n=len(_current_order),
+            top_n=3,
+        )
+        if not _current_lines:
+            return "note用簡易出力生成不可：現行購入評価未確定"
+
+        return "\n".join([
+            race_title,
+            "",
+            f"想定隊列　{queue_text}",
+            "",
+            *[str(_x) for _x in _current_lines],
+        ]).strip() + "\n"
+
+        # ---- v335ht以前の旧三連複スナップショット経路（到達しない・履歴互換） ----
         if not isinstance(plan, dict) or not plan:
             return "note用簡易出力生成不可：フォーメーション未確定"
 
@@ -20175,7 +20194,8 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
 
             # 元順位の直後に、三流れの重圧補正順位と採用流れの最終候補を表示する。
             try:
-                _pressure_map = globals().get("AI_PRESSURE_STYLE_SEQ_MAP", {}) or {}
+                # v335ht：詳細表示も外部AI補正順位を参照しない。
+                _pressure_map = globals().get("STYLE_SEQ_MAP", {}) or {}
                 _pressure_lines = []
                 _adopted = str((_v281_fixed_plan or {}).get("adopted_style", "") or "未判定")
                 _final_seq = _v281_unique_sequence(
@@ -20187,7 +20207,7 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                         if str(_style) == str(_adopted) and _final_seq
                         else _v281_unique_sequence(_pressure_map.get(_style, []) or [])
                     )
-                    _pressure_lines.append(f"【AI重圧補正後・{_style}メイン着順予想】")
+                    _pressure_lines.append(f"【内部最終・{_style}メイン着順予想】")
                     _pressure_lines.append(" → ".join(str(x) for x in _seq) if _seq else "該当なし")
                     _pressure_lines.append("")
                 globals()["AI_PRESSURE_DISPLAY_BLOCK"] = "\n".join(_pressure_lines).strip()
