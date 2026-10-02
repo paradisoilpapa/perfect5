@@ -1,3 +1,10 @@
+# v335hh（全買目・的中想定順位表示版）
+# ・公開買目は v335hg のまま：2車単＝▲△－◎（2点）、3連単＝◎－▲△－○▲△（4点）。
+# ・3連複は公開しない。
+# ・買目欄の「的中／妙味偏差値」表示を廃止。
+# ・2車単は全 n×(n-1) 通りを既存内部想定的中率で順位付けし「的中想定順位 ○位／全○通り」と表示。
+# ・3連単は全 n×(n-1)×(n-2) 通りを既存内部想定的中率で順位付けし、同形式で表示。
+# ・◎○▲△の選定ロジック、△選定用の内部偏差値、確率モデルは変更しない。
 # v335hg（3連複公開廃止・2車単逆目／3連単▲△2着版）
 # ・2車単 = ▲△－◎（2点）。
 # ・3連複は公開買目から廃止。
@@ -5345,32 +5352,73 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _lines.append("")
     _lines.append("【ヴェロビ分析・券種別オススメ】")
 
-    def _dev_text_v335ha(_v):
-        return "算出不可" if _v is None else f"{float(_v):.1f}"
+    # v335hh：公開買目は偏差値ではなく、全成立買目の「的中想定順位」で表示する。
+    # 2車単 = n×(n-1) 通り、3連単 = n×(n-1)×(n-2) 通り。
+    # 順位付けに使う確率は既存の内部想定的中率で、予想ロジック自体は変更しない。
+    def _all_ticket_hit_ranks_v335hh(_ticket_len):
+        _rows_rank = []
+        for _ticket_rank in permutations([int(c) for c in (_cars or [])], int(_ticket_len)):
+            if int(_ticket_len) == 2:
+                _prob_rank = _exacta_prob_with(
+                    _ticket_rank[0], _ticket_rank[1], _p1_map, _p2_map, _p3_map
+                )
+            else:
+                _prob_rank = _trifecta_prob_with(
+                    _ticket_rank[0], _ticket_rank[1], _ticket_rank[2],
+                    _p1_map, _p2_map, _p3_map
+                )
+            if _prob_rank is None:
+                continue
+            try:
+                _prob_rank = float(_prob_rank)
+            except Exception:
+                continue
+            if not math.isfinite(_prob_rank):
+                continue
+            _rows_rank.append((tuple(int(c) for c in _ticket_rank), _prob_rank))
+
+        _rows_rank.sort(key=lambda x: (-float(x[1]), tuple(x[0])))
+        _rank_map = {
+            tuple(_ticket_rank): int(_idx_rank)
+            for _idx_rank, (_ticket_rank, _prob_rank) in enumerate(_rows_rank, start=1)
+        }
+        return _rank_map, len(_rows_rank)
+
+    _exacta_rank_map_v335hh, _exacta_total_v335hh = _all_ticket_hit_ranks_v335hh(2)
+    _trifecta_rank_map_v335hh, _trifecta_total_v335hh = _all_ticket_hit_ranks_v335hh(3)
 
     _lines.append("")
     _lines.append(f"2車単　候補{len(_exacta_candidates_v335ha)}点　▲△－◎")
-    _lines.append("※偏差値は◎軸内での比較です")
     if _exacta_candidates_v335ha:
         for _r in _exacta_candidates_v335ha:
-            _lines.append(
-                f"{int(_r['first'])}-{int(_r['second'])}"
-                f"　的中{_dev_text_v335ha(_r.get('hit_dev'))}"
-                f"　妙味{_dev_text_v335ha(_r.get('value_dev'))}"
-            )
+            _ticket_rank = (int(_r['first']), int(_r['second']))
+            _rank = _exacta_rank_map_v335hh.get(_ticket_rank)
+            if _rank is None or _exacta_total_v335hh <= 0:
+                _lines.append(f"{_ticket_rank[0]}-{_ticket_rank[1]}　的中想定順位 算出不可")
+            else:
+                _lines.append(
+                    f"{_ticket_rank[0]}-{_ticket_rank[1]}　"
+                    f"的中想定順位 {_rank}位／全{_exacta_total_v335hh}通り"
+                )
     else:
         _lines.append("算出不可")
 
     _lines.append("")
     _lines.append(f"3連単　候補{len(_trifecta_candidates_v335ha)}点　◎－▲△－○▲△")
-    _lines.append("※偏差値は◎軸内での比較です")
     if _trifecta_candidates_v335ha:
         for _r in _trifecta_candidates_v335ha:
-            _lines.append(
-                "-".join(str(c) for c in _r["ticket"])
-                + f"　的中{_dev_text_v335ha(_r.get('hit_dev'))}"
-                + f"　妙味{_dev_text_v335ha(_r.get('value_dev'))}"
-            )
+            _ticket_rank = tuple(int(c) for c in _r["ticket"])
+            _rank = _trifecta_rank_map_v335hh.get(_ticket_rank)
+            if _rank is None or _trifecta_total_v335hh <= 0:
+                _lines.append(
+                    "-".join(str(c) for c in _ticket_rank)
+                    + "　的中想定順位 算出不可"
+                )
+            else:
+                _lines.append(
+                    "-".join(str(c) for c in _ticket_rank)
+                    + f"　的中想定順位 {_rank}位／全{_trifecta_total_v335hh}通り"
+                )
     else:
         _lines.append("算出不可")
 
