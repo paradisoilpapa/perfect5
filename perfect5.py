@@ -1,7 +1,15 @@
+# v335hv（3連単4点・印併記／2車単公開廃止版）
+# ・公開買目を3連単4点「◎－○▲△－○▲」へ変更。
+# ・展開は ◎→○→▲、◎→▲→○、◎→△→○、◎→△→▲ の4点。
+# ・各3連単買目に「◎-○-▲」等の印を併記する。
+# ・公開2車単買目は断捨離して非表示。内部の2車関係評価は印選定用として維持。
+# ・△の的中評価は公開実買目に合わせ、◎→△→○／◎→△→▲の2本だけを合算する。
+# ・◎○▲△のその他選定、通常競輪三流れ、ガールズ／アドバンス単騎、外部AI非介入は変更しない。
+
 # v335hu（最終着順マップ一本化版）
 # ・詳細表示／◎○▲△選定／note簡易出力が別々の着順経路を参照していた二重化を解消。
 # ・STYLE_SEQ_MAP（シナリオ順位）を現行のポイントアップ＋開催日KOまで1回だけ通した V335_FINAL_STYLE_SEQ_MAP を唯一の公開最終順位として保存。
-# ・詳細の順流／渦／逆流、採用流れ、◎○▲△、2車単／3連単、note簡易出力はすべて同じ V335_FINAL_STYLE_SEQ_MAP を参照。
+# ・詳細の順流／渦／逆流、採用流れ、◎○▲△、公開3連単、note簡易出力はすべて同じ V335_FINAL_STYLE_SEQ_MAP を参照。
 # ・外部AI印は引き続き予想非介入。ガールズ／アドバンス単騎処理、4ライン以上処理、買目構造は変更しない。
 # ・v335hsで外部AI印を予想計算から切り離した結果、旧固定フォーメーション前処理が「AI印あり2車」を要求して停止していた不整合を修正。
 # ・旧固定フォーメーション表示用A/B候補は、外部AI印ではなく採用流れの内部着順1位・2位をそのまま使用する。
@@ -5535,19 +5543,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
         _parts_v335ho = []
 
-        # ① △→◎（2車単）
-        _p_reverse_v335ho = _exacta_prob_with(
-            int(_cand), int(_axis_gc), _p1_map, _p2_map, _p3_map
-        )
-        if _p_reverse_v335ho is not None:
-            try:
-                _pv = float(_p_reverse_v335ho)
-                if math.isfinite(_pv) and _pv >= 0.0:
-                    _parts_v335ho.append(_pv)
-            except Exception:
-                pass
-
-        # ② ◎→△→○（3連単）
+        # v335hv：公開2車単を廃止したため、△の「的中」は実際に買う
+        # 3連単2本（◎→△→○／◎→△→▲）だけで評価する。
+        # ① ◎→△→○（3連単）
         if int(_b_gc) not in {int(_axis_gc), int(_cand)}:
             _p_axis_delta_hit_v335ho = _trifecta_prob_with(
                 int(_axis_gc), int(_cand), int(_b_gc),
@@ -5561,7 +5559,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 except Exception:
                     pass
 
-        # ③ ◎→△→▲（3連単）
+        # ② ◎→△→▲（3連単）
         if (
             _triangle_gc is not None
             and int(_triangle_gc) not in {int(_axis_gc), int(_cand), int(_b_gc)}
@@ -5633,20 +5631,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ---------------------------------------------------------
     _ticket_devs_v335ha = _ticket_deviation_maps_v335ha()
 
-    # v335hg：2車単は ▲△－◎ の逆目2点。
+    # v335hv：公開2車単は断捨離。内部の2車評価は印選定用として維持する。
     _exacta_candidates_v335ha = []
-    for _first in (_triangle_gc, _delta_gc):
-        if _first is None:
-            continue
-        _ticket = (int(_first), int(_axis_gc))
-        if len(set(_ticket)) < 2:
-            continue
-        _exacta_candidates_v335ha.append({
-            "first": _ticket[0],
-            "second": _ticket[1],
-            "hit_dev": _ticket_devs_v335ha["2車単_hit"].get(_ticket),
-            "value_dev": _ticket_devs_v335ha["2車単_value"].get(_ticket),
-        })
 
     # 3連複：◎－○▲△－○▲△
     _trio_candidates_v335ha = []
@@ -5668,17 +5654,27 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 "value_dev": _ticket_devs_v335ha["3連複_value"].get(_key),
             })
 
-    # v335hg：3連単は ◎－▲△－○▲△。
+    # v335hv：3連単は ◎－○▲△－○▲（4点）。
+    # 成立買目：◎→○→▲、◎→▲→○、◎→△→○、◎→△→▲。
     _trifecta_candidates_v335ha = []
+    _mark_by_car_v335hv = {
+        int(_axis_gc): "◎",
+        int(_b_gc): "○",
+    }
+    if _triangle_gc is not None:
+        _mark_by_car_v335hv[int(_triangle_gc)] = "▲"
+    if _delta_gc is not None:
+        _mark_by_car_v335hv[int(_delta_gc)] = "△"
+
     _second_v335ha = []
-    for _c in (_triangle_gc, _delta_gc):
+    for _c in (_b_gc, _triangle_gc, _delta_gc):
         if _c is None:
             continue
         _c = int(_c)
         if _c not in _second_v335ha:
             _second_v335ha.append(_c)
     _third_v335ha = []
-    for _c in (_b_gc, _triangle_gc, _delta_gc):
+    for _c in (_b_gc, _triangle_gc):
         if _c is None:
             continue
         _c = int(_c)
@@ -5694,6 +5690,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _seen_v335ha.add(_ticket)
             _trifecta_candidates_v335ha.append({
                 "ticket": _ticket,
+                "marks": tuple(_mark_by_car_v335hv.get(int(c), "") for c in _ticket),
                 "hit_dev": _ticket_devs_v335ha["3連単_hit"].get(_ticket),
                 "value_dev": _ticket_devs_v335ha["3連単_value"].get(_ticket),
             })
@@ -5778,40 +5775,25 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         }
         return _rank_map, len(_rows_rank)
 
-    _exacta_rank_map_v335hh, _exacta_total_v335hh = _all_ticket_hit_ranks_v335hh(2)
+    # v335hv：公開は3連単だけなので2車単の全通り順位計算も省く。
     _trifecta_rank_map_v335hh, _trifecta_total_v335hh = _all_ticket_hit_ranks_v335hh(3)
 
     _lines.append("")
-    _lines.append(f"2車単　候補{len(_exacta_candidates_v335ha)}点　▲△－◎")
-    if _exacta_candidates_v335ha:
-        for _r in _exacta_candidates_v335ha:
-            _ticket_rank = (int(_r['first']), int(_r['second']))
-            _rank = _exacta_rank_map_v335hh.get(_ticket_rank)
-            if _rank is None or _exacta_total_v335hh <= 0:
-                _lines.append(f"{_ticket_rank[0]}-{_ticket_rank[1]}　的中想定順位 算出不可")
-            else:
-                _lines.append(
-                    f"{_ticket_rank[0]}-{_ticket_rank[1]}　"
-                    f"的中想定順位 {_rank}位／全{_exacta_total_v335hh}通り"
-                )
-    else:
-        _lines.append("算出不可")
-
-    _lines.append("")
-    _lines.append(f"3連単　候補{len(_trifecta_candidates_v335ha)}点　◎－▲△－○▲△")
+    _lines.append(f"3連単　候補{len(_trifecta_candidates_v335ha)}点　◎－○▲△－○▲")
     if _trifecta_candidates_v335ha:
         for _r in _trifecta_candidates_v335ha:
             _ticket_rank = tuple(int(c) for c in _r["ticket"])
+            _marks_rank = tuple(str(x) for x in (_r.get("marks", tuple()) or tuple()))
+            _mark_text = "-".join(_marks_rank) if len(_marks_rank) == 3 else ""
             _rank = _trifecta_rank_map_v335hh.get(_ticket_rank)
+            _prefix = "-".join(str(c) for c in _ticket_rank)
+            if _mark_text:
+                _prefix += f"（{_mark_text}）"
             if _rank is None or _trifecta_total_v335hh <= 0:
-                _lines.append(
-                    "-".join(str(c) for c in _ticket_rank)
-                    + "　的中想定順位 算出不可"
-                )
+                _lines.append(_prefix + "　的中想定順位 算出不可")
             else:
                 _lines.append(
-                    "-".join(str(c) for c in _ticket_rank)
-                    + f"　的中想定順位 {_rank}位／全{_trifecta_total_v335hh}通り"
+                    _prefix + f"　的中想定順位 {_rank}位／全{_trifecta_total_v335hh}通り"
                 )
     else:
         _lines.append("算出不可")
