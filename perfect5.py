@@ -1,3 +1,10 @@
+# v335hw（5車目・補完枠追加版）
+# ・既存の◎○▲△4車の選定ロジックと公開3連単4点「◎－○▲△－○▲」は変更しない。
+# ・通常競輪のみ、5車目として「補完枠」を1車追加表示する。買目には自動追加しない。
+# ・補完枠の優先順位：①◎ラインの未選出車 → ②▲ラインの未選出車 → ③◎○▲△が誰も選ばれていないラインの未選出車。
+# ・各段階で複数候補がいる場合は、現行3流れの想定比率加重平均順位が最上位（平均順位が小さい）を採用する。
+# ・ガールズ／アドバンスはライン補完を行わず「補完枠 該当なし」とする。
+
 # v335hv（3連単4点・印併記／2車単公開廃止版）
 # ・公開買目を3連単4点「◎－○▲△－○▲」へ変更。
 # ・展開は ◎→○→▲、◎→▲→○、◎→△→○、◎→△→▲ の4点。
@@ -5627,6 +5634,81 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _x_ev_gc = None
 
     # ---------------------------------------------------------
+    # v335hw：5車目「補完枠」。
+    # ◎○▲△の選定は一切変更せず、その4車の外からライン構造だけを補完する。
+    # 優先順位：
+    #   1) ◎ラインの未選出車
+    #   2) ▲ラインの未選出車
+    #   3) ◎○▲△が誰も選ばれていないラインの未選出車
+    # 同一優先段階に複数候補がいる場合は、現行3流れの比率加重平均順位が
+    # 最も良い車（平均順位が小さい車）を採用する。
+    # ガールズ／アドバンスはライン戦ではないため補完枠なし。
+    # ---------------------------------------------------------
+    _complement_gc = None
+    _complement_reason_v335hw = ""
+    _complement_avg_rank_v335hw = None
+
+    _selected4_v335hw = {int(_axis_gc), int(_b_gc)}
+    if _triangle_gc is not None:
+        _selected4_v335hw.add(int(_triangle_gc))
+    if _delta_gc is not None:
+        _selected4_v335hw.add(int(_delta_gc))
+
+    def _complement_pick_v335hw(_pool):
+        _pool = [int(c) for c in (_pool or []) if int(c) not in _selected4_v335hw]
+        if not _pool:
+            return None
+        return int(min(
+            _pool,
+            key=lambda c: (
+                float(_weighted_avg_rank_v335gl(int(c))),
+                -float((_p1_map or {}).get(int(c), 0.0) or 0.0),
+                int(c),
+            ),
+        ))
+
+    if not _single_flow_class_v335hl:
+        _line_groups_v335hw = [list(map(int, ln)) for ln in (_line_groups or []) if ln]
+
+        # ① ◎ラインの未選出車
+        _axis_line_v335hw = next(
+            (ln for ln in _line_groups_v335hw if int(_axis_gc) in ln),
+            [],
+        )
+        _pick_v335hw = _complement_pick_v335hw(_axis_line_v335hw)
+        if _pick_v335hw is not None:
+            _complement_gc = int(_pick_v335hw)
+            _complement_reason_v335hw = "◎ライン補完"
+
+        # ② ▲ラインの未選出車
+        if _complement_gc is None and _triangle_gc is not None:
+            _triangle_line_v335hw = next(
+                (ln for ln in _line_groups_v335hw if int(_triangle_gc) in ln),
+                [],
+            )
+            _pick_v335hw = _complement_pick_v335hw(_triangle_line_v335hw)
+            if _pick_v335hw is not None:
+                _complement_gc = int(_pick_v335hw)
+                _complement_reason_v335hw = "▲ライン補完"
+
+        # ③ ◎○▲△が誰も選ばれていないラインから評価上位1車
+        if _complement_gc is None:
+            _unselected_line_pool_v335hw = []
+            for _ln_v335hw in _line_groups_v335hw:
+                if any(int(c) in _selected4_v335hw for c in _ln_v335hw):
+                    continue
+                _unselected_line_pool_v335hw.extend(
+                    int(c) for c in _ln_v335hw if int(c) not in _selected4_v335hw
+                )
+            _pick_v335hw = _complement_pick_v335hw(_unselected_line_pool_v335hw)
+            if _pick_v335hw is not None:
+                _complement_gc = int(_pick_v335hw)
+                _complement_reason_v335hw = "未選出ライン補完"
+
+    if _complement_gc is not None:
+        _complement_avg_rank_v335hw = float(_weighted_avg_rank_v335gl(int(_complement_gc)))
+
+    # ---------------------------------------------------------
     # v335ha：4車印から3券種の候補を素直に生成する。
     # ---------------------------------------------------------
     _ticket_devs_v335ha = _ticket_deviation_maps_v335ha()
@@ -5739,6 +5821,20 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         )
     else:
         _lines.append("△　該当なし　的中妙味バランス　算出不可")
+
+    # v335hw：×ではなく「補完枠」として5車目を表示する。
+    # 補完枠は候補車の幅を持たせるための表示で、現行4点買目には自動追加しない。
+    if _complement_gc is not None:
+        _lines.append(
+            f"補完枠　{int(_complement_gc)}　{_complement_reason_v335hw}"
+            + (
+                ""
+                if _complement_avg_rank_v335hw is None
+                else f"（加重平均順位{float(_complement_avg_rank_v335hw):.2f}位）"
+            )
+        )
+    else:
+        _lines.append("補完枠　該当なし")
 
     _lines.append("")
     _lines.append("【ヴェロビ分析・券種別オススメ】")
