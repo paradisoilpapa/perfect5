@@ -1,3 +1,10 @@
+# v335hx（5車・政春さん型4点フォーメーション統一版）
+# ・公開3連単を「◎－○▲－△補完枠」4点へ変更。
+# ・成立買目は ◎→○→△、◎→○→補完枠、◎→▲→△、◎→▲→補完枠。
+# ・補完枠の選定はv335hwのまま：①◎ライン未選出車 → ②▲ライン未選出車 → ③未選出ラインの評価上位。
+# ・△の的中評価は新しい実買目に合わせ、◎→○→△／◎→▲→△の2本を合算する。
+# ・◎○▲△の選定（△の上記実買目整合部分を除く）、通常競輪三流れ、補完枠選定、外部AI非介入は変更しない。
+
 # v335hw（5車目・補完枠追加版）
 # ・既存の◎○▲△4車の選定ロジックと公開3連単4点「◎－○▲△－○▲」は変更しない。
 # ・通常競輪のみ、5車目として「補完枠」を1車追加表示する。買目には自動追加しない。
@@ -5550,34 +5557,34 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
         _parts_v335ho = []
 
-        # v335hv：公開2車単を廃止したため、△の「的中」は実際に買う
-        # 3連単2本（◎→△→○／◎→△→▲）だけで評価する。
-        # ① ◎→△→○（3連単）
+        # v335hx：△の「的中」は新しい公開実買目で△を使う
+        # 3連単2本（◎→○→△／◎→▲→△）だけで評価する。
+        # ① ◎→○→△（3連単）
         if int(_b_gc) not in {int(_axis_gc), int(_cand)}:
-            _p_axis_delta_hit_v335ho = _trifecta_prob_with(
-                int(_axis_gc), int(_cand), int(_b_gc),
+            _p_axis_b_delta_v335hx = _trifecta_prob_with(
+                int(_axis_gc), int(_b_gc), int(_cand),
                 _p1_map, _p2_map, _p3_map
             )
-            if _p_axis_delta_hit_v335ho is not None:
+            if _p_axis_b_delta_v335hx is not None:
                 try:
-                    _pv = float(_p_axis_delta_hit_v335ho)
+                    _pv = float(_p_axis_b_delta_v335hx)
                     if math.isfinite(_pv) and _pv >= 0.0:
                         _parts_v335ho.append(_pv)
                 except Exception:
                     pass
 
-        # ② ◎→△→▲（3連単）
+        # ② ◎→▲→△（3連単）
         if (
             _triangle_gc is not None
             and int(_triangle_gc) not in {int(_axis_gc), int(_cand), int(_b_gc)}
         ):
-            _p_axis_delta_triangle_v335ho = _trifecta_prob_with(
-                int(_axis_gc), int(_cand), int(_triangle_gc),
+            _p_axis_triangle_delta_v335hx = _trifecta_prob_with(
+                int(_axis_gc), int(_triangle_gc), int(_cand),
                 _p1_map, _p2_map, _p3_map
             )
-            if _p_axis_delta_triangle_v335ho is not None:
+            if _p_axis_triangle_delta_v335hx is not None:
                 try:
-                    _pv = float(_p_axis_delta_triangle_v335ho)
+                    _pv = float(_p_axis_triangle_delta_v335hx)
                     if math.isfinite(_pv) and _pv >= 0.0:
                         _parts_v335ho.append(_pv)
                 except Exception:
@@ -5736,8 +5743,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 "value_dev": _ticket_devs_v335ha["3連複_value"].get(_key),
             })
 
-    # v335hv：3連単は ◎－○▲△－○▲（4点）。
-    # 成立買目：◎→○→▲、◎→▲→○、◎→△→○、◎→△→▲。
+    # v335hx：3連単は政春さん型に統一し、◎－○▲－△補完枠（最大4点）。
+    # 成立買目：◎→○→△、◎→○→補完枠、◎→▲→△、◎→▲→補完枠。
     _trifecta_candidates_v335ha = []
     _mark_by_car_v335hv = {
         int(_axis_gc): "◎",
@@ -5747,16 +5754,19 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _mark_by_car_v335hv[int(_triangle_gc)] = "▲"
     if _delta_gc is not None:
         _mark_by_car_v335hv[int(_delta_gc)] = "△"
+    if _complement_gc is not None:
+        _mark_by_car_v335hv[int(_complement_gc)] = "補完"
 
     _second_v335ha = []
-    for _c in (_b_gc, _triangle_gc, _delta_gc):
+    for _c in (_b_gc, _triangle_gc):
         if _c is None:
             continue
         _c = int(_c)
         if _c not in _second_v335ha:
             _second_v335ha.append(_c)
+
     _third_v335ha = []
-    for _c in (_b_gc, _triangle_gc):
+    for _c in (_delta_gc, _complement_gc):
         if _c is None:
             continue
         _c = int(_c)
@@ -5822,8 +5832,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     else:
         _lines.append("△　該当なし　的中妙味バランス　算出不可")
 
-    # v335hw：×ではなく「補完枠」として5車目を表示する。
-    # 補完枠は候補車の幅を持たせるための表示で、現行4点買目には自動追加しない。
+    # v335hx：「補完枠」を5車目として表示し、新4点フォーメーションの3着候補に使用する。
     if _complement_gc is not None:
         _lines.append(
             f"補完枠　{int(_complement_gc)}　{_complement_reason_v335hw}"
@@ -5875,7 +5884,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _trifecta_rank_map_v335hh, _trifecta_total_v335hh = _all_ticket_hit_ranks_v335hh(3)
 
     _lines.append("")
-    _lines.append(f"3連単　候補{len(_trifecta_candidates_v335ha)}点　◎－○▲△－○▲")
+    _lines.append(f"3連単　候補{len(_trifecta_candidates_v335ha)}点　◎－○▲－△補完枠")
     if _trifecta_candidates_v335ha:
         for _r in _trifecta_candidates_v335ha:
             _ticket_rank = tuple(int(c) for c in _r["ticket"])
