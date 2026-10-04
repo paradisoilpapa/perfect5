@@ -1,3 +1,18 @@
+# v335ia（3連単表示・◎→▲→△無無 3点検証版）
+# ・推奨2車単4点はv335hzのまま変更しない。
+# ・公開3連単を「実戦検証中・過去配当バランスTOP　◎→▲→△無×2」へ変更。
+# ・無印2車は◎○▲△以外から、既存3流れの比率加重平均順位が良い順に2車。
+# ・印選定ロジック（◎○▲△）と△評価ロジックは変更しない。
+
+# v335hz（公開表示整理・推奨2車単4点／実戦検証中3連単4点版）
+# ・公開印は◎○▲△の4車に戻し、補完枠は公開・買目とも使用しない。
+# ・3連単は「◎－○▲－○▲△」4点：◎→○→▲、◎→○→△、◎→▲→○、◎→▲→△。
+# ・推奨2車単は4点：◎→○、◎→▲、○→◎、▲→◎。
+# ・◎→▲には「傾斜配分 実戦有効データ」の注記を表示する。
+# ・3連単「◎－○▲－○▲△」4点は「実戦検証中」として表示する。
+# ・△の的中評価は実買目に合わせ、◎→○→△／◎→▲→△の2本を維持する。
+# ・◎○▲△の選定、通常競輪三流れ、ガールズ／アドバンス、外部AI非介入は変更しない。
+
 # v335hx（5車・政春さん型4点フォーメーション統一版）
 # ・公開3連単を「◎－○▲－△補完枠」4点へ変更。
 # ・成立買目は ◎→○→△、◎→○→補完枠、◎→▲→△、◎→▲→補完枠。
@@ -5720,10 +5735,37 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ---------------------------------------------------------
     _ticket_devs_v335ha = _ticket_deviation_maps_v335ha()
 
-    # v335hv：公開2車単は断捨離。内部の2車評価は印選定用として維持する。
+    # v335hz：公開2車単は◎⇔○▲の4点。
+    # 表示変更のみを目的とし、印選定ロジックには触れない。
     _exacta_candidates_v335ha = []
+    _mark_by_car_v335hy = {int(_axis_gc): "◎", int(_b_gc): "○"}
+    if _triangle_gc is not None:
+        _mark_by_car_v335hy[int(_triangle_gc)] = "▲"
+    if _delta_gc is not None:
+        _mark_by_car_v335hy[int(_delta_gc)] = "△"
 
-    # 3連複：◎－○▲△－○▲△
+    _exacta_pairs_v335hz = [
+        (int(_axis_gc), int(_b_gc)),
+    ]
+    if _triangle_gc is not None:
+        _exacta_pairs_v335hz.append((int(_axis_gc), int(_triangle_gc)))
+    _exacta_pairs_v335hz.append((int(_b_gc), int(_axis_gc)))
+    if _triangle_gc is not None:
+        _exacta_pairs_v335hz.append((int(_triangle_gc), int(_axis_gc)))
+
+    _seen_exacta_v335hz = set()
+    for _ticket in _exacta_pairs_v335hz:
+        if len(set(_ticket)) < 2 or _ticket in _seen_exacta_v335hz:
+            continue
+        _seen_exacta_v335hz.add(_ticket)
+        _exacta_candidates_v335ha.append({
+            "ticket": _ticket,
+            "marks": tuple(_mark_by_car_v335hy.get(int(c), "") for c in _ticket),
+            "hit_dev": _ticket_devs_v335ha["2車単_hit"].get(_ticket),
+            "value_dev": _ticket_devs_v335ha["2車単_value"].get(_ticket),
+        })
+
+    # 3連複は内部候補生成を維持（公開買目には使用しない）。
     _trio_candidates_v335ha = []
     _trio_opps_v335ha = []
     for _c in (_b_gc, _triangle_gc, _delta_gc):
@@ -5743,46 +5785,38 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 "value_dev": _ticket_devs_v335ha["3連複_value"].get(_key),
             })
 
-    # v335hx：3連単は政春さん型に統一し、◎－○▲－△補完枠（最大4点）。
-    # 成立買目：◎→○→△、◎→○→補完枠、◎→▲→△、◎→▲→補完枠。
+    # v335ia：公開3連単は「◎→▲→△＋無印2車」の3点。
+    # 印選定は変更せず、無印2車だけを既存3流れの比率加重平均順位で選ぶ。
     _trifecta_candidates_v335ha = []
-    _mark_by_car_v335hv = {
-        int(_axis_gc): "◎",
-        int(_b_gc): "○",
+    _selected_marks_v335ia = {
+        int(x) for x in (_axis_gc, _b_gc, _triangle_gc, _delta_gc) if x is not None
     }
-    if _triangle_gc is not None:
-        _mark_by_car_v335hv[int(_triangle_gc)] = "▲"
+    _unmarked_pool_v335ia = [
+        int(c) for c in (_cars or []) if int(c) not in _selected_marks_v335ia
+    ]
+    _unmarked_pool_v335ia.sort(
+        key=lambda c: (
+            float(_weighted_avg_rank_v335gl(int(c))),
+            -float((_p1_map or {}).get(int(c), 0.0) or 0.0),
+            int(c),
+        )
+    )
+    _unmarked2_v335ia = _unmarked_pool_v335ia[:2]
+
+    _third_v335ia = []
     if _delta_gc is not None:
-        _mark_by_car_v335hv[int(_delta_gc)] = "△"
-    if _complement_gc is not None:
-        _mark_by_car_v335hv[int(_complement_gc)] = "補完"
+        _third_v335ia.append((int(_delta_gc), "△"))
+    for _c in _unmarked2_v335ia:
+        _third_v335ia.append((int(_c), "無"))
 
-    _second_v335ha = []
-    for _c in (_b_gc, _triangle_gc):
-        if _c is None:
-            continue
-        _c = int(_c)
-        if _c not in _second_v335ha:
-            _second_v335ha.append(_c)
-
-    _third_v335ha = []
-    for _c in (_delta_gc, _complement_gc):
-        if _c is None:
-            continue
-        _c = int(_c)
-        if _c not in _third_v335ha:
-            _third_v335ha.append(_c)
-
-    _seen_v335ha = set()
-    for _second in _second_v335ha:
-        for _third in _third_v335ha:
-            _ticket = (int(_axis_gc), int(_second), int(_third))
-            if len(set(_ticket)) < 3 or _ticket in _seen_v335ha:
+    if _triangle_gc is not None:
+        for _third, _third_mark in _third_v335ia:
+            _ticket = (int(_axis_gc), int(_triangle_gc), int(_third))
+            if len(set(_ticket)) < 3:
                 continue
-            _seen_v335ha.add(_ticket)
             _trifecta_candidates_v335ha.append({
                 "ticket": _ticket,
-                "marks": tuple(_mark_by_car_v335hv.get(int(c), "") for c in _ticket),
+                "marks": ("◎", "▲", str(_third_mark)),
                 "hit_dev": _ticket_devs_v335ha["3連単_hit"].get(_ticket),
                 "value_dev": _ticket_devs_v335ha["3連単_value"].get(_ticket),
             })
@@ -5832,19 +5866,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     else:
         _lines.append("△　該当なし　的中妙味バランス　算出不可")
 
-    # v335hx：「補完枠」を5車目として表示し、新4点フォーメーションの3着候補に使用する。
-    if _complement_gc is not None:
-        _lines.append(
-            f"補完枠　{int(_complement_gc)}　{_complement_reason_v335hw}"
-            + (
-                ""
-                if _complement_avg_rank_v335hw is None
-                else f"（加重平均順位{float(_complement_avg_rank_v335hw):.2f}位）"
-            )
-        )
-    else:
-        _lines.append("補完枠　該当なし")
-
     _lines.append("")
     _lines.append("【ヴェロビ分析・券種別オススメ】")
 
@@ -5880,11 +5901,33 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         }
         return _rank_map, len(_rows_rank)
 
-    # v335hv：公開は3連単だけなので2車単の全通り順位計算も省く。
+    # v335hy：公開する2車単・3連単の全通り的中想定順位を計算する。
+    _exacta_rank_map_v335hh, _exacta_total_v335hh = _all_ticket_hit_ranks_v335hh(2)
     _trifecta_rank_map_v335hh, _trifecta_total_v335hh = _all_ticket_hit_ranks_v335hh(3)
 
     _lines.append("")
-    _lines.append(f"3連単　候補{len(_trifecta_candidates_v335ha)}点　◎－○▲－△補完枠")
+    _lines.append(f"【推奨・2車単】　候補{len(_exacta_candidates_v335ha)}点　◎⇔○▲")
+    if _exacta_candidates_v335ha:
+        for _r in _exacta_candidates_v335ha:
+            _ticket_rank = tuple(int(c) for c in _r["ticket"])
+            _marks_rank = tuple(str(x) for x in (_r.get("marks", tuple()) or tuple()))
+            _mark_text = "-".join(_marks_rank) if len(_marks_rank) == 2 else ""
+            _rank = _exacta_rank_map_v335hh.get(_ticket_rank)
+            _prefix = "-".join(str(c) for c in _ticket_rank)
+            if _mark_text:
+                _prefix += f"（{_mark_text}）"
+            if _rank is None or _exacta_total_v335hh <= 0:
+                _line = _prefix + "　的中想定順位 算出不可"
+            else:
+                _line = _prefix + f"　的中想定順位 {_rank}位／全{_exacta_total_v335hh}通り"
+            if _mark_text == "◎-▲":
+                _line += "　※傾斜配分 実戦有効データ"
+            _lines.append(_line)
+    else:
+        _lines.append("算出不可")
+
+    _lines.append("")
+    _lines.append(f"【実戦検証中・3連単】　候補{len(_trifecta_candidates_v335ha)}点　※過去配当バランスTOP　◎→▲→△無×2")
     if _trifecta_candidates_v335ha:
         for _r in _trifecta_candidates_v335ha:
             _ticket_rank = tuple(int(c) for c in _r["ticket"])
