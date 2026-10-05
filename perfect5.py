@@ -1,3 +1,9 @@
+# v335id（買い目シェイプアップ版）
+# ・2車単は「◎→▲、○→◎、▲→◎」の3点。◎→○だけ削除。
+# ・◎→▲の「傾斜配分 実戦有効データ」表示は維持。
+# ・3連単は「◎→▲→無印2車」の2点。△は3着候補から除外。
+# ・無印2車は◎○▲△以外から、既存3流れの比率加重平均順位が良い順に2車。
+# ・◎○▲△の印選定、△評価、予想本体は変更しない。
 # v335ic（3連単見出し改行版）
 # ・3連単の見出しを候補点数と注記の2行に分割。買目ロジックはv335ibから変更しない。
 # v335ib（3連単・◎→▲→○以外総流し版）
@@ -5737,8 +5743,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ---------------------------------------------------------
     _ticket_devs_v335ha = _ticket_deviation_maps_v335ha()
 
-    # v335hz：公開2車単は◎⇔○▲の4点。
-    # 表示変更のみを目的とし、印選定ロジックには触れない。
+    # v335id：公開2車単は ◎→▲、○→◎、▲→◎ の3点。
+    # ◎→○だけを削除し、印選定ロジックには触れない。
     _exacta_candidates_v335ha = []
     _mark_by_car_v335hy = {int(_axis_gc): "◎", int(_b_gc): "○"}
     if _triangle_gc is not None:
@@ -5746,9 +5752,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     if _delta_gc is not None:
         _mark_by_car_v335hy[int(_delta_gc)] = "△"
 
-    _exacta_pairs_v335hz = [
-        (int(_axis_gc), int(_b_gc)),
-    ]
+    _exacta_pairs_v335hz = []
     if _triangle_gc is not None:
         _exacta_pairs_v335hz.append((int(_axis_gc), int(_triangle_gc)))
     _exacta_pairs_v335hz.append((int(_b_gc), int(_axis_gc)))
@@ -5787,35 +5791,33 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 "value_dev": _ticket_devs_v335ha["3連複_value"].get(_key),
             })
 
-    # v335ib：公開3連単は「◎→▲→○以外の残り全車」。
-    # ◎・▲を1/2着固定し、○だけを3着候補から除外する。
-    # △を含む残り全車をそのまま3着候補とし、印選定や2車単は変更しない。
+    # v335id：公開3連単は「◎→▲→無印2車」の2点。
+    # 無印は◎○▲△以外から、既存3流れの比率加重平均順位上位2車を採用する。
+    # △は3着候補に含めない。
     _trifecta_candidates_v335ha = []
 
     if _triangle_gc is not None:
-        _third_pool_v335ib = [
-            int(c) for c in (_cars or [])
-            if int(c) not in {int(_axis_gc), int(_triangle_gc), int(_b_gc)}
+        _selected_marks_v335id = {
+            int(x) for x in (_axis_gc, _b_gc, _triangle_gc, _delta_gc) if x is not None
+        }
+        _unmarked_pool_v335id = [
+            int(c) for c in (_cars or []) if int(c) not in _selected_marks_v335id
         ]
-
-        # 表示順だけ整える：△を先頭、その後は既存3流れの比率加重平均順位順。
-        _third_pool_v335ib.sort(
+        _unmarked_pool_v335id.sort(
             key=lambda c: (
-                0 if (_delta_gc is not None and int(c) == int(_delta_gc)) else 1,
                 float(_weighted_avg_rank_v335gl(int(c))),
                 -float((_p1_map or {}).get(int(c), 0.0) or 0.0),
                 int(c),
             )
         )
 
-        for _third in _third_pool_v335ib:
-            _third_mark = "△" if (_delta_gc is not None and int(_third) == int(_delta_gc)) else "無"
+        for _third in _unmarked_pool_v335id[:2]:
             _ticket = (int(_axis_gc), int(_triangle_gc), int(_third))
             if len(set(_ticket)) < 3:
                 continue
             _trifecta_candidates_v335ha.append({
                 "ticket": _ticket,
-                "marks": ("◎", "▲", str(_third_mark)),
+                "marks": ("◎", "▲", "無"),
                 "hit_dev": _ticket_devs_v335ha["3連単_hit"].get(_ticket),
                 "value_dev": _ticket_devs_v335ha["3連単_value"].get(_ticket),
             })
@@ -5905,7 +5907,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _trifecta_rank_map_v335hh, _trifecta_total_v335hh = _all_ticket_hit_ranks_v335hh(3)
 
     _lines.append("")
-    _lines.append(f"【推奨・2車単】　候補{len(_exacta_candidates_v335ha)}点　◎⇔○▲")
+    _lines.append(f"【推奨・2車単】　候補{len(_exacta_candidates_v335ha)}点　◎→▲／○▲→◎")
     if _exacta_candidates_v335ha:
         for _r in _exacta_candidates_v335ha:
             _ticket_rank = tuple(int(c) for c in _r["ticket"])
@@ -5927,7 +5929,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _lines.append("")
     _lines.append(f"【実戦検証中・3連単】　候補{len(_trifecta_candidates_v335ha)}点")
-    _lines.append("※過去配当バランスTOP　◎→▲→○以外総流し")
+    _lines.append("※高配当刈り取り　◎→▲→無×2")
     if _trifecta_candidates_v335ha:
         for _r in _trifecta_candidates_v335ha:
             _ticket_rank = tuple(int(c) for c in _r["ticket"])
