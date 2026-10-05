@@ -1,8 +1,10 @@
-# v335ia（3連単表示・◎→▲→△無無 3点検証版）
-# ・推奨2車単4点はv335hzのまま変更しない。
-# ・公開3連単を「実戦検証中・過去配当バランスTOP　◎→▲→△無×2」へ変更。
-# ・無印2車は◎○▲△以外から、既存3流れの比率加重平均順位が良い順に2車。
-# ・印選定ロジック（◎○▲△）と△評価ロジックは変更しない。
+# v335ic（3連単見出し改行版）
+# ・3連単の見出しを候補点数と注記の2行に分割。買目ロジックはv335ibから変更しない。
+# v335ib（3連単・◎→▲→○以外総流し版）
+# ・推奨2車単4点はv335iaのまま変更しない。
+# ・公開3連単を「◎→▲→○以外の残り全車」へ変更。
+# ・7車立てでは最大4点。◎・▲・○を除く全車を3着候補とする。
+# ・印選定ロジック（◎○▲△）、△評価ロジック、2車単の傾斜表示は変更しない。
 
 # v335hz（公開表示整理・推奨2車単4点／実戦検証中3連単4点版）
 # ・公開印は◎○▲△の4車に戻し、補完枠は公開・買目とも使用しない。
@@ -5785,32 +5787,29 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 "value_dev": _ticket_devs_v335ha["3連複_value"].get(_key),
             })
 
-    # v335ia：公開3連単は「◎→▲→△＋無印2車」の3点。
-    # 印選定は変更せず、無印2車だけを既存3流れの比率加重平均順位で選ぶ。
+    # v335ib：公開3連単は「◎→▲→○以外の残り全車」。
+    # ◎・▲を1/2着固定し、○だけを3着候補から除外する。
+    # △を含む残り全車をそのまま3着候補とし、印選定や2車単は変更しない。
     _trifecta_candidates_v335ha = []
-    _selected_marks_v335ia = {
-        int(x) for x in (_axis_gc, _b_gc, _triangle_gc, _delta_gc) if x is not None
-    }
-    _unmarked_pool_v335ia = [
-        int(c) for c in (_cars or []) if int(c) not in _selected_marks_v335ia
-    ]
-    _unmarked_pool_v335ia.sort(
-        key=lambda c: (
-            float(_weighted_avg_rank_v335gl(int(c))),
-            -float((_p1_map or {}).get(int(c), 0.0) or 0.0),
-            int(c),
-        )
-    )
-    _unmarked2_v335ia = _unmarked_pool_v335ia[:2]
-
-    _third_v335ia = []
-    if _delta_gc is not None:
-        _third_v335ia.append((int(_delta_gc), "△"))
-    for _c in _unmarked2_v335ia:
-        _third_v335ia.append((int(_c), "無"))
 
     if _triangle_gc is not None:
-        for _third, _third_mark in _third_v335ia:
+        _third_pool_v335ib = [
+            int(c) for c in (_cars or [])
+            if int(c) not in {int(_axis_gc), int(_triangle_gc), int(_b_gc)}
+        ]
+
+        # 表示順だけ整える：△を先頭、その後は既存3流れの比率加重平均順位順。
+        _third_pool_v335ib.sort(
+            key=lambda c: (
+                0 if (_delta_gc is not None and int(c) == int(_delta_gc)) else 1,
+                float(_weighted_avg_rank_v335gl(int(c))),
+                -float((_p1_map or {}).get(int(c), 0.0) or 0.0),
+                int(c),
+            )
+        )
+
+        for _third in _third_pool_v335ib:
+            _third_mark = "△" if (_delta_gc is not None and int(_third) == int(_delta_gc)) else "無"
             _ticket = (int(_axis_gc), int(_triangle_gc), int(_third))
             if len(set(_ticket)) < 3:
                 continue
@@ -5927,7 +5926,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("算出不可")
 
     _lines.append("")
-    _lines.append(f"【実戦検証中・3連単】　候補{len(_trifecta_candidates_v335ha)}点　※過去配当バランスTOP　◎→▲→△無×2")
+    _lines.append(f"【実戦検証中・3連単】　候補{len(_trifecta_candidates_v335ha)}点")
+    _lines.append("※過去配当バランスTOP　◎→▲→○以外総流し")
     if _trifecta_candidates_v335ha:
         for _r in _trifecta_candidates_v335ha:
             _ticket_rank = tuple(int(c) for c in _r["ticket"])
