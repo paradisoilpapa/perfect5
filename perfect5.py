@@ -1,3 +1,9 @@
+# v335ie（△×素直順位・3連単2点版）
+# ・△＝的中妙味バランス1位、×＝同じ的中妙味バランス2位。
+# ・×にライン優先・補完ロジックは使わない。△と完全に同じ評価基準の2位。
+# ・3連単は「◎→▲→△」「◎→▲→×」の2点。
+# ・2車単はv335idの「◎→▲、○→◎、▲→◎」3点を維持し、◎→▲の傾斜表示も維持。
+# ・◎○▲の選定、△評価式、予想本体は変更しない。
 # v335id（買い目シェイプアップ版）
 # ・2車単は「◎→▲、○→◎、▲→◎」の3点。◎→○だけ削除。
 # ・◎→▲の「傾斜配分 実戦有効データ」表示は維持。
@@ -5643,25 +5649,37 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             "hit_raw": float(_delta_hit_raw_v335ho.get(int(_cand), 0.0)),
         })
 
+    # v335ie：△と×は同じ「的中妙味バランス」を素直に順位付けする。
+    # 1位＝△、2位＝×。ライン優先・補完は行わない。
+    _x_gc = None
+    _x_hit_dev_v335ie = None
+    _x_value_dev_v335ie = None
+    _x_balance_v335ie = None
+    _x_ev_gc = None
+
     if _delta_rows_v335hf:
-        _best_delta_v335hf = max(
+        _delta_ranked_v335ie = sorted(
             _delta_rows_v335hf,
             key=lambda r: (
-                float(r["balance"]),
-                min(float(r["hit"]), float(r["value"])),
-                float(r["hit"]),
-                float(r["value"]),
-                -int(r["car"]),
+                -float(r["balance"]),
+                -min(float(r["hit"]), float(r["value"])),
+                -float(r["hit"]),
+                -float(r["value"]),
+                int(r["car"]),
             ),
         )
+        _best_delta_v335hf = _delta_ranked_v335ie[0]
         _delta_gc = int(_best_delta_v335hf["car"])
         _delta_hit_dev_v335hf = float(_best_delta_v335hf["hit"])
         _delta_value_dev_v335hf = float(_best_delta_v335hf["value"])
         _delta_balance_v335hf = float(_best_delta_v335hf["balance"])
 
-    # v335gx：公開×は廃止。
-    _x_gc = None
-    _x_ev_gc = None
+        if len(_delta_ranked_v335ie) >= 2:
+            _best_x_v335ie = _delta_ranked_v335ie[1]
+            _x_gc = int(_best_x_v335ie["car"])
+            _x_hit_dev_v335ie = float(_best_x_v335ie["hit"])
+            _x_value_dev_v335ie = float(_best_x_v335ie["value"])
+            _x_balance_v335ie = float(_best_x_v335ie["balance"])
 
     # ---------------------------------------------------------
     # v335hw：5車目「補完枠」。
@@ -5791,33 +5809,19 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 "value_dev": _ticket_devs_v335ha["3連複_value"].get(_key),
             })
 
-    # v335id：公開3連単は「◎→▲→無印2車」の2点。
-    # 無印は◎○▲△以外から、既存3流れの比率加重平均順位上位2車を採用する。
-    # △は3着候補に含めない。
+    # v335ie：公開3連単は「◎→▲→△」「◎→▲→×」の2点。
     _trifecta_candidates_v335ha = []
 
     if _triangle_gc is not None:
-        _selected_marks_v335id = {
-            int(x) for x in (_axis_gc, _b_gc, _triangle_gc, _delta_gc) if x is not None
-        }
-        _unmarked_pool_v335id = [
-            int(c) for c in (_cars or []) if int(c) not in _selected_marks_v335id
-        ]
-        _unmarked_pool_v335id.sort(
-            key=lambda c: (
-                float(_weighted_avg_rank_v335gl(int(c))),
-                -float((_p1_map or {}).get(int(c), 0.0) or 0.0),
-                int(c),
-            )
-        )
-
-        for _third in _unmarked_pool_v335id[:2]:
+        for _third, _third_mark in ((_delta_gc, "△"), (_x_gc, "×")):
+            if _third is None:
+                continue
             _ticket = (int(_axis_gc), int(_triangle_gc), int(_third))
             if len(set(_ticket)) < 3:
                 continue
             _trifecta_candidates_v335ha.append({
                 "ticket": _ticket,
-                "marks": ("◎", "▲", "無"),
+                "marks": ("◎", "▲", str(_third_mark)),
                 "hit_dev": _ticket_devs_v335ha["3連単_hit"].get(_ticket),
                 "value_dev": _ticket_devs_v335ha["3連単_value"].get(_ticket),
             })
@@ -5866,6 +5870,15 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         )
     else:
         _lines.append("△　該当なし　的中妙味バランス　算出不可")
+
+    if _x_gc is not None:
+        _lines.append(
+            f"×　{int(_x_gc)}　的中妙味バランス　"
+            f"2位・{float(_x_balance_v335ie):.1f}"
+            f"（的中{float(_x_hit_dev_v335ie):.1f}／妙味{float(_x_value_dev_v335ie):.1f}）"
+        )
+    else:
+        _lines.append("×　該当なし　的中妙味バランス　算出不可")
 
     _lines.append("")
     _lines.append("【ヴェロビ分析・券種別オススメ】")
@@ -5929,7 +5942,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _lines.append("")
     _lines.append(f"【実戦検証中・3連単】　候補{len(_trifecta_candidates_v335ha)}点")
-    _lines.append("※高配当刈り取り　◎→▲→無×2")
+    _lines.append("※素直型　◎→▲→△×")
     if _trifecta_candidates_v335ha:
         for _r in _trifecta_candidates_v335ha:
             _ticket_rank = tuple(int(c) for c in _r["ticket"])
