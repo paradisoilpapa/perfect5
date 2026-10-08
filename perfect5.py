@@ -1,3 +1,7 @@
+# v335ig（2車単表裏＋3連単2点・4点版）
+# ・公開2車単：◎→○、○→◎（2点）。
+# ・公開3連単：◎→○→▲、◎→▲→△（2点）。
+# ・各100円平買い・計4点。◎○▲△×選定、内部評価、予想本体は変更しない。
 # v335if（◎1着軸・王道5点版）
 # ・◎を1着軸として、公開買目を5点に統一。
 # ・2車単は「◎→○」「◎→▲」の2点。逆目「○→◎」「▲→◎」は削除。
@@ -5761,8 +5765,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ---------------------------------------------------------
     _ticket_devs_v335ha = _ticket_deviation_maps_v335ha()
 
-    # v335if：公開2車単は ◎→○、◎→▲ の2点。
-    # ◎を1着軸に固定し、逆目 ○→◎／▲→◎ は買わない。
+    # v335ig：公開2車単は ◎→○、○→◎ の2点。
     _exacta_candidates_v335ha = []
     _mark_by_car_v335hy = {int(_axis_gc): "◎", int(_b_gc): "○"}
     if _triangle_gc is not None:
@@ -5773,8 +5776,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _exacta_pairs_v335hz = []
     if _b_gc is not None:
         _exacta_pairs_v335hz.append((int(_axis_gc), int(_b_gc)))
-    if _triangle_gc is not None:
-        _exacta_pairs_v335hz.append((int(_axis_gc), int(_triangle_gc)))
+    if _b_gc is not None:
+        _exacta_pairs_v335hz.append((int(_b_gc), int(_axis_gc)))
 
     _seen_exacta_v335hz = set()
     for _ticket in _exacta_pairs_v335hz:
@@ -5808,12 +5811,11 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 "value_dev": _ticket_devs_v335ha["3連複_value"].get(_key),
             })
 
-    # v335if：公開3連単は「◎→○→▲」「◎→▲→○」「◎→▲→△」の3点。
+    # v335ig：公開3連単は「◎→○→▲」「◎→▲→△」の2点。
     _trifecta_candidates_v335ha = []
 
     _trifecta_specs_v335if = [
         (_b_gc, _triangle_gc, "○", "▲"),
-        (_triangle_gc, _b_gc, "▲", "○"),
         (_triangle_gc, _delta_gc, "▲", "△"),
     ]
     for _second, _third, _second_mark, _third_mark in _trifecta_specs_v335if:
@@ -5923,7 +5925,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _trifecta_rank_map_v335hh, _trifecta_total_v335hh = _all_ticket_hit_ranks_v335hh(3)
 
     _lines.append("")
-    _lines.append(f"【推奨・2車単】　候補{len(_exacta_candidates_v335ha)}点　◎→○▲")
+    _lines.append(f"【推奨・2車単】　候補{len(_exacta_candidates_v335ha)}点　◎⇔○")
     if _exacta_candidates_v335ha:
         for _r in _exacta_candidates_v335ha:
             _ticket_rank = tuple(int(c) for c in _r["ticket"])
@@ -5943,7 +5945,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _lines.append("")
     _lines.append(f"【推奨・3連単】　候補{len(_trifecta_candidates_v335ha)}点")
-    _lines.append("※王道型　◎→○→▲／◎→▲→○△")
+    _lines.append("※4点型　◎→○→▲／◎→▲→△")
     if _trifecta_candidates_v335ha:
         for _r in _trifecta_candidates_v335ha:
             _ticket_rank = tuple(int(c) for c in _r["ticket"])
