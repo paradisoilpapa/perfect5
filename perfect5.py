@@ -1,3 +1,7 @@
+# v335it（公開推奨：妙味軸α→γβεの2車単3点専用）
+# ・2車単はα→γ、α→β、α→εの3点。候補不成立時は成立分のみ表示。
+# ・2車複への自動切替と3連複の公開推奨を削除。
+# ・通常評価、妙味軸選定、想定着順、内部確率は維持。
 # v335in（展開最終着順→評価確率接続版）
 # 通常競輪のみ、展開比率加重の順位尤度を基礎確率へ弱く反映。印・買目は共通確率を参照。
 # v335il: 妙味軸ε/Ωの偏差値算出不可を修正。α基準の2車単母集団で妙味偏差値を算出。
@@ -6058,55 +6062,37 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _trifecta_rank_map_v335hh, _trifecta_total_v335hh = _all_ticket_hit_ranks_v335hh(3)
 
     _lines.append("")
-    # v335is: α→βとβ→αの内部想定確率の優位性で券種を選択。
-    # α先着率60%以上なら2車単、それ未満なら2車複（暫定閾値）。
-    _alpha_first_threshold_v335is = 0.60
-    _ticket_comparison_v335is = None
-    _recommend_quinella_v335is = False
-    if len(_exacta_candidates_v335ha) == 1:
-        _a, _b = (int(c) for c in _exacta_candidates_v335ha[0]["ticket"])
-        _p_ab = _exacta_prob_with(_a, _b, _p1_map, _p2_map, _p3_map)
-        _p_ba = _exacta_prob_with(_b, _a, _p1_map, _p2_map, _p3_map)
-        if _p_ab is not None and _p_ba is not None:
-            _p_ab, _p_ba = max(0.0, float(_p_ab)), max(0.0, float(_p_ba))
-            _p_pair = _p_ab + _p_ba
-            if _p_pair > 0.0:
-                _alpha_first_share = _p_ab / _p_pair
-                _recommend_quinella_v335is = _alpha_first_share < _alpha_first_threshold_v335is
-                _ticket_comparison_v335is = (_p_ab, _p_ba, _alpha_first_share)
+    # 公開推奨は妙味軸αを1着に固定した2車単3点（α→γ、α→β、α→ε）のみ。
+    # 通常評価、妙味軸の選抜、想定着順、内部確率モデルは変更しない。
+    _exacta_three_v335it = []
+    if "α" in _myoumi_marks_v335ii:
+        _alpha_v335it = int(_myoumi_marks_v335ii["α"])
+        for _mark_v335it in ("γ", "β", "ε"):
+            if _mark_v335it not in _myoumi_marks_v335ii:
+                continue
+            _other_v335it = int(_myoumi_marks_v335ii[_mark_v335it])
+            if _other_v335it == _alpha_v335it:
+                continue
+            _ticket_v335it = (_alpha_v335it, _other_v335it)
+            if any(_row["ticket"] == _ticket_v335it for _row in _exacta_three_v335it):
+                continue
+            _exacta_three_v335it.append({"ticket": _ticket_v335it, "marks": ("α", _mark_v335it)})
 
-    _ticket_kind_v335is = "2車複" if _recommend_quinella_v335is else "2車単"
-    _arrow_v335is = "－" if _recommend_quinella_v335is else "→"
-    _lines.append(f"【推奨・{_ticket_kind_v335is}】　候補{len(_exacta_candidates_v335ha)}点　妙味軸α{_arrow_v335is}β")
-    for _r in _exacta_candidates_v335ha:
-        _ticket_rank = tuple(int(c) for c in _r["ticket"])
-        _rank = _exacta_rank_map_v335hh.get(_ticket_rank)
-        _display_ticket = tuple(sorted(_ticket_rank)) if _recommend_quinella_v335is else _ticket_rank
-        _prefix = "-".join(str(c) for c in _display_ticket) + "（α-β）"
-        if _rank is not None and _exacta_total_v335hh > 0:
-            _rank_label = "2車単的中想定順位" if _recommend_quinella_v335is else "的中想定順位"
-            _rank_text = f"　{_rank_label} {_rank}位／全{_exacta_total_v335hh}通り"
-        else:
-            _rank_text = "　的中想定順位 算出不可"
-        _lines.append(_prefix + _rank_text)
-        if _ticket_comparison_v335is is not None:
-            _pa, _pb, _share = _ticket_comparison_v335is
-            _lines.append(
-                f"※α→β {_pa*100:.2f}%／β→α {_pb*100:.2f}%"
-                f"（α先着率 {_share*100:.1f}%）→{_ticket_kind_v335is}推奨"
-            )
-        else:
-            _lines.append("※裏表の想定的中率を算出できないため2車単を暫定表示")
-    if not _exacta_candidates_v335ha:
-        _lines.append("算出不可")
-
-    _lines.append("")
-    _lines.append(f"【推奨・3連複】　候補{len(_trio_candidates_v335ha)}点　最多展開＋通常評価")
-    for _r in _trio_candidates_v335ha:
-        _ticket = tuple(int(c) for c in _r["ticket"])
-        _marks = "-".join(_r["marks"])
-        _lines.append("-".join(str(c) for c in _ticket) + f"（{_marks}）")
-    if not _trio_candidates_v335ha:
+    _lines.append(f"【推奨・2車単】　候補{len(_exacta_three_v335it)}点　妙味軸α→γβε")
+    for _row_v335it in _exacta_three_v335it:
+        _ticket_v335it = _row_v335it["ticket"]
+        _mark_v335it = _row_v335it["marks"][1]
+        _rank_v335it = _exacta_rank_map_v335hh.get(_ticket_v335it)
+        _rank_text_v335it = (
+            f"　的中想定順位 {_rank_v335it}位／全{_exacta_total_v335hh}通り"
+            if _rank_v335it is not None and _exacta_total_v335hh > 0
+            else "　的中想定順位 算出不可"
+        )
+        _lines.append(
+            f"{_ticket_v335it[0]}-{_ticket_v335it[1]}（α-{_mark_v335it}）"
+            + _rank_text_v335it
+        )
+    if not _exacta_three_v335it:
         _lines.append("算出不可")
     _lines.append("")
 
