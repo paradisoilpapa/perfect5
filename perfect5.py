@@ -1,4 +1,4 @@
-# v335ii（妙味軸条件付き評価・2車単1点＋3連複2点・試運転版）
+# v335ij（妙味軸条件付き評価・2車単1点＋3連複2点・試運転版）
 # ・通常◎○▲△×、順流/逆流/渦、ライン、内部想定確率は維持。
 # ・通常△を妙味軸αに固定。αが1着の条件付き2着確率でβγ εΩを全車から再選抜。
 # ・公開2車単α→β 1点、3連複◎-○-▲／◎-▲-△ 2点。各100円平買い。
@@ -5774,46 +5774,95 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ---------------------------------------------------------
     _ticket_devs_v335ha = _ticket_deviation_maps_v335ha()
 
-    # v335ii：通常評価はそのまま。△をαに固定し、全車から相手を条件付き再選抜。
-    # P(相手2着 | α1着) = P(α1着・相手2着) / P(α1着)
-    # 既存の順流・逆流・渦・ラインを反映した確率マップから算出する。
-    # α固定下の順位を共通の「全42通り順位」と混同しない。
+    # v335ij: 妙味軸は通常△に固定。相手は通常印と同じ役割別選抜を再実行。
+    # 注意: 元の全展開確率マップを利用する暫定実装。
+    # α勝利を条件にした展開比率の再推定は行っていない。
     _exacta_candidates_v335ha = []
     _trifecta_candidates_v335ha = []
     _trio_candidates_v335ha = []
     _myoumi_axis_v335ii = int(_delta_gc) if _delta_gc is not None else None
     _myoumi_marks_v335ii = {}
-    _myoumi_second_rows_v335ii = []
+    _myoumi_details_v335ij = {}
     if _myoumi_axis_v335ii is not None:
-        _alpha_p1_v335ii = float((_p1_map or {}).get(_myoumi_axis_v335ii, 0.0) or 0.0)
-        for _candidate_v335ii in _cars:
-            _candidate_v335ii = int(_candidate_v335ii)
-            if _candidate_v335ii == _myoumi_axis_v335ii:
-                continue
-            _joint_v335ii = _exacta_prob_with(
-                _myoumi_axis_v335ii, _candidate_v335ii, _p1_map, _p2_map, _p3_map
+        _alpha = _myoumi_axis_v335ii
+        _myoumi_marks_v335ii["α"] = _alpha
+        _alpha_rows = _scenario_candidate_rows(
+            _alpha, _scenario_rows_v335hi, _p1_map, _p2_map, _p3_map
+        )
+        # β = 通常○と同じ連対指数・ライン優先の選抜。
+        if _single_flow_class_v335hl and len(_order1) >= 2:
+            _beta = next((int(c) for c in _order1 if int(c) != _alpha), None)
+            _beta_row = next((r for r in _alpha_rows if int(r["car"]) == _beta), None)
+        else:
+            _beta, _beta_row = _select_hit_himo(_alpha_rows)
+        if _beta is not None:
+            _myoumi_marks_v335ii["β"] = int(_beta)
+            _myoumi_details_v335ij["β"] = "連対指数" + (
+                f" {float(_beta_row['qprob'])*100:.1f}%" if _beta_row else " 算出不可"
             )
-            if _joint_v335ii is None:
-                continue
-            _joint_v335ii = float(_joint_v335ii)
-            if not math.isfinite(_joint_v335ii) or _joint_v335ii < 0.0:
-                continue
-            _conditional_v335ii = (
-                _joint_v335ii / _alpha_p1_v335ii if _alpha_p1_v335ii > 0.0 else 0.0
-            )
-            _myoumi_second_rows_v335ii.append(
-                (_candidate_v335ii, _conditional_v335ii, _joint_v335ii)
-            )
-        _myoumi_second_rows_v335ii.sort(key=lambda r: (-r[1], r[0]))
-        _myoumi_marks_v335ii = {"α": _myoumi_axis_v335ii}
-        for _mark_v335ii, _row_v335ii in zip(
-            ("β", "γ", "ε", "Ω"), _myoumi_second_rows_v335ii
-        ):
-            _myoumi_marks_v335ii[_mark_v335ii] = int(_row_v335ii[0])
-        if "β" in _myoumi_marks_v335ii:
+
+            # γ = 通常▲と同じ配当適合選抜。αライン優先・前3車制限。
+            _gamma_table = []
+            for _c in _cars:
+                _c = int(_c)
+                if _c in {_alpha, int(_beta)}:
+                    continue
+                _p = _exacta_prob_with(_alpha, _c, _p1_map, _p2_map, _p3_map)
+                _score = float(_distribution_band_v335fz("2車単", _p).get("selection_score", -1.0) or -1.0)
+                _gamma_table.append({"car": _c, "score": _score, "prob": -1.0 if _p is None else float(_p)})
+            _gamma_table.sort(key=lambda r: (-r["score"], -r["prob"], r["car"]))
+            _gamma_pool = _gamma_table
+            if not _single_flow_class_v335hl:
+                _alpha_line = next((list(map(int, ln)) for ln in _line_groups if _alpha in list(map(int, ln))), [])
+                _front = _alpha_line[:3] if len(_alpha_line) >= 4 else _alpha_line
+                _line_candidates = [r for r in _gamma_table if r["car"] in _front]
+                if _line_candidates:
+                    _gamma_pool = _line_candidates
+            _gamma = int(_gamma_pool[0]["car"]) if _gamma_pool else None
+            if _gamma is not None:
+                _myoumi_marks_v335ii["γ"] = _gamma
+                _scores = [r["score"] for r in _gamma_table]
+                _mean = sum(_scores)/len(_scores)
+                _sd = (sum((x-_mean)**2 for x in _scores)/len(_scores))**0.5
+                _chosen_score = next(r["score"] for r in _gamma_table if r["car"] == _gamma)
+                _dev = 50.0 if _sd <= 1e-12 else 50.0+10.0*(_chosen_score-_mean)/_sd
+                _myoumi_details_v335ij["γ"] = f"配当適合偏差値 {_dev:.1f}"
+
+                # ε/Ω = 通常△/×と同じ3連単2本の的中偏差値 + 2車単妙味偏差値。
+                # 通常側の3連単2本 (◎→○→候補, ◎→▲→候補) をα/β/γに置換。
+                _remaining = [int(c) for c in _cars if int(c) not in {_alpha, int(_beta), _gamma}]
+                _raw_hit, _raw_value = {}, {}
+                for _c in _remaining:
+                    _ps = []
+                    for _second in (int(_beta), _gamma):
+                        _p = _trifecta_prob_with(_alpha, _second, _c, _p1_map, _p2_map, _p3_map)
+                        if _p is not None and math.isfinite(float(_p)) and float(_p) >= 0:
+                            _ps.append(float(_p))
+                    if _ps:
+                        _raw_hit[_c] = sum(_ps)
+                    _vp = _ordered_myoumi_raw_v335gh((_alpha, _c)) if not _single_flow_class_v335hl else None
+                    if _single_flow_class_v335hl:
+                        _ep = _exacta_prob_with(_alpha, _c, _p1_map, _p2_map, _p3_map)
+                        _vp = _distribution_band_v335fz("2車単", _ep).get("selection_score", -1.0)
+                    if _vp is not None and math.isfinite(float(_vp)) and float(_vp) >= 0:
+                        _raw_value[_c] = float(_vp)
+                _hit_dev = _deviation_map_v335ha(_raw_hit)
+                _value_dev = _deviation_map_v335ha(_raw_value)
+                _ranked = []
+                for _c in _remaining:
+                    if _c not in _hit_dev or _c not in _value_dev:
+                        continue
+                    _h, _v = float(_hit_dev[_c]), float(_value_dev[_c])
+                    _ranked.append({"car": _c, "hit": _h, "value": _v, "balance": (_h+_v)/2})
+                _ranked.sort(key=lambda r: (-r["balance"], -min(r["hit"], r["value"]), -r["hit"], -r["value"], r["car"]))
+                for _mark, _r in zip(("ε", "Ω"), _ranked):
+                    _myoumi_marks_v335ii[_mark] = int(_r["car"])
+                    _myoumi_details_v335ij[_mark] = (
+                        f"的中妙味バランス {_r['balance']:.1f}"
+                        f"（的中{_r['hit']:.1f}／妙味{_r['value']:.1f}）"
+                    )
             _exacta_candidates_v335ha.append({
-                "ticket": (_myoumi_axis_v335ii, _myoumi_marks_v335ii["β"]),
-                "marks": ("α", "β"),
+                "ticket": (_alpha, int(_beta)), "marks": ("α", "β")
             })
 
     # 3連複は通常印で固定。3連単実績がある組合せを着順不同で検証。
@@ -5894,9 +5943,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             if _mark_v335ii == "α":
                 _lines.append(f"α　{_car_v335ii}　通常評価△を妙味軸に固定")
             else:
-                _row_v335ii = next((r for r in _myoumi_second_rows_v335ii if r[0] == _car_v335ii), None)
-                _pct_v335ii = float(_row_v335ii[1]) * 100.0 if _row_v335ii else 0.0
-                _lines.append(f"{_mark_v335ii}　{_car_v335ii}　α1着時の条件付き2着率 {_pct_v335ii:.1f}%")
+                _lines.append(f"{_mark_v335ii}　{_car_v335ii}　{_myoumi_details_v335ij.get(_mark_v335ii, '算出不可')}")
         else:
             _lines.append(f"{_mark_v335ii}　算出不可")
     _lines.append("")
@@ -5964,7 +6011,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("算出不可")
     _lines.append("")
     _lines.append("※試運転：2車単α→β 1点＋3連複◎-○-▲／◎-▲-△ 2点（成立時計3点、各100円）")
-    _lines.append("※α→βは既存確率モデルによる条件付き相手選抜。実オッズに基づく期待値保証ではありません。")
+    _lines.append("※α→βは通常評価と同じ役割別選抜をα基準で再実行。展開比率の条件付き再推定は未実装。実オッズに基づく期待値保証ではありません。")
 
     return _lines
 
