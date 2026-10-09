@@ -5,7 +5,7 @@
 # v335ij（妙味軸条件付き評価・2車単1点＋3連複2点・試運転版）
 # ・通常◎○▲△×、順流/逆流/渦、ライン、内部想定確率は維持。
 # ・通常△を妙味軸αに固定。αが1着の条件付き2着確率でβγ εΩを全車から再選抜。
-# ・公開2車単α→β 1点、3連複◎-○-▲／◎-▲-△ 2点。各100円平買い。
+# ・公開2車単α→β 1点、3連複は最多展開上位3車＋通常◎○▲（重複時◎▲△）。各100円平買い。
 # ・的中想定順位は従来の全車券を母集団とする共通順位。
 # ・条件付き相手選抜は既存モデルのP(α1着, 相手2着)/P(α1着)を利用。
 # ・実オッズに基づく期待値保証ではなく検証用。
@@ -5914,21 +5914,44 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 "ticket": (_alpha, int(_beta)), "marks": ("α", "β")
             })
 
-    # 3連複は通常印で固定。3連単実績がある組合せを着順不同で検証。
-    for _other_v335ii in (_b_gc, _delta_gc):
-        if _triangle_gc is None or _other_v335ii is None:
-            continue
-        _trio_ticket_v335ii = tuple(sorted((
-            int(_axis_gc), int(_triangle_gc), int(_other_v335ii)
-        )))
-        if len(set(_trio_ticket_v335ii)) != 3:
-            continue
-        if any(r["ticket"] == _trio_ticket_v335ii for r in _trio_candidates_v335ha):
-            continue
+    # v335ip：3連複は「最多展開の上位3車」と「通常評価◎○▲」の2点。
+    # 2点が同じ組合せのときだけ通常評価◎▲△へ差し替える。
+    # 妙味軸α→β、通常印の選抜ロジックは変更しない。
+    _primary_trio_v335ip = tuple(sorted(int(c) for c in _order1[:3]))
+    if len(_primary_trio_v335ip) == 3 and len(set(_primary_trio_v335ip)) == 3:
         _trio_candidates_v335ha.append({
-            "ticket": _trio_ticket_v335ii,
-            "marks": ("◎", "▲", "○" if int(_other_v335ii) == int(_b_gc) else "△"),
+            "ticket": _primary_trio_v335ip,
+            "marks": ("最多展開", "1-2-3位"),
         })
+
+    _normal_trio_v335ip = None
+    if _triangle_gc is not None and _b_gc is not None:
+        _normal_trio_v335ip = tuple(sorted((
+            int(_axis_gc), int(_b_gc), int(_triangle_gc)
+        )))
+        if len(set(_normal_trio_v335ip)) != 3:
+            _normal_trio_v335ip = None
+
+    _backup_trio_v335ip = None
+    if _triangle_gc is not None and _delta_gc is not None:
+        _backup_trio_v335ip = tuple(sorted((
+            int(_axis_gc), int(_triangle_gc), int(_delta_gc)
+        )))
+        if len(set(_backup_trio_v335ip)) != 3:
+            _backup_trio_v335ip = None
+
+    _second_trio_v335ip = _normal_trio_v335ip
+    _second_marks_v335ip = ("◎", "○", "▲")
+    if _second_trio_v335ip == _primary_trio_v335ip:
+        _second_trio_v335ip = _backup_trio_v335ip
+        _second_marks_v335ip = ("◎", "▲", "△")
+    if (_second_trio_v335ip is not None
+            and all(r["ticket"] != _second_trio_v335ip for r in _trio_candidates_v335ha)):
+        _trio_candidates_v335ha.append({
+            "ticket": _second_trio_v335ip,
+            "marks": _second_marks_v335ip,
+        })
+    # ◎▲△も重複／不成立の場合は、勝手に第3候補を追加しない。
 
     # ---------------------------------------------------------
     # 公開評価表示
@@ -6051,7 +6074,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("算出不可")
 
     _lines.append("")
-    _lines.append(f"【推奨・3連複】　候補{len(_trio_candidates_v335ha)}点　通常評価")
+    _lines.append(f"【推奨・3連複】　候補{len(_trio_candidates_v335ha)}点　最多展開＋通常評価")
     for _r in _trio_candidates_v335ha:
         _ticket = tuple(int(c) for c in _r["ticket"])
         _marks = "-".join(_r["marks"])
@@ -6059,7 +6082,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     if not _trio_candidates_v335ha:
         _lines.append("算出不可")
     _lines.append("")
-    _lines.append("※試運転：2車単α→β 1点＋3連複◎-○-▲／◎-▲-△ 2点（成立時計3点、各100円）")
+    _lines.append("※試運転：2車単α→β 1点＋3連複最多展開1-2-3位／通常◎-○-▲（重複時◎-▲-△）各1点（成立時計3点、各100円）")
     _lines.append("※α→βは通常評価と同じ印順・ライン条件・評価母集団でα基準に再選抜。展開比率の条件付き再推定は未実装。実オッズに基づく期待値保証ではありません。")
 
     return _lines
