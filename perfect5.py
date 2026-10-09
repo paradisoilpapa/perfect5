@@ -1,3 +1,4 @@
+# v335ik: 妙味軸の印順・ライン条件・偏差値母集団を通常評価と整合させた版
 # v335ij（妙味軸条件付き評価・2車単1点＋3連複2点・試運転版）
 # ・通常◎○▲△×、順流/逆流/渦、ライン、内部想定確率は維持。
 # ・通常△を妙味軸αに固定。αが1着の条件付き2着確率でβγ εΩを全車から再選抜。
@@ -5774,7 +5775,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     # ---------------------------------------------------------
     _ticket_devs_v335ha = _ticket_deviation_maps_v335ha()
 
-    # v335ij: 妙味軸は通常△に固定。相手は通常印と同じ役割別選抜を再実行。
+    # v335ik: 妙味軸αで通常印の選抜順序・ライン制限・偏差値母集団を再現。
     # 注意: 元の全展開確率マップを利用する暫定実装。
     # α勝利を条件にした展開比率の再推定は行っていない。
     _exacta_candidates_v335ha = []
@@ -5789,7 +5790,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _alpha_rows = _scenario_candidate_rows(
             _alpha, _scenario_rows_v335hi, _p1_map, _p2_map, _p3_map
         )
-        # β = 通常○と同じ連対指数・ライン優先の選抜。
+        # β = 通常○と同じ連対指数最大（ライン条件は同点時のみ）。
         if _single_flow_class_v335hl and len(_order1) >= 2:
             _beta = next((int(c) for c in _order1 if int(c) != _alpha), None)
             _beta_row = next((r for r in _alpha_rows if int(r["car"]) == _beta), None)
@@ -5832,6 +5833,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 # 通常側の3連単2本 (◎→○→候補, ◎→▲→候補) をα/β/γに置換。
                 _remaining = [int(c) for c in _cars if int(c) not in {_alpha, int(_beta), _gamma}]
                 _raw_hit, _raw_value = {}, {}
+                # 通常△×と同じ「全2車単の妙味偏差値」を使用。
+                # α→候補の生妙味だけを候補内偏差値化すると、通常側と母集団がずれる。
+                _alpha_value_map = (_ticket_deviation_maps_v335ha().get("2車単_value", {}) or {})
                 for _c in _remaining:
                     _ps = []
                     for _second in (int(_beta), _gamma):
@@ -5840,14 +5844,12 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                             _ps.append(float(_p))
                     if _ps:
                         _raw_hit[_c] = sum(_ps)
-                    _vp = _ordered_myoumi_raw_v335gh((_alpha, _c)) if not _single_flow_class_v335hl else None
-                    if _single_flow_class_v335hl:
-                        _ep = _exacta_prob_with(_alpha, _c, _p1_map, _p2_map, _p3_map)
-                        _vp = _distribution_band_v335fz("2車単", _ep).get("selection_score", -1.0)
-                    if _vp is not None and math.isfinite(float(_vp)) and float(_vp) >= 0:
+                    _vp = _alpha_value_map.get((_alpha, _c))
+                    if _vp is not None and math.isfinite(float(_vp)):
                         _raw_value[_c] = float(_vp)
                 _hit_dev = _deviation_map_v335ha(_raw_hit)
-                _value_dev = _deviation_map_v335ha(_raw_value)
+                # 妙味側は通常△と同様に券種全買目の偏差値をそのまま使う。
+                _value_dev = _raw_value
                 _ranked = []
                 for _c in _remaining:
                     if _c not in _hit_dev or _c not in _value_dev:
@@ -6011,7 +6013,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("算出不可")
     _lines.append("")
     _lines.append("※試運転：2車単α→β 1点＋3連複◎-○-▲／◎-▲-△ 2点（成立時計3点、各100円）")
-    _lines.append("※α→βは通常評価と同じ役割別選抜をα基準で再実行。展開比率の条件付き再推定は未実装。実オッズに基づく期待値保証ではありません。")
+    _lines.append("※α→βは通常評価と同じ印順・ライン条件・評価母集団でα基準に再選抜。展開比率の条件付き再推定は未実装。実オッズに基づく期待値保証ではありません。")
 
     return _lines
 
