@@ -6058,18 +6058,45 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _trifecta_rank_map_v335hh, _trifecta_total_v335hh = _all_ticket_hit_ranks_v335hh(3)
 
     _lines.append("")
-    _lines.append(f"【推奨・2車単】　候補{len(_exacta_candidates_v335ha)}点　妙味軸α→β")
+    # v335is: α→βとβ→αの内部想定確率の優位性で券種を選択。
+    # α先着率60%以上なら2車単、それ未満なら2車複（暫定閾値）。
+    _alpha_first_threshold_v335is = 0.60
+    _ticket_comparison_v335is = None
+    _recommend_quinella_v335is = False
+    if len(_exacta_candidates_v335ha) == 1:
+        _a, _b = (int(c) for c in _exacta_candidates_v335ha[0]["ticket"])
+        _p_ab = _exacta_prob_with(_a, _b, _p1_map, _p2_map, _p3_map)
+        _p_ba = _exacta_prob_with(_b, _a, _p1_map, _p2_map, _p3_map)
+        if _p_ab is not None and _p_ba is not None:
+            _p_ab, _p_ba = max(0.0, float(_p_ab)), max(0.0, float(_p_ba))
+            _p_pair = _p_ab + _p_ba
+            if _p_pair > 0.0:
+                _alpha_first_share = _p_ab / _p_pair
+                _recommend_quinella_v335is = _alpha_first_share < _alpha_first_threshold_v335is
+                _ticket_comparison_v335is = (_p_ab, _p_ba, _alpha_first_share)
+
+    _ticket_kind_v335is = "2車複" if _recommend_quinella_v335is else "2車単"
+    _arrow_v335is = "－" if _recommend_quinella_v335is else "→"
+    _lines.append(f"【推奨・{_ticket_kind_v335is}】　候補{len(_exacta_candidates_v335ha)}点　妙味軸α{_arrow_v335is}β")
     for _r in _exacta_candidates_v335ha:
         _ticket_rank = tuple(int(c) for c in _r["ticket"])
         _rank = _exacta_rank_map_v335hh.get(_ticket_rank)
-        _prefix = "-".join(str(c) for c in _ticket_rank) + "（α-β）"
-        _lines.append(
-            _prefix + (
-                f"　的中想定順位 {_rank}位／全{_exacta_total_v335hh}通り"
-                if _rank is not None and _exacta_total_v335hh > 0
-                else "　的中想定順位 算出不可"
+        _display_ticket = tuple(sorted(_ticket_rank)) if _recommend_quinella_v335is else _ticket_rank
+        _prefix = "-".join(str(c) for c in _display_ticket) + "（α-β）"
+        if _rank is not None and _exacta_total_v335hh > 0:
+            _rank_label = "2車単的中想定順位" if _recommend_quinella_v335is else "的中想定順位"
+            _rank_text = f"　{_rank_label} {_rank}位／全{_exacta_total_v335hh}通り"
+        else:
+            _rank_text = "　的中想定順位 算出不可"
+        _lines.append(_prefix + _rank_text)
+        if _ticket_comparison_v335is is not None:
+            _pa, _pb, _share = _ticket_comparison_v335is
+            _lines.append(
+                f"※α→β {_pa*100:.2f}%／β→α {_pb*100:.2f}%"
+                f"（α先着率 {_share*100:.1f}%）→{_ticket_kind_v335is}推奨"
             )
-        )
+        else:
+            _lines.append("※裏表の想定的中率を算出できないため2車単を暫定表示")
     if not _exacta_candidates_v335ha:
         _lines.append("算出不可")
 
