@@ -1,3 +1,5 @@
+# v335in（展開最終着順→評価確率接続版）
+# 通常競輪のみ、展開比率加重の順位尤度を基礎確率へ弱く反映。印・買目は共通確率を参照。
 # v335il: 妙味軸ε/Ωの偏差値算出不可を修正。α基準の2車単母集団で妙味偏差値を算出。
 # v335ik: 妙味軸の印順・ライン条件・偏差値母集団を通常評価と整合させた版
 # v335ij（妙味軸条件付き評価・2車単1点＋3連複2点・試運転版）
@@ -5306,8 +5308,49 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             return 999.0
         return _num / _den
 
-    # 基本世界の想定確率。
-    _p1_map, _p2_map, _p3_map = _prob_maps_for_order(_order1)
+    # v335in：公開最終着順を、通常競輪の評価確率にも接続する。
+    # 個人KO・車番別着率・脚質適合の基礎確率は維持し、
+    # 各展開の最終順位から作る順位尤度を展開比率で混合して穏やかに補正。
+    # ガールズ／アドバンスの単騎モデルは従来どおり。
+    def _flow_reflected_prob_maps_v335in(_base_order, _scenario_rows):
+        _base_maps = _prob_maps_for_order(_base_order)
+        if _single_flow_class_v335hl:
+            return _base_maps
+        _valid = []
+        _universe = set(int(c) for c in _base_order)
+        for _row in (_scenario_rows or []):
+            try:
+                _order = tuple(int(c) for c in (_row.get("order") or ()))
+                _ratio = max(0.0, float(_row.get("ratio", 0.0) or 0.0))
+                if _ratio > 0 and len(_order) == len(_universe) and set(_order) == _universe:
+                    _valid.append((_ratio, _order))
+            except (TypeError, ValueError, AttributeError):
+                continue
+        _weight_sum = sum(w for w, _ in _valid)
+        if _weight_sum <= 0:
+            return _base_maps
+        _n = len(_universe)
+        # 小さな順位補正で個人能力の確率を上書きしない。
+        _strength = 0.30
+        _results = []
+        for _finish, _base in enumerate(_base_maps, start=1):
+            _likelihood = {c: 0.0 for c in _universe}
+            for _weight, _order in _valid:
+                for _idx, _car in enumerate(_order, start=1):
+                    _distance = abs(_idx - _finish)
+                    _likelihood[_car] += (_weight / _weight_sum) * math.exp(-0.45 * _distance)
+            _mean = sum(_likelihood.values()) / _n
+            _raw = {
+                c: max(1e-12, float(_base.get(c, 0.0)))
+                * (max(1e-12, _likelihood[c] / max(_mean, 1e-12)) ** _strength)
+                for c in _universe
+            }
+            _total = sum(_raw.values())
+            _results.append({c: _raw[c] / _total for c in _universe})
+        return tuple(_results)
+
+    # 基本世界の想定確率。印・券種ともこの共通マップを使用する。
+    _p1_map, _p2_map, _p3_map = _flow_reflected_prob_maps_v335in(_order1, _rows)
 
     # 基本世界の候補行。
     _scenario_rows_v335hi = (
