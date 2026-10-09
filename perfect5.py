@@ -2332,7 +2332,7 @@ def pos_coeff(role, line_factor):
 
 # 競走得点は順位別の例外処理を使わず、全車を同じ連続式でKO母集団へ反映する。
 # 目標SDは本体スコアに対する寄与幅。極端値だけ±2.5SDで制限する。
-KO_RATING_TARGET_SD = float(globals().get("KO_RATING_TARGET_SD", 0.14))
+KO_RATING_TARGET_SD = float(globals().get("KO_RATING_TARGET_SD", 0.07))
 KO_RATING_Z_CAP = float(globals().get("KO_RATING_Z_CAP", 2.50))
 
 def tenscore_correction(tenscores):
