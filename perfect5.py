@@ -7,6 +7,9 @@
 # ・的中想定順位は従来の全車券を母集団とする共通順位。
 # ・条件付き相手選抜は既存モデルのP(α1着, 相手2着)/P(α1着)を利用。
 # ・実オッズに基づく期待値保証ではなく検証用。
+# v335im（主役ライン番手の保護候補に限定的な展開補正・試験版）
+# ・主役ラインの先頭が勝つシナリオで、直後の番手にKO点幅15%の限定的補正を加えて保護候補を選ぶ。
+# ・無条件の番手固定はせず、他の通常評価・妙味軸評価・買目は維持。
 # v335ih（公開4点：2車単 ○→◎／△→◎／△→○、3連単 ◎→○→▲）
 # ・印選定、想定着順、確率モデルは変更しない。
 # v335ig（2車単表裏＋3連単2点・4点版）
@@ -11673,14 +11676,25 @@ try:
                 return xs
             head = int(head)
 
-            # 主役ライン内の残りは、KOスコア＋既存順位で2〜4番手へ寄せる。
-            # 2車ラインなら相手を2番手へ、3車以上なら最大2車までを上位保護する。
+            # v335im: 主役ラインの番手をKO点のみで保護枠から落とす偏りを緩和。
+            # 先頭車が勝つシナリオでは直後の番手に展開上の利がある。
+            # ただしKO差が大きい場合まで番手を無条件優先しない。
             main_rest = [int(c) for c in main if int(c) != head and int(c) in xs]
             try:
                 rank_now = {int(c): i for i, c in enumerate(xs)}
+                all_scores = [float(score_map.get(int(c), 0.0)) for c in xs]
+                score_span = max(all_scores) - min(all_scores) if all_scores else 0.0
+                head_pos = main.index(head)
+                next_mate = int(main[head_pos + 1]) if head_pos + 1 < len(main) else None
+                # 番手の評価をフィールドKO点幅の15%だけ加算。
+                # 他ラインや主役ラインの3番手以降には加算しない。
                 main_rest = sorted(
                     main_rest,
-                    key=lambda c: (float(score_map.get(int(c), 0.0)), -int(rank_now.get(int(c), 99))),
+                    key=lambda c: (
+                        float(score_map.get(int(c), 0.0))
+                        + (0.15 * score_span if next_mate is not None and int(c) == next_mate else 0.0),
+                        -int(rank_now.get(int(c), 99)),
+                    ),
                     reverse=True,
                 )
             except Exception:
