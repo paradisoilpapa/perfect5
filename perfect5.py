@@ -6082,8 +6082,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     if not _trio_candidates_v335ha:
         _lines.append("算出不可")
     _lines.append("")
-    _lines.append("※試運転：2車単α→β 1点＋3連複最多展開1-2-3位／通常◎-○-▲（重複時◎-▲-△）各1点（成立時計3点、各100円）")
-    _lines.append("※α→βは通常評価と同じ印順・ライン条件・評価母集団でα基準に再選抜。展開比率の条件付き再推定は未実装。実オッズに基づく期待値保証ではありません。")
 
     return _lines
 
