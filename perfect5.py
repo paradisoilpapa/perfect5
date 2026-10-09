@@ -1,3 +1,4 @@
+# v335il: 妙味軸ε/Ωの偏差値算出不可を修正。α基準の2車単母集団で妙味偏差値を算出。
 # v335ik: 妙味軸の印順・ライン条件・偏差値母集団を通常評価と整合させた版
 # v335ij（妙味軸条件付き評価・2車単1点＋3連複2点・試運転版）
 # ・通常◎○▲△×、順流/逆流/渦、ライン、内部想定確率は維持。
@@ -4718,7 +4719,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             for _k, _v in _clean.items()
         }
 
-    def _ticket_deviation_maps_v335ha():
+    def _ticket_deviation_maps_v335ha(_axis_override=None):
         """
         v335hb：
         ◎を固定した買目だけを母集団として、的中・妙味を偏差値化する。
@@ -4728,7 +4729,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         3連単：◎1着固定（7車なら30通り）
         """
         _cars_all = tuple(int(c) for c in (_cars or []))
-        _axis_v335hb = int(_axis_gc)
+        _axis_v335hb = int(_axis_gc if _axis_override is None else _axis_override)
 
         # 2車単：◎→相手のみ
         _ex_hit, _ex_val = {}, {}
@@ -5835,7 +5836,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 _raw_hit, _raw_value = {}, {}
                 # 通常△×と同じ「全2車単の妙味偏差値」を使用。
                 # α→候補の生妙味だけを候補内偏差値化すると、通常側と母集団がずれる。
-                _alpha_value_map = (_ticket_deviation_maps_v335ha().get("2車単_value", {}) or {})
+                _alpha_value_map = (_ticket_deviation_maps_v335ha(_alpha).get("2車単_value", {}) or {})
                 for _c in _remaining:
                     _ps = []
                     for _second in (int(_beta), _gamma):
