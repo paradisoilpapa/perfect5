@@ -1,3 +1,4 @@
+# v335iu：従来の妙味軸α→γβε（2車単3点）に、通常評価◎→無印1・無印2を追加。無印は通常5印以外から車番昇順。
 # v335it（公開推奨：妙味軸α→γβεの2車単3点専用）
 # ・2車単はα→γ、α→β、α→εの3点。候補不成立時は成立分のみ表示。
 # ・2車複への自動切替と3連複の公開推奨を削除。
@@ -6094,6 +6095,42 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         )
     if not _exacta_three_v335it:
         _lines.append("算出不可")
+    _lines.append("")
+
+    # v335iu：通常評価◎を1着固定に、通常5印の付いていない無印を追加。
+    # 無印1・2は集計アプリと合わせて車番の小さい順。6車立て等で
+    # 無印が1車しかない場合は成立する1点だけ表示し、補完しない。
+    _normal_marked_v335iu = {
+        int(c) for c in (_axis_gc, _b_gc, _triangle_gc, _delta_gc, _x_gc)
+        if c is not None
+    }
+    _unmarked_v335iu = sorted(
+        int(c) for c in (_cars or []) if int(c) not in _normal_marked_v335iu
+    )[:2]
+    _normal_axis_v335iu = int(_axis_gc) if _axis_gc is not None else None
+    _extra_exacta_v335iu = []
+    if _normal_axis_v335iu is not None:
+        for _idx_v335iu, _other_v335iu in enumerate(_unmarked_v335iu, start=1):
+            if _other_v335iu == _normal_axis_v335iu:
+                continue
+            _extra_exacta_v335iu.append((
+                (_normal_axis_v335iu, _other_v335iu), f"◎-無印{_idx_v335iu}"
+            ))
+
+    _lines.append(f"【追加・2車単】　候補{len(_extra_exacta_v335iu)}点　通常◎→無印1・無印2")
+    for _ticket_v335iu, _marks_v335iu in _extra_exacta_v335iu:
+        _rank_v335iu = _exacta_rank_map_v335hh.get(_ticket_v335iu)
+        _rank_text_v335iu = (
+            f"　的中想定順位 {_rank_v335iu}位／全{_exacta_total_v335hh}通り"
+            if _rank_v335iu is not None and _exacta_total_v335hh > 0
+            else "　的中想定順位 算出不可"
+        )
+        _lines.append(
+            f"{_ticket_v335iu[0]}-{_ticket_v335iu[1]}（{_marks_v335iu}）"
+            + _rank_text_v335iu
+        )
+    if not _extra_exacta_v335iu:
+        _lines.append("該当なし")
     _lines.append("")
 
     return _lines
