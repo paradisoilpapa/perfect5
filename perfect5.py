@@ -1,3 +1,5 @@
+# v335iw：2車複◎－無印2点を現状推奨、同じ2点の2車単を比較表示。既存2車単順位を維持。
+# v335iv：公開推奨を通常◎－無印の2車複（最大2点）に統一。旧2車単想定順位を参考値として保持。予想・印・確率は変更しない。
 # v335iu：従来の妙味軸α→γβε（2車単3点）に、通常評価◎→無印1・無印2を追加。無印は通常5印以外から車番昇順。
 # v335it（公開推奨：妙味軸α→γβεの2車単3点専用）
 # ・2車単はα→γ、α→β、α→εの3点。候補不成立時は成立分のみ表示。
@@ -6063,74 +6065,59 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _trifecta_rank_map_v335hh, _trifecta_total_v335hh = _all_ticket_hit_ranks_v335hh(3)
 
     _lines.append("")
-    # 公開推奨は妙味軸αを1着に固定した2車単3点（α→γ、α→β、α→ε）のみ。
-    # 通常評価、妙味軸の選抜、想定着順、内部確率モデルは変更しない。
-    _exacta_three_v335it = []
-    if "α" in _myoumi_marks_v335ii:
-        _alpha_v335it = int(_myoumi_marks_v335ii["α"])
-        for _mark_v335it in ("γ", "β", "ε"):
-            if _mark_v335it not in _myoumi_marks_v335ii:
-                continue
-            _other_v335it = int(_myoumi_marks_v335ii[_mark_v335it])
-            if _other_v335it == _alpha_v335it:
-                continue
-            _ticket_v335it = (_alpha_v335it, _other_v335it)
-            if any(_row["ticket"] == _ticket_v335it for _row in _exacta_three_v335it):
-                continue
-            _exacta_three_v335it.append({"ticket": _ticket_v335it, "marks": ("α", _mark_v335it)})
-
-    _lines.append(f"【推奨・2車単】　候補{len(_exacta_three_v335it)}点　妙味軸α→γβε")
-    for _row_v335it in _exacta_three_v335it:
-        _ticket_v335it = _row_v335it["ticket"]
-        _mark_v335it = _row_v335it["marks"][1]
-        _rank_v335it = _exacta_rank_map_v335hh.get(_ticket_v335it)
-        _rank_text_v335it = (
-            f"　的中想定順位 {_rank_v335it}位／全{_exacta_total_v335hh}通り"
-            if _rank_v335it is not None and _exacta_total_v335hh > 0
-            else "　的中想定順位 算出不可"
-        )
-        _lines.append(
-            f"{_ticket_v335it[0]}-{_ticket_v335it[1]}（α-{_mark_v335it}）"
-            + _rank_text_v335it
-        )
-    if not _exacta_three_v335it:
-        _lines.append("算出不可")
-    _lines.append("")
-
-    # v335iu：通常評価◎を1着固定に、通常5印の付いていない無印を追加。
-    # 無印1・2は集計アプリと合わせて車番の小さい順。6車立て等で
-    # 無印が1車しかない場合は成立する1点だけ表示し、補完しない。
-    _normal_marked_v335iu = {
+    # v335iv：公開買目は通常◎－無印の2車複のみ。
+    # 印、無印選定、内部確率、従来の2車単想定順位は変更しない。
+    # 従来の「的中想定順位」は2車単の全順序付き組合せを母集団とする
+    # ◎→無印の順位をそのまま引き継ぐ（2車複の順位ではない）。
+    _normal_marked_v335iv = {
         int(c) for c in (_axis_gc, _b_gc, _triangle_gc, _delta_gc, _x_gc)
         if c is not None
     }
-    _unmarked_v335iu = sorted(
-        int(c) for c in (_cars or []) if int(c) not in _normal_marked_v335iu
+    _unmarked_v335iv = sorted(
+        int(c) for c in (_cars or []) if int(c) not in _normal_marked_v335iv
     )[:2]
-    _normal_axis_v335iu = int(_axis_gc) if _axis_gc is not None else None
-    _extra_exacta_v335iu = []
-    if _normal_axis_v335iu is not None:
-        for _idx_v335iu, _other_v335iu in enumerate(_unmarked_v335iu, start=1):
-            if _other_v335iu == _normal_axis_v335iu:
+    _normal_axis_v335iv = int(_axis_gc) if _axis_gc is not None else None
+    _quinella_v335iv = []
+    if _normal_axis_v335iv is not None:
+        for _idx_v335iv, _other_v335iv in enumerate(_unmarked_v335iv, start=1):
+            if _other_v335iv == _normal_axis_v335iv:
                 continue
-            _extra_exacta_v335iu.append((
-                (_normal_axis_v335iu, _other_v335iu), f"◎-無印{_idx_v335iu}"
+            _quinella_v335iv.append((
+                (_normal_axis_v335iv, _other_v335iv), f"◎-無印{_idx_v335iv}"
             ))
 
-    _lines.append(f"【追加・2車単】　候補{len(_extra_exacta_v335iu)}点　通常◎→無印1・無印2")
-    for _ticket_v335iu, _marks_v335iu in _extra_exacta_v335iu:
-        _rank_v335iu = _exacta_rank_map_v335hh.get(_ticket_v335iu)
-        _rank_text_v335iu = (
-            f"　的中想定順位 {_rank_v335iu}位／全{_exacta_total_v335hh}通り"
-            if _rank_v335iu is not None and _exacta_total_v335hh > 0
+    _lines.append(f"【現状推奨・2車複】　候補{len(_quinella_v335iv)}点　通常◎－無印")
+    for _ticket_v335iv, _marks_v335iv in _quinella_v335iv:
+        # 以前の◎→無印の順位をそのまま引き継ぐ。逆順との合算はしない。
+        _rank_v335iv = _exacta_rank_map_v335hh.get(_ticket_v335iv)
+        _rank_text_v335iv = (
+            f"　的中想定順位 {_rank_v335iv}位／全{_exacta_total_v335hh}通り"
+            if _rank_v335iv is not None and _exacta_total_v335hh > 0
             else "　的中想定順位 算出不可"
         )
         _lines.append(
-            f"{_ticket_v335iu[0]}-{_ticket_v335iu[1]}（{_marks_v335iu}）"
-            + _rank_text_v335iu
+            f"{_ticket_v335iv[0]}-{_ticket_v335iv[1]}（{_marks_v335iv}）"
+            + _rank_text_v335iv
         )
-    if not _extra_exacta_v335iu:
+    if not _quinella_v335iv:
         _lines.append("該当なし")
+    _lines.append("※上記順位は従来の2車単（◎→無印）基準の参考順位です。")
+    _lines.append("")
+    _lines.append(f"【比較・2車単】　候補{len(_quinella_v335iv)}点　通常◎→無印1・無印2")
+    for _ticket_v335iv, _marks_v335iv in _quinella_v335iv:
+        _rank_v335iv = _exacta_rank_map_v335hh.get(_ticket_v335iv)
+        _rank_text_v335iv = (
+            f"　的中想定順位 {_rank_v335iv}位／全{_exacta_total_v335hh}通り"
+            if _rank_v335iv is not None and _exacta_total_v335hh > 0
+            else "　的中想定順位 算出不可"
+        )
+        _lines.append(
+            f"{_ticket_v335iv[0]}-{_ticket_v335iv[1]}（{_marks_v335iv}）"
+            + _rank_text_v335iv
+        )
+    if not _quinella_v335iv:
+        _lines.append("該当なし")
+    _lines.append("※資金状況に応じて2車複か2車単のどちらかを選択。両方の購入は前提としません。")
     _lines.append("")
 
     return _lines
