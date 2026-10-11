@@ -1,3 +1,4 @@
+# v335iy：現状推奨を妙味評価α→β・γ・ε・Ωの2車単（最大4点）へ変更。予想ロジックは維持。
 # v335ix2：現状推奨2車複にβ－妙味無印を追加。通常◎－無印との重複は車番ペア単位で除外。
 # v335iw：2車複◎－無印2点を現状推奨、同じ2点の2車単を比較表示。既存2車単順位を維持。
 # v335iv：公開推奨を通常◎－無印の2車複（最大2点）に統一。旧2車単想定順位を参考値として保持。予想・印・確率は変更しない。
@@ -6099,65 +6100,37 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 (_normal_axis_v335iv, _other_v335iv), f"◎-無印{_idx_v335iv}"
             ))
 
-    # v335ix2：通常◎－無印を基本に、妙味β－妙味無印の非重複分を追加。
-    # 2車複なので車番を昇順に正規化し、同一車券は1回だけ表示する。
-    _combined_quinella_v335ix2 = []
-    _seen_pairs_v335ix2 = set()
-    for _ticket_v335ix2, _mark_v335ix2 in _quinella_v335iv:
-        _pair_v335ix2 = tuple(sorted(int(c) for c in _ticket_v335ix2))
-        if _pair_v335ix2 not in _seen_pairs_v335ix2:
-            _seen_pairs_v335ix2.add(_pair_v335ix2)
-            _combined_quinella_v335ix2.append((_pair_v335ix2, _mark_v335ix2))
-
-    _beta_v335ix2 = _myoumi_marks_v335ii.get("β")
-    _myoumi_marked_v335ix2 = {int(c) for c in _myoumi_marks_v335ii.values()}
-    _myoumi_unmarked_v335ix2 = sorted(
-        int(c) for c in (_cars or []) if int(c) not in _myoumi_marked_v335ix2
-    )[:2]
-    _extra_count_v335ix2 = 0
-    if _beta_v335ix2 is not None:
-        for _idx_v335ix2, _other_v335ix2 in enumerate(_myoumi_unmarked_v335ix2, start=1):
-            if int(_beta_v335ix2) == int(_other_v335ix2):
+    # v335iy：現状推奨は妙味評価αを1着軸とした2車単4点。
+    # α・β・γ・ε・Ωの選定、内部確率、想定着順は変更しない。
+    _alpha_v335iy = _myoumi_marks_v335ii.get("α")
+    _value_exacta_v335iy = []
+    if _alpha_v335iy is not None:
+        for _mark_v335iy in ("β", "γ", "ε", "Ω"):
+            _other_v335iy = _myoumi_marks_v335ii.get(_mark_v335iy)
+            if _other_v335iy is None:
                 continue
-            _pair_v335ix2 = tuple(sorted((int(_beta_v335ix2), int(_other_v335ix2))))
-            if _pair_v335ix2 in _seen_pairs_v335ix2:
+            _ticket_v335iy = (int(_alpha_v335iy), int(_other_v335iy))
+            if _ticket_v335iy[0] == _ticket_v335iy[1]:
                 continue
-            _seen_pairs_v335ix2.add(_pair_v335ix2)
-            _combined_quinella_v335ix2.append((_pair_v335ix2, f"β-妙味無印{_idx_v335ix2}・追加"))
-            _extra_count_v335ix2 += 1
+            if any(_item[0] == _ticket_v335iy for _item in _value_exacta_v335iy):
+                continue
+            _value_exacta_v335iy.append((_ticket_v335iy, f"α→{_mark_v335iy}"))
 
-    _lines.append(
-        f"【現状推奨・2車複】　候補{len(_combined_quinella_v335ix2)}点"
-        f"（通常◎－無印{len(_quinella_v335iv)}点＋妙味β－無印追加{_extra_count_v335ix2}点）"
-    )
-    for _pair_v335ix2, _marks_v335ix2 in _combined_quinella_v335ix2:
-        _rank_v335ix2 = _quinella_rank_map_v335ix.get(_pair_v335ix2)
-        _rank_text_v335ix2 = (
-            f"　的中想定順位 {_rank_v335ix2}位／全{_quinella_total_v335ix}通り"
-            if _rank_v335ix2 is not None and _quinella_total_v335ix > 0
+    _lines.append(f"【現状推奨・2車単】　候補{len(_value_exacta_v335iy)}点　妙味評価α軸")
+    for _ticket_v335iy, _marks_v335iy in _value_exacta_v335iy:
+        _rank_v335iy = _exacta_rank_map_v335hh.get(_ticket_v335iy)
+        _rank_text_v335iy = (
+            f"　的中想定順位 {_rank_v335iy}位／全{_exacta_total_v335hh}通り"
+            if _rank_v335iy is not None and _exacta_total_v335hh > 0
             else "　的中想定順位 算出不可"
         )
         _lines.append(
-            f"{_pair_v335ix2[0]}-{_pair_v335ix2[1]}（{_marks_v335ix2}）" + _rank_text_v335ix2
+            f"{_ticket_v335iy[0]}-{_ticket_v335iy[1]}（{_marks_v335iy}）"
+            + _rank_text_v335iy
         )
-    if not _combined_quinella_v335ix2:
+    if not _value_exacta_v335iy:
         _lines.append("該当なし")
-    _lines.append("")
-    _lines.append(f"【比較・2車単】　候補{len(_quinella_v335iv)}点　通常◎→無印1・無印2")
-    for _ticket_v335iv, _marks_v335iv in _quinella_v335iv:
-        _rank_v335iv = _exacta_rank_map_v335hh.get(_ticket_v335iv)
-        _rank_text_v335iv = (
-            f"　的中想定順位 {_rank_v335iv}位／全{_exacta_total_v335hh}通り"
-            if _rank_v335iv is not None and _exacta_total_v335hh > 0
-            else "　的中想定順位 算出不可"
-        )
-        _lines.append(
-            f"{_ticket_v335iv[0]}-{_ticket_v335iv[1]}（{_marks_v335iv}）"
-            + _rank_text_v335iv
-        )
-    if not _quinella_v335iv:
-        _lines.append("該当なし")
-    _lines.append("※資金状況に応じて2車複か2車単のどちらかを選択。両方の購入は前提としません。")
+    _lines.append("※1点100円の平買い想定。実オッズによる期待値保証ではありません。")
     _lines.append("")
 
     return _lines
