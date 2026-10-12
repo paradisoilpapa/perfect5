@@ -1,3 +1,4 @@
+# v335iz：ガールズのみ現状推奨2車単を○▲△×→◎（最大4点）へ変更。通常競輪・アドバンスはv335iy維持。
 # v335iy：現状推奨を妙味評価α→β・γ・ε・Ωの2車単（最大4点）へ変更。予想ロジックは維持。
 # v335ix2：現状推奨2車複にβ－妙味無印を追加。通常◎－無印との重複は車番ペア単位で除外。
 # v335iw：2車複◎－無印2点を現状推奨、同じ2点の2車単を比較表示。既存2車単順位を維持。
@@ -6116,7 +6117,27 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 continue
             _value_exacta_v335iy.append((_ticket_v335iy, f"α→{_mark_v335iy}"))
 
-    _lines.append(f"【現状推奨・2車単】　候補{len(_value_exacta_v335iy)}点　妙味評価α軸")
+    # v335iz：ガールズだけ通常評価の◎を2着固定し、○▲△×を1着にする。
+    # アドバンスは対象外。評価印・内部計算・通常競輪の推奨はそのまま。
+    _girls_reverse_v335iz = str(race_class or "").strip() == "ガールズ"
+    if _girls_reverse_v335iz:
+        _value_exacta_v335iy = []
+        if _axis_gc is not None:
+            for _mark_v335iz, _car_v335iz in (
+                ("○", _b_gc), ("▲", _triangle_gc),
+                ("△", _delta_gc), ("×", _x_gc),
+            ):
+                if _car_v335iz is None:
+                    continue
+                _ticket_v335iz = (int(_car_v335iz), int(_axis_gc))
+                if _ticket_v335iz[0] == _ticket_v335iz[1]:
+                    continue
+                if any(_item[0] == _ticket_v335iz for _item in _value_exacta_v335iy):
+                    continue
+                _value_exacta_v335iy.append((_ticket_v335iz, f"{_mark_v335iz}→◎"))
+
+    _recommend_label_v335iz = "通常評価◎2着固定" if _girls_reverse_v335iz else "妙味評価α軸"
+    _lines.append(f"【現状推奨・2車単】　候補{len(_value_exacta_v335iy)}点　{_recommend_label_v335iz}")
     for _ticket_v335iy, _marks_v335iy in _value_exacta_v335iy:
         _rank_v335iy = _exacta_rank_map_v335hh.get(_ticket_v335iy)
         _rank_text_v335iy = (
