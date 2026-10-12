@@ -1,3 +1,4 @@
+# v335iz-trio：3連複 ▲－◎○α－◎○α を追加。既存推奨2車単・予想ロジック維持。
 # v335iz：ガールズのみ現状推奨2車単を○▲△×→◎（最大4点）へ変更。通常競輪・アドバンスはv335iy維持。
 # v335iy：現状推奨を妙味評価α→β・γ・ε・Ωの2車単（最大4点）へ変更。予想ロジックは維持。
 # v335ix2：現状推奨2車複にβ－妙味無印を追加。通常◎－無印との重複は車番ペア単位で除外。
@@ -6152,6 +6153,35 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     if not _value_exacta_v335iy:
         _lines.append("該当なし")
     _lines.append("※1点100円の平買い想定。実オッズによる期待値保証ではありません。")
+    _lines.append("")
+
+    # v335iz-trio：既存2車単推奨は変更せず、3連複を追加表示する。
+    # ▲－◎○α－◎○α。車番重複・軸との一致は除外し、3車組は昇順で一意化。
+    _trio_axis = int(_triangle_gc) if _triangle_gc is not None else None
+    _trio_candidates = (
+        ("◎", _axis_gc), ("○", _b_gc),
+        ("α", _myoumi_marks_v335ii.get("α")),
+    )
+    _trio_tickets = {}
+    if _trio_axis is not None:
+        _trio_valid = [
+            (mark, int(car)) for mark, car in _trio_candidates
+            if car is not None and int(car) != _trio_axis
+        ]
+        for _i in range(len(_trio_valid)):
+            for _j in range(_i + 1, len(_trio_valid)):
+                _m1, _c1 = _trio_valid[_i]
+                _m2, _c2 = _trio_valid[_j]
+                if _c1 == _c2:
+                    continue
+                _ticket = tuple(sorted((_trio_axis, _c1, _c2)))
+                _trio_tickets.setdefault(_ticket, f"▲-{_m1}-{_m2}")
+    _lines.append(f"【追加買い目・3連複】　▲－◎○α－◎○α　候補{len(_trio_tickets)}点")
+    for _ticket, _marks in sorted(_trio_tickets.items()):
+        _lines.append(f"{'-'.join(map(str, _ticket))}（{_marks}）")
+    if not _trio_tickets:
+        _lines.append("該当なし（印重複または印不足）")
+    _lines.append("※3連複は順不同・1点100円。上記2車単の点数には含めません。")
     _lines.append("")
 
     return _lines
