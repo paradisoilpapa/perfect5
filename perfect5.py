@@ -6102,87 +6102,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 (_normal_axis_v335iv, _other_v335iv), f"◎-無印{_idx_v335iv}"
             ))
 
-    # v335iy：現状推奨は妙味評価αを1着軸とした2車単4点。
-    # α・β・γ・ε・Ωの選定、内部確率、想定着順は変更しない。
-    _alpha_v335iy = _myoumi_marks_v335ii.get("α")
-    _value_exacta_v335iy = []
-    if _alpha_v335iy is not None:
-        for _mark_v335iy in ("β", "γ", "ε", "Ω"):
-            _other_v335iy = _myoumi_marks_v335ii.get(_mark_v335iy)
-            if _other_v335iy is None:
-                continue
-            _ticket_v335iy = (int(_alpha_v335iy), int(_other_v335iy))
-            if _ticket_v335iy[0] == _ticket_v335iy[1]:
-                continue
-            if any(_item[0] == _ticket_v335iy for _item in _value_exacta_v335iy):
-                continue
-            _value_exacta_v335iy.append((_ticket_v335iy, f"α→{_mark_v335iy}"))
-
-    # v335iz：ガールズだけ通常評価の◎を2着固定し、○▲△×を1着にする。
-    # アドバンスは対象外。評価印・内部計算・通常競輪の推奨はそのまま。
-    _girls_reverse_v335iz = str(race_class or "").strip() == "ガールズ"
-    if _girls_reverse_v335iz:
-        _value_exacta_v335iy = []
-        if _axis_gc is not None:
-            for _mark_v335iz, _car_v335iz in (
-                ("○", _b_gc), ("▲", _triangle_gc),
-                ("△", _delta_gc), ("×", _x_gc),
-            ):
-                if _car_v335iz is None:
-                    continue
-                _ticket_v335iz = (int(_car_v335iz), int(_axis_gc))
-                if _ticket_v335iz[0] == _ticket_v335iz[1]:
-                    continue
-                if any(_item[0] == _ticket_v335iz for _item in _value_exacta_v335iy):
-                    continue
-                _value_exacta_v335iy.append((_ticket_v335iz, f"{_mark_v335iz}→◎"))
-
-    _recommend_label_v335iz = "通常評価◎2着固定" if _girls_reverse_v335iz else "妙味評価α軸"
-    _lines.append(f"【現状推奨・2車単】　候補{len(_value_exacta_v335iy)}点　{_recommend_label_v335iz}")
-    for _ticket_v335iy, _marks_v335iy in _value_exacta_v335iy:
-        _rank_v335iy = _exacta_rank_map_v335hh.get(_ticket_v335iy)
-        _rank_text_v335iy = (
-            f"　的中想定順位 {_rank_v335iy}位／全{_exacta_total_v335hh}通り"
-            if _rank_v335iy is not None and _exacta_total_v335hh > 0
-            else "　的中想定順位 算出不可"
-        )
-        _lines.append(
-            f"{_ticket_v335iy[0]}-{_ticket_v335iy[1]}（{_marks_v335iy}）"
-            + _rank_text_v335iy
-        )
-    if not _value_exacta_v335iy:
-        _lines.append("該当なし")
-    _lines.append("※1点100円の平買い想定。実オッズによる期待値保証ではありません。")
-    _lines.append("")
-
-    # v335iz-trio：既存2車単推奨は変更せず、3連複を追加表示する。
-    # ▲－◎○α－◎○α。車番重複・軸との一致は除外し、3車組は昇順で一意化。
-    _trio_axis = int(_triangle_gc) if _triangle_gc is not None else None
-    _trio_candidates = (
-        ("◎", _axis_gc), ("○", _b_gc),
-        ("α", _myoumi_marks_v335ii.get("α")),
-    )
-    _trio_tickets = {}
-    if _trio_axis is not None:
-        _trio_valid = [
-            (mark, int(car)) for mark, car in _trio_candidates
-            if car is not None and int(car) != _trio_axis
-        ]
-        for _i in range(len(_trio_valid)):
-            for _j in range(_i + 1, len(_trio_valid)):
-                _m1, _c1 = _trio_valid[_i]
-                _m2, _c2 = _trio_valid[_j]
-                if _c1 == _c2:
-                    continue
-                _ticket = tuple(sorted((_trio_axis, _c1, _c2)))
-                _trio_tickets.setdefault(_ticket, f"▲-{_m1}-{_m2}")
-    _lines.append(f"【追加買い目・3連複】　▲－◎○α－◎○α　候補{len(_trio_tickets)}点")
-    for _ticket, _marks in sorted(_trio_tickets.items()):
-        _lines.append(f"{'-'.join(map(str, _ticket))}（{_marks}）")
-    if not _trio_tickets:
-        _lines.append("該当なし（印重複または印不足）")
-    _lines.append("※3連複は順不同・1点100円。上記2車単の点数には含めません。")
-    _lines.append("")
+    # 公開用の推奨買い目（2車単・3連複）は表示しない。
+    # 印評価、想定着順、内部計算はそのまま維持する。
 
     return _lines
 
