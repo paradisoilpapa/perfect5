@@ -6030,7 +6030,25 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         else:
             _lines.append(f"{_mark_v335ii}　算出不可")
     _lines.append("")
-    _lines.append("【ヴェロビ分析・券種別オススメ】")
+    # ガールズのみ、通常評価の4車から◎への2車単を公開する。
+    # 通常競輪・アドバンスでは券種別オススメ欄を表示しない。
+    if race_class == "ガールズ":
+        _lines.append("【ガールズ競輪・2車単買い目】")
+        _girls_targets = (("○", _hit_himo), ("▲", _triangle_gc),
+                          ("△", _delta_gc), ("×", _x_gc))
+        _girls_seen = set()
+        _girls_tickets = []
+        for _girls_mark, _girls_car in _girls_targets:
+            if _girls_car is None or _axis_gc is None:
+                continue
+            _girls_car = int(_girls_car)
+            _girls_axis = int(_axis_gc)
+            if _girls_car == _girls_axis or _girls_car in _girls_seen:
+                continue
+            _girls_seen.add(_girls_car)
+            _girls_tickets.append(f"{_girls_car}→{_girls_axis}")
+        _lines.extend(_girls_tickets or ["該当なし"])
+        _lines.append("※ガールズは傾向分析から除外しています")
 
     # v335hh：公開買目は偏差値ではなく、全成立買目の「的中想定順位」で表示する。
     # 2車単 = n×(n-1) 通り、3連単 = n×(n-1)×(n-2) 通り。
