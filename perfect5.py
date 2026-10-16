@@ -1,3 +1,4 @@
+# v335ja: ε基準の最終総合評価（ε/A/B/C/D）を追加。既存買目は維持。
 # v335iz-trio：3連複 ▲－◎○α－◎○α を追加。既存推奨2車単・予想ロジック維持。
 # v335iz：ガールズのみ現状推奨2車単を○▲△×→◎（最大4点）へ変更。通常競輪・アドバンスはv335iy維持。
 # v335iy：現状推奨を妙味評価α→β・γ・ε・Ωの2車単（最大4点）へ変更。予想ロジックは維持。
@@ -6030,6 +6031,119 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         else:
             _lines.append(f"{_mark_v335ii}　算出不可")
     _lines.append("")
+    # v335ja: 妙味評価εを基準に、通常印に依存しない最終5車評価を再選抜。
+    # 元の通常印・妙味印・確率・既存公開買目は変更しない。
+    _final_epsilon_marks_v335ja = {}
+    _final_epsilon_details_v335ja = {}
+    _epsilon_anchor_v335ja = _myoumi_marks_v335ii.get("ε")
+    if _epsilon_anchor_v335ja is not None:
+        _eps_v335ja = int(_epsilon_anchor_v335ja)
+        _final_epsilon_marks_v335ja["ε"] = _eps_v335ja
+        _used_v335ja = {_eps_v335ja}
+        _eps_rows_v335ja = _scenario_candidate_rows(
+            _eps_v335ja, _scenario_rows_v335hi, _p1_map, _p2_map, _p3_map
+        )
+        # A: εとの連対指数最大。通常印での採否にかかわらず全車から選ぶ。
+        _a_v335ja, _a_row_v335ja = _select_hit_himo(
+            [r for r in _eps_rows_v335ja if int(r["car"]) not in _used_v335ja]
+        )
+        if _a_v335ja is not None:
+            _a_v335ja = int(_a_v335ja)
+            _used_v335ja.add(_a_v335ja)
+            _final_epsilon_marks_v335ja["A"] = _a_v335ja
+            _final_epsilon_details_v335ja["A"] = "連対指数 " + (
+                f"{float(_a_row_v335ja['qprob'])*100:.1f}%" if _a_row_v335ja else "算出不可"
+            )
+        # B: ε→相手の内部想定的中率×配当帯割合の最大車。
+        _fit_rows_v335ja = []
+        for _car_v335ja in _cars:
+            _car_v335ja = int(_car_v335ja)
+            if _car_v335ja in _used_v335ja:
+                continue
+            _p_v335ja = _exacta_prob_with(
+                _eps_v335ja, _car_v335ja, _p1_map, _p2_map, _p3_map
+            )
+            _fit_v335ja = float(_distribution_band_v335fz(
+                "2車単", _p_v335ja
+            ).get("selection_score", -1.0) or -1.0)
+            _fit_rows_v335ja.append({
+                "car": _car_v335ja, "score": _fit_v335ja,
+                "prob": -1.0 if _p_v335ja is None else float(_p_v335ja),
+            })
+        _fit_rows_v335ja.sort(key=lambda r: (-r["score"], -r["prob"], r["car"]))
+        if _fit_rows_v335ja:
+            _b_v335ja = int(_fit_rows_v335ja[0]["car"])
+            _used_v335ja.add(_b_v335ja)
+            _final_epsilon_marks_v335ja["B"] = _b_v335ja
+            _fit_scores_v335ja = [r["score"] for r in _fit_rows_v335ja]
+            _mean_v335ja = sum(_fit_scores_v335ja) / len(_fit_scores_v335ja)
+            _sd_v335ja = (sum((x-_mean_v335ja)**2 for x in _fit_scores_v335ja)
+                            / len(_fit_scores_v335ja))**0.5
+            _b_score_v335ja = float(_fit_rows_v335ja[0]["score"])
+            _b_dev_v335ja = (50.0 if _sd_v335ja <= 1e-12 else
+                             50.0 + 10.0*(_b_score_v335ja-_mean_v335ja)/_sd_v335ja)
+            _final_epsilon_details_v335ja["B"] = f"配当適合偏差値 {_b_dev_v335ja:.1f}"
+        # C/D: ε→A/B→候補の3連単的中偏差値とε→候補の妙味偏差値の平均。
+        _remain_v335ja = [int(c) for c in _cars if int(c) not in _used_v335ja]
+        _raw_hit_v335ja, _raw_value_v335ja = {}, {}
+        _eps_value_map_v335ja = (_ticket_deviation_maps_v335ha(
+            _eps_v335ja
+        ).get("2車単_value", {}) or {})
+        for _car_v335ja in _remain_v335ja:
+            _probs_v335ja = []
+            for _second_v335ja in (
+                _final_epsilon_marks_v335ja.get("A"),
+                _final_epsilon_marks_v335ja.get("B"),
+            ):
+                if _second_v335ja is None:
+                    continue
+                _p_v335ja = _trifecta_prob_with(
+                    _eps_v335ja, int(_second_v335ja), _car_v335ja,
+                    _p1_map, _p2_map, _p3_map
+                )
+                if _p_v335ja is not None and math.isfinite(float(_p_v335ja)) and float(_p_v335ja) >= 0:
+                    _probs_v335ja.append(float(_p_v335ja))
+            if _probs_v335ja:
+                _raw_hit_v335ja[_car_v335ja] = sum(_probs_v335ja)
+            _v_v335ja = _eps_value_map_v335ja.get((_eps_v335ja, _car_v335ja))
+            if _v_v335ja is not None and math.isfinite(float(_v_v335ja)):
+                _raw_value_v335ja[_car_v335ja] = float(_v_v335ja)
+        _hit_dev_v335ja = _deviation_map_v335ha(_raw_hit_v335ja)
+        _balance_rows_v335ja = []
+        for _car_v335ja in _remain_v335ja:
+            if _car_v335ja not in _hit_dev_v335ja or _car_v335ja not in _raw_value_v335ja:
+                continue
+            _h_v335ja = float(_hit_dev_v335ja[_car_v335ja])
+            _v_v335ja = float(_raw_value_v335ja[_car_v335ja])
+            _balance_rows_v335ja.append({
+                "car": _car_v335ja, "hit": _h_v335ja, "value": _v_v335ja,
+                "balance": (_h_v335ja + _v_v335ja) / 2.0,
+            })
+        _balance_rows_v335ja.sort(key=lambda r: (
+            -r["balance"], -min(r["hit"], r["value"]),
+            -r["hit"], -r["value"], r["car"]
+        ))
+        for _mark_v335ja, _row_v335ja in zip(("C", "D"), _balance_rows_v335ja):
+            _final_epsilon_marks_v335ja[_mark_v335ja] = int(_row_v335ja["car"])
+            _final_epsilon_details_v335ja[_mark_v335ja] = (
+                f"的中妙味バランス {_row_v335ja['balance']:.1f}"
+                f"（的中{_row_v335ja['hit']:.1f}／妙味{_row_v335ja['value']:.1f}）"
+            )
+    _lines.append("【最終総合評価】")
+    for _mark_v335ja in ("ε", "A", "B", "C", "D"):
+        if _mark_v335ja not in _final_epsilon_marks_v335ja:
+            _lines.append(f"{_mark_v335ja}　該当なし")
+            continue
+        _car_v335ja = int(_final_epsilon_marks_v335ja[_mark_v335ja])
+        if _mark_v335ja == "ε":
+            _lines.append(f"ε　{_car_v335ja}　妙味評価εを基準軸に固定")
+        else:
+            _lines.append(
+                f"{_mark_v335ja}　{_car_v335ja}　"
+                f"{_final_epsilon_details_v335ja.get(_mark_v335ja, '算出不可')}"
+            )
+    _lines.append("")
+    # 固定4点の購入券種は未確定のため、この版では評価のみ追加。
     # ガールズのみ、通常評価の4車から◎への2車単を公開する。
     # 通常競輪・アドバンスでは券種別オススメ欄を表示しない。
     if race_class == "ガールズ":
