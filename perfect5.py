@@ -1,3 +1,4 @@
+# v335jb: 最終総合評価εABCDだけを2車複基準に変更（配当適合は表裏代理指標）。通常・妙味・既存買目は維持。
 # v335ja: ε基準の最終総合評価（ε/A/B/C/D）を追加。既存買目は維持。
 # v335iz-trio：3連複 ▲－◎○α－◎○α を追加。既存推奨2車単・予想ロジック維持。
 # v335iz：ガールズのみ現状推奨2車単を○▲△×→◎（最大4点）へ変更。通常競輪・アドバンスはv335iy維持。
@@ -6031,8 +6032,10 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         else:
             _lines.append(f"{_mark_v335ii}　算出不可")
     _lines.append("")
-    # v335ja: 妙味評価εを基準に、通常印に依存しない最終5車評価を再選抜。
-    # 元の通常印・妙味印・確率・既存公開買目は変更しない。
+    # v335jb: 最終総合評価のみε軸2車複専用にする。
+    # 通常・妙味評価、共通確率、展開、公開買目は変更しない。
+    # 配当適合には2車複の実配当分布がないため、既存の2車単の
+    # 表裏それぞれの配当帯適合スコアを確率加重した代理値を使用する。
     _final_epsilon_marks_v335ja = {}
     _final_epsilon_details_v335ja = {}
     _epsilon_anchor_v335ja = _myoumi_marks_v335ii.get("ε")
@@ -6040,94 +6043,106 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _eps_v335ja = int(_epsilon_anchor_v335ja)
         _final_epsilon_marks_v335ja["ε"] = _eps_v335ja
         _used_v335ja = {_eps_v335ja}
-        _eps_rows_v335ja = _scenario_candidate_rows(
+        _eps_rows_v335jb = _scenario_candidate_rows(
             _eps_v335ja, _scenario_rows_v335hi, _p1_map, _p2_map, _p3_map
         )
-        # A: εとの連対指数最大。通常印での採否にかかわらず全車から選ぶ。
-        _a_v335ja, _a_row_v335ja = _select_hit_himo(
-            [r for r in _eps_rows_v335ja if int(r["car"]) not in _used_v335ja]
-        )
-        if _a_v335ja is not None:
-            _a_v335ja = int(_a_v335ja)
-            _used_v335ja.add(_a_v335ja)
-            _final_epsilon_marks_v335ja["A"] = _a_v335ja
-            _final_epsilon_details_v335ja["A"] = "連対指数 " + (
-                f"{float(_a_row_v335ja['qprob'])*100:.1f}%" if _a_row_v335ja else "算出不可"
-            )
-        # B: ε→相手の内部想定的中率×配当帯割合の最大車。
-        _fit_rows_v335ja = []
-        for _car_v335ja in _cars:
-            _car_v335ja = int(_car_v335ja)
-            if _car_v335ja in _used_v335ja:
+        _all_v335jb = []
+        for _r_v335jb in _eps_rows_v335jb:
+            _c_v335jb = int(_r_v335jb["car"])
+            _q_v335jb = float(_r_v335jb.get("qprob", -1.0))
+            if not math.isfinite(_q_v335jb) or _q_v335jb < 0.0:
                 continue
-            _p_v335ja = _exacta_prob_with(
-                _eps_v335ja, _car_v335ja, _p1_map, _p2_map, _p3_map
+            _ab_v335jb = _exacta_prob_with(
+                _eps_v335ja, _c_v335jb, _p1_map, _p2_map, _p3_map
             )
-            _fit_v335ja = float(_distribution_band_v335fz(
-                "2車単", _p_v335ja
-            ).get("selection_score", -1.0) or -1.0)
-            _fit_rows_v335ja.append({
-                "car": _car_v335ja, "score": _fit_v335ja,
-                "prob": -1.0 if _p_v335ja is None else float(_p_v335ja),
-            })
-        _fit_rows_v335ja.sort(key=lambda r: (-r["score"], -r["prob"], r["car"]))
-        if _fit_rows_v335ja:
-            _b_v335ja = int(_fit_rows_v335ja[0]["car"])
-            _used_v335ja.add(_b_v335ja)
-            _final_epsilon_marks_v335ja["B"] = _b_v335ja
-            _fit_scores_v335ja = [r["score"] for r in _fit_rows_v335ja]
-            _mean_v335ja = sum(_fit_scores_v335ja) / len(_fit_scores_v335ja)
-            _sd_v335ja = (sum((x-_mean_v335ja)**2 for x in _fit_scores_v335ja)
-                            / len(_fit_scores_v335ja))**0.5
-            _b_score_v335ja = float(_fit_rows_v335ja[0]["score"])
-            _b_dev_v335ja = (50.0 if _sd_v335ja <= 1e-12 else
-                             50.0 + 10.0*(_b_score_v335ja-_mean_v335ja)/_sd_v335ja)
-            _final_epsilon_details_v335ja["B"] = f"配当適合偏差値 {_b_dev_v335ja:.1f}"
-        # C/D: ε→A/B→候補の3連単的中偏差値とε→候補の妙味偏差値の平均。
-        _remain_v335ja = [int(c) for c in _cars if int(c) not in _used_v335ja]
-        _raw_hit_v335ja, _raw_value_v335ja = {}, {}
-        _eps_value_map_v335ja = (_ticket_deviation_maps_v335ha(
-            _eps_v335ja
-        ).get("2車単_value", {}) or {})
-        for _car_v335ja in _remain_v335ja:
-            _probs_v335ja = []
-            for _second_v335ja in (
-                _final_epsilon_marks_v335ja.get("A"),
-                _final_epsilon_marks_v335ja.get("B"),
-            ):
-                if _second_v335ja is None:
+            _ba_v335jb = _exacta_prob_with(
+                _c_v335jb, _eps_v335ja, _p1_map, _p2_map, _p3_map
+            )
+            # 2車複専用の配当分布が未実装なので、表裏を合算する代理指標。
+            _vsum_v335jb = 0.0
+            _wsum_v335jb = 0.0
+            for _p_v335jb in (_ab_v335jb, _ba_v335jb):
+                if _p_v335jb is None:
                     continue
-                _p_v335ja = _trifecta_prob_with(
-                    _eps_v335ja, int(_second_v335ja), _car_v335ja,
-                    _p1_map, _p2_map, _p3_map
-                )
-                if _p_v335ja is not None and math.isfinite(float(_p_v335ja)) and float(_p_v335ja) >= 0:
-                    _probs_v335ja.append(float(_p_v335ja))
-            if _probs_v335ja:
-                _raw_hit_v335ja[_car_v335ja] = sum(_probs_v335ja)
-            _v_v335ja = _eps_value_map_v335ja.get((_eps_v335ja, _car_v335ja))
-            if _v_v335ja is not None and math.isfinite(float(_v_v335ja)):
-                _raw_value_v335ja[_car_v335ja] = float(_v_v335ja)
-        _hit_dev_v335ja = _deviation_map_v335ha(_raw_hit_v335ja)
-        _balance_rows_v335ja = []
-        for _car_v335ja in _remain_v335ja:
-            if _car_v335ja not in _hit_dev_v335ja or _car_v335ja not in _raw_value_v335ja:
-                continue
-            _h_v335ja = float(_hit_dev_v335ja[_car_v335ja])
-            _v_v335ja = float(_raw_value_v335ja[_car_v335ja])
-            _balance_rows_v335ja.append({
-                "car": _car_v335ja, "hit": _h_v335ja, "value": _v_v335ja,
-                "balance": (_h_v335ja + _v_v335ja) / 2.0,
+                _p_v335jb = float(_p_v335jb)
+                if not math.isfinite(_p_v335jb) or _p_v335jb <= 0.0:
+                    continue
+                _score_v335jb = _distribution_band_v335fz(
+                    "2車単", _p_v335jb
+                ).get("selection_score", -1.0)
+                if _score_v335jb is None:
+                    continue
+                _score_v335jb = float(_score_v335jb)
+                if math.isfinite(_score_v335jb) and _score_v335jb >= 0.0:
+                    _vsum_v335jb += _p_v335jb * _score_v335jb
+                    _wsum_v335jb += _p_v335jb
+            _value_v335jb = (
+                _vsum_v335jb / _wsum_v335jb if _wsum_v335jb > 0.0 else None
+            )
+            _all_v335jb.append({
+                "car": _c_v335jb, "qprob": _q_v335jb,
+                "value": _value_v335jb, "row": _r_v335jb,
             })
-        _balance_rows_v335ja.sort(key=lambda r: (
+        # 全候補を同じ母集団で偏差値化し、A/B選出後に基準を変えない。
+        _hit_dev_v335jb = _deviation_map_v335ha({
+            r["car"]: r["qprob"] for r in _all_v335jb
+        })
+        _value_dev_v335jb = _deviation_map_v335ha({
+            r["car"]: r["value"] for r in _all_v335jb
+            if r["value"] is not None
+        })
+        # A: εとの2車複連対確率最大。ラインは既存同点処理のみ。
+        _a_v335jb, _a_row_v335jb = _select_hit_himo(
+            [r["row"] for r in _all_v335jb]
+        )
+        if _a_v335jb is not None:
+            _a_v335jb = int(_a_v335jb)
+            _used_v335ja.add(_a_v335jb)
+            _final_epsilon_marks_v335ja["A"] = _a_v335jb
+            _final_epsilon_details_v335ja["A"] = (
+                f"2車複連対指数 {float(_a_row_v335jb['qprob'])*100.0:.1f}%"
+            )
+        # B: εとの2車複の表裏配当適合代理値最大。
+        _b_rows_v335jb = [
+            r for r in _all_v335jb
+            if r["car"] not in _used_v335ja and r["value"] is not None
+        ]
+        _b_rows_v335jb.sort(key=lambda r: (
+            -r["value"], -r["qprob"], r["car"]
+        ))
+        if _b_rows_v335jb:
+            _b_v335jb = _b_rows_v335jb[0]
+            _used_v335ja.add(_b_v335jb["car"])
+            _final_epsilon_marks_v335ja["B"] = _b_v335jb["car"]
+            _final_epsilon_details_v335ja["B"] = (
+                f"2車複配当適合代理偏差値 "
+                f"{_value_dev_v335jb[_b_v335jb['car']]:.1f}"
+            )
+        # C/D: εとの2車複連対確率偏差値と表裏妙味代理偏差値の平均。
+        _balance_rows_v335jb = []
+        for _r_v335jb in _all_v335jb:
+            _c_v335jb = _r_v335jb["car"]
+            if _c_v335jb in _used_v335ja:
+                continue
+            if (_c_v335jb not in _hit_dev_v335jb
+                    or _c_v335jb not in _value_dev_v335jb):
+                continue
+            _h_v335jb = _hit_dev_v335jb[_c_v335jb]
+            _v_v335jb = _value_dev_v335jb[_c_v335jb]
+            _balance_rows_v335jb.append({
+                "car": _c_v335jb, "hit": _h_v335jb,
+                "value": _v_v335jb,
+                "balance": (_h_v335jb + _v_v335jb) / 2.0,
+            })
+        _balance_rows_v335jb.sort(key=lambda r: (
             -r["balance"], -min(r["hit"], r["value"]),
             -r["hit"], -r["value"], r["car"]
         ))
-        for _mark_v335ja, _row_v335ja in zip(("C", "D"), _balance_rows_v335ja):
-            _final_epsilon_marks_v335ja[_mark_v335ja] = int(_row_v335ja["car"])
-            _final_epsilon_details_v335ja[_mark_v335ja] = (
-                f"的中妙味バランス {_row_v335ja['balance']:.1f}"
-                f"（的中{_row_v335ja['hit']:.1f}／妙味{_row_v335ja['value']:.1f}）"
+        for _mark_v335jb, _r_v335jb in zip(("C", "D"), _balance_rows_v335jb):
+            _final_epsilon_marks_v335ja[_mark_v335jb] = _r_v335jb["car"]
+            _final_epsilon_details_v335ja[_mark_v335jb] = (
+                f"2車複的中妙味バランス {_r_v335jb['balance']:.1f}"
+                f"（的中{_r_v335jb['hit']:.1f}／妙味代理{_r_v335jb['value']:.1f}）"
             )
     _lines.append("【最終総合評価】")
     for _mark_v335ja in ("ε", "A", "B", "C", "D"):
