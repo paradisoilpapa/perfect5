@@ -1,3 +1,5 @@
+# v335jd: 2車複買い目を印別5行から車番フォーメーション1行へ変更。
+# v335jc: 最終総合評価直下に2車複 γε－αβγε（重複除外5点）を追加。既存評価・買目は維持。
 # v335jb: 最終総合評価εABCDだけを2車複基準に変更（配当適合は表裏代理指標）。通常・妙味・既存買目は維持。
 # v335ja: ε基準の最終総合評価（ε/A/B/C/D）を追加。既存買目は維持。
 # v335iz-trio：3連複 ▲－◎○α－◎○α を追加。既存推奨2車単・予想ロジック維持。
@@ -6157,6 +6159,31 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 f"{_mark_v335ja}　{_car_v335ja}　"
                 f"{_final_epsilon_details_v335ja.get(_mark_v335ja, '算出不可')}"
             )
+    _lines.append("")
+    # v335jc: 妙味評価γ・εの2軸からα・β・γ・εへの2車複。
+    # 同一車番・同一ペアは除外し、最終総合評価の直下に表示する。
+    _v335jc_marks = _myoumi_marks_v335ii
+    _v335jc_pairs = (("γ", "ε"), ("γ", "α"), ("γ", "β"),
+                     ("ε", "α"), ("ε", "β"))
+    _v335jc_seen = set()
+    for _v335jc_left, _v335jc_right in _v335jc_pairs:
+        _v335jc_a = _v335jc_marks.get(_v335jc_left)
+        _v335jc_b = _v335jc_marks.get(_v335jc_right)
+        if _v335jc_a is None or _v335jc_b is None:
+            continue
+        _v335jc_a, _v335jc_b = int(_v335jc_a), int(_v335jc_b)
+        if _v335jc_a != _v335jc_b:
+            _v335jc_seen.add(tuple(sorted((_v335jc_a, _v335jc_b))))
+    _v335jc_axis = [_v335jc_marks.get(m) for m in ("γ", "ε")]
+    _v335jc_partners = [_v335jc_marks.get(m) for m in ("α", "β", "γ", "ε")]
+    if all(v is not None for v in _v335jc_axis + _v335jc_partners):
+        _v335jc_axis_text = "".join(str(int(v)) for v in _v335jc_axis)
+        _v335jc_partner_text = "".join(str(int(v)) for v in _v335jc_partners)
+        _lines.append("【2車複買い目】")
+        _lines.append(f"{_v335jc_axis_text}－{_v335jc_partner_text}（重複除外{len(_v335jc_seen)}点）")
+    else:
+        _lines.append("【2車複買い目】")
+        _lines.append("該当なし")
     _lines.append("")
     # 固定4点の購入券種は未確定のため、この版では評価のみ追加。
     # ガールズのみ、通常評価の4車から◎への2車単を公開する。
