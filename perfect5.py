@@ -1,3 +1,4 @@
+# v335je: 【検証買目】各流れの想定1・2着を起点に◎αβεを相手候補として2車複最大2点/流れ、重複排除。
 # v335jd: 2車複買い目を印別5行から車番フォーメーション1行へ変更。
 # v335jc: 最終総合評価直下に2車複 γε－αβγε（重複除外5点）を追加。既存評価・買目は維持。
 # v335jb: 最終総合評価εABCDだけを2車複基準に変更（配当適合は表裏代理指標）。通常・妙味・既存買目は維持。
@@ -6160,30 +6161,52 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 f"{_final_epsilon_details_v335ja.get(_mark_v335ja, '算出不可')}"
             )
     _lines.append("")
-    # v335jc: 妙味評価γ・εの2軸からα・β・γ・εへの2車複。
-    # 同一車番・同一ペアは除外し、最終総合評価の直下に表示する。
-    _v335jc_marks = _myoumi_marks_v335ii
-    _v335jc_pairs = (("γ", "ε"), ("γ", "α"), ("γ", "β"),
-                     ("ε", "α"), ("ε", "β"))
-    _v335jc_seen = set()
-    for _v335jc_left, _v335jc_right in _v335jc_pairs:
-        _v335jc_a = _v335jc_marks.get(_v335jc_left)
-        _v335jc_b = _v335jc_marks.get(_v335jc_right)
-        if _v335jc_a is None or _v335jc_b is None:
+    # v335je: 各流れの想定1・2着を起点に、◎αβεの車を相手として
+    # 流れごとに2車複を最大2点抽出。流れ間の重複は除外する。
+    # 既存の評価・推奨買目には干渉しない検証専用表示。
+    _v335je_eligible = {
+        int(c) for c in (
+            _axis_gc,
+            _myoumi_marks_v335ii.get("α"),
+            _myoumi_marks_v335ii.get("β"),
+            _myoumi_marks_v335ii.get("ε"),
+        ) if c is not None
+    }
+    _v335je_seen = set()
+    _v335je_tickets = []
+    for _v335je_flow in _rows:
+        _v335je_seq = [int(c) for c in (_v335je_flow.get("order") or ())]
+        if len(_v335je_seq) < 2:
             continue
-        _v335jc_a, _v335jc_b = int(_v335jc_a), int(_v335jc_b)
-        if _v335jc_a != _v335jc_b:
-            _v335jc_seen.add(tuple(sorted((_v335jc_a, _v335jc_b))))
-    _v335jc_axis = [_v335jc_marks.get(m) for m in ("γ", "ε")]
-    _v335jc_partners = [_v335jc_marks.get(m) for m in ("α", "β", "γ", "ε")]
-    if all(v is not None for v in _v335jc_axis + _v335jc_partners):
-        _v335jc_axis_text = "".join(str(int(v)) for v in _v335jc_axis)
-        _v335jc_partner_text = "".join(str(int(v)) for v in _v335jc_partners)
-        _lines.append("【2車複買い目】")
-        _lines.append(f"{_v335jc_axis_text}－{_v335jc_partner_text}（重複除外{len(_v335jc_seen)}点）")
+        _v335je_first, _v335je_second = _v335je_seq[:2]
+        _v335je_anchors = (_v335je_first, _v335je_second)
+        _v335je_candidates = [c for c in _v335je_seq if c in _v335je_eligible]
+        _v335je_flow_tickets = []
+        # まず想定1着を起点に、評価該当車を着順順に照合。
+        # 1・2着がともに該当する場合はその組も候補になる。
+        for _v335je_anchor in _v335je_anchors:
+            for _v335je_partner in _v335je_candidates:
+                if _v335je_anchor == _v335je_partner:
+                    continue
+                _v335je_pair = tuple(sorted((_v335je_anchor, _v335je_partner)))
+                if _v335je_pair in _v335je_flow_tickets:
+                    continue
+                _v335je_flow_tickets.append(_v335je_pair)
+                if len(_v335je_flow_tickets) >= 2:
+                    break
+            if len(_v335je_flow_tickets) >= 2:
+                break
+        for _v335je_pair in _v335je_flow_tickets:
+            if _v335je_pair not in _v335je_seen:
+                _v335je_seen.add(_v335je_pair)
+                _v335je_tickets.append(_v335je_pair)
+    _lines.append("【検証買目】")
+    if _v335je_tickets:
+        _lines.append("2車複　" + "　".join(
+            f"{a}－{b}" for a, b in _v335je_tickets
+        ) + f"（{len(_v335je_tickets)}点）")
     else:
-        _lines.append("【2車複買い目】")
-        _lines.append("該当なし")
+        _lines.append("2車複　該当なし（0点）")
     _lines.append("")
     # 固定4点の購入券種は未確定のため、この版では評価のみ追加。
     # ガールズのみ、通常評価の4車から◎への2車単を公開する。
