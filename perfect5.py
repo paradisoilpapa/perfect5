@@ -1,3 +1,4 @@
+# v335jh: 検証買目の各軸・相手に◎αβεの印を併記（同一車複数印は重複表示）。選抜ロジック不変。
 # v335jg: 検証買目の流れ別表示を「1位軸」「2位軸」に変更。選抜・最終買目は維持。
 # v335jf: 検証買目を流れ別に縦表示し、各流れの1・2着から各1点、重複排除後に最終表示。
 # v335je: 【検証買目】各流れの想定1・2着を起点に◎αβεを相手候補として2車複最大2点/流れ、重複排除。
@@ -6174,6 +6175,22 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _myoumi_marks_v335ii.get("ε"),
         ) if c is not None
     }
+    # v335jh: 集計用に軸・相手それぞれの評価印を明示する。
+    # ◎とεなどが同じ車なら、印は両方とも保持する。
+    _v335jh_marks = {}
+    for _v335jh_mark, _v335jh_car in (
+        ("◎", _axis_gc),
+        ("α", _myoumi_marks_v335ii.get("α")),
+        ("β", _myoumi_marks_v335ii.get("β")),
+        ("ε", _myoumi_marks_v335ii.get("ε")),
+    ):
+        if _v335jh_car is not None:
+            _v335jh_marks.setdefault(int(_v335jh_car), []).append(_v335jh_mark)
+
+    def _v335jh_mark_label(car):
+        marks = _v335jh_marks.get(int(car), [])
+        return "".join(marks) + ("重複" if len(marks) > 1 else "") if marks else "対象外"
+
     _v335jf_seen = set()
     _v335jf_final = []
     _lines.append("【検証買目】")
@@ -6201,7 +6218,10 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 if _v335jf_partner is None or _v335jf_anchor == _v335jf_partner:
                     continue
                 _v335jf_pair = tuple(sorted((_v335jf_anchor, _v335jf_partner)))
-                _lines.append(f"{_v335jf_rank}位軸　{_v335jf_anchor}－{_v335jf_partner}")
+                _lines.append(
+                    f"{_v335jf_rank}位軸　{_v335jf_anchor}－{_v335jf_partner}"
+                    f"（軸{_v335jh_mark_label(_v335jf_anchor)}－{_v335jh_mark_label(_v335jf_partner)}）"
+                )
                 if _v335jf_pair not in _v335jf_seen:
                     _v335jf_seen.add(_v335jf_pair)
                     _v335jf_final.append(_v335jf_pair)
