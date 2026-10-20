@@ -6240,7 +6240,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     _v335jf_final.append(_v335jf_pair)
         else:
             _lines.append("該当なし（0点）")
-    # v335jl: ここでは候補だけを表示し、評価アレンジ後に購入買い目を確定する。
+    # v335jm: 抽出した2車複は評価アレンジの有無にかかわらずすべて残す。
     _lines.append("【抽出2車複候補】")
     for _v335jf_a, _v335jf_b in _v335jf_final:
         _lines.append(f"2車複　{_v335jf_a}－{_v335jf_b}")
@@ -6291,8 +6291,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
     _lines.append("【評価アレンジ2車単】")
     _v335ji_additions = []
-    _v335jl_kept_pairs = []
-    _v335jl_excluded_pairs = []
     for _v335ji_a, _v335ji_b in _v335jf_final:
         _v335ji_ab = _v335ji_directions(_v335ji_a, _v335ji_b)
         _v335ji_ba = _v335ji_directions(_v335ji_b, _v335ji_a)
@@ -6305,23 +6303,17 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             f"2車複 {_v335ji_a}－{_v335ji_b}　｜　"
             + ("、".join(_v335ji_parts) if _v335ji_parts else "該当なし")
         )
-        if _v335ji_ab or _v335ji_ba:
-            _v335jl_kept_pairs.append((_v335ji_a, _v335ji_b))
-        else:
-            _v335jl_excluded_pairs.append((_v335ji_a, _v335ji_b))
         if bool(_v335ji_ab) != bool(_v335ji_ba):
             if _v335ji_ab:
                 _v335ji_additions.append((_v335ji_a, _v335ji_b, _v335ji_ab))
             else:
                 _v335ji_additions.append((_v335ji_b, _v335ji_a, _v335ji_ba))
     _lines.append("【最終検証買目】")
-    for _v335jl_a, _v335jl_b in _v335jl_kept_pairs:
+    for _v335jl_a, _v335jl_b in _v335jf_final:
         _lines.append(f"2車複　{_v335jl_a}－{_v335jl_b}")
-    if not _v335jl_kept_pairs:
+    if not _v335jf_final:
         _lines.append("2車複　該当なし")
-    _lines.append(f"計{len(_v335jl_kept_pairs)}点（評価アレンジ該当なしを除外）")
-    if _v335jl_excluded_pairs:
-        _lines.append("除外　" + "、".join(f"{a}－{b}" for a, b in _v335jl_excluded_pairs))
+    _lines.append(f"計{len(_v335jf_final)}点（重複除外・評価アレンジ該当なしも残す）")
     _lines.append("")
     _lines.append("【追加検証2車単・片方向のみ】")
     for _v335ji_first, _v335ji_second, _v335ji_marks in _v335ji_additions:
@@ -6331,7 +6323,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     if not _v335ji_additions:
         _lines.append("該当なし（0点）")
     _lines.append(f"追加{len(_v335ji_additions)}点（折り返し成立は除外）")
-    _lines.append(f"基本2車複{len(_v335jl_kept_pairs)}点＋追加2車単{len(_v335ji_additions)}点")
+    _lines.append(f"基本2車複{len(_v335jf_final)}点＋追加2車単{len(_v335ji_additions)}点")
     _lines.append("")
     # 固定4点の購入券種は未確定のため、この版では評価のみ追加。
     # ガールズのみ、通常評価の4車から◎への2車単を公開する。
