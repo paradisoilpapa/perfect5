@@ -1,3 +1,4 @@
+# v335ji: 基本2車複＋片方向だけ成立する評価アレンジ2車単を追加。折り返しは追加しない。
 # v335jh: 検証買目の各軸・相手に◎αβεの印を併記（同一車複数印は重複表示）。選抜ロジック不変。
 # v335jg: 検証買目の流れ別表示を「1位軸」「2位軸」に変更。選抜・最終買目は維持。
 # v335jf: 検証買目を流れ別に縦表示し、各流れの1・2着から各1点、重複排除後に最終表示。
@@ -6233,6 +6234,75 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     if not _v335jf_final:
         _lines.append("2車複　該当なし")
     _lines.append(f"計{len(_v335jf_final)}点（重複除外）")
+    _lines.append("")
+    # v335ji: 2車複はそのまま残し、評価で方向が一意の組だけ2車単を追加検証。
+    # 同じ車に複数印がある場合も、評価系列の正しい組合せで判定する。
+    # 例：α7→β5 は成立するが α7→◎5 としては扱わない。
+    _v335ji_normal = {
+        "◎": _axis_gc, "○": _hit_himo, "▲": _triangle_gc,
+        "△": _delta_gc, "×": _x_gc,
+    }
+    _v335ji_value = {
+        mark: _myoumi_marks_v335ii.get(mark)
+        for mark in ("α", "β", "γ", "ε", "Ω")
+    }
+    _v335ji_final = dict(_final_epsilon_marks_v335ja)
+
+    def _v335ji_is(car, mapping, mark):
+        val = mapping.get(mark)
+        return val is not None and int(val) == int(car)
+
+    def _v335ji_directions(first, second):
+        """first→second に成立する評価ペアを、優先順位付きで返す。"""
+        matches = []
+        # 通常評価は◎→○▲△×のみ。
+        for target in ("○", "▲", "△", "×"):
+            if (_v335ji_is(first, _v335ji_normal, "◎")
+                    and _v335ji_is(second, _v335ji_normal, target)):
+                matches.append(f"◎→{target}")
+        # 妙味評価はα→βγεΩ、さらにαとεの表裏を許容。
+        for target in ("β", "γ", "ε", "Ω"):
+            if (_v335ji_is(first, _v335ji_value, "α")
+                    and _v335ji_is(second, _v335ji_value, target)):
+                matches.append(f"α→{target}")
+        if (_v335ji_is(first, _v335ji_value, "ε")
+                and _v335ji_is(second, _v335ji_value, "α")):
+            matches.append("ε→α")
+        # 最終総合評価はε→A/B/C/Dのみ。
+        for target in ("A", "B", "C", "D"):
+            if (_v335ji_is(first, _v335ji_final, "ε")
+                    and _v335ji_is(second, _v335ji_final, target)):
+                matches.append(f"ε→{target}")
+        return matches
+
+    _lines.append("【評価アレンジ2車単】")
+    _v335ji_additions = []
+    for _v335ji_a, _v335ji_b in _v335jf_final:
+        _v335ji_ab = _v335ji_directions(_v335ji_a, _v335ji_b)
+        _v335ji_ba = _v335ji_directions(_v335ji_b, _v335ji_a)
+        _v335ji_parts = (
+            [f"{_v335ji_a}→{_v335ji_b}（{'／'.join(_v335ji_ab)}）"] if _v335ji_ab else []
+        ) + (
+            [f"{_v335ji_b}→{_v335ji_a}（{'／'.join(_v335ji_ba)}）"] if _v335ji_ba else []
+        )
+        _lines.append(
+            f"2車複 {_v335ji_a}－{_v335ji_b}　｜　"
+            + ("、".join(_v335ji_parts) if _v335ji_parts else "該当なし")
+        )
+        if bool(_v335ji_ab) != bool(_v335ji_ba):
+            if _v335ji_ab:
+                _v335ji_additions.append((_v335ji_a, _v335ji_b, _v335ji_ab))
+            else:
+                _v335ji_additions.append((_v335ji_b, _v335ji_a, _v335ji_ba))
+    _lines.append("【追加検証2車単・片方向のみ】")
+    for _v335ji_first, _v335ji_second, _v335ji_marks in _v335ji_additions:
+        _lines.append(
+            f"2車単　{_v335ji_first}→{_v335ji_second}（{'／'.join(_v335ji_marks)}）"
+        )
+    if not _v335ji_additions:
+        _lines.append("該当なし（0点）")
+    _lines.append(f"追加{len(_v335ji_additions)}点（折り返し成立は除外）")
+    _lines.append(f"基本2車複{len(_v335jf_final)}点＋追加2車単{len(_v335ji_additions)}点")
     _lines.append("")
     # 固定4点の購入券種は未確定のため、この版では評価のみ追加。
     # ガールズのみ、通常評価の4車から◎への2車単を公開する。
