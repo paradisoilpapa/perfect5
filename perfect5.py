@@ -1,4 +1,5 @@
 # v335ji: 基本2車複＋片方向だけ成立する評価アレンジ2車単を追加。折り返しは追加しない。
+# v335jj: 検証買目は各流れ1位軸のみ。相手選抜は従来どおり3位以下の◎αβε最上位。2車単評価・片方向追加は維持。
 # v335jh: 検証買目の各軸・相手に◎αβεの印を併記（同一車複数印は重複表示）。選抜ロジック不変。
 # v335jg: 検証買目の流れ別表示を「1位軸」「2位軸」に変更。選抜・最終買目は維持。
 # v335jf: 検証買目を流れ別に縦表示し、各流れの1・2着から各1点、重複排除後に最終表示。
@@ -6165,8 +6166,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 f"{_final_epsilon_details_v335ja.get(_mark_v335ja, '算出不可')}"
             )
     _lines.append("")
-    # v335jf: 各流れの1・2着をそれぞれ軸とし、3着以下から
-    # ◎・α・β・εに該当する最上位の相手1車を選ぶ（各流れ最大2点）。
+    # v335jj: 各流れの1位だけを軸とし、従来どおり3着以下から
+    # ◎・α・β・εに該当する最上位の相手1車を選ぶ（各流れ最大1点）。
     # 流れ別の過程を縦表示し、最後に重複排除した2車複を縦表示。
     _v335jf_eligible = {
         int(c) for c in (
@@ -6202,7 +6203,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         if len(_v335jf_seq) < 3:
             _lines.append("2車複　該当なし（0点）")
             continue
-        _v335jf_anchors = _v335jf_seq[:2]
+        _v335jf_anchors = _v335jf_seq[:1]
         _v335jf_partner = next(
             (c for c in _v335jf_seq[2:] if c in _v335jf_eligible), None
         )
@@ -6235,6 +6236,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("2車複　該当なし")
     _lines.append(f"計{len(_v335jf_final)}点（重複除外）")
     _lines.append("")
+    # v335jj: 1位軸で選んだ2車複だけを対象に、評価で片方向成立の2車単を追加。
     # v335ji: 2車複はそのまま残し、評価で方向が一意の組だけ2車単を追加検証。
     # 同じ車に複数印がある場合も、評価系列の正しい組合せで判定する。
     # 例：α7→β5 は成立するが α7→◎5 としては扱わない。
