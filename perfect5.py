@@ -1,3 +1,4 @@
+# v335jo: note貼付用の検証買目表示を整理。ヒモ候補と評価アレンジ2車単の重複表示のみ削除。選抜・方向判定は不変。
 # v335jn: 各流れ1位軸、◎αβεの全ヒモ候補から既存2車複総合評価点1位を選抜。2車単は片方向のみ。
 # v335ji: 基本2車複＋片方向だけ成立する評価アレンジ2車単を追加。折り返しは追加しない。
 # v335jk: 検証買目は各流れ1位軸のみ。相手は2位以下の◎αβε最上位。2車単評価・片方向追加は維持。
@@ -6197,17 +6198,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     _v335jf_seen = set()
     _v335jf_final = []
     _lines.append("【検証買目】")
-    _lines.append("【ヒモ候補】")
-    for _v335jl_mark, _v335jl_car in (
-        ("◎", _axis_gc),
-        ("α", _myoumi_marks_v335ii.get("α")),
-        ("β", _myoumi_marks_v335ii.get("β")),
-        ("ε", _myoumi_marks_v335ii.get("ε")),
-    ):
-        _lines.append(f"{_v335jl_mark}　{_v335jl_car if _v335jl_car is not None else '該当なし'}")
-    _lines.append("※同一車番の印重複あり")
-    _lines.append("※各流れの1位を軸に、2位以下の対象印から2車複総合評価点1位を選出")
-    _lines.append("")
     # 既存の加重2車複総合評価（的中点・妙味点50:50）を再利用。
     # スコア未生成の場合も、既存の車別加重点から同じ計算式で補完する。
     _v335jn_pair_scores = {}
@@ -6317,7 +6307,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 matches.append(f"ε→{target}")
         return matches
 
-    _lines.append("【評価アレンジ2車単】")
     _v335ji_additions = []
     for _v335ji_a, _v335ji_b in _v335jf_final:
         _v335ji_ab = _v335ji_directions(_v335ji_a, _v335ji_b)
@@ -6326,10 +6315,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             [f"{_v335ji_a}→{_v335ji_b}（{'／'.join(_v335ji_ab)}）"] if _v335ji_ab else []
         ) + (
             [f"{_v335ji_b}→{_v335ji_a}（{'／'.join(_v335ji_ba)}）"] if _v335ji_ba else []
-        )
-        _lines.append(
-            f"2車複 {_v335ji_a}－{_v335ji_b}　｜　"
-            + ("、".join(_v335ji_parts) if _v335ji_parts else "該当なし")
         )
         if bool(_v335ji_ab) != bool(_v335ji_ba):
             if _v335ji_ab:
