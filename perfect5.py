@@ -1,3 +1,4 @@
+# v335jr: 【抽出2車複候補】の重複表示のみ削除。選抜・評価・2車単方向判定は不変。
 # v335jo: note貼付用の検証買目表示を整理。ヒモ候補と評価アレンジ2車単の重複表示のみ削除。選抜・方向判定は不変。
 # v335jn: 各流れ1位軸、◎αβεの全ヒモ候補から既存2車複総合評価点1位を選抜。2車単は片方向のみ。
 # v335ji: 基本2車複＋片方向だけ成立する評価アレンジ2車単を追加。折り返しは追加しない。
@@ -6258,14 +6259,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         if _v335jf_pair not in _v335jf_seen:
             _v335jf_seen.add(_v335jf_pair)
             _v335jf_final.append(_v335jf_pair)
-    # v335jm: 抽出した2車複は評価アレンジの有無にかかわらずすべて残す。
-    _lines.append("【抽出2車複候補】")
-    for _v335jf_a, _v335jf_b in _v335jf_final:
-        _lines.append(f"2車複　{_v335jf_a}－{_v335jf_b}")
-    if not _v335jf_final:
-        _lines.append("2車複　該当なし")
-    _lines.append(f"候補{len(_v335jf_final)}点（重複除外）")
-    _lines.append("")
     # v335jj: 1位軸で選んだ2車複だけを対象に、評価で片方向成立の2車単を追加。
     # v335ji: 2車複はそのまま残し、評価で方向が一意の組だけ2車単を追加検証。
     # 同じ車に複数印がある場合も、評価系列の正しい組合せで判定する。
