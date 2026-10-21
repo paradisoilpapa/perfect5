@@ -1,3 +1,4 @@
+# v335jn: 各流れ1位軸、◎αβεの全ヒモ候補から既存2車複総合評価点1位を選抜。2車単は片方向のみ。
 # v335ji: 基本2車複＋片方向だけ成立する評価アレンジ2車単を追加。折り返しは追加しない。
 # v335jk: 検証買目は各流れ1位軸のみ。相手は2位以下の◎αβε最上位。2車単評価・片方向追加は維持。
 # v335jh: 検証買目の各軸・相手に◎αβεの印を併記（同一車複数印は重複表示）。選抜ロジック不変。
@@ -6166,8 +6167,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 f"{_final_epsilon_details_v335ja.get(_mark_v335ja, '算出不可')}"
             )
     _lines.append("")
-    # v335jk: 各流れの1位だけを軸とし、2位以下から
-    # ◎・α・β・εに該当する最上位の相手1車を選ぶ（各流れ最大1点）。
+    # v335jn: 各流れの1位軸を維持し、2位以下の◎αβε候補を
+    # 既存の2車複総合評価点で比較して最高点の相手1車を選ぶ。
     # 流れ別の過程を縦表示し、最後に重複排除した2車複を縦表示。
     _v335jf_eligible = {
         int(c) for c in (
@@ -6205,8 +6206,35 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     ):
         _lines.append(f"{_v335jl_mark}　{_v335jl_car if _v335jl_car is not None else '該当なし'}")
     _lines.append("※同一車番の印重複あり")
-    _lines.append("※各流れの1位を軸に、2位以下から対象印の最上位を選出")
+    _lines.append("※各流れの1位を軸に、2位以下の対象印から2車複総合評価点1位を選出")
     _lines.append("")
+    # 既存の加重2車複総合評価（的中点・妙味点50:50）を再利用。
+    # スコア未生成の場合も、既存の車別加重点から同じ計算式で補完する。
+    _v335jn_pair_scores = {}
+    for _v335jn_row in (globals().get("V335DH_WEIGHTED_PAIR_ROWS") or []):
+        try:
+            _v335jn_pair = tuple(sorted((int(_v335jn_row["a"]), int(_v335jn_row["b"]))))
+            _v335jn_pair_scores[_v335jn_pair] = (
+                float(_v335jn_row["total_pt"]),
+                float(_v335jn_row.get("hit_score", 0)),
+                float(_v335jn_row.get("myoumi_score", 0)),
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    _v335jn_hit = globals().get("V335DS_WEIGHTED_CAR_HIT_MAP") or {}
+    _v335jn_value = globals().get("V335DS_WEIGHTED_CAR_MYOUMI_MAP") or {}
+
+    def _v335jn_score(pair):
+        if pair in _v335jn_pair_scores:
+            return _v335jn_pair_scores[pair]
+        a, b = pair
+        try:
+            h = round(max(0.0, min(12.0, (float(_v335jn_hit[a]) + float(_v335jn_hit[b])) / 2)), 2)
+            v = round(max(0.0, min(10.8, (float(_v335jn_value[a]) + float(_v335jn_value[b])) / 2)), 2)
+            return ((h + v) / 2, h, v)
+        except (KeyError, TypeError, ValueError):
+            return None
+
     for _v335jf_flow in _rows:
         _v335jf_seq = [int(c) for c in (_v335jf_flow.get("order") or ())]
         _v335jf_name = str(_v335jf_flow.get("style", "流れ"))
@@ -6214,32 +6242,32 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         if len(_v335jf_seq) < 2:
             _lines.append("2車複　該当なし（0点）")
             continue
-        _v335jf_anchors = _v335jf_seq[:1]
-        _v335jf_partner = next(
-            (c for c in _v335jf_seq[1:] if c in _v335jf_eligible), None
+        _v335jf_anchor = _v335jf_seq[0]
+        _v335jn_candidates = []
+        for _v335jn_rank, _v335jn_car in enumerate(_v335jf_seq[1:], start=2):
+            if _v335jn_car not in _v335jf_eligible or _v335jn_car == _v335jf_anchor:
+                continue
+            _v335jn_pair = tuple(sorted((_v335jf_anchor, _v335jn_car)))
+            _v335jn_scores = _v335jn_score(_v335jn_pair)
+            if _v335jn_scores is not None:
+                _v335jn_candidates.append((_v335jn_scores, _v335jn_rank, _v335jn_car, _v335jn_pair))
+        if not _v335jn_candidates:
+            _lines.append("該当なし（総合評価点算出不可、0点）")
+            continue
+        # 総合点→的中点→妙味点。同点の場合だけ流れ順位、車番で決定。
+        _v335jn_candidates.sort(key=lambda x: (-x[0][0], -x[0][1], -x[0][2], x[1], x[2]))
+        _v335jn_best = _v335jn_candidates[0]
+        _v335jf_partner = _v335jn_best[2]
+        _v335jf_pair = _v335jn_best[3]
+        _lines.append(
+            f"1位軸　{_v335jf_anchor}－{_v335jf_partner}"
+            f"（軸{_v335jh_mark_label(_v335jf_anchor)}－{_v335jh_mark_label(_v335jf_partner)}）"
+            f"　2車複総合{_v335jn_best[0][0]:.2f}点"
+            f"（的中{_v335jn_best[0][1]:.2f}／妙味{_v335jn_best[0][2]:.2f}）"
         )
-        _v335jf_local = []
-        if _v335jf_partner is not None:
-            for _v335jf_anchor in _v335jf_anchors:
-                if _v335jf_anchor == _v335jf_partner:
-                    continue
-                _v335jf_pair = tuple(sorted((_v335jf_anchor, _v335jf_partner)))
-                if _v335jf_pair not in _v335jf_local:
-                    _v335jf_local.append(_v335jf_pair)
-        if _v335jf_local:
-            for _v335jf_rank, _v335jf_anchor in enumerate(_v335jf_anchors, start=1):
-                if _v335jf_partner is None or _v335jf_anchor == _v335jf_partner:
-                    continue
-                _v335jf_pair = tuple(sorted((_v335jf_anchor, _v335jf_partner)))
-                _lines.append(
-                    f"{_v335jf_rank}位軸　{_v335jf_anchor}－{_v335jf_partner}"
-                    f"（軸{_v335jh_mark_label(_v335jf_anchor)}－{_v335jh_mark_label(_v335jf_partner)}）"
-                )
-                if _v335jf_pair not in _v335jf_seen:
-                    _v335jf_seen.add(_v335jf_pair)
-                    _v335jf_final.append(_v335jf_pair)
-        else:
-            _lines.append("該当なし（0点）")
+        if _v335jf_pair not in _v335jf_seen:
+            _v335jf_seen.add(_v335jf_pair)
+            _v335jf_final.append(_v335jf_pair)
     # v335jm: 抽出した2車複は評価アレンジの有無にかかわらずすべて残す。
     _lines.append("【抽出2車複候補】")
     for _v335jf_a, _v335jf_b in _v335jf_final:
