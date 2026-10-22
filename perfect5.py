@@ -1,3 +1,6 @@
+# v335kb: KO・会場最終順位補正による他ラインの1着昇格を禁止。各流れの主役ライン1着を保持。2着以下の補正は維持。
+# v335ka: レース識別付きスナップショット、確定ライン参照。
+# v335jz: 松阪名称修正（3箇所）、広島改修後カント32.527778°、会場標準化母集団から「手入力」を除外。風向基準値・その他予想/買い目処理は不変。
 # v335jw: v335jrを基準に通常競輪の既存評価・1位軸選抜・2車単方向式を保持。ガールズ/アドバンスはv335js仕様。同ライン2車複1点/流れ追加、表示簡略化。
 # v335jr: 【抽出2車複候補】の重複表示のみ削除。選抜・評価・2車単方向判定は不変。
 # v335jo: note貼付用の検証買目表示を整理。ヒモ候補と評価アレンジ2車単の重複表示のみ削除。選抜・方向判定は不変。
@@ -8,7 +11,7 @@
 # v335jg: 検証買目の流れ別表示を「1位軸」「2位軸」に変更。選抜・最終買目は維持。
 # v335jf: 検証買目を流れ別に縦表示し、各流れの1・2着から各1点、重複排除後に最終表示。
 # v335je: 【検証買目】各流れの想定1・2着を起点に◎αβεを相手候補として2車複最大2点/流れ、重複排除。
-# v335jd: 2車複買い目を印別5行から車番フォーメーション1行へ変更。A
+# v335jd: 2車複買い目を印別5行から車番フォーメーション1行へ変更。
 # v335jc: 最終総合評価直下に2車複 γε－αβγε（重複除外5点）を追加。既存評価・買目は維持。
 # v335jb: 最終総合評価εABCDだけを2車複基準に変更（配当適合は表裏代理指標）。通常・妙味・既存買目は維持。
 # v335ja: ε基準の最終総合評価（ε/A/B/C/D）を追加。既存買目は維持。
@@ -1776,7 +1779,7 @@ KEIRIN_DATA = {
     "大垣":{"bank_angle":30.6,"straight_length":56.0,"bank_length":400},
     "豊橋":{"bank_angle":33.8,"straight_length":60.3,"bank_length":400},
     "富山":{"bank_angle":33.7,"straight_length":43.0,"bank_length":333},
-    "松坂":{"bank_angle":34.4,"straight_length":61.5,"bank_length":400},
+    "松阪":{"bank_angle":34.4,"straight_length":61.5,"bank_length":400},
     "四日市":{"bank_angle":32.3,"straight_length":62.4,"bank_length":400},
     "福井":{"bank_angle":31.5,"straight_length":52.8,"bank_length":400},
     "奈良":{"bank_angle":33.4,"straight_length":38.0,"bank_length":333},
@@ -1784,7 +1787,7 @@ KEIRIN_DATA = {
     "和歌山":{"bank_angle":32.3,"straight_length":59.9,"bank_length":400},
     "岸和田":{"bank_angle":30.9,"straight_length":56.7,"bank_length":400},
     "玉野":{"bank_angle":30.6,"straight_length":47.9,"bank_length":400},
-    "広島":{"bank_angle":30.8,"straight_length":57.9,"bank_length":400},
+    "広島":{"bank_angle":32.527778,"straight_length":57.9,"bank_length":400},
     "防府":{"bank_angle":34.7,"straight_length":42.5,"bank_length":333},
     "高松":{"bank_angle":33.3,"straight_length":54.8,"bank_length":400},
     "小松島":{"bank_angle":29.8,"straight_length":55.5,"bank_length":400},
@@ -1827,7 +1830,7 @@ VELODROME_MASTER = {
     "大垣":{"lat":35.361332,"lon":136.628452,"home_azimuth":135.0,"indoor":False},
     "豊橋":{"lat":34.770280,"lon":137.417265,"home_azimuth":90.0,"indoor":False},
     "富山":{"lat":36.757271,"lon":137.234873,"home_azimuth":0.0,"indoor":False},
-    "松坂":{"lat":34.564675,"lon":136.533881,"home_azimuth":135.0,"indoor":False},
+    "松阪":{"lat":34.564675,"lon":136.533881,"home_azimuth":135.0,"indoor":False},
     "四日市":{"lat":34.984933,"lon":136.645461,"home_azimuth":135.0,"indoor":False},
     "福井":{"lat":36.060798,"lon":136.199380,"home_azimuth":90.0,"indoor":False},
     "奈良":{"lat":34.703360,"lon":135.779077,"home_azimuth":180.0,"indoor":False},
@@ -2903,9 +2906,11 @@ def fetch_openmeteo_hour(lat, lon, target_dt_naive):
 
 # --- 会場差分（全会場の中央値を中立基準）ヘルパー（このブロック内に自己完結）
 
-_ALL_L  = np.array([KEIRIN_DATA[k]["straight_length"] for k in KEIRIN_DATA], float)
-_ALL_TH = np.array([KEIRIN_DATA[k]["bank_angle"]      for k in KEIRIN_DATA], float)
-_ALL_C  = np.array([KEIRIN_DATA[k]["bank_length"]     for k in KEIRIN_DATA], float)
+# v335jz: 会場基準統計は実在42場のみ。手入力の仮値は母集団から除外。
+_V335JZ_REAL_TRACKS = [k for k in KEIRIN_DATA if k != "手入力"]
+_ALL_L  = np.array([KEIRIN_DATA[k]["straight_length"] for k in _V335JZ_REAL_TRACKS], float)
+_ALL_TH = np.array([KEIRIN_DATA[k]["bank_angle"]      for k in _V335JZ_REAL_TRACKS], float)
+_ALL_C  = np.array([KEIRIN_DATA[k]["bank_length"]     for k in _V335JZ_REAL_TRACKS], float)
 _ALL_R  = _ALL_L / np.maximum(_ALL_C, 1.0)
 
 TH_STD = float(np.median(_ALL_TH))
@@ -2991,7 +2996,7 @@ _V335X_RECOMMEND_A_TRACKS = {
 
 _V335X_RECOMMEND_B_TRACKS = {
     "岸和田", "京王閣", "武雄", "佐世保", "小田原", "豊橋",
-    "大垣", "和歌山", "立川", "熊本", "松戸", "松坂",
+    "大垣", "和歌山", "立川", "熊本", "松戸", "松阪",
 }
 
 _V335X_RECOMMEND_C_TRACKS = {
@@ -4034,7 +4039,14 @@ def _v335hu_build_final_style_seq_map(style_map, profile):
                 _final = tuple(int(x) for x in _seq)
         except Exception:
             _final = tuple(int(x) for x in _seq)
-        _out[_style] = [int(x) for x in (_final or tuple())]
+        # v335kb: シナリオで確定した1着はKO・会場最終補正では変更しない。
+        # 最終順位の残りは既存の補正結果順をそのまま維持する。
+        _final_list = [int(x) for x in (_final or tuple())]
+        _scenario_head = int(_seq[0])
+        if _scenario_head in _final_list:
+            _out[_style] = [_scenario_head] + [x for x in _final_list if x != _scenario_head]
+        else:
+            _out[_style] = [int(x) for x in _seq]
     return _out
 
 
@@ -8464,8 +8476,12 @@ apply_input = st.button(
     key="apply_input_main"
 )
 
+# v335ka: 開催場・日付・R・出走数が異なる確定結果は再利用しない。
+# 旧スナップショットは削除せず保持し、誤表示のみ防止する。
+_v335ka_race_identity = (str(track), str(race_day), int(race_no), int(n_cars))
 if apply_input:
     st.session_state["race_snapshot"] = {
+        "_race_identity": _v335ka_race_identity,
         "line_inputs": list(line_inputs_live),
         "lines": [list(x) for x in lines_live],
         "line_def": {g: list(mem) for g, mem in line_def_live.items()},
@@ -8509,6 +8525,9 @@ if apply_input:
     }
 
 snapshot = st.session_state.get("race_snapshot")
+if snapshot is not None and tuple(snapshot.get("_race_identity", ())) != _v335ka_race_identity:
+    st.warning("現在の開催場・日付・レース番号・出走数と確定済み計算が異なります。入力を確認し、計算ボタンを押してください。前回結果は表示しません。")
+    st.stop()
 
 if snapshot is None:
     st.info("入力後、『入力を反映して計算する』を押すと本計算します。")
@@ -12139,35 +12158,8 @@ try:
 
             main_set = {int(c) for c in main}
 
-            # v335hs：4分戦以上は「主役ライン完全固定」でも「主役無視」でもなくソフト判定。
-            # KO後に別ラインが頭まで上がった場合、その内部スコア差が既存KOの1回分閾値
-            # （base_k * sigma / class_spread）以上なら、その別ライン1着をそのまま認める。
-            # 閾値未満なら、その流れの主役ラインを1着へ戻して三流れの意味を維持する。
-            if _four_plus_v335hs and int(xs[0]) not in main_set:
-                _main_best_v335hs = _scenario_best_head_from_main_line(main)
-                if _main_best_v335hs is not None and int(_main_best_v335hs) in xs:
-                    try:
-                        _vals_v335hs = [float(score_map.get(int(c), 0.0)) for c in xs]
-                        _mu_v335hs = sum(_vals_v335hs) / float(len(_vals_v335hs)) if _vals_v335hs else 0.0
-                        _var_v335hs = (
-                            sum((v - _mu_v335hs) ** 2 for v in _vals_v335hs) / float(len(_vals_v335hs))
-                            if _vals_v335hs else 0.0
-                        )
-                        _sigma_v335hs = max(float(_var_v335hs) ** 0.5, 1e-6)
-                        _rc_v335hs = str(globals().get("race_class", "Ａ級") or "Ａ級")
-                        _spread_v335hs = {
-                            "Ｓ級": 1.00, "Ａ級": 0.90, "Ａ級チャレンジ": 0.80,
-                            "ガールズ": 0.85, "アドバンス": 0.85,
-                        }.get(_rc_v335hs, 0.90)
-                        _base_k_v335hs = float(globals().get("ko_base_k", 0.040) or 0.040)
-                        _need_v335hs = _base_k_v335hs * _sigma_v335hs / max(float(_spread_v335hs), 1e-6)
-                        _outside_score_v335hs = float(score_map.get(int(xs[0]), 0.0))
-                        _main_score_v335hs = float(score_map.get(int(_main_best_v335hs), 0.0))
-                        if _outside_score_v335hs >= _main_score_v335hs + _need_v335hs:
-                            return xs
-                    except Exception:
-                        pass
-
+            # v335kb: 4ライン以上でもKO差による他ラインの1着昇格は認めない。
+            # 2着以下のKO並べ替えは従来どおり維持する。
             head = int(xs[0]) if int(xs[0]) in main_set else _scenario_best_head_from_main_line(main)
             if head is None or int(head) not in xs:
                 return xs
@@ -20294,13 +20286,13 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                     def _line_sources_v250():
                         _src = []
                         try:
-                            _x = globals().get("lines_live", None)
+                            _x = lines
                             if _x:
                                 _src.append(_x)
                         except Exception:
                             pass
                         try:
-                            _x = globals().get("line_def_live", None)
+                            _x = line_def
                             if isinstance(_x, dict) and _x:
                                 _src.append(list(_x.values()))
                         except Exception:
@@ -21131,15 +21123,15 @@ def _make_note_final_summary_block(rec_style, rec_seq, mark_map=None):
                             _axis_no = int(_axis_no)
                             _line_sources = []
                             try:
-                                _line_sources.append(globals().get("lines_live", None))
+                                _line_sources.append(lines)
                             except Exception:
                                 pass
                             try:
-                                _line_sources.append(lines_live)
+                                _line_sources.append(lines)
                             except Exception:
                                 pass
                             try:
-                                _line_def = globals().get("line_def_live", None)
+                                _line_def = line_def
                                 if isinstance(_line_def, dict):
                                     _line_sources.append(list(_line_def.values()))
                             except Exception:
