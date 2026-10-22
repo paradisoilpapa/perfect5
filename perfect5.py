@@ -6360,7 +6360,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     )
                     _v335jf_seen.add(_v335jt_pair)
                     _v335jf_final.append(_v335jt_pair)
-        # v335jj: 1位軸で選んだ2車複だけを対象に、評価で片方向成立の2車単を追加。
+        # v335jj: 最終2車複の全ペアを対象に、評価で片方向成立の2車単を追加。
         # v335ji: 2車複はそのまま残し、評価で方向が一意の組だけ2車単を追加検証。
         # 同じ車に複数印がある場合も、評価系列の正しい組合せで判定する。
         # 例：α7→β5 は成立するが α7→◎5 としては扱わない。
@@ -6402,6 +6402,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             return matches
 
         _v335ji_additions = []
+        # 同ライン追加を含む最終2車複に対して、両方向の成立を検査する。
+        # 両方向成立なら除外し、片方向だけ成立する場合のみ追加する。
         for _v335ji_a, _v335ji_b in _v335jf_final:
             _v335ji_ab = _v335ji_directions(_v335ji_a, _v335ji_b)
             _v335ji_ba = _v335ji_directions(_v335ji_b, _v335ji_a)
