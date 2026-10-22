@@ -6271,7 +6271,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
         _v335jf_seen = set()
         _v335jf_final = []
-        _lines.append("【検証買目】")
+        _lines.append("【最終検証買目】")
         # 既存の加重2車複総合評価（的中点・妙味点50:50）を再利用。
         # スコア未生成の場合も、既存の車別加重点から同じ計算式で補完する。
         _v335jn_pair_scores = {}
@@ -6332,6 +6332,34 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             if _v335jf_pair not in _v335jf_seen:
                 _v335jf_seen.add(_v335jf_pair)
                 _v335jf_final.append(_v335jf_pair)
+            # v335jt: 各流れの想定1着を軸に、同ラインの総合点1位を追加。
+            # 現行買い目は維持し、同一2車複の重複時は追加しない。
+            _v335jt_line = next(
+                (list(map(int, ln)) for ln in (_line_groups or [])
+                 if _v335jf_anchor in list(map(int, ln))), []
+            )
+            _v335jt_candidates = []
+            for _v335jt_car in _v335jt_line:
+                if _v335jt_car == _v335jf_anchor:
+                    continue
+                _v335jt_pair = tuple(sorted((_v335jf_anchor, _v335jt_car)))
+                _v335jt_scores = _v335jn_score(_v335jt_pair)
+                if _v335jt_scores is not None:
+                    _v335jt_candidates.append((_v335jt_scores, _v335jt_car, _v335jt_pair))
+            _v335jt_candidates.sort(key=lambda x: (-x[0][0], -x[0][1], -x[0][2], x[1]))
+            if _v335jt_candidates:
+                _v335jt_best = _v335jt_candidates[0]
+                _v335jt_partner = _v335jt_best[1]
+                _v335jt_pair = _v335jt_best[2]
+                if _v335jt_pair not in _v335jf_seen:
+                    _lines.append(
+                        f"同ライン軸　{_v335jf_anchor}－{_v335jt_partner}"
+                        f"（軸{_v335jh_mark_label(_v335jf_anchor)}－{_v335jh_mark_label(_v335jt_partner)}）"
+                        f"　2車複総合{_v335jt_best[0][0]:.2f}点"
+                        f"（的中{_v335jt_best[0][1]:.2f}／妙味{_v335jt_best[0][2]:.2f}）"
+                    )
+                    _v335jf_seen.add(_v335jt_pair)
+                    _v335jf_final.append(_v335jt_pair)
         # v335jj: 1位軸で選んだ2車複だけを対象に、評価で片方向成立の2車単を追加。
         # v335ji: 2車複はそのまま残し、評価で方向が一意の組だけ2車単を追加検証。
         # 同じ車に複数印がある場合も、評価系列の正しい組合せで判定する。
@@ -6387,14 +6415,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     _v335ji_additions.append((_v335ji_a, _v335ji_b, _v335ji_ab))
                 else:
                     _v335ji_additions.append((_v335ji_b, _v335ji_a, _v335ji_ba))
-        _lines.append("【最終検証買目】")
-        for _v335jl_a, _v335jl_b in _v335jf_final:
-            _lines.append(f"2車複　{_v335jl_a}－{_v335jl_b}")
-        if not _v335jf_final:
-            _lines.append("2車複　該当なし")
-        _lines.append(f"計{len(_v335jf_final)}点（重複除外・評価アレンジ該当なしも残す）")
+        # v335jt: 最終2車複の再掲を省略し、流れ別表示に一本化。
         _lines.append("")
-        _lines.append("【追加検証2車単・片方向のみ】")
+        _lines.append("【追加検証2車単】")
         for _v335ji_first, _v335ji_second, _v335ji_marks in _v335ji_additions:
             _lines.append(
                 f"2車単　{_v335ji_first}→{_v335ji_second}（{'／'.join(_v335ji_marks)}）"
