@@ -1,4 +1,4 @@
-# v335js: ガールズ／アドバンス限定：◎○▲の各軸から無印を含む全相手の2車複総合点上位2点を抽出し、車番ペア重複のみ削除。通常競輪の評価・選抜・2車単は維持。
+# v335jw: v335jrを基準に通常競輪の既存評価・1位軸選抜・2車単方向式を保持。ガールズ/アドバンスはv335js仕様。同ライン2車複1点/流れ追加、表示簡略化。
 # v335jr: 【抽出2車複候補】の重複表示のみ削除。選抜・評価・2車単方向判定は不変。
 # v335jo: note貼付用の検証買目表示を整理。ヒモ候補と評価アレンジ2車単の重複表示のみ削除。選抜・方向判定は不変。
 # v335jn: 各流れ1位軸、◎αβεの全ヒモ候補から既存2車複総合評価点1位を選抜。2車単は片方向のみ。
@@ -6103,6 +6103,23 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _lines.append("2車複　該当なし")
         _lines.append(f"計{len(_v335js_final)}点（各軸上位2点・重複除外・補充なし）")
         _lines.append("")
+        if race_class == "ガールズ":
+            _lines.append("【ガールズ競輪・2車単買い目】")
+            _girls_targets = (("○", _hit_himo), ("▲", _triangle_gc),
+                              ("△", _delta_gc), ("×", _x_gc))
+            _girls_seen = set()
+            _girls_tickets = []
+            for _girls_mark, _girls_car in _girls_targets:
+                if _girls_car is None or _axis_gc is None:
+                    continue
+                _girls_car = int(_girls_car)
+                _girls_axis = int(_axis_gc)
+                if _girls_car == _girls_axis or _girls_car in _girls_seen:
+                    continue
+                _girls_seen.add(_girls_car)
+                _girls_tickets.append(f"{_girls_car}→{_girls_axis}")
+            _lines.extend(_girls_tickets or ["該当なし"])
+            _lines.append("※ガールズは傾向分析から除外しています")
     else:
         _lines.append("")
         _lines.append("【ヴェロビ妙味軸評価】")
@@ -6332,35 +6349,34 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             if _v335jf_pair not in _v335jf_seen:
                 _v335jf_seen.add(_v335jf_pair)
                 _v335jf_final.append(_v335jf_pair)
-            # v335jt: 各流れの想定1着を軸に、同ラインの総合点1位を追加。
-            # 現行買い目は維持し、同一2車複の重複時は追加しない。
-            _v335jt_line = next(
+            # v335jw: 同ラインは現行1位軸買い目とは独立して総合点1位を選抜。
+            # 2車単方向判定の式・判定順序は元コードから変更しない。
+            _v335jw_line = next(
                 (list(map(int, ln)) for ln in (_line_groups or [])
                  if _v335jf_anchor in list(map(int, ln))), []
             )
-            _v335jt_candidates = []
-            for _v335jt_car in _v335jt_line:
-                if _v335jt_car == _v335jf_anchor:
+            _v335jw_candidates = []
+            for _v335jw_car in _v335jw_line:
+                if _v335jw_car == _v335jf_anchor:
                     continue
-                _v335jt_pair = tuple(sorted((_v335jf_anchor, _v335jt_car)))
-                _v335jt_scores = _v335jn_score(_v335jt_pair)
-                if _v335jt_scores is not None:
-                    _v335jt_candidates.append((_v335jt_scores, _v335jt_car, _v335jt_pair))
-            _v335jt_candidates.sort(key=lambda x: (-x[0][0], -x[0][1], -x[0][2], x[1]))
-            if _v335jt_candidates:
-                _v335jt_best = _v335jt_candidates[0]
-                _v335jt_partner = _v335jt_best[1]
-                _v335jt_pair = _v335jt_best[2]
-                if _v335jt_pair not in _v335jf_seen:
+                _v335jw_pair = tuple(sorted((_v335jf_anchor, _v335jw_car)))
+                _v335jw_score = _v335jn_score(_v335jw_pair)
+                if _v335jw_score is not None:
+                    _v335jw_candidates.append((_v335jw_score, _v335jw_car, _v335jw_pair))
+            _v335jw_candidates.sort(key=lambda x: (-x[0][0], -x[0][1], -x[0][2], x[1]))
+            if _v335jw_candidates:
+                _v335jw_best = _v335jw_candidates[0]
+                _v335jw_pair = _v335jw_best[2]
+                if _v335jw_pair not in _v335jf_seen:
                     _lines.append(
-                        f"同ライン軸　{_v335jf_anchor}－{_v335jt_partner}"
-                        f"（軸{_v335jh_mark_label(_v335jf_anchor)}－{_v335jh_mark_label(_v335jt_partner)}）"
-                        f"　2車複総合{_v335jt_best[0][0]:.2f}点"
-                        f"（的中{_v335jt_best[0][1]:.2f}／妙味{_v335jt_best[0][2]:.2f}）"
+                        f"同ライン軸　{_v335jf_anchor}－{_v335jw_best[1]}"
+                        f"（軸{_v335jh_mark_label(_v335jf_anchor)}－{_v335jh_mark_label(_v335jw_best[1])}）"
+                        f"　2車複総合{_v335jw_best[0][0]:.2f}点"
+                        f"（的中{_v335jw_best[0][1]:.2f}／妙味{_v335jw_best[0][2]:.2f}）"
                     )
-                    _v335jf_seen.add(_v335jt_pair)
-                    _v335jf_final.append(_v335jt_pair)
-        # v335jj: 最終2車複の全ペアを対象に、評価で片方向成立の2車単を追加。
+                    _v335jf_seen.add(_v335jw_pair)
+                    _v335jf_final.append(_v335jw_pair)
+        # v335jj: 1位軸で選んだ2車複だけを対象に、評価で片方向成立の2車単を追加。
         # v335ji: 2車複はそのまま残し、評価で方向が一意の組だけ2車単を追加検証。
         # 同じ車に複数印がある場合も、評価系列の正しい組合せで判定する。
         # 例：α7→β5 は成立するが α7→◎5 としては扱わない。
@@ -6402,8 +6418,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             return matches
 
         _v335ji_additions = []
-        # 同ライン追加を含む最終2車複に対して、両方向の成立を検査する。
-        # 両方向成立なら除外し、片方向だけ成立する場合のみ追加する。
         for _v335ji_a, _v335ji_b in _v335jf_final:
             _v335ji_ab = _v335ji_directions(_v335ji_a, _v335ji_b)
             _v335ji_ba = _v335ji_directions(_v335ji_b, _v335ji_a)
@@ -6417,7 +6431,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     _v335ji_additions.append((_v335ji_a, _v335ji_b, _v335ji_ab))
                 else:
                     _v335ji_additions.append((_v335ji_b, _v335ji_a, _v335ji_ba))
-        # v335jt: 最終2車複の再掲を省略し、流れ別表示に一本化。
         _lines.append("")
         _lines.append("【追加検証2車単】")
         for _v335ji_first, _v335ji_second, _v335ji_marks in _v335ji_additions:
@@ -6432,23 +6445,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         # 固定4点の購入券種は未確定のため、この版では評価のみ追加。
         # ガールズのみ、通常評価の4車から◎への2車単を公開する。
         # 通常競輪・アドバンスでは券種別オススメ欄を表示しない。
-        if race_class == "ガールズ":
-            _lines.append("【ガールズ競輪・2車単買い目】")
-            _girls_targets = (("○", _hit_himo), ("▲", _triangle_gc),
-                              ("△", _delta_gc), ("×", _x_gc))
-            _girls_seen = set()
-            _girls_tickets = []
-            for _girls_mark, _girls_car in _girls_targets:
-                if _girls_car is None or _axis_gc is None:
-                    continue
-                _girls_car = int(_girls_car)
-                _girls_axis = int(_axis_gc)
-                if _girls_car == _girls_axis or _girls_car in _girls_seen:
-                    continue
-                _girls_seen.add(_girls_car)
-                _girls_tickets.append(f"{_girls_car}→{_girls_axis}")
-            _lines.extend(_girls_tickets or ["該当なし"])
-            _lines.append("※ガールズは傾向分析から除外しています")
 
     # v335hh：公開買目は偏差値ではなく、全成立買目の「的中想定順位」で表示する。
     # 2車単 = n×(n-1) 通り、3連単 = n×(n-1)×(n-2) 通り。
