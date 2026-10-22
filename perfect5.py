@@ -1,3 +1,4 @@
+# v335kd: 2車複同ライン選抜と2車単のヒモを◎αβεに限定。表示にも明示。方向判定ルール自体は維持。
 # v335kb: KO・会場最終順位補正による他ラインの1着昇格を禁止。各流れの主役ライン1着を保持。2着以下の補正は維持。
 # v335ka: レース識別付きスナップショット、確定ライン参照。
 # v335jz: 松阪名称修正（3箇所）、広島改修後カント32.527778°、会場標準化母集団から「手入力」を除外。風向基準値・その他予想/買い目処理は不変。
@@ -6303,6 +6304,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         # v335kc: retain each candidate's original axis and group membership.
         _v335kc_memberships = {}  # unordered pair -> {"same", "other"}
         _lines.append("【最終検証買目・選抜候補】")
+        _lines.append("ヒモ候補：◎・α・β・ε（軸は各流れの想定1着車・印制限なし）")
         # 既存の加重2車複総合評価（的中点・妙味点50:50）を再利用。
         # スコア未生成の場合も、既存の車別加重点から同じ計算式で補完する。
         _v335jn_pair_scores = {}
@@ -6382,7 +6384,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             )
             _v335jw_candidates = []
             for _v335jw_car in _v335jw_line:
-                if _v335jw_car == _v335jf_anchor:
+                if _v335jw_car == _v335jf_anchor or _v335jw_car not in _v335jf_eligible:
                     continue
                 _v335jw_pair = tuple(sorted((_v335jf_anchor, _v335jw_car)))
                 _v335jw_score = _v335jn_score(_v335jw_pair)
@@ -6489,8 +6491,12 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
         _v335ji_additions = []
         for _v335ji_a, _v335ji_b in _v335jf_final:
-            _v335ji_ab = _v335ji_directions(_v335ji_a, _v335ji_b)
-            _v335ji_ba = _v335ji_directions(_v335ji_b, _v335ji_a)
+            # v335kd: 2車単もヒモ（矢印の後ろ）は◎・α・β・εのみ。
+            # 軸車には印制限を設けず、既存の片方向・折り返し判定は維持。
+            _v335ji_ab = (_v335ji_directions(_v335ji_a, _v335ji_b)
+                            if _v335ji_b in _v335jf_eligible else [])
+            _v335ji_ba = (_v335ji_directions(_v335ji_b, _v335ji_a)
+                            if _v335ji_a in _v335jf_eligible else [])
             _v335ji_parts = (
                 [f"{_v335ji_a}→{_v335ji_b}（{'／'.join(_v335ji_ab)}）"] if _v335ji_ab else []
             ) + (
@@ -6503,6 +6509,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     _v335ji_additions.append((_v335ji_b, _v335ji_a, _v335ji_ba))
         _lines.append("")
         _lines.append("【追加検証2車単】")
+        _lines.append("ヒモ候補：◎・α・β・εのみ（折り返し成立は除外）")
         for _v335ji_first, _v335ji_second, _v335ji_marks in _v335ji_additions:
             _lines.append(
                 f"2車単　{_v335ji_first}→{_v335ji_second}（{'／'.join(_v335ji_marks)}）"
