@@ -6305,6 +6305,17 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _v335kc_memberships = {}  # unordered pair -> {"same", "other"}
         _lines.append("【最終検証買目・選抜候補】")
         _lines.append("ヒモ候補：◎・α・β・ε（軸は各流れの想定1着車・印制限なし）")
+        # v335ke: 実際の候補車番を印順で表示。重複車番も省略せず印との対応を保つ。
+        _v335ke_himo_numbers = (
+            _axis_gc,
+            _myoumi_marks_v335ii.get("α"),
+            _myoumi_marks_v335ii.get("β"),
+            _myoumi_marks_v335ii.get("ε"),
+        )
+        _lines.append("→" + "　".join(
+            str(int(car)) if car is not None else "該当なし"
+            for car in _v335ke_himo_numbers
+        ))
         # 既存の加重2車複総合評価（的中点・妙味点50:50）を再利用。
         # スコア未生成の場合も、既存の車別加重点から同じ計算式で補完する。
         _v335jn_pair_scores = {}
