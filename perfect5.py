@@ -6300,7 +6300,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
 
         _v335jf_seen = set()
         _v335jf_final = []
-        _lines.append("【最終検証買目】")
+        # v335kc: retain each candidate's original axis and group membership.
+        _v335kc_memberships = {}  # unordered pair -> {"same", "other"}
+        _lines.append("【最終検証買目・選抜候補】")
         # 既存の加重2車複総合評価（的中点・妙味点50:50）を再利用。
         # スコア未生成の場合も、既存の車別加重点から同じ計算式で補完する。
         _v335jn_pair_scores = {}
@@ -6358,6 +6360,17 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 f"　2車複総合{_v335jn_best[0][0]:.2f}点"
                 f"（的中{_v335jn_best[0][1]:.2f}／妙味{_v335jn_best[0][2]:.2f}）"
             )
+            _v335kc_axis_line = next(
+                (set(map(int, ln)) for ln in (_line_groups or [])
+                 if _v335jf_anchor in set(map(int, ln))),
+                {_v335jf_anchor},
+            )
+            _v335kc_group = (
+                {"same", "other"} if len(_v335kc_axis_line) == 1
+                else {"same"} if _v335jf_partner in _v335kc_axis_line
+                else {"other"}
+            )
+            _v335kc_memberships.setdefault(_v335jf_pair, set()).update(_v335kc_group)
             if _v335jf_pair not in _v335jf_seen:
                 _v335jf_seen.add(_v335jf_pair)
                 _v335jf_final.append(_v335jf_pair)
@@ -6388,6 +6401,54 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     )
                     _v335jf_seen.add(_v335jw_pair)
                     _v335jf_final.append(_v335jw_pair)
+                _v335kc_memberships.setdefault(_v335jw_pair, set()).update(
+                    {"same", "other"} if len(_v335kc_axis_line) == 1 else {"same"}
+                )
+        # v335kc: choose a group by its BEST individual hit score, NOT its average.
+        # The surviving group retains all of its original total-score-selected tickets.
+        # Tickets whose originating axis is solo belong to BOTH groups.
+        _v335kc_groups = {
+            group: [pair for pair in _v335jf_final
+                    if group in _v335kc_memberships.get(pair, set())]
+            for group in ("same", "other")
+        }
+        _v335kc_max_hit = {
+            group: max((_v335jn_score(pair)[1] for pair in pairs
+                        if _v335jn_score(pair) is not None), default=None)
+            for group, pairs in _v335kc_groups.items()
+        }
+        _v335kc_same = _v335kc_max_hit["same"]
+        _v335kc_other = _v335kc_max_hit["other"]
+        if _v335kc_same is None and _v335kc_other is None:
+            _v335kc_winner = None
+        elif _v335kc_other is None or (
+            _v335kc_same is not None and _v335kc_same >= _v335kc_other
+        ):
+            _v335kc_winner = "same"  # equal score: deterministic same-line priority
+        else:
+            _v335kc_winner = "other"
+        _v335jf_final = (
+            _v335kc_groups[_v335kc_winner] if _v335kc_winner is not None else []
+        )
+        _lines.append("")
+        _lines.append("【最終検証買目・ライン別選抜結果】")
+        for _v335kc_group, _v335kc_label in (("same", "同ライン"), ("other", "他ライン")):
+            _v335kc_hit = _v335kc_max_hit[_v335kc_group]
+            _lines.append(f"{_v335kc_label}最高的中点　" +
+                          (f"{_v335kc_hit:.2f}" if _v335kc_hit is not None else "該当なし"))
+        _lines.append("採用　" +
+                      ({"same": "同ライングループ", "other": "他ライングループ"}.get(
+                          _v335kc_winner, "該当なし")))
+        for _v335kc_pair in _v335jf_final:
+            _v335kc_score = _v335jn_score(_v335kc_pair)
+            _v335kc_both = _v335kc_memberships.get(_v335kc_pair) == {"same", "other"}
+            _lines.append(
+                f"2車複　{_v335kc_pair[0]}－{_v335kc_pair[1]}"
+                + ("（単騎軸・両所属）" if _v335kc_both else "")
+                + (f"　総合{_v335kc_score[0]:.2f}（的中{_v335kc_score[1]:.2f}／妙味{_v335kc_score[2]:.2f}）"
+                   if _v335kc_score is not None else "")
+            )
+        _lines.append(f"最終2車複{len(_v335jf_final)}点")
         # v335jj: 1位軸で選んだ2車複だけを対象に、評価で片方向成立の2車単を追加。
         # v335ji: 2車複はそのまま残し、評価で方向が一意の組だけ2車単を追加検証。
         # 同じ車に複数印がある場合も、評価系列の正しい組合せで判定する。
