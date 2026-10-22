@@ -1,3 +1,4 @@
+# v335js: ガールズ／アドバンス限定：◎○▲の各軸から無印を含む全相手の2車複総合点上位2点を抽出し、車番ペア重複のみ削除。通常競輪の評価・選抜・2車単は維持。
 # v335jr: 【抽出2車複候補】の重複表示のみ削除。選抜・評価・2車単方向判定は不変。
 # v335jo: note貼付用の検証買目表示を整理。ヒモ候補と評価アレンジ2車単の重複表示のみ削除。選抜・方向判定は不変。
 # v335jn: 各流れ1位軸、◎αβεの全ヒモ候補から既存2車複総合評価点1位を選抜。2車単は片方向のみ。
@@ -6031,326 +6032,398 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     else:
         _lines.append("×　該当なし　的中妙味バランス　算出不可")
 
-    _lines.append("")
-    _lines.append("【ヴェロビ妙味軸評価】")
-    for _mark_v335ii in ("α", "β", "γ", "ε", "Ω"):
-        if _mark_v335ii in _myoumi_marks_v335ii:
-            _car_v335ii = int(_myoumi_marks_v335ii[_mark_v335ii])
-            if _mark_v335ii == "α":
-                _lines.append(f"α　{_car_v335ii}　通常評価△を妙味軸に固定")
+    if _single_flow_class_v335hl:
+        # v335js: 単騎戦（ガールズ・アドバンス）は通常評価のみ公開。
+        # ◎○▲の各軸から全出走車（無印を含む）との2車複を評価する。
+        # 各軸上位2点を先に決め、重複ペアのみ統合。欠員補充はしない。
+        _v335js_pair_scores = {}
+        for _r in (globals().get("V335DH_WEIGHTED_PAIR_ROWS") or []):
+            try:
+                _pair = tuple(sorted((int(_r["a"]), int(_r["b"]))))
+                _scores = (float(_r["total_pt"]),
+                           float(_r.get("hit_score", 0.0)),
+                           float(_r.get("myoumi_score", 0.0)))
+                if len(set(_pair)) == 2 and all(math.isfinite(v) for v in _scores):
+                    _v335js_pair_scores[_pair] = _scores
+            except (KeyError, TypeError, ValueError, OverflowError):
+                continue
+        _v335js_hit = globals().get("V335DS_WEIGHTED_CAR_HIT_MAP") or {}
+        _v335js_value = globals().get("V335DS_WEIGHTED_CAR_MYOUMI_MAP") or {}
+
+        def _v335js_score(pair):
+            if pair in _v335js_pair_scores:
+                return _v335js_pair_scores[pair]
+            a, b = pair
+            try:
+                h = round(max(0.0, min(12.0, (float(_v335js_hit[a]) + float(_v335js_hit[b])) / 2.0)), 2)
+                v = round(max(0.0, min(10.8, (float(_v335js_value[a]) + float(_v335js_value[b])) / 2.0)), 2)
+                if not (math.isfinite(h) and math.isfinite(v)):
+                    return None
+                return ((h + v) / 2.0, h, v)
+            except (KeyError, TypeError, ValueError, OverflowError):
+                return None
+
+        _v335js_axes = (("◎", _axis_gc), ("○", _hit_himo), ("▲", _triangle_gc))
+        _v335js_seen = set()
+        _v335js_final = []
+        _v335js_cars = sorted(set(int(c) for c in (_cars or [])))
+        _lines.append("")
+        _lines.append("【検証買目】")
+        for _mark, _axis in _v335js_axes:
+            if _axis is None:
+                _lines.append(f"{_mark}軸　該当なし（軸未選出）")
+                continue
+            _axis = int(_axis)
+            _candidates = []
+            for _partner in _v335js_cars:
+                if _partner == _axis:
+                    continue
+                _pair = tuple(sorted((_axis, _partner)))
+                _scores = _v335js_score(_pair)
+                if _scores is not None:
+                    _candidates.append((_scores, _partner, _pair))
+            _candidates.sort(key=lambda x: (-x[0][0], -x[0][1], -x[0][2], x[1]))
+            if not _candidates:
+                _lines.append(f"{_mark}軸 {_axis}　該当なし（総合点算出不可）")
+            for _rank, (_scores, _partner, _pair) in enumerate(_candidates[:2], 1):
+                _duplicate = _pair in _v335js_seen
+                _lines.append(
+                    f"{_mark}軸 {_rank}位　{_axis}－{_partner}　"
+                    f"2車複総合{_scores[0]:.2f}点"
+                    f"（的中{_scores[1]:.2f}／妙味{_scores[2]:.2f}）"
+                    + ("【重複・統合】" if _duplicate else "")
+                )
+                if not _duplicate:
+                    _v335js_seen.add(_pair)
+                    _v335js_final.append(_pair)
+        _lines.append("【最終検証買目】")
+        for _a, _b in _v335js_final:
+            _lines.append(f"2車複　{_a}－{_b}")
+        if not _v335js_final:
+            _lines.append("2車複　該当なし")
+        _lines.append(f"計{len(_v335js_final)}点（各軸上位2点・重複除外・補充なし）")
+        _lines.append("")
+    else:
+        _lines.append("")
+        _lines.append("【ヴェロビ妙味軸評価】")
+        for _mark_v335ii in ("α", "β", "γ", "ε", "Ω"):
+            if _mark_v335ii in _myoumi_marks_v335ii:
+                _car_v335ii = int(_myoumi_marks_v335ii[_mark_v335ii])
+                if _mark_v335ii == "α":
+                    _lines.append(f"α　{_car_v335ii}　通常評価△を妙味軸に固定")
+                else:
+                    _lines.append(f"{_mark_v335ii}　{_car_v335ii}　{_myoumi_details_v335ij.get(_mark_v335ii, '算出不可')}")
             else:
-                _lines.append(f"{_mark_v335ii}　{_car_v335ii}　{_myoumi_details_v335ij.get(_mark_v335ii, '算出不可')}")
-        else:
-            _lines.append(f"{_mark_v335ii}　算出不可")
-    _lines.append("")
-    # v335jb: 最終総合評価のみε軸2車複専用にする。
-    # 通常・妙味評価、共通確率、展開、公開買目は変更しない。
-    # 配当適合には2車複の実配当分布がないため、既存の2車単の
-    # 表裏それぞれの配当帯適合スコアを確率加重した代理値を使用する。
-    _final_epsilon_marks_v335ja = {}
-    _final_epsilon_details_v335ja = {}
-    _epsilon_anchor_v335ja = _myoumi_marks_v335ii.get("ε")
-    if _epsilon_anchor_v335ja is not None:
-        _eps_v335ja = int(_epsilon_anchor_v335ja)
-        _final_epsilon_marks_v335ja["ε"] = _eps_v335ja
-        _used_v335ja = {_eps_v335ja}
-        _eps_rows_v335jb = _scenario_candidate_rows(
-            _eps_v335ja, _scenario_rows_v335hi, _p1_map, _p2_map, _p3_map
-        )
-        _all_v335jb = []
-        for _r_v335jb in _eps_rows_v335jb:
-            _c_v335jb = int(_r_v335jb["car"])
-            _q_v335jb = float(_r_v335jb.get("qprob", -1.0))
-            if not math.isfinite(_q_v335jb) or _q_v335jb < 0.0:
-                continue
-            _ab_v335jb = _exacta_prob_with(
-                _eps_v335ja, _c_v335jb, _p1_map, _p2_map, _p3_map
+                _lines.append(f"{_mark_v335ii}　算出不可")
+        _lines.append("")
+        # v335jb: 最終総合評価のみε軸2車複専用にする。
+        # 通常・妙味評価、共通確率、展開、公開買目は変更しない。
+        # 配当適合には2車複の実配当分布がないため、既存の2車単の
+        # 表裏それぞれの配当帯適合スコアを確率加重した代理値を使用する。
+        _final_epsilon_marks_v335ja = {}
+        _final_epsilon_details_v335ja = {}
+        _epsilon_anchor_v335ja = _myoumi_marks_v335ii.get("ε")
+        if _epsilon_anchor_v335ja is not None:
+            _eps_v335ja = int(_epsilon_anchor_v335ja)
+            _final_epsilon_marks_v335ja["ε"] = _eps_v335ja
+            _used_v335ja = {_eps_v335ja}
+            _eps_rows_v335jb = _scenario_candidate_rows(
+                _eps_v335ja, _scenario_rows_v335hi, _p1_map, _p2_map, _p3_map
             )
-            _ba_v335jb = _exacta_prob_with(
-                _c_v335jb, _eps_v335ja, _p1_map, _p2_map, _p3_map
-            )
-            # 2車複専用の配当分布が未実装なので、表裏を合算する代理指標。
-            _vsum_v335jb = 0.0
-            _wsum_v335jb = 0.0
-            for _p_v335jb in (_ab_v335jb, _ba_v335jb):
-                if _p_v335jb is None:
+            _all_v335jb = []
+            for _r_v335jb in _eps_rows_v335jb:
+                _c_v335jb = int(_r_v335jb["car"])
+                _q_v335jb = float(_r_v335jb.get("qprob", -1.0))
+                if not math.isfinite(_q_v335jb) or _q_v335jb < 0.0:
                     continue
-                _p_v335jb = float(_p_v335jb)
-                if not math.isfinite(_p_v335jb) or _p_v335jb <= 0.0:
-                    continue
-                _score_v335jb = _distribution_band_v335fz(
-                    "2車単", _p_v335jb
-                ).get("selection_score", -1.0)
-                if _score_v335jb is None:
-                    continue
-                _score_v335jb = float(_score_v335jb)
-                if math.isfinite(_score_v335jb) and _score_v335jb >= 0.0:
-                    _vsum_v335jb += _p_v335jb * _score_v335jb
-                    _wsum_v335jb += _p_v335jb
-            _value_v335jb = (
-                _vsum_v335jb / _wsum_v335jb if _wsum_v335jb > 0.0 else None
-            )
-            _all_v335jb.append({
-                "car": _c_v335jb, "qprob": _q_v335jb,
-                "value": _value_v335jb, "row": _r_v335jb,
+                _ab_v335jb = _exacta_prob_with(
+                    _eps_v335ja, _c_v335jb, _p1_map, _p2_map, _p3_map
+                )
+                _ba_v335jb = _exacta_prob_with(
+                    _c_v335jb, _eps_v335ja, _p1_map, _p2_map, _p3_map
+                )
+                # 2車複専用の配当分布が未実装なので、表裏を合算する代理指標。
+                _vsum_v335jb = 0.0
+                _wsum_v335jb = 0.0
+                for _p_v335jb in (_ab_v335jb, _ba_v335jb):
+                    if _p_v335jb is None:
+                        continue
+                    _p_v335jb = float(_p_v335jb)
+                    if not math.isfinite(_p_v335jb) or _p_v335jb <= 0.0:
+                        continue
+                    _score_v335jb = _distribution_band_v335fz(
+                        "2車単", _p_v335jb
+                    ).get("selection_score", -1.0)
+                    if _score_v335jb is None:
+                        continue
+                    _score_v335jb = float(_score_v335jb)
+                    if math.isfinite(_score_v335jb) and _score_v335jb >= 0.0:
+                        _vsum_v335jb += _p_v335jb * _score_v335jb
+                        _wsum_v335jb += _p_v335jb
+                _value_v335jb = (
+                    _vsum_v335jb / _wsum_v335jb if _wsum_v335jb > 0.0 else None
+                )
+                _all_v335jb.append({
+                    "car": _c_v335jb, "qprob": _q_v335jb,
+                    "value": _value_v335jb, "row": _r_v335jb,
+                })
+            # 全候補を同じ母集団で偏差値化し、A/B選出後に基準を変えない。
+            _hit_dev_v335jb = _deviation_map_v335ha({
+                r["car"]: r["qprob"] for r in _all_v335jb
             })
-        # 全候補を同じ母集団で偏差値化し、A/B選出後に基準を変えない。
-        _hit_dev_v335jb = _deviation_map_v335ha({
-            r["car"]: r["qprob"] for r in _all_v335jb
-        })
-        _value_dev_v335jb = _deviation_map_v335ha({
-            r["car"]: r["value"] for r in _all_v335jb
-            if r["value"] is not None
-        })
-        # A: εとの2車複連対確率最大。ラインは既存同点処理のみ。
-        _a_v335jb, _a_row_v335jb = _select_hit_himo(
-            [r["row"] for r in _all_v335jb]
-        )
-        if _a_v335jb is not None:
-            _a_v335jb = int(_a_v335jb)
-            _used_v335ja.add(_a_v335jb)
-            _final_epsilon_marks_v335ja["A"] = _a_v335jb
-            _final_epsilon_details_v335ja["A"] = (
-                f"2車複連対指数 {float(_a_row_v335jb['qprob'])*100.0:.1f}%"
-            )
-        # B: εとの2車複の表裏配当適合代理値最大。
-        _b_rows_v335jb = [
-            r for r in _all_v335jb
-            if r["car"] not in _used_v335ja and r["value"] is not None
-        ]
-        _b_rows_v335jb.sort(key=lambda r: (
-            -r["value"], -r["qprob"], r["car"]
-        ))
-        if _b_rows_v335jb:
-            _b_v335jb = _b_rows_v335jb[0]
-            _used_v335ja.add(_b_v335jb["car"])
-            _final_epsilon_marks_v335ja["B"] = _b_v335jb["car"]
-            _final_epsilon_details_v335ja["B"] = (
-                f"2車複配当適合代理偏差値 "
-                f"{_value_dev_v335jb[_b_v335jb['car']]:.1f}"
-            )
-        # C/D: εとの2車複連対確率偏差値と表裏妙味代理偏差値の平均。
-        _balance_rows_v335jb = []
-        for _r_v335jb in _all_v335jb:
-            _c_v335jb = _r_v335jb["car"]
-            if _c_v335jb in _used_v335ja:
-                continue
-            if (_c_v335jb not in _hit_dev_v335jb
-                    or _c_v335jb not in _value_dev_v335jb):
-                continue
-            _h_v335jb = _hit_dev_v335jb[_c_v335jb]
-            _v_v335jb = _value_dev_v335jb[_c_v335jb]
-            _balance_rows_v335jb.append({
-                "car": _c_v335jb, "hit": _h_v335jb,
-                "value": _v_v335jb,
-                "balance": (_h_v335jb + _v_v335jb) / 2.0,
+            _value_dev_v335jb = _deviation_map_v335ha({
+                r["car"]: r["value"] for r in _all_v335jb
+                if r["value"] is not None
             })
-        _balance_rows_v335jb.sort(key=lambda r: (
-            -r["balance"], -min(r["hit"], r["value"]),
-            -r["hit"], -r["value"], r["car"]
-        ))
-        for _mark_v335jb, _r_v335jb in zip(("C", "D"), _balance_rows_v335jb):
-            _final_epsilon_marks_v335ja[_mark_v335jb] = _r_v335jb["car"]
-            _final_epsilon_details_v335ja[_mark_v335jb] = (
-                f"2車複的中妙味バランス {_r_v335jb['balance']:.1f}"
-                f"（的中{_r_v335jb['hit']:.1f}／妙味代理{_r_v335jb['value']:.1f}）"
+            # A: εとの2車複連対確率最大。ラインは既存同点処理のみ。
+            _a_v335jb, _a_row_v335jb = _select_hit_himo(
+                [r["row"] for r in _all_v335jb]
             )
-    _lines.append("【最終総合評価】")
-    for _mark_v335ja in ("ε", "A", "B", "C", "D"):
-        if _mark_v335ja not in _final_epsilon_marks_v335ja:
-            _lines.append(f"{_mark_v335ja}　該当なし")
-            continue
-        _car_v335ja = int(_final_epsilon_marks_v335ja[_mark_v335ja])
-        if _mark_v335ja == "ε":
-            _lines.append(f"ε　{_car_v335ja}　妙味評価εを基準軸に固定")
-        else:
+            if _a_v335jb is not None:
+                _a_v335jb = int(_a_v335jb)
+                _used_v335ja.add(_a_v335jb)
+                _final_epsilon_marks_v335ja["A"] = _a_v335jb
+                _final_epsilon_details_v335ja["A"] = (
+                    f"2車複連対指数 {float(_a_row_v335jb['qprob'])*100.0:.1f}%"
+                )
+            # B: εとの2車複の表裏配当適合代理値最大。
+            _b_rows_v335jb = [
+                r for r in _all_v335jb
+                if r["car"] not in _used_v335ja and r["value"] is not None
+            ]
+            _b_rows_v335jb.sort(key=lambda r: (
+                -r["value"], -r["qprob"], r["car"]
+            ))
+            if _b_rows_v335jb:
+                _b_v335jb = _b_rows_v335jb[0]
+                _used_v335ja.add(_b_v335jb["car"])
+                _final_epsilon_marks_v335ja["B"] = _b_v335jb["car"]
+                _final_epsilon_details_v335ja["B"] = (
+                    f"2車複配当適合代理偏差値 "
+                    f"{_value_dev_v335jb[_b_v335jb['car']]:.1f}"
+                )
+            # C/D: εとの2車複連対確率偏差値と表裏妙味代理偏差値の平均。
+            _balance_rows_v335jb = []
+            for _r_v335jb in _all_v335jb:
+                _c_v335jb = _r_v335jb["car"]
+                if _c_v335jb in _used_v335ja:
+                    continue
+                if (_c_v335jb not in _hit_dev_v335jb
+                        or _c_v335jb not in _value_dev_v335jb):
+                    continue
+                _h_v335jb = _hit_dev_v335jb[_c_v335jb]
+                _v_v335jb = _value_dev_v335jb[_c_v335jb]
+                _balance_rows_v335jb.append({
+                    "car": _c_v335jb, "hit": _h_v335jb,
+                    "value": _v_v335jb,
+                    "balance": (_h_v335jb + _v_v335jb) / 2.0,
+                })
+            _balance_rows_v335jb.sort(key=lambda r: (
+                -r["balance"], -min(r["hit"], r["value"]),
+                -r["hit"], -r["value"], r["car"]
+            ))
+            for _mark_v335jb, _r_v335jb in zip(("C", "D"), _balance_rows_v335jb):
+                _final_epsilon_marks_v335ja[_mark_v335jb] = _r_v335jb["car"]
+                _final_epsilon_details_v335ja[_mark_v335jb] = (
+                    f"2車複的中妙味バランス {_r_v335jb['balance']:.1f}"
+                    f"（的中{_r_v335jb['hit']:.1f}／妙味代理{_r_v335jb['value']:.1f}）"
+                )
+        _lines.append("【最終総合評価】")
+        for _mark_v335ja in ("ε", "A", "B", "C", "D"):
+            if _mark_v335ja not in _final_epsilon_marks_v335ja:
+                _lines.append(f"{_mark_v335ja}　該当なし")
+                continue
+            _car_v335ja = int(_final_epsilon_marks_v335ja[_mark_v335ja])
+            if _mark_v335ja == "ε":
+                _lines.append(f"ε　{_car_v335ja}　妙味評価εを基準軸に固定")
+            else:
+                _lines.append(
+                    f"{_mark_v335ja}　{_car_v335ja}　"
+                    f"{_final_epsilon_details_v335ja.get(_mark_v335ja, '算出不可')}"
+                )
+        _lines.append("")
+        # v335jn: 各流れの1位軸を維持し、2位以下の◎αβε候補を
+        # 既存の2車複総合評価点で比較して最高点の相手1車を選ぶ。
+        # 流れ別の過程を縦表示し、最後に重複排除した2車複を縦表示。
+        _v335jf_eligible = {
+            int(c) for c in (
+                _axis_gc,
+                _myoumi_marks_v335ii.get("α"),
+                _myoumi_marks_v335ii.get("β"),
+                _myoumi_marks_v335ii.get("ε"),
+            ) if c is not None
+        }
+        # v335jh: 集計用に軸・相手それぞれの評価印を明示する。
+        # ◎とεなどが同じ車なら、印は両方とも保持する。
+        _v335jh_marks = {}
+        for _v335jh_mark, _v335jh_car in (
+            ("◎", _axis_gc),
+            ("α", _myoumi_marks_v335ii.get("α")),
+            ("β", _myoumi_marks_v335ii.get("β")),
+            ("ε", _myoumi_marks_v335ii.get("ε")),
+        ):
+            if _v335jh_car is not None:
+                _v335jh_marks.setdefault(int(_v335jh_car), []).append(_v335jh_mark)
+
+        def _v335jh_mark_label(car):
+            marks = _v335jh_marks.get(int(car), [])
+            return "".join(marks) + ("重複" if len(marks) > 1 else "") if marks else "対象外"
+
+        _v335jf_seen = set()
+        _v335jf_final = []
+        _lines.append("【検証買目】")
+        # 既存の加重2車複総合評価（的中点・妙味点50:50）を再利用。
+        # スコア未生成の場合も、既存の車別加重点から同じ計算式で補完する。
+        _v335jn_pair_scores = {}
+        for _v335jn_row in (globals().get("V335DH_WEIGHTED_PAIR_ROWS") or []):
+            try:
+                _v335jn_pair = tuple(sorted((int(_v335jn_row["a"]), int(_v335jn_row["b"]))))
+                _v335jn_pair_scores[_v335jn_pair] = (
+                    float(_v335jn_row["total_pt"]),
+                    float(_v335jn_row.get("hit_score", 0)),
+                    float(_v335jn_row.get("myoumi_score", 0)),
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+        _v335jn_hit = globals().get("V335DS_WEIGHTED_CAR_HIT_MAP") or {}
+        _v335jn_value = globals().get("V335DS_WEIGHTED_CAR_MYOUMI_MAP") or {}
+
+        def _v335jn_score(pair):
+            if pair in _v335jn_pair_scores:
+                return _v335jn_pair_scores[pair]
+            a, b = pair
+            try:
+                h = round(max(0.0, min(12.0, (float(_v335jn_hit[a]) + float(_v335jn_hit[b])) / 2)), 2)
+                v = round(max(0.0, min(10.8, (float(_v335jn_value[a]) + float(_v335jn_value[b])) / 2)), 2)
+                return ((h + v) / 2, h, v)
+            except (KeyError, TypeError, ValueError):
+                return None
+
+        for _v335jf_flow in _rows:
+            _v335jf_seq = [int(c) for c in (_v335jf_flow.get("order") or ())]
+            _v335jf_name = str(_v335jf_flow.get("style", "流れ"))
+            _lines.append(f"【{_v335jf_name}】")
+            if len(_v335jf_seq) < 2:
+                _lines.append("2車複　該当なし（0点）")
+                continue
+            _v335jf_anchor = _v335jf_seq[0]
+            _v335jn_candidates = []
+            for _v335jn_rank, _v335jn_car in enumerate(_v335jf_seq[1:], start=2):
+                if _v335jn_car not in _v335jf_eligible or _v335jn_car == _v335jf_anchor:
+                    continue
+                _v335jn_pair = tuple(sorted((_v335jf_anchor, _v335jn_car)))
+                _v335jn_scores = _v335jn_score(_v335jn_pair)
+                if _v335jn_scores is not None:
+                    _v335jn_candidates.append((_v335jn_scores, _v335jn_rank, _v335jn_car, _v335jn_pair))
+            if not _v335jn_candidates:
+                _lines.append("該当なし（総合評価点算出不可、0点）")
+                continue
+            # 総合点→的中点→妙味点。同点の場合だけ流れ順位、車番で決定。
+            _v335jn_candidates.sort(key=lambda x: (-x[0][0], -x[0][1], -x[0][2], x[1], x[2]))
+            _v335jn_best = _v335jn_candidates[0]
+            _v335jf_partner = _v335jn_best[2]
+            _v335jf_pair = _v335jn_best[3]
             _lines.append(
-                f"{_mark_v335ja}　{_car_v335ja}　"
-                f"{_final_epsilon_details_v335ja.get(_mark_v335ja, '算出不可')}"
+                f"1位軸　{_v335jf_anchor}－{_v335jf_partner}"
+                f"（軸{_v335jh_mark_label(_v335jf_anchor)}－{_v335jh_mark_label(_v335jf_partner)}）"
+                f"　2車複総合{_v335jn_best[0][0]:.2f}点"
+                f"（的中{_v335jn_best[0][1]:.2f}／妙味{_v335jn_best[0][2]:.2f}）"
             )
-    _lines.append("")
-    # v335jn: 各流れの1位軸を維持し、2位以下の◎αβε候補を
-    # 既存の2車複総合評価点で比較して最高点の相手1車を選ぶ。
-    # 流れ別の過程を縦表示し、最後に重複排除した2車複を縦表示。
-    _v335jf_eligible = {
-        int(c) for c in (
-            _axis_gc,
-            _myoumi_marks_v335ii.get("α"),
-            _myoumi_marks_v335ii.get("β"),
-            _myoumi_marks_v335ii.get("ε"),
-        ) if c is not None
-    }
-    # v335jh: 集計用に軸・相手それぞれの評価印を明示する。
-    # ◎とεなどが同じ車なら、印は両方とも保持する。
-    _v335jh_marks = {}
-    for _v335jh_mark, _v335jh_car in (
-        ("◎", _axis_gc),
-        ("α", _myoumi_marks_v335ii.get("α")),
-        ("β", _myoumi_marks_v335ii.get("β")),
-        ("ε", _myoumi_marks_v335ii.get("ε")),
-    ):
-        if _v335jh_car is not None:
-            _v335jh_marks.setdefault(int(_v335jh_car), []).append(_v335jh_mark)
+            if _v335jf_pair not in _v335jf_seen:
+                _v335jf_seen.add(_v335jf_pair)
+                _v335jf_final.append(_v335jf_pair)
+        # v335jj: 1位軸で選んだ2車複だけを対象に、評価で片方向成立の2車単を追加。
+        # v335ji: 2車複はそのまま残し、評価で方向が一意の組だけ2車単を追加検証。
+        # 同じ車に複数印がある場合も、評価系列の正しい組合せで判定する。
+        # 例：α7→β5 は成立するが α7→◎5 としては扱わない。
+        _v335ji_normal = {
+            "◎": _axis_gc, "○": _hit_himo, "▲": _triangle_gc,
+            "△": _delta_gc, "×": _x_gc,
+        }
+        _v335ji_value = {
+            mark: _myoumi_marks_v335ii.get(mark)
+            for mark in ("α", "β", "γ", "ε", "Ω")
+        }
+        _v335ji_final = dict(_final_epsilon_marks_v335ja)
 
-    def _v335jh_mark_label(car):
-        marks = _v335jh_marks.get(int(car), [])
-        return "".join(marks) + ("重複" if len(marks) > 1 else "") if marks else "対象外"
+        def _v335ji_is(car, mapping, mark):
+            val = mapping.get(mark)
+            return val is not None and int(val) == int(car)
 
-    _v335jf_seen = set()
-    _v335jf_final = []
-    _lines.append("【検証買目】")
-    # 既存の加重2車複総合評価（的中点・妙味点50:50）を再利用。
-    # スコア未生成の場合も、既存の車別加重点から同じ計算式で補完する。
-    _v335jn_pair_scores = {}
-    for _v335jn_row in (globals().get("V335DH_WEIGHTED_PAIR_ROWS") or []):
-        try:
-            _v335jn_pair = tuple(sorted((int(_v335jn_row["a"]), int(_v335jn_row["b"]))))
-            _v335jn_pair_scores[_v335jn_pair] = (
-                float(_v335jn_row["total_pt"]),
-                float(_v335jn_row.get("hit_score", 0)),
-                float(_v335jn_row.get("myoumi_score", 0)),
+        def _v335ji_directions(first, second):
+            """first→second に成立する評価ペアを、優先順位付きで返す。"""
+            matches = []
+            # 通常評価は◎→○▲△×のみ。
+            for target in ("○", "▲", "△", "×"):
+                if (_v335ji_is(first, _v335ji_normal, "◎")
+                        and _v335ji_is(second, _v335ji_normal, target)):
+                    matches.append(f"◎→{target}")
+            # 妙味評価はα→βγεΩ、さらにαとεの表裏を許容。
+            for target in ("β", "γ", "ε", "Ω"):
+                if (_v335ji_is(first, _v335ji_value, "α")
+                        and _v335ji_is(second, _v335ji_value, target)):
+                    matches.append(f"α→{target}")
+            if (_v335ji_is(first, _v335ji_value, "ε")
+                    and _v335ji_is(second, _v335ji_value, "α")):
+                matches.append("ε→α")
+            # 最終総合評価はε→A/B/C/Dのみ。
+            for target in ("A", "B", "C", "D"):
+                if (_v335ji_is(first, _v335ji_final, "ε")
+                        and _v335ji_is(second, _v335ji_final, target)):
+                    matches.append(f"ε→{target}")
+            return matches
+
+        _v335ji_additions = []
+        for _v335ji_a, _v335ji_b in _v335jf_final:
+            _v335ji_ab = _v335ji_directions(_v335ji_a, _v335ji_b)
+            _v335ji_ba = _v335ji_directions(_v335ji_b, _v335ji_a)
+            _v335ji_parts = (
+                [f"{_v335ji_a}→{_v335ji_b}（{'／'.join(_v335ji_ab)}）"] if _v335ji_ab else []
+            ) + (
+                [f"{_v335ji_b}→{_v335ji_a}（{'／'.join(_v335ji_ba)}）"] if _v335ji_ba else []
             )
-        except (KeyError, TypeError, ValueError):
-            continue
-    _v335jn_hit = globals().get("V335DS_WEIGHTED_CAR_HIT_MAP") or {}
-    _v335jn_value = globals().get("V335DS_WEIGHTED_CAR_MYOUMI_MAP") or {}
-
-    def _v335jn_score(pair):
-        if pair in _v335jn_pair_scores:
-            return _v335jn_pair_scores[pair]
-        a, b = pair
-        try:
-            h = round(max(0.0, min(12.0, (float(_v335jn_hit[a]) + float(_v335jn_hit[b])) / 2)), 2)
-            v = round(max(0.0, min(10.8, (float(_v335jn_value[a]) + float(_v335jn_value[b])) / 2)), 2)
-            return ((h + v) / 2, h, v)
-        except (KeyError, TypeError, ValueError):
-            return None
-
-    for _v335jf_flow in _rows:
-        _v335jf_seq = [int(c) for c in (_v335jf_flow.get("order") or ())]
-        _v335jf_name = str(_v335jf_flow.get("style", "流れ"))
-        _lines.append(f"【{_v335jf_name}】")
-        if len(_v335jf_seq) < 2:
-            _lines.append("2車複　該当なし（0点）")
-            continue
-        _v335jf_anchor = _v335jf_seq[0]
-        _v335jn_candidates = []
-        for _v335jn_rank, _v335jn_car in enumerate(_v335jf_seq[1:], start=2):
-            if _v335jn_car not in _v335jf_eligible or _v335jn_car == _v335jf_anchor:
-                continue
-            _v335jn_pair = tuple(sorted((_v335jf_anchor, _v335jn_car)))
-            _v335jn_scores = _v335jn_score(_v335jn_pair)
-            if _v335jn_scores is not None:
-                _v335jn_candidates.append((_v335jn_scores, _v335jn_rank, _v335jn_car, _v335jn_pair))
-        if not _v335jn_candidates:
-            _lines.append("該当なし（総合評価点算出不可、0点）")
-            continue
-        # 総合点→的中点→妙味点。同点の場合だけ流れ順位、車番で決定。
-        _v335jn_candidates.sort(key=lambda x: (-x[0][0], -x[0][1], -x[0][2], x[1], x[2]))
-        _v335jn_best = _v335jn_candidates[0]
-        _v335jf_partner = _v335jn_best[2]
-        _v335jf_pair = _v335jn_best[3]
-        _lines.append(
-            f"1位軸　{_v335jf_anchor}－{_v335jf_partner}"
-            f"（軸{_v335jh_mark_label(_v335jf_anchor)}－{_v335jh_mark_label(_v335jf_partner)}）"
-            f"　2車複総合{_v335jn_best[0][0]:.2f}点"
-            f"（的中{_v335jn_best[0][1]:.2f}／妙味{_v335jn_best[0][2]:.2f}）"
-        )
-        if _v335jf_pair not in _v335jf_seen:
-            _v335jf_seen.add(_v335jf_pair)
-            _v335jf_final.append(_v335jf_pair)
-    # v335jj: 1位軸で選んだ2車複だけを対象に、評価で片方向成立の2車単を追加。
-    # v335ji: 2車複はそのまま残し、評価で方向が一意の組だけ2車単を追加検証。
-    # 同じ車に複数印がある場合も、評価系列の正しい組合せで判定する。
-    # 例：α7→β5 は成立するが α7→◎5 としては扱わない。
-    _v335ji_normal = {
-        "◎": _axis_gc, "○": _hit_himo, "▲": _triangle_gc,
-        "△": _delta_gc, "×": _x_gc,
-    }
-    _v335ji_value = {
-        mark: _myoumi_marks_v335ii.get(mark)
-        for mark in ("α", "β", "γ", "ε", "Ω")
-    }
-    _v335ji_final = dict(_final_epsilon_marks_v335ja)
-
-    def _v335ji_is(car, mapping, mark):
-        val = mapping.get(mark)
-        return val is not None and int(val) == int(car)
-
-    def _v335ji_directions(first, second):
-        """first→second に成立する評価ペアを、優先順位付きで返す。"""
-        matches = []
-        # 通常評価は◎→○▲△×のみ。
-        for target in ("○", "▲", "△", "×"):
-            if (_v335ji_is(first, _v335ji_normal, "◎")
-                    and _v335ji_is(second, _v335ji_normal, target)):
-                matches.append(f"◎→{target}")
-        # 妙味評価はα→βγεΩ、さらにαとεの表裏を許容。
-        for target in ("β", "γ", "ε", "Ω"):
-            if (_v335ji_is(first, _v335ji_value, "α")
-                    and _v335ji_is(second, _v335ji_value, target)):
-                matches.append(f"α→{target}")
-        if (_v335ji_is(first, _v335ji_value, "ε")
-                and _v335ji_is(second, _v335ji_value, "α")):
-            matches.append("ε→α")
-        # 最終総合評価はε→A/B/C/Dのみ。
-        for target in ("A", "B", "C", "D"):
-            if (_v335ji_is(first, _v335ji_final, "ε")
-                    and _v335ji_is(second, _v335ji_final, target)):
-                matches.append(f"ε→{target}")
-        return matches
-
-    _v335ji_additions = []
-    for _v335ji_a, _v335ji_b in _v335jf_final:
-        _v335ji_ab = _v335ji_directions(_v335ji_a, _v335ji_b)
-        _v335ji_ba = _v335ji_directions(_v335ji_b, _v335ji_a)
-        _v335ji_parts = (
-            [f"{_v335ji_a}→{_v335ji_b}（{'／'.join(_v335ji_ab)}）"] if _v335ji_ab else []
-        ) + (
-            [f"{_v335ji_b}→{_v335ji_a}（{'／'.join(_v335ji_ba)}）"] if _v335ji_ba else []
-        )
-        if bool(_v335ji_ab) != bool(_v335ji_ba):
-            if _v335ji_ab:
-                _v335ji_additions.append((_v335ji_a, _v335ji_b, _v335ji_ab))
-            else:
-                _v335ji_additions.append((_v335ji_b, _v335ji_a, _v335ji_ba))
-    _lines.append("【最終検証買目】")
-    for _v335jl_a, _v335jl_b in _v335jf_final:
-        _lines.append(f"2車複　{_v335jl_a}－{_v335jl_b}")
-    if not _v335jf_final:
-        _lines.append("2車複　該当なし")
-    _lines.append(f"計{len(_v335jf_final)}点（重複除外・評価アレンジ該当なしも残す）")
-    _lines.append("")
-    _lines.append("【追加検証2車単・片方向のみ】")
-    for _v335ji_first, _v335ji_second, _v335ji_marks in _v335ji_additions:
-        _lines.append(
-            f"2車単　{_v335ji_first}→{_v335ji_second}（{'／'.join(_v335ji_marks)}）"
-        )
-    if not _v335ji_additions:
-        _lines.append("該当なし（0点）")
-    _lines.append(f"追加{len(_v335ji_additions)}点（折り返し成立は除外）")
-    _lines.append(f"基本2車複{len(_v335jf_final)}点＋追加2車単{len(_v335ji_additions)}点")
-    _lines.append("")
-    # 固定4点の購入券種は未確定のため、この版では評価のみ追加。
-    # ガールズのみ、通常評価の4車から◎への2車単を公開する。
-    # 通常競輪・アドバンスでは券種別オススメ欄を表示しない。
-    if race_class == "ガールズ":
-        _lines.append("【ガールズ競輪・2車単買い目】")
-        _girls_targets = (("○", _hit_himo), ("▲", _triangle_gc),
-                          ("△", _delta_gc), ("×", _x_gc))
-        _girls_seen = set()
-        _girls_tickets = []
-        for _girls_mark, _girls_car in _girls_targets:
-            if _girls_car is None or _axis_gc is None:
-                continue
-            _girls_car = int(_girls_car)
-            _girls_axis = int(_axis_gc)
-            if _girls_car == _girls_axis or _girls_car in _girls_seen:
-                continue
-            _girls_seen.add(_girls_car)
-            _girls_tickets.append(f"{_girls_car}→{_girls_axis}")
-        _lines.extend(_girls_tickets or ["該当なし"])
-        _lines.append("※ガールズは傾向分析から除外しています")
+            if bool(_v335ji_ab) != bool(_v335ji_ba):
+                if _v335ji_ab:
+                    _v335ji_additions.append((_v335ji_a, _v335ji_b, _v335ji_ab))
+                else:
+                    _v335ji_additions.append((_v335ji_b, _v335ji_a, _v335ji_ba))
+        _lines.append("【最終検証買目】")
+        for _v335jl_a, _v335jl_b in _v335jf_final:
+            _lines.append(f"2車複　{_v335jl_a}－{_v335jl_b}")
+        if not _v335jf_final:
+            _lines.append("2車複　該当なし")
+        _lines.append(f"計{len(_v335jf_final)}点（重複除外・評価アレンジ該当なしも残す）")
+        _lines.append("")
+        _lines.append("【追加検証2車単・片方向のみ】")
+        for _v335ji_first, _v335ji_second, _v335ji_marks in _v335ji_additions:
+            _lines.append(
+                f"2車単　{_v335ji_first}→{_v335ji_second}（{'／'.join(_v335ji_marks)}）"
+            )
+        if not _v335ji_additions:
+            _lines.append("該当なし（0点）")
+        _lines.append(f"追加{len(_v335ji_additions)}点（折り返し成立は除外）")
+        _lines.append(f"基本2車複{len(_v335jf_final)}点＋追加2車単{len(_v335ji_additions)}点")
+        _lines.append("")
+        # 固定4点の購入券種は未確定のため、この版では評価のみ追加。
+        # ガールズのみ、通常評価の4車から◎への2車単を公開する。
+        # 通常競輪・アドバンスでは券種別オススメ欄を表示しない。
+        if race_class == "ガールズ":
+            _lines.append("【ガールズ競輪・2車単買い目】")
+            _girls_targets = (("○", _hit_himo), ("▲", _triangle_gc),
+                              ("△", _delta_gc), ("×", _x_gc))
+            _girls_seen = set()
+            _girls_tickets = []
+            for _girls_mark, _girls_car in _girls_targets:
+                if _girls_car is None or _axis_gc is None:
+                    continue
+                _girls_car = int(_girls_car)
+                _girls_axis = int(_axis_gc)
+                if _girls_car == _girls_axis or _girls_car in _girls_seen:
+                    continue
+                _girls_seen.add(_girls_car)
+                _girls_tickets.append(f"{_girls_car}→{_girls_axis}")
+            _lines.extend(_girls_tickets or ["該当なし"])
+            _lines.append("※ガールズは傾向分析から除外しています")
 
     # v335hh：公開買目は偏差値ではなく、全成立買目の「的中想定順位」で表示する。
     # 2車単 = n×(n-1) 通り、3連単 = n×(n-1)×(n-2) 通り。
