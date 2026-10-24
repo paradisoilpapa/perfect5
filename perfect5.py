@@ -1,3 +1,4 @@
+# v335kh: 惑星理論の太陽軸を▲条件付きに変更。太陽－彗星、惑星－衛星、予想・評価は維持。
 # v335kg: レース切替時の警告を通常の再計算案内に変更。安全停止と計算ロジックは維持。
 # v335kf: 通常競輪の検証2車複を惑星理論に変更。予想・評価・ガールズ/アドバンスは維持。
 # v335kd: 2車複同ライン選抜と2車単のヒモを◎αβεに限定。表示にも明示。方向判定ルール自体は維持。
@@ -6301,7 +6302,23 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             comets.difference_update(satellites | {sun, planet})
             def pair(a, b):
                 return tuple(sorted((int(a), int(b))))
-            sun_pairs = {pair(sun, c) for c in ({planet} | comets) if c != sun}
+            # v335kh: 太陽－惑星は惑星が▲の場合のみ成立。
+            # 太陽－衛星は▲かつα/β/εのいずれかと一致する場合のみ成立。
+            # 太陽－彗星と惑星－衛星は従来どおり維持。
+            triangle = int(_triangle_gc) if _triangle_gc is not None else None
+            special_marks = {
+                int(c) for c in (
+                    _myoumi_marks_v335ii.get("α"),
+                    _myoumi_marks_v335ii.get("β"),
+                    _myoumi_marks_v335ii.get("ε"),
+                ) if c is not None
+            }
+            sun_targets = set(comets)
+            if triangle == planet:
+                sun_targets.add(planet)
+            if triangle in satellites and triangle in special_marks:
+                sun_targets.add(triangle)
+            sun_pairs = {pair(sun, c) for c in sun_targets if c != sun}
             planet_pairs = {pair(planet, c) for c in satellites if c != planet}
             return sun, planet, sorted(satellites), sorted(comets), sorted(sun_pairs), sorted(planet_pairs), sorted(sun_pairs | planet_pairs)
 
@@ -6319,7 +6336,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _lines.append(f"惑星　{_planet_v335kf}（太陽の流れの2位）")
             _lines.append("衛星　" + ("・".join(map(str, _sat_v335kf)) if _sat_v335kf else "該当なし"))
             _lines.append("彗星　" + ("・".join(map(str, _com_v335kf)) if _com_v335kf else "該当なし"))
-            _lines.append("【太陽－惑星・彗星】")
+            _lines.append("【太陽軸：▲条件付き惑星・衛星／彗星は従来どおり】")
+            if not _sun_pairs_v335kf:
+                _lines.append("2車複　該当なし")
             for a, b in _sun_pairs_v335kf:
                 _lines.append(f"2車複　{a}－{b}")
             _lines.append("【惑星－衛星】")
