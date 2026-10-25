@@ -1,3 +1,4 @@
+# v335kk: 惑星・銀河系候補を統合、既存2車複的中点優先で上位3点選抜。既存評価・理論別候補・比較を維持。
 # v335kj: 太陽－惑星の▲かつ妙味軸α/β/ε条件を厳密化。その他の惑星・銀河系・評価は維持。
 # v335ki: 銀河系理論を通常競輪の検証欄に並列追加。ライン別恒星系、◎αβε6組、旧惑星との重複・固有を表示。現行評価・惑星理論・ガールズ/アドバンスは維持。
 # v335kh: 惑星理論の太陽軸を▲条件付きに変更。太陽－彗星、惑星－衛星、予想・評価は維持。
@@ -6474,6 +6475,95 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             if not _pairs_v335ki:
                 _lines.append("該当なし")
         _lines.append("※比較は検証候補の分類であり、購入点数を自動増加させません。")
+        # v335kk: 両理論の検証候補を車番ペア単位で統合し、的中点のみで3点に圧縮。
+        # 妙味点・総合点・実オッズを選抜に使用しない。
+        # 既存の加重2車複表と同一の的中点（2車の加重的中単騎点の平均）を使用。
+        # 加重点データが未生成の場合は、既存2車複内部想定的中率を代理基準として明示。
+        _merged_pairs_v335kk = sorted(_old_pairs_v335ki | set(_galaxy_pairs_v335ki))
+        _weighted_hit_v335kk = globals().get("V335DS_WEIGHTED_CAR_HIT_MAP") or {}
+        _hit_by_pair_v335kk = {}
+        for _r_v335kk in (globals().get("V335DH_WEIGHTED_PAIR_ROWS") or []):
+            try:
+                _pa_v335kk = int(_r_v335kk["a"])
+                _pb_v335kk = int(_r_v335kk["b"])
+                _hit_v335kk = float(_r_v335kk["hit_score"])
+                if (_pa_v335kk != _pb_v335kk and math.isfinite(_hit_v335kk)):
+                    _hit_by_pair_v335kk[tuple(sorted((_pa_v335kk, _pb_v335kk)))] = _hit_v335kk
+            except (KeyError, ValueError, TypeError, OverflowError):
+                continue
+        _ranked_v335kk = []
+        for _pair_v335kk in _merged_pairs_v335kk:
+            _a_v335kk, _b_v335kk = _pair_v335kk
+            _h_v335kk = _hit_by_pair_v335kk.get(_pair_v335kk)
+            if _h_v335kk is None:
+                try:
+                    _ha_v335kk = float(_weighted_hit_v335kk[_a_v335kk])
+                    _hb_v335kk = float(_weighted_hit_v335kk[_b_v335kk])
+                    if math.isfinite(_ha_v335kk) and math.isfinite(_hb_v335kk):
+                        _h_v335kk = max(0.0, min(12.0, (_ha_v335kk + _hb_v335kk) / 2.0))
+                except (KeyError, TypeError, ValueError, OverflowError):
+                    pass
+            try:
+                _p_v335kk = _quinella_prob_with(
+                    _a_v335kk, _b_v335kk, _p1_map, _p2_map, _p3_map
+                )
+                _p_v335kk = float(_p_v335kk) if _p_v335kk is not None else None
+                if _p_v335kk is not None and not math.isfinite(_p_v335kk):
+                    _p_v335kk = None
+            except (ValueError, TypeError, OverflowError):
+                _p_v335kk = None
+            _ranked_v335kk.append({
+                "pair": _pair_v335kk,
+                "hit": _h_v335kk,
+                "prob": _p_v335kk,
+                "source": ("両理論" if _pair_v335kk in _old_pairs_v335ki
+                           and _pair_v335kk in _galaxy_pairs_v335ki
+                           else "惑星" if _pair_v335kk in _old_pairs_v335ki else "銀河系"),
+            })
+        # 比較対象を混在尺度にしない：全候補で加重的中点が取得できるときだけ使用。
+        _use_weighted_v335kk = bool(_ranked_v335kk) and all(
+            row["hit"] is not None for row in _ranked_v335kk
+        )
+        if _use_weighted_v335kk:
+            _rankable_v335kk = sorted(
+                _ranked_v335kk,
+                key=lambda r: (-r["hit"], -(r["prob"] if r["prob"] is not None else -1.0), r["pair"]),
+            )
+        else:
+            _rankable_v335kk = sorted(
+                [r for r in _ranked_v335kk if r["prob"] is not None],
+                key=lambda r: (-r["prob"], r["pair"]),
+            )
+        _top3_v335kk = _rankable_v335kk[:3]
+        _lines.append("")
+        _lines.append("【惑星理論＋銀河系理論・的中上位3点】")
+        _lines.append(f"統合候補　{len(_merged_pairs_v335kk)}点（同一ペア重複除外）")
+        _lines.append(
+            "選抜基準　既存2車複的中点（妙味・総合点不使用）"
+            if _use_weighted_v335kk else
+            "選抜基準　2車複内部想定的中率（加重的中点が全件揃わない場合の代理基準）"
+        )
+        for _rank_v335kk, _r_v335kk in enumerate(_rankable_v335kk, 1):
+            _a_v335kk, _b_v335kk = _r_v335kk["pair"]
+            _display_v335kk = (
+                f"的中点 {_r_v335kk['hit']:.2f}"
+                if _use_weighted_v335kk else
+                f"内部想定的中率 {_r_v335kk['prob'] * 100.0:.2f}%"
+            )
+            _flag_v335kk = "【選抜】" if _rank_v335kk <= 3 else "【次点】"
+            _lines.append(
+                f"{_rank_v335kk}位　2車複　{_a_v335kk}－{_b_v335kk}　"
+                f"{_display_v335kk}（{_r_v335kk['source']}）{_flag_v335kk}"
+            )
+        if not _rankable_v335kk:
+            _lines.append("該当なし（的中評価算出不可）")
+        _lines.append("【最終3点検証買目】")
+        for _r_v335kk in _top3_v335kk:
+            _a_v335kk, _b_v335kk = _r_v335kk["pair"]
+            _lines.append(f"2車複　{_a_v335kk}－{_b_v335kk}")
+        if not _top3_v335kk:
+            _lines.append("2車複　該当なし")
+        _lines.append(f"計{len(_top3_v335kk)}点（的中評価降順・最大3点・補充なし）")
         _lines.append("")
         # 固定4点の購入券種は未確定のため、この版では評価のみ追加。
         # ガールズのみ、通常評価の4車から◎への2車単を公開する。
