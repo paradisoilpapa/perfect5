@@ -1,3 +1,4 @@
+# v335kj: 太陽－惑星の▲かつ妙味軸α/β/ε条件を厳密化。その他の惑星・銀河系・評価は維持。
 # v335ki: 銀河系理論を通常競輪の検証欄に並列追加。ライン別恒星系、◎αβε6組、旧惑星との重複・固有を表示。現行評価・惑星理論・ガールズ/アドバンスは維持。
 # v335kh: 惑星理論の太陽軸を▲条件付きに変更。太陽－彗星、惑星－衛星、予想・評価は維持。
 # v335kg: レース切替時の警告を通常の再計算案内に変更。安全停止と計算ロジックは維持。
@@ -6303,8 +6304,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             comets.difference_update(satellites | {sun, planet})
             def pair(a, b):
                 return tuple(sorted((int(a), int(b))))
-            # v335kh: 太陽－惑星は惑星が▲の場合のみ成立。
-            # 太陽－衛星は▲かつα/β/εのいずれかと一致する場合のみ成立。
+            # v335kj: 太陽－惑星も太陽－衛星と同じく、
+            # 通常評価▲かつ妙味軸α/β/εのいずれかに該当する場合のみ成立。
             # 太陽－彗星と惑星－衛星は従来どおり維持。
             triangle = int(_triangle_gc) if _triangle_gc is not None else None
             special_marks = {
@@ -6315,7 +6316,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 ) if c is not None
             }
             sun_targets = set(comets)
-            if triangle == planet:
+            if triangle == planet and triangle in special_marks:
                 sun_targets.add(planet)
             if triangle in satellites and triangle in special_marks:
                 sun_targets.add(triangle)
