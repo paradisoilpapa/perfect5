@@ -1,3 +1,4 @@
+# v335ki: 銀河系理論を通常競輪の検証欄に並列追加。ライン別恒星系、◎αβε6組、旧惑星との重複・固有を表示。現行評価・惑星理論・ガールズ/アドバンスは維持。
 # v335kh: 惑星理論の太陽軸を▲条件付きに変更。太陽－彗星、惑星－衛星、予想・評価は維持。
 # v335kg: レース切替時の警告を通常の再計算案内に変更。安全停止と計算ロジックは維持。
 # v335kf: 通常競輪の検証2車複を惑星理論に変更。予想・評価・ガールズ/アドバンスは維持。
@@ -6348,6 +6349,130 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             for a, b in _final_pairs_v335kf:
                 _lines.append(f"2車複　{a}－{b}")
             _lines.append(f"計{len(_final_pairs_v335kf)}点（車番重複・同一ペア除外）")
+        _lines.append("")
+        # v335ki: 銀河系理論（研究・検証表示専用）。
+        # 既存の惑星理論、通常／妙味印、総合評価の計算式には一切介入しない。
+        # ラインの順位は「各流れにおけるライン最上位車の着順」の
+        # 展開比率加重平均で付ける。これはライン評価の暫定的な定義であり、
+        # ◎・α・β・εの車別評価や配当評価を上書きしない。
+        _galaxy_cars_v335ki = set(int(c) for c in (_cars or []))
+        _galaxy_groups_v335ki = []
+        _galaxy_assigned_v335ki = set()
+        for _raw_group_v335ki in _line_groups:
+            _group_v335ki = []
+            for _x_v335ki in _raw_group_v335ki:
+                _ci_v335ki = int(_x_v335ki)
+                if (_ci_v335ki in _galaxy_cars_v335ki
+                        and _ci_v335ki not in _galaxy_assigned_v335ki):
+                    _group_v335ki.append(_ci_v335ki)
+                    _galaxy_assigned_v335ki.add(_ci_v335ki)
+            if _group_v335ki:
+                _galaxy_groups_v335ki.append(tuple(_group_v335ki))
+        # ライン未登録車は単騎恒星系として扱い、取りこぼさない。
+        for _ci_v335ki in sorted(_galaxy_cars_v335ki - _galaxy_assigned_v335ki):
+            _galaxy_groups_v335ki.append((_ci_v335ki,))
+
+        def _galaxy_line_rank_v335ki(_members):
+            _weighted = 0.0
+            _weight_total = 0.0
+            _fallback = []
+            for _flow_row in _rows:
+                _seq = tuple(int(c) for c in (_flow_row.get("order") or ()))
+                _positions = [i for i, c in enumerate(_seq, start=1) if c in _members]
+                if not _positions:
+                    continue
+                _best = min(_positions)
+                _fallback.append(_best)
+                _w = max(0.0, float(_flow_row.get("ratio", 0.0) or 0.0))
+                _weighted += _w * _best
+                _weight_total += _w
+            if _weight_total > 0.0:
+                return _weighted / _weight_total
+            if _fallback:
+                return sum(_fallback) / len(_fallback)
+            return float("inf")
+
+        _galaxy_ranked_v335ki = sorted(
+            _galaxy_groups_v335ki,
+            key=lambda group: (
+                _galaxy_line_rank_v335ki(group),
+                min(group), tuple(group),
+            ),
+        )
+        _galaxy_car_system_v335ki = {
+            car: rank
+            for rank, group in enumerate(_galaxy_ranked_v335ki, start=1)
+            for car in group
+        }
+        _galaxy_marks_v335ki = (
+            ("◎", _axis_gc),
+            ("α", _myoumi_marks_v335ii.get("α")),
+            ("β", _myoumi_marks_v335ii.get("β")),
+            ("ε", _myoumi_marks_v335ii.get("ε")),
+        )
+        _galaxy_car_marks_v335ki = {}
+        for _mark_v335ki, _car_v335ki in _galaxy_marks_v335ki:
+            if _car_v335ki is None:
+                continue
+            _car_v335ki = int(_car_v335ki)
+            if _car_v335ki in _galaxy_cars_v335ki:
+                _galaxy_car_marks_v335ki.setdefault(_car_v335ki, []).append(_mark_v335ki)
+        _galaxy_unique_v335ki = sorted(_galaxy_car_marks_v335ki)
+        _galaxy_pairs_v335ki = sorted({
+            (a, b)
+            for idx, a in enumerate(_galaxy_unique_v335ki)
+            for b in _galaxy_unique_v335ki[idx + 1:]
+        })
+        _old_pairs_v335ki = (
+            set(_final_pairs_v335kf)
+            if _v335kf_result is not None else set()
+        )
+        _common_pairs_v335ki = sorted(set(_galaxy_pairs_v335ki) & _old_pairs_v335ki)
+        _old_only_pairs_v335ki = sorted(_old_pairs_v335ki - set(_galaxy_pairs_v335ki))
+        _galaxy_only_pairs_v335ki = sorted(set(_galaxy_pairs_v335ki) - _old_pairs_v335ki)
+
+        def _galaxy_pair_text_v335ki(pair):
+            _a, _b = pair
+            _sa = _galaxy_car_system_v335ki.get(_a)
+            _sb = _galaxy_car_system_v335ki.get(_b)
+            _relation = (
+                f"第{_sa}恒星系内部" if _sa == _sb
+                else f"第{min(_sa, _sb)}－第{max(_sa, _sb)}恒星系間"
+            ) if _sa is not None and _sb is not None else "ライン所属不明"
+            _ma = "・".join(_galaxy_car_marks_v335ki.get(_a, [])) or "対象外"
+            _mb = "・".join(_galaxy_car_marks_v335ki.get(_b, [])) or "対象外"
+            return f"2車複　{_a}－{_b}（{_ma}－{_mb}／{_relation}）"
+
+        _lines.append("【銀河系理論・検証2車複】")
+        _lines.append("※恒星系＝ライン。順位は各流れのライン最上位車の比率加重平均順位（暫定）。")
+        for _idx_v335ki, _members_v335ki in enumerate(_galaxy_ranked_v335ki, 1):
+            _member_names_v335ki = "－".join(map(str, _members_v335ki))
+            _score_v335ki = _galaxy_line_rank_v335ki(_members_v335ki)
+            _lines.append(
+                f"第{_idx_v335ki}恒星系　{_member_names_v335ki}（ライン順位指標 {_score_v335ki:.2f}）"
+            )
+        _lines.append("選抜　" + (
+            "／".join(f"{mark}{int(car)}" for mark, car in _galaxy_marks_v335ki if car is not None)
+            or "該当なし"
+        ))
+        _lines.append("【恒星系内部・恒星系間の候補】")
+        for _pair_v335ki in _galaxy_pairs_v335ki:
+            _lines.append(_galaxy_pair_text_v335ki(_pair_v335ki))
+        if not _galaxy_pairs_v335ki:
+            _lines.append("2車複　該当なし（選抜車が2車未満）")
+        _lines.append(f"計{len(_galaxy_pairs_v335ki)}点（候補の全組合せ・同一車重複除外）")
+        _lines.append("【惑星理論・銀河系理論の比較】")
+        for _name_v335ki, _pairs_v335ki in (
+            ("両理論で重複", _common_pairs_v335ki),
+            ("惑星理論のみ", _old_only_pairs_v335ki),
+            ("銀河系理論のみ", _galaxy_only_pairs_v335ki),
+        ):
+            _lines.append(f"〈{_name_v335ki}：{len(_pairs_v335ki)}点〉")
+            for _pair_v335ki in _pairs_v335ki:
+                _lines.append(_galaxy_pair_text_v335ki(_pair_v335ki))
+            if not _pairs_v335ki:
+                _lines.append("該当なし")
+        _lines.append("※比較は検証候補の分類であり、購入点数を自動増加させません。")
         _lines.append("")
         # 固定4点の購入券種は未確定のため、この版では評価のみ追加。
         # ガールズのみ、通常評価の4車から◎への2車単を公開する。
