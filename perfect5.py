@@ -1,4 +1,5 @@
 # v335kl: 通常競輪は惑星理論の全候補＋◎－▲を重複除外して表示。銀河系・統合上位3点は表示休止（内部コード保持）。他はv335kk維持。
+# v335km: 通常競輪の惑星理論2車複全候補と◎－▲を維持。▲が妙味α/β/εと重なり、◎が太陽の場合だけ太陽→▲の2車単を追加。銀河系表示休止・他機能維持。
 # v335kk: 惑星・銀河系候補を統合、既存2車複的中点優先で上位3点選抜。既存評価・理論別候補・比較を維持。
 # v335kj: 太陽－惑星の▲かつ妙味軸α/β/ε条件を厳密化。その他の惑星・銀河系・評価は維持。
 # v335ki: 銀河系理論を通常競輪の検証欄に並列追加。ライン別恒星系、◎αβε6組、旧惑星との重複・固有を表示。現行評価・惑星理論・ガールズ/アドバンスは維持。
@@ -6364,10 +6365,41 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 _lines.append(f"2車複　{_extra_pair_v335kl[0]}－{_extra_pair_v335kl[1]}")
             else:
                 _lines.append("2車複　該当なし（◎または▲未選出）")
+            # v335km: 2車複を残したまま、▲がα/β/εを兼ねる場合のみ
+            # 太陽(◎)→▲の2車単を重ねる。太陽以外の◎を起点にした方向は作らない。
+            _extra_exacta_v335km = None
+            _special_v335km = {
+                int(c) for c in (
+                    _myoumi_marks_v335ii.get("α"),
+                    _myoumi_marks_v335ii.get("β"),
+                    _myoumi_marks_v335ii.get("ε"),
+                ) if c is not None
+            }
+            if (_axis_gc is not None and _triangle_gc is not None
+                    and int(_axis_gc) == int(_sun_v335kf)
+                    and int(_triangle_gc) in _special_v335km
+                    and int(_triangle_gc) != int(_sun_v335kf)):
+                _extra_exacta_v335km = (int(_sun_v335kf), int(_triangle_gc))
             _lines.append("【最終検証買目】")
             for a, b in _final_pairs_v335kf:
                 _lines.append(f"2車複　{a}－{b}")
-            _lines.append(f"計{len(_final_pairs_v335kf)}点（惑星全候補＋◎－▲・同一ペア重複除外・足切りなし）")
+            if _extra_exacta_v335km is not None:
+                _x_v335km, _y_v335km = _extra_exacta_v335km
+                _position_v335km = (
+                    "惑星" if _y_v335km == int(_planet_v335kf) else
+                    "衛星" if _y_v335km in _sat_v335kf else
+                    "彗星" if _y_v335km in _com_v335kf else "▲"
+                )
+                _lines.append(
+                    f"2車単　{_x_v335km}→{_y_v335km}"
+                    f"（太陽→{_position_v335km}／▲が妙味α・β・εのいずれかに該当）"
+                )
+            _all_count_v335km = len(_final_pairs_v335kf) + int(_extra_exacta_v335km is not None)
+            _lines.append(
+                f"計{_all_count_v335km}点（2車複{len(_final_pairs_v335kf)}点"
+                f"＋2車単{int(_extra_exacta_v335km is not None)}点・"
+                "惑星全候補＋◎－▲・2車複同一ペア重複除外・足切りなし）"
+            )
         _lines.append("")
         # v335kl: 銀河系・統合3点の計算は保持、表示への書込みのみ停止。
         _v335kl_hidden_galaxy_lines = []
