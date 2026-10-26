@@ -1,3 +1,5 @@
+# v335ko: ガールズ／アドバンスの3連単6点を車番フォーメーション2行で表示。その他維持。
+# v335kn: ガールズ／アドバンスのみ、旧2車複・ガールズ2車単表示を3連単うねり6点へ変更。惑星等は非表示。通常競輪・評価・保存・引継ぎは維持。
 # v335kl: 通常競輪は惑星理論の全候補＋◎－▲を重複除外して表示。銀河系・統合上位3点は表示休止（内部コード保持）。他はv335kk維持。
 # v335km: 通常競輪の惑星理論2車複全候補と◎－▲を維持。▲が妙味α/β/εと重なり、◎が太陽の場合だけ太陽→▲の2車単を追加。銀河系表示休止・他機能維持。
 # v335kk: 惑星・銀河系候補を統合、既存2車複的中点優先で上位3点選抜。既存評価・理論別候補・比較を維持。
@@ -6054,92 +6056,37 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         _lines.append("×　該当なし　的中妙味バランス　算出不可")
 
     if _single_flow_class_v335hl:
-        # v335js: 単騎戦（ガールズ・アドバンス）は通常評価のみ公開。
-        # ◎○▲の各軸から全出走車（無印を含む）との2車複を評価する。
-        # 各軸上位2点を先に決め、重複ペアのみ統合。欠員補充はしない。
-        _v335js_pair_scores = {}
-        for _r in (globals().get("V335DH_WEIGHTED_PAIR_ROWS") or []):
-            try:
-                _pair = tuple(sorted((int(_r["a"]), int(_r["b"]))))
-                _scores = (float(_r["total_pt"]),
-                           float(_r.get("hit_score", 0.0)),
-                           float(_r.get("myoumi_score", 0.0)))
-                if len(set(_pair)) == 2 and all(math.isfinite(v) for v in _scores):
-                    _v335js_pair_scores[_pair] = _scores
-            except (KeyError, TypeError, ValueError, OverflowError):
-                continue
-        _v335js_hit = globals().get("V335DS_WEIGHTED_CAR_HIT_MAP") or {}
-        _v335js_value = globals().get("V335DS_WEIGHTED_CAR_MYOUMI_MAP") or {}
-
-        def _v335js_score(pair):
-            if pair in _v335js_pair_scores:
-                return _v335js_pair_scores[pair]
-            a, b = pair
-            try:
-                h = round(max(0.0, min(12.0, (float(_v335js_hit[a]) + float(_v335js_hit[b])) / 2.0)), 2)
-                v = round(max(0.0, min(10.8, (float(_v335js_value[a]) + float(_v335js_value[b])) / 2.0)), 2)
-                if not (math.isfinite(h) and math.isfinite(v)):
-                    return None
-                return ((h + v) / 2.0, h, v)
-            except (KeyError, TypeError, ValueError, OverflowError):
-                return None
-
-        _v335js_axes = (("◎", _axis_gc), ("○", _hit_himo), ("▲", _triangle_gc))
-        _v335js_seen = set()
-        _v335js_final = []
-        _v335js_cars = sorted(set(int(c) for c in (_cars or [])))
+        # v335ko: ガールズ／アドバンス専用。買い目は車番フォーメーションで表示。
+        # 従来の検証2車複とガールズ2車単フォーメーションは表示しない。
+        # 通常評価 ◎○▲△ の4車による3連単うねり6点を表示。
+        # 12-12-34 と 1-34-2 を重複なく合成する。
+        _v335kn_marks = (_axis_gc, _hit_himo, _triangle_gc, _delta_gc)
+        _v335kn_tickets = []
+        if all(c is not None for c in _v335kn_marks):
+            _v335kn_a, _v335kn_b, _v335kn_c, _v335kn_d = map(int, _v335kn_marks)
+            if len({_v335kn_a, _v335kn_b, _v335kn_c, _v335kn_d}) == 4:
+                _v335kn_tickets = [
+                    (_v335kn_a, _v335kn_b, _v335kn_c),
+                    (_v335kn_a, _v335kn_b, _v335kn_d),
+                    (_v335kn_b, _v335kn_a, _v335kn_c),
+                    (_v335kn_b, _v335kn_a, _v335kn_d),
+                    (_v335kn_a, _v335kn_c, _v335kn_b),
+                    (_v335kn_a, _v335kn_d, _v335kn_b),
+                ]
         _lines.append("")
-        _lines.append("【検証買目】")
-        for _mark, _axis in _v335js_axes:
-            if _axis is None:
-                _lines.append(f"{_mark}軸　該当なし（軸未選出）")
-                continue
-            _axis = int(_axis)
-            _candidates = []
-            for _partner in _v335js_cars:
-                if _partner == _axis:
-                    continue
-                _pair = tuple(sorted((_axis, _partner)))
-                _scores = _v335js_score(_pair)
-                if _scores is not None:
-                    _candidates.append((_scores, _partner, _pair))
-            _candidates.sort(key=lambda x: (-x[0][0], -x[0][1], -x[0][2], x[1]))
-            if not _candidates:
-                _lines.append(f"{_mark}軸 {_axis}　該当なし（総合点算出不可）")
-            for _rank, (_scores, _partner, _pair) in enumerate(_candidates[:2], 1):
-                _duplicate = _pair in _v335js_seen
-                _lines.append(
-                    f"{_mark}軸 {_rank}位　{_axis}－{_partner}　"
-                    f"2車複総合{_scores[0]:.2f}点"
-                    f"（的中{_scores[1]:.2f}／妙味{_scores[2]:.2f}）"
-                    + ("【重複・統合】" if _duplicate else "")
-                )
-                if not _duplicate:
-                    _v335js_seen.add(_pair)
-                    _v335js_final.append(_pair)
-        _lines.append("【最終検証買目】")
-        for _a, _b in _v335js_final:
-            _lines.append(f"2車複　{_a}－{_b}")
-        if not _v335js_final:
-            _lines.append("2車複　該当なし")
-        _lines.append(f"計{len(_v335js_final)}点（各軸上位2点・重複除外・補充なし）")
-        _lines.append("")
+        _lines.append("【ガールズ／アドバンス・検証3連単】")
+        if _v335kn_tickets:
+            # 車番フォーメーションで表示。重複する買い目は内部で1回のみ計上。
+            _lines.append(
+                f"3連単　{_v335kn_a}{_v335kn_b}－{_v335kn_a}{_v335kn_b}－{_v335kn_c}{_v335kn_d}（4点）"
+            )
+            _lines.append(
+                f"3連単　{_v335kn_a}－{_v335kn_c}{_v335kn_d}－{_v335kn_b}（2点）"
+            )
+        else:
+            _lines.append("3連単　該当なし（◎○▲△の4車が揃わない）")
+        _lines.append(f"計{len(_v335kn_tickets)}点（3連単のみ）")
         if race_class == "ガールズ":
-            _lines.append("【ガールズ競輪・2車単買い目】")
-            _girls_targets = (("○", _hit_himo), ("▲", _triangle_gc),
-                              ("△", _delta_gc), ("×", _x_gc))
-            _girls_seen = set()
-            _girls_tickets = []
-            for _girls_mark, _girls_car in _girls_targets:
-                if _girls_car is None or _axis_gc is None:
-                    continue
-                _girls_car = int(_girls_car)
-                _girls_axis = int(_axis_gc)
-                if _girls_car == _girls_axis or _girls_car in _girls_seen:
-                    continue
-                _girls_seen.add(_girls_car)
-                _girls_tickets.append(f"{_girls_car}→{_girls_axis}")
-            _lines.extend(_girls_tickets or ["該当なし"])
             _lines.append("※ガールズは傾向分析から除外しています")
     else:
         _lines.append("")
