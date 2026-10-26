@@ -1,3 +1,4 @@
+# v335kl: 通常競輪は惑星理論の全候補＋◎－▲を重複除外して表示。銀河系・統合上位3点は表示休止（内部コード保持）。他はv335kk維持。
 # v335kk: 惑星・銀河系候補を統合、既存2車複的中点優先で上位3点選抜。既存評価・理論別候補・比較を維持。
 # v335kj: 太陽－惑星の▲かつ妙味軸α/β/ε条件を厳密化。その他の惑星・銀河系・評価は維持。
 # v335ki: 銀河系理論を通常競輪の検証欄に並列追加。ライン別恒星系、◎αβε6組、旧惑星との重複・固有を表示。現行評価・惑星理論・ガールズ/アドバンスは維持。
@@ -6339,6 +6340,17 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _lines.append(f"惑星　{_planet_v335kf}（太陽の流れの2位）")
             _lines.append("衛星　" + ("・".join(map(str, _sat_v335kf)) if _sat_v335kf else "該当なし"))
             _lines.append("彗星　" + ("・".join(map(str, _com_v335kf)) if _com_v335kf else "該当なし"))
+            # v335kl: 旧惑星理論の候補は一切間引かず、◎－▲を無条件に追加。
+            # ▲のα・β・ε該当を要求しない。重複は車番ペア単位で除外。
+            _extra_pair_v335kl = None
+            if _axis_gc is not None and _triangle_gc is not None:
+                _a_v335kl, _b_v335kl = int(_axis_gc), int(_triangle_gc)
+                if _a_v335kl != _b_v335kl:
+                    _extra_pair_v335kl = tuple(sorted((_a_v335kl, _b_v335kl)))
+            _final_pairs_v335kf = sorted(
+                set(_final_pairs_v335kf) |
+                ({_extra_pair_v335kl} if _extra_pair_v335kl is not None else set())
+            )
             _lines.append("【太陽軸：▲条件付き惑星・衛星／彗星は従来どおり】")
             if not _sun_pairs_v335kf:
                 _lines.append("2車複　該当なし")
@@ -6347,11 +6359,18 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _lines.append("【惑星－衛星】")
             for a, b in _planet_pairs_v335kf:
                 _lines.append(f"2車複　{a}－{b}")
+            _lines.append("【追加候補：◎－▲（妙味印の有無を問わない）】")
+            if _extra_pair_v335kl is not None:
+                _lines.append(f"2車複　{_extra_pair_v335kl[0]}－{_extra_pair_v335kl[1]}")
+            else:
+                _lines.append("2車複　該当なし（◎または▲未選出）")
             _lines.append("【最終検証買目】")
             for a, b in _final_pairs_v335kf:
                 _lines.append(f"2車複　{a}－{b}")
-            _lines.append(f"計{len(_final_pairs_v335kf)}点（車番重複・同一ペア除外）")
+            _lines.append(f"計{len(_final_pairs_v335kf)}点（惑星全候補＋◎－▲・同一ペア重複除外・足切りなし）")
         _lines.append("")
+        # v335kl: 銀河系・統合3点の計算は保持、表示への書込みのみ停止。
+        _v335kl_hidden_galaxy_lines = []
         # v335ki: 銀河系理論（研究・検証表示専用）。
         # 既存の惑星理論、通常／妙味印、総合評価の計算式には一切介入しない。
         # ラインの順位は「各流れにおけるライン最上位車の着順」の
@@ -6445,36 +6464,36 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _mb = "・".join(_galaxy_car_marks_v335ki.get(_b, [])) or "対象外"
             return f"2車複　{_a}－{_b}（{_ma}－{_mb}／{_relation}）"
 
-        _lines.append("【銀河系理論・検証2車複】")
-        _lines.append("※恒星系＝ライン。順位は各流れのライン最上位車の比率加重平均順位（暫定）。")
+        _v335kl_hidden_galaxy_lines.append("【銀河系理論・検証2車複】")
+        _v335kl_hidden_galaxy_lines.append("※恒星系＝ライン。順位は各流れのライン最上位車の比率加重平均順位（暫定）。")
         for _idx_v335ki, _members_v335ki in enumerate(_galaxy_ranked_v335ki, 1):
             _member_names_v335ki = "－".join(map(str, _members_v335ki))
             _score_v335ki = _galaxy_line_rank_v335ki(_members_v335ki)
-            _lines.append(
+            _v335kl_hidden_galaxy_lines.append(
                 f"第{_idx_v335ki}恒星系　{_member_names_v335ki}（ライン順位指標 {_score_v335ki:.2f}）"
             )
-        _lines.append("選抜　" + (
+        _v335kl_hidden_galaxy_lines.append("選抜　" + (
             "／".join(f"{mark}{int(car)}" for mark, car in _galaxy_marks_v335ki if car is not None)
             or "該当なし"
         ))
-        _lines.append("【恒星系内部・恒星系間の候補】")
+        _v335kl_hidden_galaxy_lines.append("【恒星系内部・恒星系間の候補】")
         for _pair_v335ki in _galaxy_pairs_v335ki:
-            _lines.append(_galaxy_pair_text_v335ki(_pair_v335ki))
+            _v335kl_hidden_galaxy_lines.append(_galaxy_pair_text_v335ki(_pair_v335ki))
         if not _galaxy_pairs_v335ki:
-            _lines.append("2車複　該当なし（選抜車が2車未満）")
-        _lines.append(f"計{len(_galaxy_pairs_v335ki)}点（候補の全組合せ・同一車重複除外）")
-        _lines.append("【惑星理論・銀河系理論の比較】")
+            _v335kl_hidden_galaxy_lines.append("2車複　該当なし（選抜車が2車未満）")
+        _v335kl_hidden_galaxy_lines.append(f"計{len(_galaxy_pairs_v335ki)}点（候補の全組合せ・同一車重複除外）")
+        _v335kl_hidden_galaxy_lines.append("【惑星理論・銀河系理論の比較】")
         for _name_v335ki, _pairs_v335ki in (
             ("両理論で重複", _common_pairs_v335ki),
             ("惑星理論のみ", _old_only_pairs_v335ki),
             ("銀河系理論のみ", _galaxy_only_pairs_v335ki),
         ):
-            _lines.append(f"〈{_name_v335ki}：{len(_pairs_v335ki)}点〉")
+            _v335kl_hidden_galaxy_lines.append(f"〈{_name_v335ki}：{len(_pairs_v335ki)}点〉")
             for _pair_v335ki in _pairs_v335ki:
-                _lines.append(_galaxy_pair_text_v335ki(_pair_v335ki))
+                _v335kl_hidden_galaxy_lines.append(_galaxy_pair_text_v335ki(_pair_v335ki))
             if not _pairs_v335ki:
-                _lines.append("該当なし")
-        _lines.append("※比較は検証候補の分類であり、購入点数を自動増加させません。")
+                _v335kl_hidden_galaxy_lines.append("該当なし")
+        _v335kl_hidden_galaxy_lines.append("※比較は検証候補の分類であり、購入点数を自動増加させません。")
         # v335kk: 両理論の検証候補を車番ペア単位で統合し、的中点のみで3点に圧縮。
         # 妙味点・総合点・実オッズを選抜に使用しない。
         # 既存の加重2車複表と同一の的中点（2車の加重的中単騎点の平均）を使用。
@@ -6535,10 +6554,10 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 key=lambda r: (-r["prob"], r["pair"]),
             )
         _top3_v335kk = _rankable_v335kk[:3]
-        _lines.append("")
-        _lines.append("【惑星理論＋銀河系理論・的中上位3点】")
-        _lines.append(f"統合候補　{len(_merged_pairs_v335kk)}点（同一ペア重複除外）")
-        _lines.append(
+        _v335kl_hidden_galaxy_lines.append("")
+        _v335kl_hidden_galaxy_lines.append("【惑星理論＋銀河系理論・的中上位3点】")
+        _v335kl_hidden_galaxy_lines.append(f"統合候補　{len(_merged_pairs_v335kk)}点（同一ペア重複除外）")
+        _v335kl_hidden_galaxy_lines.append(
             "選抜基準　既存2車複的中点（妙味・総合点不使用）"
             if _use_weighted_v335kk else
             "選抜基準　2車複内部想定的中率（加重的中点が全件揃わない場合の代理基準）"
@@ -6551,20 +6570,20 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 f"内部想定的中率 {_r_v335kk['prob'] * 100.0:.2f}%"
             )
             _flag_v335kk = "【選抜】" if _rank_v335kk <= 3 else "【次点】"
-            _lines.append(
+            _v335kl_hidden_galaxy_lines.append(
                 f"{_rank_v335kk}位　2車複　{_a_v335kk}－{_b_v335kk}　"
                 f"{_display_v335kk}（{_r_v335kk['source']}）{_flag_v335kk}"
             )
         if not _rankable_v335kk:
-            _lines.append("該当なし（的中評価算出不可）")
-        _lines.append("【最終3点検証買目】")
+            _v335kl_hidden_galaxy_lines.append("該当なし（的中評価算出不可）")
+        _v335kl_hidden_galaxy_lines.append("【最終3点検証買目】")
         for _r_v335kk in _top3_v335kk:
             _a_v335kk, _b_v335kk = _r_v335kk["pair"]
-            _lines.append(f"2車複　{_a_v335kk}－{_b_v335kk}")
+            _v335kl_hidden_galaxy_lines.append(f"2車複　{_a_v335kk}－{_b_v335kk}")
         if not _top3_v335kk:
-            _lines.append("2車複　該当なし")
-        _lines.append(f"計{len(_top3_v335kk)}点（的中評価降順・最大3点・補充なし）")
-        _lines.append("")
+            _v335kl_hidden_galaxy_lines.append("2車複　該当なし")
+        _v335kl_hidden_galaxy_lines.append(f"計{len(_top3_v335kk)}点（的中評価降順・最大3点・補充なし）")
+        _v335kl_hidden_galaxy_lines.append("")
         # 固定4点の購入券種は未確定のため、この版では評価のみ追加。
         # ガールズのみ、通常評価の4車から◎への2車単を公開する。
         # 通常競輪・アドバンスでは券種別オススメ欄を表示しない。
