@@ -1,3 +1,4 @@
+# v335kq: バンク指数表示を優先検証／慎重判断／通常検証／データ不足に明確化。同指数帯の年間的中率を参考表示。予想・買目・保存処理は維持。
 # v335kp: サイドバー会場推奨の旧ROI区分を、直線×カントの暫定指数表示に置換。他の予想・買い目・保存処理は維持。
 # v335ko: ガールズ／アドバンスの3連単6点を車番フォーメーション2行で表示。その他維持。
 # v335kn: ガールズ／アドバンスのみ、旧2車複・ガールズ2車単表示を3連単うねり6点へ変更。惑星等は非表示。通常競輪・評価・保存・引継ぎは維持。
@@ -7496,13 +7497,26 @@ if _v335kp_straight is not None and _v335kp_angle is not None:
         f"カント{float(_v335kp_angle):.2f}° ＝ {_v335kp_index:,.1f}"
     )
     if 1900.0 <= _v335kp_index < 2100.0:
-        st.sidebar.success(f"バンク指数 {_v335kp_index:,.1f}｜推奨候補（暫定）")
+        st.sidebar.success(f"バンク指数 {_v335kp_index:,.1f}｜優先検証")
+        _v335kq_rate = "28.5%"
     elif 1500.0 <= _v335kp_index < 1700.0:
-        st.sidebar.warning(f"バンク指数 {_v335kp_index:,.1f}｜注意帯（暫定）")
+        st.sidebar.warning(f"バンク指数 {_v335kp_index:,.1f}｜慎重判断")
+        _v335kq_rate = "24.9%"
+    elif _v335kp_index < 1500.0:
+        st.sidebar.info(f"バンク指数 {_v335kp_index:,.1f}｜通常検証")
+        _v335kq_rate = "27.5%"
+    elif 1700.0 <= _v335kp_index < 1900.0:
+        st.sidebar.info(f"バンク指数 {_v335kp_index:,.1f}｜通常検証")
+        _v335kq_rate = "27.5%"
     else:
-        st.sidebar.info(f"バンク指数 {_v335kp_index:,.1f}｜参考・個別判断")
+        st.sidebar.info(f"バンク指数 {_v335kp_index:,.1f}｜データ不足")
+        _v335kq_rate = None
     st.sidebar.caption(_v335kp_detail)
-    st.sidebar.caption("※過去の混合券種データによる仮説。レースの購入推奨・回収保証ではありません。")
+    if _v335kq_rate is not None:
+        st.sidebar.caption(f"同指数帯の年間的中率（参考）：{_v335kq_rate}")
+    else:
+        st.sidebar.caption("同指数帯の年間的中率：参考事例が少なく未判定")
+    st.sidebar.caption("※年間的中率は過去の異なる券種・購入点数を含む参考値。優先検証＝購入推奨ではなく、慎重判断＝購入禁止ではありません。")
 else:
     st.sidebar.warning("バンク指数：データなし｜推奨未判定")
 
