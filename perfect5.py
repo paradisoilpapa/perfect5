@@ -1,3 +1,4 @@
+# v335kp: サイドバー会場推奨の旧ROI区分を、直線×カントの暫定指数表示に置換。他の予想・買い目・保存処理は維持。
 # v335ko: ガールズ／アドバンスの3連単6点を車番フォーメーション2行で表示。その他維持。
 # v335kn: ガールズ／アドバンスのみ、旧2車複・ガールズ2車単表示を3連単うねり6点へ変更。惑星等は非表示。通常競輪・評価・保存・引継ぎは維持。
 # v335kl: 通常競輪は惑星理論の全候補＋◎－▲を重複除外して表示。銀河系・統合上位3点は表示休止（内部コード保持）。他はv335kk維持。
@@ -7483,18 +7484,27 @@ def _v335bp_real_number_value_lines(
     )
     return _out
 
-if track in _V335X_RECOMMEND_A_TRACKS:
-    st.sidebar.success("推奨A｜本命会場｜A型バンク＋回収率80％以上")
-elif track in _V335X_RECOMMEND_B_TRACKS:
-    st.sidebar.info("推奨B｜実績優良｜A型外でも回収率80％以上")
-elif track in _V335X_RECOMMEND_C_TRACKS:
-    st.sidebar.warning("推奨C｜様子見｜回収率50〜79.9％")
-elif track in _V335X_RECOMMEND_D_TRACKS:
-    st.sidebar.error("推奨D｜慎重｜回収率50％未満")
-elif track in _V335X_UNCLASSIFIED_TRACKS:
-    st.sidebar.error("推奨D｜未判定｜8〜9月実績不足")
+# v335kp: 会場推奨表示のみ、旧8〜9月ROI分類からバンク指数の暫定評価へ変更。
+# 指数=みなし直線(m)×カント角(度)。年間混合券種の的中率に基づく仮説であり、購入優位を保証しない。
+_v335kp_bank = KEIRIN_DATA.get(track, {}) or {}
+_v335kp_straight = _v335kp_bank.get("straight_length")
+_v335kp_angle = _v335kp_bank.get("bank_angle")
+if _v335kp_straight is not None and _v335kp_angle is not None:
+    _v335kp_index = float(_v335kp_straight) * float(_v335kp_angle)
+    _v335kp_detail = (
+        f"みなし直線{float(_v335kp_straight):.2f}m × "
+        f"カント{float(_v335kp_angle):.2f}° ＝ {_v335kp_index:,.1f}"
+    )
+    if 1900.0 <= _v335kp_index < 2100.0:
+        st.sidebar.success(f"バンク指数 {_v335kp_index:,.1f}｜推奨候補（暫定）")
+    elif 1500.0 <= _v335kp_index < 1700.0:
+        st.sidebar.warning(f"バンク指数 {_v335kp_index:,.1f}｜注意帯（暫定）")
+    else:
+        st.sidebar.info(f"バンク指数 {_v335kp_index:,.1f}｜参考・個別判断")
+    st.sidebar.caption(_v335kp_detail)
+    st.sidebar.caption("※過去の混合券種データによる仮説。レースの購入推奨・回収保証ではありません。")
 else:
-    st.sidebar.warning("推奨D｜未判定｜会場分類データなし")
+    st.sidebar.warning("バンク指数：データなし｜推奨未判定")
 
 # 旧参照との互換用。v335bcでは会場による券種分岐を行わない。
 def _v335ac_track_purchase_mode(track_name=None):
