@@ -1,3 +1,8 @@
+# v335ku: 会場適性スコア（年間的中40%・年間回収40%・200刻み指数帯20%、平均60＝+10補正）を参考表示。
+# このスコアは過去年間データで算出した固定値であり、現在の購入許可・除外を決定しない。
+# 他の予想・買い目・保存・指数帯表示はv335ktのまま維持。
+# v335kt: バンク指数帯を全域200刻み（1000-1199〜2000-2199）で再集計。表示のみ変更、予想・買目・保存は維持。
+# v335ks: 38会場の年間データを全帯公平に再集計。指数1,500未満と1,900～2,099の両方を比較候補として明示。表示以外の処理は維持。
 # v335kr: 年間38会場の的中率を会場判断に併記。予想・買い目・保存はv335kqのまま。
 # v335kq: バンク指数表示を優先検証／慎重判断／通常検証／データ不足に明確化。同指数帯の年間的中率を参考表示。予想・買目・保存処理は維持。
 # v335kp: サイドバー会場推奨の旧ROI区分を、直線×カントの暫定指数表示に置換。他の予想・買い目・保存処理は維持。
@@ -7486,9 +7491,9 @@ def _v335bp_real_number_value_lines(
     )
     return _out
 
-# v335kr: 年間会場別的中率38場を会場判断に追加（買い目・確率・保存は一切変更なし）。
-# 年間的中率は過去の券種・点数・予想方式混合であり、現行惑星理論の確率ではない。
-# 判定は会場自身の標本的中率を優先し、バンク指数は補助情報とする。
+# v335ks: 年間38会場を原データで再監査。低指数帯を排除しない二帯比較。
+# 目的：指数帯の過去的中率を公平に表示。予想ロジック・車券・保存は変更しない。
+# 年間実績は異なる買い方の混合であり、将来の期待値や的中率の予測ではない。
 V335KR_TRACK_HIT_COUNTS = {
     '熊本': (50, 140),
     '武雄': (47, 226),
@@ -7529,52 +7534,115 @@ V335KR_TRACK_HIT_COUNTS = {
     '西武園': (38, 139),
     '小田原': (65, 225),
 }
-_v335kr_bank = KEIRIN_DATA.get(track, {}) or {}
-_v335kr_straight = _v335kr_bank.get("straight_length")
-_v335kr_angle = _v335kr_bank.get("bank_angle")
-_v335kr_index = None
-if _v335kr_straight is not None and _v335kr_angle is not None:
-    _v335kr_index = float(_v335kr_straight) * float(_v335kr_angle)
+# v335kt: 38会場を全域200刻みに統一。帯ごとの的中率を客観表示し、購入判定は自動化しない。
+# 1000-1199は松戸1会場のみ。母数と会場数を必ず同時表示する。
+V335KS_INDEX_BANDS = (
+    (0.0, 1000.0, "1,000未満・該当資料なし", 0, 0, 0),
+    (1000.0, 1200.0, "1,000〜1,199" , 44, 144, 1),
+    (1200.0, 1400.0, "1,200〜1,399" , 212, 738, 4),
+    (1400.0, 1600.0, "1,400〜1,599" , 163, 704, 5),
+    (1600.0, 1800.0, "1,600〜1,799" , 392, 1508, 11),
+    (1800.0, 2000.0, "1,800〜1,999" , 510, 1754, 9),
+    (2000.0, 2200.0, "2,000〜2,199" , 360, 1296, 8),
+    (2200.0, float("inf"), "2,200以上・該当資料なし", 0, 0, 0),
+)
+_v335ks_bank = KEIRIN_DATA.get(track, {}) or {}
+_v335ks_straight = _v335ks_bank.get("straight_length")
+_v335ks_angle = _v335ks_bank.get("bank_angle")
+_v335ks_index = None
+if _v335ks_straight is not None and _v335ks_angle is not None:
+    _v335ks_index = float(_v335ks_straight) * float(_v335ks_angle)
     st.sidebar.caption(
-        f"バンク指数：{_v335kr_index:,.1f}（みなし直線{float(_v335kr_straight):.2f}m × カント{float(_v335kr_angle):.2f}°）"
+        f"バンク指数 {_v335ks_index:,.1f}（直線{float(_v335ks_straight):.2f}m × カント{float(_v335ks_angle):.2f}°）"
     )
-else:
-    st.sidebar.caption("バンク指数：データなし")
-_v335kr_track = str(track).strip()
-_v335kr_track = {"松坂": "松阪", "伊東温泉": "伊東"}.get(_v335kr_track, _v335kr_track)
-_v335kr_hit_record = V335KR_TRACK_HIT_COUNTS.get(_v335kr_track)
-if _v335kr_hit_record is not None:
-    _v335kr_hits, _v335kr_total = _v335kr_hit_record
-    _v335kr_hit_rate = 100.0 * _v335kr_hits / _v335kr_total
-    # 28%以上：相対的に優先して検証、25%未満：慎重、間は通常。
-    # 投票Rが80未満なら標本不足を明示して優先／慎重の断定を回避。
-    if _v335kr_total < 80:
-        _v335kr_label = "標本少・個別判断"
-        st.sidebar.info(f"会場判断｜{_v335kr_label}")
-    elif _v335kr_hit_rate >= 28.0:
-        _v335kr_label = "優先検証（会場実績）"
-        st.sidebar.success(f"会場判断｜{_v335kr_label}")
-    elif _v335kr_hit_rate < 25.0:
-        _v335kr_label = "慎重判断（会場実績）"
-        st.sidebar.warning(f"会場判断｜{_v335kr_label}")
-    else:
-        _v335kr_label = "通常検証（会場実績）"
-        st.sidebar.info(f"会場判断｜{_v335kr_label}")
-    st.sidebar.caption(f"年間的中率：{_v335kr_hit_rate:.1f}%（{_v335kr_hits}/{_v335kr_total}R）")
-    if _v335kr_index is not None:
-        if 1900 <= _v335kr_index < 2100:
-            _v335kr_band = "高指数帯（参考的中率28.5%）"
-        elif 1500 <= _v335kr_index < 1700:
-            _v335kr_band = "注意指数帯（参考的中率24.9%）"
-        elif _v335kr_index >= 2100:
-            _v335kr_band = "高指数・標本不足帯"
+    _v335ks_band = next((x for x in V335KS_INDEX_BANDS if x[0] <= _v335ks_index < x[1]), None)
+    if _v335ks_band:
+        _, _, _v335ks_label, _v335ks_hits, _v335ks_races, _v335ks_places = _v335ks_band
+        st.sidebar.info(f"200刻み指数帯｜{_v335ks_label}")
+        if _v335ks_races:
+            _v335ks_rate = 100.0 * _v335ks_hits / _v335ks_races
+            st.sidebar.caption(
+                f"同指数帯の年間的中率 {_v335ks_rate:.2f}%（{_v335ks_hits}/{_v335ks_races}R・{_v335ks_places}会場）"
+            )
+            if _v335ks_places < 3:
+                st.sidebar.caption("※該当会場が3場未満のため、帯全体の傾向判断には注意")
         else:
-            _v335kr_band = "その他指数帯"
-        st.sidebar.caption(f"指数側の評価：{_v335kr_band}")
+            st.sidebar.caption("同指数帯の年間データなし（38会場の対象外）")
 else:
-    st.sidebar.info("会場判断｜年間実績未登録")
-    st.sidebar.caption("会場別年間的中率がないため購入判断は未判定")
-st.sidebar.caption("※年間的中率は旧方式・異なる券種と購入点数を含みます。会場判断は相性の参考であり購入推奨や利益保証ではありません。")
+    st.sidebar.info("指数帯｜会場バンクデータなし")
+_v335ks_name = {"松坂": "松阪", "伊東温泉": "伊東"}.get(str(track).strip(), str(track).strip())
+_v335ks_record = V335KR_TRACK_HIT_COUNTS.get(_v335ks_name)
+if _v335ks_record:
+    _v335ks_hit, _v335ks_total = _v335ks_record
+    st.sidebar.caption(
+        f"会場自身の年間的中率 {100.0 * _v335ks_hit / _v335ks_total:.2f}%"
+        f"（{_v335ks_hit}/{_v335ks_total}R）"
+    )
+    if _v335ks_total < 80:
+        st.sidebar.caption("※当会場は投票R数80未満。会場単独の評価は標本不足")
+else:
+    st.sidebar.caption("会場別の年間的中率：未登録")
+st.sidebar.caption(
+    "※全指数帯を200刻みで比較。指数帯と会場単独の実績は別指標。異なる券種・点数・予想方式を含み、購入の可否・利益率は確定できません。"
+)
+
+# v335ku: 38会場の過去実績から算定した適性スコア（平均60・補正+10）。
+# 画像の投票額・払戻額から年間回収率を算出した監査CSVに対応。
+# 各スコアは的中率40%、回収率40%、指数帯的中率20%を標準化して合成。
+# 順位は参考情報で、閾値を用いた自動購入停止は行わない。
+V335KU_TRACK_SCORES = {
+    '名古屋': (79.57, 34900, 46170),
+    '松山': (71.95, 112400, 90170),
+    '豊橋': (71.32, 69500, 62570),
+    '佐世保': (71.00, 89000, 73180),
+    '取手': (69.43, 42300, 48360),
+    '熊本': (68.66, 58400, 39130),
+    '立川': (67.52, 71700, 55450),
+    '小田原': (66.74, 89400, 73730),
+    '松戸': (66.56, 66100, 44140),
+    '青森': (65.57, 140000, 94000),
+    '広島': (64.61, 94000, 47780),
+    '小松島': (62.13, 54600, 37280),
+    '松阪': (62.07, 75000, 57770),
+    '西武園': (61.93, 58700, 39730),
+    'いわき平': (61.21, 60200, 35740),
+    '和歌山': (60.99, 68800, 46380),
+    '京王閣': (60.62, 102300, 82900),
+    '岸和田': (60.29, 55600, 42560),
+    '弥彦': (60.10, 80900, 45630),
+    '防府': (58.88, 70900, 53700),
+    '別府': (58.61, 71900, 52230),
+    '大宮': (58.43, 24900, 13790),
+    '岐阜': (58.24, 86700, 46750),
+    '宇都宮': (57.70, 57100, 33970),
+    '四日市': (57.49, 22900, 10830),
+    '川崎': (56.97, 91400, 51260),
+    '大垣': (55.62, 69700, 44610),
+    '平塚': (55.40, 47200, 27100),
+    '高知': (55.20, 73300, 37580),
+    '前橋': (53.94, 87600, 37750),
+    '小倉': (53.54, 70400, 39390),
+    '武雄': (53.22, 91700, 55450),
+    '久留米': (51.77, 48100, 36230),
+    '静岡': (51.26, 32400, 16060),
+    '玉野': (50.10, 89800, 46800),
+    '伊東': (49.41, 71200, 36140),
+    '函館': (46.10, 30900, 16880),
+    '富山': (45.85, 38200, 22590),
+}
+_v335ku_track = {"松坂": "松阪", "伊東温泉": "伊東"}.get(str(track).strip(), str(track).strip())
+_v335ku_stats = V335KU_TRACK_SCORES.get(_v335ku_track)
+if _v335ku_stats is not None:
+    _v335ku_score, _v335ku_stake, _v335ku_payout = _v335ku_stats
+    _v335ku_roi = 100.0 * _v335ku_payout / _v335ku_stake if _v335ku_stake else 0.0
+    st.sidebar.metric("ヴェロビ会場適性スコア", f"{_v335ku_score:.1f}")
+    st.sidebar.caption(
+        f"年間回収率 {_v335ku_roi:.2f}%（投票{_v335ku_stake:,}円／払戻{_v335ku_payout:,}円）"
+    )
+    st.sidebar.caption("平均60（通常偏差値+10）。高低は入力会場の比較用。50以下でも購入禁止にはしません。")
+else:
+    st.sidebar.caption("会場適性スコア：年間回収データ未登録")
+st.sidebar.caption("※会場スコアは過去の券種・点数・方式混合の参考値。将来の期待回収率ではありません。")
 
 # 旧参照との互換用。v335bcでは会場による券種分岐を行わない。
 def _v335ac_track_purchase_mode(track_name=None):
