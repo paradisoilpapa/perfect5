@@ -1,3 +1,7 @@
+# v335kw: 通常競輪の【最終総合評価】εABCDのみ公開表示から削除（内部処理維持）。
+# 通常競輪の宇宙論・最終検証買目を2行のフォーメーション表記へ変更。
+# 3連単 太陽-惑星月-惑星月（2点）、3連複 太陽-惑星-外周5位以下（7車3点）。
+# 実際の買目、流れ選抜、評価、ガールズ／アドバンス、会場表示、保存・引継ぎは変更しない。
 # v335kv: 通常競輪のみ宇宙論（流れ加重点→太陽・惑星・月・衛星・彗星・デブリ→3連単2点＋3連複外周最大3点）。ガールズ／アドバンス・予想・評価・保存は維持。
 # v335ku: 会場適性スコア（年間的中40%・年間回収40%・200刻み指数帯20%、平均60＝+10補正）を参考表示。
 # このスコアは過去年間データで算出した固定値であり、現在の購入許可・除外を決定しない。
@@ -6222,20 +6226,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     f"2車複的中妙味バランス {_r_v335jb['balance']:.1f}"
                     f"（的中{_r_v335jb['hit']:.1f}／妙味代理{_r_v335jb['value']:.1f}）"
                 )
-        _lines.append("【最終総合評価】")
-        for _mark_v335ja in ("ε", "A", "B", "C", "D"):
-            if _mark_v335ja not in _final_epsilon_marks_v335ja:
-                _lines.append(f"{_mark_v335ja}　該当なし")
-                continue
-            _car_v335ja = int(_final_epsilon_marks_v335ja[_mark_v335ja])
-            if _mark_v335ja == "ε":
-                _lines.append(f"ε　{_car_v335ja}　妙味評価εを基準軸に固定")
-            else:
-                _lines.append(
-                    f"{_mark_v335ja}　{_car_v335ja}　"
-                    f"{_final_epsilon_details_v335ja.get(_mark_v335ja, '算出不可')}"
-                )
-        _lines.append("")
+        # v335kw: 【最終総合評価】εABCDは公開出力からのみ削除。
+        # 内部選定と関連変数は従来どおり保持する。
         # v335kv: 通常競輪専用・ヴェロビ宇宙論（暫定）
         # ◎αβεは流れ選抜だけに使用し、車券構築で評価による足切りをしない。
         # 位置点 = n - 順位 + 1（7車なら7～1点）。対象車は重複除外。
@@ -6326,17 +6318,19 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 tuple(sorted((_v335kv_sun, _v335kv_planet, c)))
                 for c in _v335kv_outer
             ))
+            # v335kw: 個別券面の羅列をフォーメーション2行へ統一。
+            # 3連単は太陽-惑星月-惑星月（同車重複除外で2点）。
+            # 3連複は太陽-惑星-5位以下（衛星は含めず最大3点/7車）。
             _lines.append("【最終検証買目】")
             _lines.append("〈内周・通常軌道／月食〉")
-            for a, b, c in _v335kv_exact:
-                _lines.append(f"3連単　{a}→{b}→{c}")
+            _v335kw_middle = "".join(map(str, sorted((_v335kv_planet, _v335kv_moon))))
+            _lines.append(f"3連単　{_v335kv_sun}-{_v335kw_middle}-{_v335kw_middle}")
             _lines.append("〈外周・彗星／デブリ侵入（衛星除外）〉")
-            for a, b, c in _v335kv_trios:
-                _v335kv_intruder = next(
-                    (v for v in (a, b, c) if v not in (_v335kv_sun, _v335kv_planet)), None
-                )
-                _v335kv_kind = "彗星" if _v335kv_intruder in _v335kv_comets else "デブリ"
-                _lines.append(f"3連複　{a}－{b}－{c}（{_v335kv_kind}）")
+            if _v335kv_outer:
+                _v335kw_outer = "".join(map(str, sorted(_v335kv_outer)))
+                _lines.append(f"3連複　{_v335kv_sun}-{_v335kv_planet}-{_v335kw_outer}")
+            else:
+                _lines.append("3連複　該当なし")
             _lines.append(
                 f"計{len(_v335kv_exact) + len(_v335kv_trios)}点"
                 f"（3連単{len(_v335kv_exact)}点＋3連複{len(_v335kv_trios)}点・衛星除外）"
