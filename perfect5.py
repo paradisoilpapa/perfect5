@@ -1,3 +1,4 @@
+# v335kv: 通常競輪のみ宇宙論（流れ加重点→太陽・惑星・月・衛星・彗星・デブリ→3連単2点＋3連複外周最大3点）。ガールズ／アドバンス・予想・評価・保存は維持。
 # v335ku: 会場適性スコア（年間的中40%・年間回収40%・200刻み指数帯20%、平均60＝+10補正）を参考表示。
 # このスコアは過去年間データで算出した固定値であり、現在の購入許可・除外を決定しない。
 # 他の予想・買い目・保存・指数帯表示はv335ktのまま維持。
@@ -6235,125 +6236,110 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     f"{_final_epsilon_details_v335ja.get(_mark_v335ja, '算出不可')}"
                 )
         _lines.append("")
-        # v335kf: 惑星理論。通常競輪の検証2車複だけを置換。
-        # 予想・印・内部確率・ガールズ/アドバンスは変更しない。
-        def _planet_pairs_v335kf(rows, marks):
-            valid = [r for r in rows if len(r.get("order") or ()) >= 2]
-            if not valid:
-                return None
-            # ratio は丸め前の内部値。完全同率は既存 fixed 順。
-            main = min(valid, key=lambda r: (-float(r["ratio"]), int(r["fixed"])))
-            sun = int(main["order"][0])
-            planet = int(main["order"][1])
-            satellites = set()
-            for row in valid:
-                seq = [int(c) for c in row["order"]]
-                satellites.add(seq[0])  # 全流れの1位
-                if sun in seq:
-                    pos = seq.index(sun)
-                    if pos == 0 and len(seq) >= 2:
-                        satellites.add(seq[1])
-                    elif pos == 1 and len(seq) >= 3:
-                        satellites.update((seq[0], seq[2]))
-            satellites.discard(sun)
-            satellites.discard(planet)
-            # ◎αβεのうち衛星に選ばれなかった車が彗星。
-            comets = {int(c) for c in marks if c is not None}
-            comets.difference_update(satellites | {sun, planet})
-            def pair(a, b):
-                return tuple(sorted((int(a), int(b))))
-            # v335kj: 太陽－惑星も太陽－衛星と同じく、
-            # 通常評価▲かつ妙味軸α/β/εのいずれかに該当する場合のみ成立。
-            # 太陽－彗星と惑星－衛星は従来どおり維持。
-            triangle = int(_triangle_gc) if _triangle_gc is not None else None
-            special_marks = {
-                int(c) for c in (
-                    _myoumi_marks_v335ii.get("α"),
-                    _myoumi_marks_v335ii.get("β"),
-                    _myoumi_marks_v335ii.get("ε"),
-                ) if c is not None
-            }
-            sun_targets = set(comets)
-            if triangle == planet and triangle in special_marks:
-                sun_targets.add(planet)
-            if triangle in satellites and triangle in special_marks:
-                sun_targets.add(triangle)
-            sun_pairs = {pair(sun, c) for c in sun_targets if c != sun}
-            planet_pairs = {pair(planet, c) for c in satellites if c != planet}
-            return sun, planet, sorted(satellites), sorted(comets), sorted(sun_pairs), sorted(planet_pairs), sorted(sun_pairs | planet_pairs)
-
-        _v335kf_result = _planet_pairs_v335kf(
-            _rows, (_axis_gc, _myoumi_marks_v335ii.get("α"),
-                    _myoumi_marks_v335ii.get("β"), _myoumi_marks_v335ii.get("ε"))
-        )
-        _lines.append("【惑星理論・検証2車複】")
-        if _v335kf_result is None:
-            _lines.append("該当なし（有効な流れなし）")
-        else:
-            (_sun_v335kf, _planet_v335kf, _sat_v335kf, _com_v335kf,
-             _sun_pairs_v335kf, _planet_pairs_v335kf, _final_pairs_v335kf) = _v335kf_result
-            _lines.append(f"太陽　{_sun_v335kf}（内部比率最高の流れの1位）")
-            _lines.append(f"惑星　{_planet_v335kf}（太陽の流れの2位）")
-            _lines.append("衛星　" + ("・".join(map(str, _sat_v335kf)) if _sat_v335kf else "該当なし"))
-            _lines.append("彗星　" + ("・".join(map(str, _com_v335kf)) if _com_v335kf else "該当なし"))
-            # v335kl: 旧惑星理論の候補は一切間引かず、◎－▲を無条件に追加。
-            # ▲のα・β・ε該当を要求しない。重複は車番ペア単位で除外。
-            _extra_pair_v335kl = None
-            if _axis_gc is not None and _triangle_gc is not None:
-                _a_v335kl, _b_v335kl = int(_axis_gc), int(_triangle_gc)
-                if _a_v335kl != _b_v335kl:
-                    _extra_pair_v335kl = tuple(sorted((_a_v335kl, _b_v335kl)))
-            _final_pairs_v335kf = sorted(
-                set(_final_pairs_v335kf) |
-                ({_extra_pair_v335kl} if _extra_pair_v335kl is not None else set())
+        # v335kv: 通常競輪専用・ヴェロビ宇宙論（暫定）
+        # ◎αβεは流れ選抜だけに使用し、車券構築で評価による足切りをしない。
+        # 位置点 = n - 順位 + 1（7車なら7～1点）。対象車は重複除外。
+        # 流れ得点 = 位置点合計 × 流れ内部比率。最高得点を採用。
+        # 同点は流れ比率が高い方、さらに既存固定順（順流・逆流・渦）。
+        # 内周：3連単 太陽→惑星→月、太陽→月→惑星（2点）。
+        # 外周：3連複 太陽－惑星－5位以下（4位衛星は除外）。
+        # 5位以下：◎αβεの該当車は彗星、該当しなければデブリ。
+        # ガールズ／アドバンスの処理および既存の予想・評価・保存は変更しない。
+        _v335kv_marks = {
+            int(c) for c in (
+                _axis_gc,
+                _myoumi_marks_v335ii.get("α"),
+                _myoumi_marks_v335ii.get("β"),
+                _myoumi_marks_v335ii.get("ε"),
+            ) if c is not None
+        }
+        _v335kv_scored = []
+        for _v335kv_row in _rows:
+            _v335kv_seq = tuple(int(c) for c in (_v335kv_row.get("order") or ()))
+            if len(_v335kv_seq) < 3 or len(set(_v335kv_seq)) != len(_v335kv_seq):
+                continue
+            _v335kv_n = len(_v335kv_seq)
+            _v335kv_position_sum = sum(
+                (_v335kv_n - _v335kv_seq.index(c))
+                for c in _v335kv_marks if c in _v335kv_seq
             )
-            _lines.append("【太陽軸：▲条件付き惑星・衛星／彗星は従来どおり】")
-            if not _sun_pairs_v335kf:
-                _lines.append("2車複　該当なし")
-            for a, b in _sun_pairs_v335kf:
-                _lines.append(f"2車複　{a}－{b}")
-            _lines.append("【惑星－衛星】")
-            for a, b in _planet_pairs_v335kf:
-                _lines.append(f"2車複　{a}－{b}")
-            _lines.append("【追加候補：◎－▲（妙味印の有無を問わない）】")
-            if _extra_pair_v335kl is not None:
-                _lines.append(f"2車複　{_extra_pair_v335kl[0]}－{_extra_pair_v335kl[1]}")
-            else:
-                _lines.append("2車複　該当なし（◎または▲未選出）")
-            # v335km: 2車複を残したまま、▲がα/β/εを兼ねる場合のみ
-            # 太陽(◎)→▲の2車単を重ねる。太陽以外の◎を起点にした方向は作らない。
-            _extra_exacta_v335km = None
-            _special_v335km = {
-                int(c) for c in (
-                    _myoumi_marks_v335ii.get("α"),
-                    _myoumi_marks_v335ii.get("β"),
-                    _myoumi_marks_v335ii.get("ε"),
-                ) if c is not None
-            }
-            if (_axis_gc is not None and _triangle_gc is not None
-                    and int(_axis_gc) == int(_sun_v335kf)
-                    and int(_triangle_gc) in _special_v335km
-                    and int(_triangle_gc) != int(_sun_v335kf)):
-                _extra_exacta_v335km = (int(_sun_v335kf), int(_triangle_gc))
-            _lines.append("【最終検証買目】")
-            for a, b in _final_pairs_v335kf:
-                _lines.append(f"2車複　{a}－{b}")
-            if _extra_exacta_v335km is not None:
-                _x_v335km, _y_v335km = _extra_exacta_v335km
-                _position_v335km = (
-                    "惑星" if _y_v335km == int(_planet_v335kf) else
-                    "衛星" if _y_v335km in _sat_v335kf else
-                    "彗星" if _y_v335km in _com_v335kf else "▲"
-                )
-                _lines.append(
-                    f"2車単　{_x_v335km}→{_y_v335km}"
-                    f"（太陽→{_position_v335km}／▲が妙味α・β・εのいずれかに該当）"
-                )
-            _all_count_v335km = len(_final_pairs_v335kf) + int(_extra_exacta_v335km is not None)
+            _v335kv_ratio = float(_v335kv_row.get("ratio", 0.0) or 0.0)
+            _v335kv_scored.append({
+                "row": _v335kv_row,
+                "seq": _v335kv_seq,
+                "sum": _v335kv_position_sum,
+                "ratio": _v335kv_ratio,
+                "score": float(_v335kv_position_sum) * _v335kv_ratio,
+            })
+        _v335kv_scored.sort(key=lambda x: (
+            -x["score"], -x["ratio"], int(x["row"].get("fixed", 999))
+        ))
+        _lines.append("【ヴェロビ宇宙論・流れ選抜】")
+        _lines.append("※◎αβε重複除外・順位点合計×流れ予想%（7車は1位7点～7位1点）")
+        for _v335kv_item in sorted(
+            _v335kv_scored, key=lambda x: int(x["row"].get("fixed", 999))
+        ):
+            _v335kv_style = str(_v335kv_item["row"].get("style", "不明"))
             _lines.append(
-                f"計{_all_count_v335km}点（2車複{len(_final_pairs_v335kf)}点"
-                f"＋2車単{int(_extra_exacta_v335km is not None)}点・"
-                "惑星全候補＋◎－▲・2車複同一ペア重複除外・足切りなし）"
+                f"{_v335kv_style}　順位点{_v335kv_item['sum']}"
+                f" × {_v335kv_item['ratio'] * 100.0:.2f}%"
+                f" ＝ {_v335kv_item['score'] * 100.0:.2f}点"
+            )
+        # 旧銀河系の内部比較用変数だけ残す。旧2車複は公開しない。
+        _v335kf_result = None
+        _final_pairs_v335kf = []
+        _lines.append("【宇宙論・天体配置】")
+        if not _v335kv_scored:
+            _lines.append("該当なし（有効な流れなし）")
+            _lines.append("【最終検証買目】")
+            _lines.append("該当なし（有効な流れなし）")
+            _lines.append("計0点（3連単0点＋3連複0点）")
+        else:
+            _v335kv_selected = _v335kv_scored[0]
+            _v335kv_seq = _v335kv_selected["seq"]
+            _v335kv_sun = _v335kv_seq[0]
+            _v335kv_planet = _v335kv_seq[1]
+            _v335kv_moon = _v335kv_seq[2]
+            _v335kv_satellite = _v335kv_seq[3] if len(_v335kv_seq) >= 4 else None
+            _v335kv_outer = list(_v335kv_seq[4:])
+            _v335kv_comets = [c for c in _v335kv_outer if c in _v335kv_marks]
+            _v335kv_debris = [c for c in _v335kv_outer if c not in _v335kv_marks]
+            _lines.append(
+                f"採用流れ　{_v335kv_selected['row'].get('style', '不明')}"
+                f"（{_v335kv_selected['score'] * 100.0:.2f}点）"
+            )
+            _lines.append(f"太陽　{_v335kv_sun}（1位）")
+            _lines.append(f"惑星　{_v335kv_planet}（2位）")
+            _lines.append(f"月　{_v335kv_moon}（3位）")
+            _lines.append(
+                "衛星　" + (str(_v335kv_satellite) if _v335kv_satellite is not None else "該当なし")
+                + "（4位・車券対象外）"
+            )
+            _lines.append("彗星　" + ("・".join(map(str, _v335kv_comets)) if _v335kv_comets else "該当なし"))
+            _lines.append("デブリ　" + ("・".join(map(str, _v335kv_debris)) if _v335kv_debris else "該当なし"))
+            _v335kv_exact = [
+                (_v335kv_sun, _v335kv_planet, _v335kv_moon),
+                (_v335kv_sun, _v335kv_moon, _v335kv_planet),
+            ]
+            _v335kv_exact = list(dict.fromkeys(_v335kv_exact))
+            _v335kv_trios = list(dict.fromkeys(
+                tuple(sorted((_v335kv_sun, _v335kv_planet, c)))
+                for c in _v335kv_outer
+            ))
+            _lines.append("【最終検証買目】")
+            _lines.append("〈内周・通常軌道／月食〉")
+            for a, b, c in _v335kv_exact:
+                _lines.append(f"3連単　{a}→{b}→{c}")
+            _lines.append("〈外周・彗星／デブリ侵入（衛星除外）〉")
+            for a, b, c in _v335kv_trios:
+                _v335kv_intruder = next(
+                    (v for v in (a, b, c) if v not in (_v335kv_sun, _v335kv_planet)), None
+                )
+                _v335kv_kind = "彗星" if _v335kv_intruder in _v335kv_comets else "デブリ"
+                _lines.append(f"3連複　{a}－{b}－{c}（{_v335kv_kind}）")
+            _lines.append(
+                f"計{len(_v335kv_exact) + len(_v335kv_trios)}点"
+                f"（3連単{len(_v335kv_exact)}点＋3連複{len(_v335kv_trios)}点・衛星除外）"
             )
         _lines.append("")
         # v335kl: 銀河系・統合3点の計算は保持、表示への書込みのみ停止。
