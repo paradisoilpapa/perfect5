@@ -1,3 +1,8 @@
+# v335kx: 通常競輪のみ、採用流れで太陽系／連星系の最終検証買目を切替。
+# 順流（太陽系）：3連単 太陽-惑星-月衛星（2点）、3連複 太陽-惑星-彗星デブリ（7車3点）。
+# 逆流・渦（連星系）：3連複 採用流れ1・2位の二車軸-その他全車（7車5点）。
+# 宇宙論の流れ得点・採用基準、印・予測・ガールズ/アドバンス、保存・引継ぎは変更しない。
+# 8・9車立ては5点上限を守るため残余候補を想定順位順に先頭から採る。
 # v335kw: 通常競輪の【最終総合評価】εABCDのみ公開表示から削除（内部処理維持）。
 # 通常競輪の宇宙論・最終検証買目を2行のフォーメーション表記へ変更。
 # 3連単 太陽-惑星月-惑星月（2点）、3連複 太陽-惑星-外周5位以下（7車3点）。
@@ -6233,10 +6238,13 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         # 位置点 = n - 順位 + 1（7車なら7～1点）。対象車は重複除外。
         # 流れ得点 = 位置点合計 × 流れ内部比率。最高得点を採用。
         # 同点は流れ比率が高い方、さらに既存固定順（順流・逆流・渦）。
-        # 内周：3連単 太陽→惑星→月、太陽→月→惑星（2点）。
-        # 外周：3連複 太陽－惑星－5位以下（4位衛星は除外）。
-        # 5位以下：◎αβεの該当車は彗星、該当しなければデブリ。
-        # ガールズ／アドバンスの処理および既存の予想・評価・保存は変更しない。
+        # 順流（太陽系）：内周 太陽→惑星→月/衛星（最大2点）。
+        #                  外周 太陽－惑星－彗星/デブリ（7車3点）。
+        # 逆流・渦（連星系）：上位2車を順序不問の二車軸とし、
+        #                      3連複で残り全車から最大5点。
+        # 7車はどちらも5点。8/9車は順位順上位の相手から5点上限。
+        # 彗星＝5位以下◎αβε該当、デブリ＝同非該当（両方外周対象）。
+        # ガールズ／アドバンス・印・流れ選抜・保存は変更しない。
         _v335kv_marks = {
             int(c) for c in (
                 _axis_gc,
@@ -6300,40 +6308,66 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 f"採用流れ　{_v335kv_selected['row'].get('style', '不明')}"
                 f"（{_v335kv_selected['score'] * 100.0:.2f}点）"
             )
-            _lines.append(f"太陽　{_v335kv_sun}（1位）")
-            _lines.append(f"惑星　{_v335kv_planet}（2位）")
-            _lines.append(f"月　{_v335kv_moon}（3位）")
-            _lines.append(
-                "衛星　" + (str(_v335kv_satellite) if _v335kv_satellite is not None else "該当なし")
-                + "（4位・車券対象外）"
-            )
-            _lines.append("彗星　" + ("・".join(map(str, _v335kv_comets)) if _v335kv_comets else "該当なし"))
-            _lines.append("デブリ　" + ("・".join(map(str, _v335kv_debris)) if _v335kv_debris else "該当なし"))
-            _v335kv_exact = [
-                (_v335kv_sun, _v335kv_planet, _v335kv_moon),
-                (_v335kv_sun, _v335kv_moon, _v335kv_planet),
-            ]
-            _v335kv_exact = list(dict.fromkeys(_v335kv_exact))
-            _v335kv_trios = list(dict.fromkeys(
-                tuple(sorted((_v335kv_sun, _v335kv_planet, c)))
-                for c in _v335kv_outer
-            ))
-            # v335kw: 個別券面の羅列をフォーメーション2行へ統一。
-            # 3連単は太陽-惑星月-惑星月（同車重複除外で2点）。
-            # 3連複は太陽-惑星-5位以下（衛星は含めず最大3点/7車）。
-            _lines.append("【最終検証買目】")
-            _lines.append("〈内周・通常軌道／月食〉")
-            _v335kw_middle = "".join(map(str, sorted((_v335kv_planet, _v335kv_moon))))
-            _lines.append(f"3連単　{_v335kv_sun}-{_v335kw_middle}-{_v335kw_middle}")
-            _lines.append("〈外周・彗星／デブリ侵入（衛星除外）〉")
-            if _v335kv_outer:
-                _v335kw_outer = "".join(map(str, sorted(_v335kv_outer)))
-                _lines.append(f"3連複　{_v335kv_sun}-{_v335kv_planet}-{_v335kw_outer}")
+            _v335kx_style = str(_v335kv_selected["row"].get("style", ""))
+            _v335kx_solar = (_v335kx_style == "順流")
+            if _v335kx_solar:
+                _lines.append("体系　太陽系（順流・軌道型）")
+                _lines.append(f"太陽　{_v335kv_sun}（1位）")
+                _lines.append(f"惑星　{_v335kv_planet}（2位）")
+                _lines.append(f"月　{_v335kv_moon}（3位・内周3連単）")
+                _lines.append(
+                    "衛星　" + (str(_v335kv_satellite) if _v335kv_satellite is not None else "該当なし")
+                    + "（4位・内周3連単）"
+                )
+                _lines.append("彗星　" + ("・".join(map(str, _v335kv_comets)) if _v335kv_comets else "該当なし"))
+                _lines.append("デブリ　" + ("・".join(map(str, _v335kv_debris)) if _v335kv_debris else "該当なし"))
+                # 5点上限。7車なら内周2点＋外周3点。
+                _v335kx_third_exact = [
+                    c for c in (_v335kv_moon, _v335kv_satellite)
+                    if c is not None and c not in (_v335kv_sun, _v335kv_planet)
+                ][:2]
+                _v335kv_exact = [
+                    (_v335kv_sun, _v335kv_planet, c)
+                    for c in _v335kx_third_exact
+                ]
+                _v335kx_outer = _v335kv_outer[:max(0, 5 - len(_v335kv_exact))]
+                _v335kv_trios = [
+                    tuple(sorted((_v335kv_sun, _v335kv_planet, c)))
+                    for c in _v335kx_outer
+                ]
+                _lines.append("【最終検証買目】")
+                _lines.append("〈太陽系・内周／月・衛星〉")
+                if _v335kx_third_exact:
+                    _v335kx_third_str = "".join(map(str, sorted(_v335kx_third_exact)))
+                    _lines.append(f"3連単　{_v335kv_sun}-{_v335kv_planet}-{_v335kx_third_str}")
+                else:
+                    _lines.append("3連単　該当なし")
+                _lines.append("〈太陽系・外周／彗星・デブリ〉")
+                if _v335kx_outer:
+                    _v335kx_outer_str = "".join(map(str, sorted(_v335kx_outer)))
+                    _lines.append(f"3連複　{_v335kv_sun}-{_v335kv_planet}-{_v335kx_outer_str}")
+                else:
+                    _lines.append("3連複　該当なし")
             else:
-                _lines.append("3連複　該当なし")
+                _lines.append("体系　連星系（逆流・渦／二車軸型）")
+                _lines.append(f"連星A　{_v335kv_sun}（採用流れ1位）")
+                _lines.append(f"連星B　{_v335kv_planet}（採用流れ2位）")
+                _v335kv_exact = []
+                _v335kx_binary_rest = list(_v335kv_seq[2:])[:5]
+                _v335kv_trios = [
+                    tuple(sorted((_v335kv_sun, _v335kv_planet, c)))
+                    for c in _v335kx_binary_rest
+                ]
+                _lines.append("【最終検証買目】")
+                _lines.append("〈連星系・二車軸／着順不問〉")
+                if _v335kx_binary_rest:
+                    _v335kx_rest_str = "".join(map(str, sorted(_v335kx_binary_rest)))
+                    _lines.append(f"3連複　{_v335kv_sun}-{_v335kv_planet}-{_v335kx_rest_str}")
+                else:
+                    _lines.append("3連複　該当なし")
             _lines.append(
                 f"計{len(_v335kv_exact) + len(_v335kv_trios)}点"
-                f"（3連単{len(_v335kv_exact)}点＋3連複{len(_v335kv_trios)}点・衛星除外）"
+                f"（3連単{len(_v335kv_exact)}点＋3連複{len(_v335kv_trios)}点）"
             )
         _lines.append("")
         # v335kl: 銀河系・統合3点の計算は保持、表示への書込みのみ停止。
