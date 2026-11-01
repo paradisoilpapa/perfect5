@@ -1,3 +1,4 @@
+# v335lb: v335laの限定保護に加え、v335kx時点の各流れ旧惑星候補を保持し、最終順位4位以内に限定保護。
 # v335la: v335kxを原本としてライン後続の無条件上位固定だけを限定修正。KO・3流・宇宙論は元のまま。
 # v335kx: 通常競輪のみ、採用流れで太陽系／連星系の最終検証買目を切替。
 # 順流（太陽系）：3連単 太陽-惑星-月衛星（2点）、3連複 太陽-惑星-彗星デブリ（7車3点）。
@@ -12408,6 +12409,60 @@ try:
             except Exception:
                 return int(main[0])
 
+        # v335lb: 改修前(v335kx)の「主役ライン後続選抜で2位になる車」を
+        # 3流それぞれについて保持する。太陽・惑星を決める宇宙論自体は触らない。
+        _v335lb_old_planet_by_style = {}
+
+        def _v335lb_original_planet_candidate(_seq, _main_line):
+            """v335kxの主役ライン後続選抜を再現し、旧2位車だけを返す。
+
+            KO済みの各流れ固有の順位と、v335kxの番手15%加点を使用。
+            旧処理は[head] + main_rest[:protect_count]が先頭になるため、
+            2位はmain_rest[0]（主役ラインが単騎ならKO残余の最上位）。
+            """
+            xs = [int(x) for x in (_seq or []) if str(x).isdigit()]
+            main = _scenario_line_digits(_main_line)
+            if len(xs) < 2 or not main:
+                return None
+            main_set = {int(c) for c in main}
+            head = int(xs[0]) if int(xs[0]) in main_set else _scenario_best_head_from_main_line(main)
+            if head is None or int(head) not in xs:
+                return int(xs[1])
+            head = int(head)
+            main_rest = [int(c) for c in main if int(c) != head and int(c) in xs]
+            try:
+                rank_now = {int(c): i for i, c in enumerate(xs)}
+                all_scores = [float(score_map.get(int(c), 0.0)) for c in xs]
+                score_span = max(all_scores) - min(all_scores) if all_scores else 0.0
+                head_pos = main.index(head)
+                next_mate = int(main[head_pos + 1]) if head_pos + 1 < len(main) else None
+                main_rest = sorted(
+                    main_rest,
+                    key=lambda c: (
+                        float(score_map.get(int(c), 0.0))
+                        + (0.15 * score_span if next_mate is not None and int(c) == next_mate else 0.0),
+                        -int(rank_now.get(int(c), 99)),
+                    ),
+                    reverse=True,
+                )
+            except Exception:
+                pass
+            if main_rest:
+                return int(main_rest[0])
+            return next((int(c) for c in xs if int(c) != head), None)
+
+        def _v335lb_limit_old_planet_to_fourth(_seq, _old_planet):
+            """旧惑星候補が5位以下なら4位へ。その他の相対順位は維持。"""
+            xs = [int(x) for x in (_seq or []) if str(x).isdigit()]
+            if _old_planet is None or int(_old_planet) not in xs or len(xs) < 4:
+                return xs
+            i = xs.index(int(_old_planet))
+            if i <= 3:
+                return xs
+            xs.pop(i)
+            xs.insert(3, int(_old_planet))
+            return xs
+
         def _scenario_force_main_head(_seq, _main_line):
             """v335la: 3流別KO順位と主役ライン連係を共に維持する限定的な保護。
 
@@ -12484,6 +12539,7 @@ try:
             q = _scenario_queue_for_main(main_line, zone_order)
             seq = _run_ko(q, _style_name)
             seq = _display_score_guard(seq, main_line or fallback_main)
+            _v335lb_old_planet_by_style[_style_name] = _v335lb_original_planet_candidate(seq, main_line)
             seq = _scenario_force_main_head(seq, main_line)
             return [int(x) for x in (seq or []) if str(x).isdigit()]
 
@@ -12619,6 +12675,13 @@ try:
         except Exception as _e:
             note_sections.append(f"※H主導3番手以降・戦法別4番手以内補正エラー：{_e}")
             note_sections.append("")
+
+        # v335lb: 既存H主導3番手補正も終わった最終順位に対して、
+        # 各流れで保持した「v335kxの旧惑星候補」のみ4位下限を適用する。
+        # 太陽(1位)、現在の惑星(2位)、月(3位)は変更しない。
+        out_j = _v335lb_limit_old_planet_to_fourth(out_j, _v335lb_old_planet_by_style.get("順流"))
+        out_v = _v335lb_limit_old_planet_to_fourth(out_v, _v335lb_old_planet_by_style.get("渦"))
+        out_u = _v335lb_limit_old_planet_to_fourth(out_u, _v335lb_old_planet_by_style.get("逆流"))
 
         # ======================================================
         # 戦法別評価順を保存
