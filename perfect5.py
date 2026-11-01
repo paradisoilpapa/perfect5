@@ -1,8 +1,4 @@
-# v335ky: 開催日別・ライン内順位改革（通常競輪のみ）。
-# 1着の主役ライン保護と3流の主役ラインは維持し、2着以下の主役ライン連続保護を廃止。
-# 初日：先頭と番手の連携を保護／2日目：別ライン先頭の割り込みを評価／最終日：番手の浮上を評価。
-# 各補正はフィールドKO点幅を基準にし、順位・KOを加味。既存疲労補正の2日目先頭への過剰減点を調整。
-# 3流選抜式、太陽系・連星系買い目、ガールズ／アドバンス、会場指数、保存・note出力は変更しない。
+# v335kz: v335kxのKO・3流・開催日補正を維持し、後続の強制連続配置のみを限定緩和。
 # v335kx: 通常競輪のみ、採用流れで太陽系／連星系の最終検証買目を切替。
 # 順流（太陽系）：3連単 太陽-惑星-月衛星（2点）、3連複 太陽-惑星-彗星デブリ（7車3点）。
 # 逆流・渦（連星系）：3連複 採用流れ1・2位の二車軸-その他全車（7車5点）。
@@ -9254,12 +9250,11 @@ for no in active_cars:
     # 周回疲労の暴走防止
     laps_adj = clamp(laps_adj, -0.22, 0.18)
 
-    # v335ky：位置疲労は物理的負荷の推定に限定する。
-    # 2日目の勝ち上がり・最終日の番手支援という戦術差は、
-    # 後段のシナリオ順位補正で一度だけ扱い、ここでは二重加点しない。
+    # v335cx：開催日KO専用の位置疲労を追加。
+    # 脚質疲労とは分離し、開催が進むほど先頭の位置負荷を強くする。
     _v335cx_position_fatigue = {
         "初日":   {"head": -0.005, "single":  0.000, "second":  0.000, "thirdplus": 0.000},
-        "2日目":  {"head": -0.008, "single": -0.003, "second": -0.005, "thirdplus": 0.000},
+        "2日目":  {"head": -0.025, "single": -0.003, "second": -0.005, "thirdplus": 0.000},
         "3日目":  {"head": -0.050, "single": -0.005, "second": -0.010, "thirdplus": 0.000},
         "4日目":  {"head": -0.070, "single": -0.008, "second": -0.015, "thirdplus": 0.000},
         "最終日": {"head": -0.090, "single": -0.010, "second": -0.020, "thirdplus": 0.000},
@@ -12414,68 +12409,44 @@ try:
                 return int(main[0])
 
         def _scenario_force_main_head(_seq, _main_line):
-            """v335ky：主役ラインの1着保護を残し、2着以下をKO・日程・位置で競争させる。
+            """v335kz: 3流別KO結果を保全し、主役ライン後続の強制連続配置だけを緩和。
 
-            旧版の [主役ライン先頭, 主役ライン残り最大2車, その他] という
-            強制連続配置を廃止。別ラインの強い先頭車は2着へ進出できる。
-            日程補正は正規化したKO点幅に対する割合。順位を捨てた全車
-            シャッフルはせず、既存KO通過後順位をタイブレークに保持する。
+            _run_ko() と _display_score_guard() が生成したシナリオ固有順位を
+            基準にする。主役ラインの1着選定ルールは既存のまま維持する。
+            旧版の「主役ライン残り最大2車を無条件で前方へ配置」は廃止。
+            主役ライン番手の展開利はKO差が小さい場合に限り2着保護する。
+            3番手以降には強制保護をかけず、各流れのKO確定順序を維持する。
             """
             xs = [int(x) for x in (_seq or []) if str(x).isdigit()]
             main = _scenario_line_digits(_main_line)
             if not xs or not main:
                 return xs
-            main_set = set(map(int, main))
+
+            main_set = {int(c) for c in main}
+            # v335kxの主役ライン1着ルールをそのまま保持。
             head = int(xs[0]) if int(xs[0]) in main_set else _scenario_best_head_from_main_line(main)
             if head is None or int(head) not in xs:
                 return xs
             head = int(head)
-            rest = [int(c) for c in xs if int(c) != head]
-            if len(rest) < 2:
-                return [head] + rest
+            rest = [c for c in xs if c != head]
 
-            # 現在の当該レースのKO尺度だけを使用。ガールズ・アドバンスには
-            # このシナリオ保護関数自体が適用されない既存分岐を維持。
-            score_values = [float(score_map.get(int(c), 0.0)) for c in xs]
-            span = max(score_values) - min(score_values)
-            if not math.isfinite(span) or span < 1e-8:
-                span = 1e-8
-            stage = str(day_stage)
-            # 大胆に連続保護を解除しつつ、開催日固有の位置差を明示する。
-            # 値はモデル仮説であり実測推定係数ではない。
-            role_weights = {
-                "初日":   {"main_second": 0.12, "other_head": 0.01, "other_second": 0.00},
-                "2日目":  {"main_second": 0.00, "other_head": 0.14, "other_second": 0.00},
-                "3日目":  {"main_second": 0.07, "other_head": 0.05, "other_second": 0.07},
-                "4日目":  {"main_second": 0.10, "other_head": 0.02, "other_second": 0.10},
-                "最終日": {"main_second": 0.16, "other_head": 0.00, "other_second": 0.15},
-            }.get(stage, {"main_second": 0.04, "other_head": 0.04, "other_second": 0.04})
-            # line_defは実際の並びを保持する。行方不明車は位置優遇しない。
-            car_role = {}
+            # 強制的なライン連続配置をしないことが基本。
+            # 例外として、主役の直後の番手がKOで僅差なら展開利を認める。
+            # KO後の順位を丸ごと再ソートせず、候補番手1車だけを判定する。
             try:
-                for line in (all_lines or []):
-                    members = _scenario_line_digits(line)
-                    for pos, car in enumerate(members):
-                        car_role[int(car)] = pos
-            except Exception:
+                pos = main.index(head)
+                next_mate = int(main[pos + 1]) if pos + 1 < len(main) else None
+                if next_mate is not None and next_mate in rest and rest and rest[0] != next_mate:
+                    all_scores = [float(score_map.get(c, 0.0)) for c in xs]
+                    score_span = max(all_scores) - min(all_scores)
+                    score_gap = float(score_map.get(rest[0], 0.0)) - float(score_map.get(next_mate, 0.0))
+                    # 旧版v335imの番手補正幅（KO点幅15%）を維持。
+                    # KO順位の遠方から無理に上げないよう、上位4車に限る。
+                    if rest.index(next_mate) <= 2 and score_span > 0.0 and score_gap <= 0.15 * score_span:
+                        rest.remove(next_mate)
+                        rest.insert(0, next_mate)
+            except (ValueError, TypeError, KeyError, OverflowError):
                 pass
-            initial_rank = {int(c): i for i, c in enumerate(xs)}
-            def _adjusted(c):
-                c = int(c)
-                original_score = float(score_map.get(c, 0.0))
-                pos = car_role.get(c, -1)
-                if c in main_set and pos == 1:
-                    bonus = role_weights["main_second"]
-                elif c not in main_set and pos == 0:
-                    bonus = role_weights["other_head"]
-                elif c not in main_set and pos == 1:
-                    bonus = role_weights["other_second"]
-                else:
-                    bonus = 0.0
-                # KO差を第一基準とし、既存KO後順位を弱い保持力として利用。
-                rank_continuity = 0.035 * span * (len(xs) - 1 - initial_rank[c]) / max(1, len(xs) - 1)
-                return original_score + span * bonus + rank_continuity
-            rest.sort(key=lambda c: (-_adjusted(c), initial_rank[c]))
             return [head] + rest
 
         def _make_style_scenario_seq(_style_name, _fallback_seq):
