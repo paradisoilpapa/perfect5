@@ -1,4 +1,3 @@
-# v335kz: v335kxのKO・3流・開催日補正を維持し、後続の強制連続配置のみを限定緩和。
 # v335kx: 通常競輪のみ、採用流れで太陽系／連星系の最終検証買目を切替。
 # 順流（太陽系）：3連単 太陽-惑星-月衛星（2点）、3連複 太陽-惑星-彗星デブリ（7車3点）。
 # 逆流・渦（連星系）：3連複 採用流れ1・2位の二車軸-その他全車（7車5点）。
@@ -12409,45 +12408,80 @@ try:
                 return int(main[0])
 
         def _scenario_force_main_head(_seq, _main_line):
-            """v335kz: 3流別KO結果を保全し、主役ライン後続の強制連続配置だけを緩和。
+            """
+            シナリオの前提として、主役ラインのいずれかを1着候補へ置く。
 
-            _run_ko() と _display_score_guard() が生成したシナリオ固有順位を
-            基準にする。主役ラインの1着選定ルールは既存のまま維持する。
-            旧版の「主役ライン残り最大2車を無条件で前方へ配置」は廃止。
-            主役ライン番手の展開利はKO差が小さい場合に限り2着保護する。
-            3番手以降には強制保護をかけず、各流れのKO確定順序を維持する。
+            v335hr:
+            4ライン以上では主役ラインを初期隊列の起点にはするが、
+            代表外ラインにも1着機会を残すため「代表ライン1着固定」は行わない。
+
+            v196:
+            1着候補だけを先頭へ上げても、同ライン相手が後方へ沈むと
+            「そのラインが主役になった展開」として買目妙味が効かない。
+            そのため、主役ラインの残りも2〜4番手以内へ保護する。
+            ただしライン丸ごと無条件固定ではなく、KO/既存順位を見て並べる。
             """
             xs = [int(x) for x in (_seq or []) if str(x).isdigit()]
             main = _scenario_line_digits(_main_line)
             if not xs or not main:
                 return xs
 
+            _four_plus_v335hs = False
+            try:
+                _four_plus_v335hs = len([ln for ln in (all_lines or []) if ln]) >= 4
+            except Exception:
+                _four_plus_v335hs = False
+
             main_set = {int(c) for c in main}
-            # v335kxの主役ライン1着ルールをそのまま保持。
+
+            # v335kb: 4ライン以上でもKO差による他ラインの1着昇格は認めない。
+            # 2着以下のKO並べ替えは従来どおり維持する。
             head = int(xs[0]) if int(xs[0]) in main_set else _scenario_best_head_from_main_line(main)
             if head is None or int(head) not in xs:
                 return xs
             head = int(head)
-            rest = [c for c in xs if c != head]
 
-            # 強制的なライン連続配置をしないことが基本。
-            # 例外として、主役の直後の番手がKOで僅差なら展開利を認める。
-            # KO後の順位を丸ごと再ソートせず、候補番手1車だけを判定する。
+            # v335im: 主役ラインの番手をKO点のみで保護枠から落とす偏りを緩和。
+            # 先頭車が勝つシナリオでは直後の番手に展開上の利がある。
+            # ただしKO差が大きい場合まで番手を無条件優先しない。
+            main_rest = [int(c) for c in main if int(c) != head and int(c) in xs]
             try:
-                pos = main.index(head)
-                next_mate = int(main[pos + 1]) if pos + 1 < len(main) else None
-                if next_mate is not None and next_mate in rest and rest and rest[0] != next_mate:
-                    all_scores = [float(score_map.get(c, 0.0)) for c in xs]
-                    score_span = max(all_scores) - min(all_scores)
-                    score_gap = float(score_map.get(rest[0], 0.0)) - float(score_map.get(next_mate, 0.0))
-                    # 旧版v335imの番手補正幅（KO点幅15%）を維持。
-                    # KO順位の遠方から無理に上げないよう、上位4車に限る。
-                    if rest.index(next_mate) <= 2 and score_span > 0.0 and score_gap <= 0.15 * score_span:
-                        rest.remove(next_mate)
-                        rest.insert(0, next_mate)
-            except (ValueError, TypeError, KeyError, OverflowError):
+                rank_now = {int(c): i for i, c in enumerate(xs)}
+                all_scores = [float(score_map.get(int(c), 0.0)) for c in xs]
+                score_span = max(all_scores) - min(all_scores) if all_scores else 0.0
+                head_pos = main.index(head)
+                next_mate = int(main[head_pos + 1]) if head_pos + 1 < len(main) else None
+                # 番手の評価をフィールドKO点幅の15%だけ加算。
+                # 他ラインや主役ラインの3番手以降には加算しない。
+                main_rest = sorted(
+                    main_rest,
+                    key=lambda c: (
+                        float(score_map.get(int(c), 0.0))
+                        + (0.15 * score_span if next_mate is not None and int(c) == next_mate else 0.0),
+                        -int(rank_now.get(int(c), 99)),
+                    ),
+                    reverse=True,
+                )
+            except Exception:
                 pass
-            return [head] + rest
+
+            protect_count = 1 if len(main) <= 2 else 2
+            protected = [head] + main_rest[:protect_count]
+
+            out = []
+            seen = set()
+            for c in protected:
+                c = int(c)
+                if c in xs and c not in seen:
+                    out.append(c)
+                    seen.add(c)
+
+            for c in xs:
+                c = int(c)
+                if c not in seen:
+                    out.append(c)
+                    seen.add(c)
+            return out
 
         def _make_style_scenario_seq(_style_name, _fallback_seq):
             main_line = _scenario_main_line(_style_name)
