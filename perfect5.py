@@ -1,3 +1,4 @@
+# v335lc: 太陽候補を3流上位2車から加重順位評価で選抜。太陽1位は太陽モデル、太陽2位は木星モデル。KO・3流・旧惑星候補4位保護・その他機能は維持。
 # v335lb: v335laの限定保護に加え、v335kx時点の各流れ旧惑星候補を保持し、最終順位4位以内に限定保護。
 # v335la: v335kxを原本としてライン後続の無条件上位固定だけを限定修正。KO・3流・宇宙論は元のまま。
 # v335kx: 通常競輪のみ、採用流れで太陽系／連星系の最終検証買目を切替。
@@ -6235,18 +6236,13 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 )
         # v335kw: 【最終総合評価】εABCDは公開出力からのみ削除。
         # 内部選定と関連変数は従来どおり保持する。
-        # v335kv: 通常競輪専用・ヴェロビ宇宙論（暫定）
-        # ◎αβεは流れ選抜だけに使用し、車券構築で評価による足切りをしない。
-        # 位置点 = n - 順位 + 1（7車なら7～1点）。対象車は重複除外。
-        # 流れ得点 = 位置点合計 × 流れ内部比率。最高得点を採用。
-        # 同点は流れ比率が高い方、さらに既存固定順（順流・逆流・渦）。
-        # 順流（太陽系）：内周 太陽→惑星→月/衛星（最大2点）。
-        #                  外周 太陽－惑星－彗星/デブリ（7車3点）。
-        # 逆流・渦（連星系）：上位2車を順序不問の二車軸とし、
-        #                      3連複で残り全車から最大5点。
-        # 7車はどちらも5点。8/9車は順位順上位の相手から5点上限。
-        # 彗星＝5位以下◎αβε該当、デブリ＝同非該当（両方外周対象）。
-        # ガールズ／アドバンス・印・流れ選抜・保存は変更しない。
+        # v335lc: 3流の上位2車を横断評価して太陽を確定。
+        # 既存KO・ライン・3流・旧惑星4位保護には介入しない。
+        # 太陽候補点：3流それぞれの順位点(n-rank+1)×流れ比率の合計。
+        # 候補は各流れ上位2車の重複除外。複数流れの情報を一括利用する。
+        # 太陽が最も上位となる流れから相手を選ぶ。同順位は従来の
+        # ◎αβε流れ得点→流れ比率→固定流れ順で決定。
+        # 太陽が対象流れ1位なら太陽モデル、2位なら木星モデル。
         _v335kv_marks = {
             int(c) for c in (
                 _axis_gc,
@@ -6277,7 +6273,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             -x["score"], -x["ratio"], int(x["row"].get("fixed", 999))
         ))
         _lines.append("【ヴェロビ宇宙論・流れ選抜】")
-        _lines.append("※◎αβε重複除外・順位点合計×流れ予想%（7車は1位7点～7位1点）")
+        _lines.append("※旧方式の◎αβε順位点×流れ予想%は比較用。新方式は3流上位2車から太陽を選抜")
         for _v335kv_item in sorted(
             _v335kv_scored, key=lambda x: int(x["row"].get("fixed", 999))
         ):
@@ -6285,9 +6281,8 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _lines.append(
                 f"{_v335kv_style}　順位点{_v335kv_item['sum']}"
                 f" × {_v335kv_item['ratio'] * 100.0:.2f}%"
-                f" ＝ {_v335kv_item['score'] * 100.0:.2f}点"
+                f" ＝ {_v335kv_item['score'] * 100.0:.2f}点（旧比較値）"
             )
-        # 旧銀河系の内部比較用変数だけ残す。旧2車複は公開しない。
         _v335kf_result = None
         _final_pairs_v335kf = []
         _lines.append("【宇宙論・天体配置】")
@@ -6297,23 +6292,48 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _lines.append("該当なし（有効な流れなし）")
             _lines.append("計0点（3連単0点＋3連複0点）")
         else:
-            _v335kv_selected = _v335kv_scored[0]
+            _v335lc_candidates = sorted({
+                c for item in _v335kv_scored for c in item["seq"][:2]
+            })
+            _v335lc_sun_scores = {}
+            for _v335lc_car in _v335lc_candidates:
+                _v335lc_sun_scores[_v335lc_car] = sum(
+                    (len(item["seq"]) - item["seq"].index(_v335lc_car)) * item["ratio"]
+                    for item in _v335kv_scored if _v335lc_car in item["seq"]
+                )
+            # 最高点同点時：流れ1位出現確率→最良順位→車番。
+            _v335kv_sun = min(_v335lc_candidates, key=lambda c: (
+                -_v335lc_sun_scores[c],
+                -sum(item["ratio"] for item in _v335kv_scored if item["seq"][0] == c),
+                min(item["seq"].index(c) for item in _v335kv_scored if c in item["seq"]),
+                c,
+            ))
+            _v335lc_eligible = [
+                item for item in _v335kv_scored if _v335kv_sun in item["seq"][:2]
+            ]
+            _v335kv_selected = min(_v335lc_eligible, key=lambda item: (
+                item["seq"].index(_v335kv_sun), -item["score"],
+                -item["ratio"], int(item["row"].get("fixed", 999)),
+            ))
             _v335kv_seq = _v335kv_selected["seq"]
-            _v335kv_sun = _v335kv_seq[0]
-            _v335kv_planet = _v335kv_seq[1]
-            _v335kv_moon = _v335kv_seq[2]
-            _v335kv_satellite = _v335kv_seq[3] if len(_v335kv_seq) >= 4 else None
-            _v335kv_outer = list(_v335kv_seq[4:])
-            _v335kv_comets = [c for c in _v335kv_outer if c in _v335kv_marks]
-            _v335kv_debris = [c for c in _v335kv_outer if c not in _v335kv_marks]
+            _v335lc_sun_rank = _v335kv_seq.index(_v335kv_sun) + 1
+            _v335kv_planet = next(c for c in _v335kv_seq[:2] if c != _v335kv_sun)
+            _v335kx_solar = (_v335lc_sun_rank == 1 and _v335kv_seq[1] == _v335kv_planet)
+            _lines.append("【太陽候補・3流横断順位評価】")
+            _lines.append("※順位点×各流れ比率の合計。候補は各流れの上位2車のみ")
+            for c in sorted(_v335lc_candidates, key=lambda c: (-_v335lc_sun_scores[c], c)):
+                _lines.append(f"{c}番　{_v335lc_sun_scores[c] * 100.0:.2f}点" + ("（太陽）" if c == _v335kv_sun else ""))
             _lines.append(
                 f"採用流れ　{_v335kv_selected['row'].get('style', '不明')}"
-                f"（{_v335kv_selected['score'] * 100.0:.2f}点）"
+                f"（太陽{_v335kv_sun}：{_v335lc_sun_rank}位／旧流れ比較値{_v335kv_selected['score'] * 100.0:.2f}点）"
             )
-            _v335kx_style = str(_v335kv_selected["row"].get("style", ""))
-            _v335kx_solar = (_v335kx_style == "順流")
             if _v335kx_solar:
-                _lines.append("体系　太陽系（順流・軌道型）")
+                _v335kv_moon = _v335kv_seq[2]
+                _v335kv_satellite = _v335kv_seq[3] if len(_v335kv_seq) >= 4 else None
+                _v335kv_outer = list(_v335kv_seq[4:])
+                _v335kv_comets = [c for c in _v335kv_outer if c in _v335kv_marks]
+                _v335kv_debris = [c for c in _v335kv_outer if c not in _v335kv_marks]
+                _lines.append("体系　太陽モデル（太陽1位・惑星2位／軌道型）")
                 _lines.append(f"太陽　{_v335kv_sun}（1位）")
                 _lines.append(f"惑星　{_v335kv_planet}（2位）")
                 _lines.append(f"月　{_v335kv_moon}（3位・内周3連単）")
@@ -6323,14 +6343,12 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 )
                 _lines.append("彗星　" + ("・".join(map(str, _v335kv_comets)) if _v335kv_comets else "該当なし"))
                 _lines.append("デブリ　" + ("・".join(map(str, _v335kv_debris)) if _v335kv_debris else "該当なし"))
-                # 5点上限。7車なら内周2点＋外周3点。
                 _v335kx_third_exact = [
                     c for c in (_v335kv_moon, _v335kv_satellite)
                     if c is not None and c not in (_v335kv_sun, _v335kv_planet)
                 ][:2]
                 _v335kv_exact = [
-                    (_v335kv_sun, _v335kv_planet, c)
-                    for c in _v335kx_third_exact
+                    (_v335kv_sun, _v335kv_planet, c) for c in _v335kx_third_exact
                 ]
                 _v335kx_outer = _v335kv_outer[:max(0, 5 - len(_v335kv_exact))]
                 _v335kv_trios = [
@@ -6338,22 +6356,22 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     for c in _v335kx_outer
                 ]
                 _lines.append("【最終検証買目】")
-                _lines.append("〈太陽系・内周／月・衛星〉")
+                _lines.append("〈太陽モデル・内周／月・衛星〉")
                 if _v335kx_third_exact:
                     _v335kx_third_str = "".join(map(str, sorted(_v335kx_third_exact)))
                     _lines.append(f"3連単　{_v335kv_sun}-{_v335kv_planet}-{_v335kx_third_str}")
                 else:
                     _lines.append("3連単　該当なし")
-                _lines.append("〈太陽系・外周／彗星・デブリ〉")
+                _lines.append("〈太陽モデル・外周／彗星・デブリ〉")
                 if _v335kx_outer:
                     _v335kx_outer_str = "".join(map(str, sorted(_v335kx_outer)))
                     _lines.append(f"3連複　{_v335kv_sun}-{_v335kv_planet}-{_v335kx_outer_str}")
                 else:
                     _lines.append("3連複　該当なし")
             else:
-                _lines.append("体系　連星系（逆流・渦／二車軸型）")
-                _lines.append(f"連星A　{_v335kv_sun}（採用流れ1位）")
-                _lines.append(f"連星B　{_v335kv_planet}（採用流れ2位）")
+                _lines.append("体系　木星モデル（木星1位・太陽2位／二車軸型）")
+                _lines.append(f"木星　{_v335kv_planet}（採用流れ1位）")
+                _lines.append(f"太陽　{_v335kv_sun}（採用流れ2位）")
                 _v335kv_exact = []
                 _v335kx_binary_rest = list(_v335kv_seq[2:])[:5]
                 _v335kv_trios = [
@@ -6361,7 +6379,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     for c in _v335kx_binary_rest
                 ]
                 _lines.append("【最終検証買目】")
-                _lines.append("〈連星系・二車軸／着順不問〉")
+                _lines.append("〈木星モデル・太陽－木星／着順不問〉")
                 if _v335kx_binary_rest:
                     _v335kx_rest_str = "".join(map(str, sorted(_v335kx_binary_rest)))
                     _lines.append(f"3連複　{_v335kv_sun}-{_v335kv_planet}-{_v335kx_rest_str}")
