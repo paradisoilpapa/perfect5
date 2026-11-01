@@ -1,3 +1,4 @@
+# v335la: v335kxを原本としてライン後続の無条件上位固定だけを限定修正。KO・3流・宇宙論は元のまま。
 # v335kx: 通常競輪のみ、採用流れで太陽系／連星系の最終検証買目を切替。
 # 順流（太陽系）：3連単 太陽-惑星-月衛星（2点）、3連複 太陽-惑星-彗星デブリ（7車3点）。
 # 逆流・渦（連星系）：3連複 採用流れ1・2位の二車軸-その他全車（7車5点）。
@@ -12408,80 +12409,58 @@ try:
                 return int(main[0])
 
         def _scenario_force_main_head(_seq, _main_line):
-            """
-            シナリオの前提として、主役ラインのいずれかを1着候補へ置く。
+            """v335la: 3流別KO順位と主役ライン連係を共に維持する限定的な保護。
 
-            v335hr:
-            4ライン以上では主役ラインを初期隊列の起点にはするが、
-            代表外ラインにも1着機会を残すため「代表ライン1着固定」は行わない。
-
-            v196:
-            1着候補だけを先頭へ上げても、同ライン相手が後方へ沈むと
-            「そのラインが主役になった展開」として買目妙味が効かない。
-            そのため、主役ラインの残りも2〜4番手以内へ保護する。
-            ただしライン丸ごと無条件固定ではなく、KO/既存順位を見て並べる。
+            変更対象は旧版の ``protected = [head] + main_rest[:protect_count]``
+            による、主役ライン後続の無条件の前方移動のみ。
+            1着候補、KO本体、表示ガード、流れ別の主役ラインは変更しない。
+            同ライン番手・3番手は、展開別KO順位が既に上位圏で、
+            競合車との既存15%のKO点幅以内である場合に限って前方へ置く。
+            保護の条件外の選手はKO後の相対順位を保持する。
             """
             xs = [int(x) for x in (_seq or []) if str(x).isdigit()]
             main = _scenario_line_digits(_main_line)
             if not xs or not main:
                 return xs
 
-            _four_plus_v335hs = False
-            try:
-                _four_plus_v335hs = len([ln for ln in (all_lines or []) if ln]) >= 4
-            except Exception:
-                _four_plus_v335hs = False
-
             main_set = {int(c) for c in main}
-
-            # v335kb: 4ライン以上でもKO差による他ラインの1着昇格は認めない。
-            # 2着以下のKO並べ替えは従来どおり維持する。
+            # v335kxの主役ライン1着決定を一字一句維持する。
             head = int(xs[0]) if int(xs[0]) in main_set else _scenario_best_head_from_main_line(main)
             if head is None or int(head) not in xs:
                 return xs
             head = int(head)
+            rest = [c for c in xs if c != head]
 
-            # v335im: 主役ラインの番手をKO点のみで保護枠から落とす偏りを緩和。
-            # 先頭車が勝つシナリオでは直後の番手に展開上の利がある。
-            # ただしKO差が大きい場合まで番手を無条件優先しない。
-            main_rest = [int(c) for c in main if int(c) != head and int(c) in xs]
-            try:
-                rank_now = {int(c): i for i, c in enumerate(xs)}
-                all_scores = [float(score_map.get(int(c), 0.0)) for c in xs]
-                score_span = max(all_scores) - min(all_scores) if all_scores else 0.0
-                head_pos = main.index(head)
-                next_mate = int(main[head_pos + 1]) if head_pos + 1 < len(main) else None
-                # 番手の評価をフィールドKO点幅の15%だけ加算。
-                # 他ラインや主役ラインの3番手以降には加算しない。
-                main_rest = sorted(
-                    main_rest,
-                    key=lambda c: (
-                        float(score_map.get(int(c), 0.0))
-                        + (0.15 * score_span if next_mate is not None and int(c) == next_mate else 0.0),
-                        -int(rank_now.get(int(c), 99)),
-                    ),
-                    reverse=True,
-                )
-            except Exception:
-                pass
+            # 旧v335imで既に使われていたKO点幅15%を、新しい係数を
+            # 増設せず、無条件保護の上限判定として使う。
+            scores = [float(score_map.get(int(c), 0.0)) for c in xs]
+            score_span = max(scores) - min(scores) if scores else 0.0
+            allowance = 0.15 * max(0.0, score_span)
 
-            protect_count = 1 if len(main) <= 2 else 2
-            protected = [head] + main_rest[:protect_count]
+            # 主役ライン内の先頭・番手・3番手という隊列上の関係は残す。
+            # 頭が番手の場合も、そのラインの先頭車を連係相手から外さない。
+            head_idx = main.index(head)
+            followers = [int(c) for c in (main[head_idx + 1:] + main[:head_idx]) if int(c) in rest]
 
-            out = []
-            seen = set()
-            for c in protected:
-                c = int(c)
-                if c in xs and c not in seen:
-                    out.append(c)
-                    seen.add(c)
-
-            for c in xs:
-                c = int(c)
-                if c not in seen:
-                    out.append(c)
-                    seen.add(c)
-            return out
+            # 番手はKO後の上位4車（頭を除く3車）に残る場合、
+            # 3番手は同上位5車（頭を除く4車）に残る場合のみ保護候補。
+            # これにより主役ライン全体を順位の先頭に強制集約しない。
+            for follow_idx, mate in enumerate(followers[:2]):
+                target = follow_idx  # rest[0] = 2着、rest[1] = 3着
+                if mate not in rest or rest.index(mate) <= target:
+                    continue
+                original_rest_rank = rest.index(mate)
+                allowed_rest_rank = 2 if follow_idx == 0 else 3
+                if original_rest_rank > allowed_rest_rank:
+                    continue
+                rival = rest[target]
+                mate_ko = float(score_map.get(mate, 0.0))
+                rival_ko = float(score_map.get(rival, 0.0))
+                if rival_ko - mate_ko > allowance:
+                    continue
+                rest.remove(mate)
+                rest.insert(target, mate)
+            return [head] + rest
 
         def _make_style_scenario_seq(_style_name, _fallback_seq):
             main_line = _scenario_main_line(_style_name)
