@@ -1,3 +1,4 @@
+# v335le: 木星軸の外部印除外を◎のみへ変更。木星が無印でも採用。その他のv335ld仕様は維持。
 # v335ld: 通常競輪の宇宙論表示・検証買目を木星モデルのみに変更。太陽と別系統の横断評価次点を木星とし、太陽系の惑星／木星系の衛星／系統外デブリを区別。外部印は買目採否のみ。既存3流・KO・その他機能維持。
 # v335lc: 太陽候補を3流上位2車から加重順位評価で選抜。太陽1位は太陽モデル、太陽2位は木星モデル。KO・3流・旧惑星候補4位保護・その他機能は維持。
 # v335lb: v335laの限定保護に加え、v335kx時点の各流れ旧惑星候補を保持し、最終順位4位以内に限定保護。
@@ -6391,8 +6392,6 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _v335ld_reason = None
             if _v335ld_jupiter is None:
                 _v335ld_reason = "木星候補なし（別系統の3流上位2車候補なし）"
-            elif not _v335ld_marked(_v335ld_jupiter):
-                _v335ld_reason = "木星が外部評価無印のため対象外"
             elif _v335ld_mark(_v335ld_jupiter) == "◎":
                 _v335ld_reason = "木星は過剰人気が予想されるため対象外"
             elif not _v335ld_satellites:
