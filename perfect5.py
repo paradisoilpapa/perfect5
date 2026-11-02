@@ -1,3 +1,4 @@
+# v335lf: 木星系の弱い衛星は外部評価無印でも2列目に保持。木星軸◎除外、その他の仕様はv335leを維持。
 # v335le: 木星軸の外部印除外を◎のみへ変更。木星が無印でも採用。その他のv335ld仕様は維持。
 # v335ld: 通常競輪の宇宙論表示・検証買目を木星モデルのみに変更。太陽と別系統の横断評価次点を木星とし、太陽系の惑星／木星系の衛星／系統外デブリを区別。外部印は買目採否のみ。既存3流・KO・その他機能維持。
 # v335lc: 太陽候補を3流上位2車から加重順位評価で選抜。太陽1位は太陽モデル、太陽2位は木星モデル。KO・3流・旧惑星候補4位保護・その他機能は維持。
@@ -6413,10 +6414,13 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                     _v335ld_third.append(_v335ld_sat_weak)
                 elif _v335ld_debris is not None:
                     _v335ld_third.append(_v335ld_debris)
-                # 無印は1・2列目には配置しない。天体そのものの評価は変更しない。
+                # 太陽の2列目採用には従来の外部印条件を維持する。
+                # 木星系の弱い衛星は天体配置を優先し、無印でも2列目から落とさない。
+                # （木星自身の無印軸採用ルールと整合させる限定修正。）
                 _v335ld_second = [
                     c for c in dict.fromkeys(_v335ld_second)
-                    if _v335ld_marked(c) and c != _v335ld_jupiter
+                    if c != _v335ld_jupiter
+                    and (c == _v335ld_sat_weak or _v335ld_marked(c))
                 ]
                 _v335ld_third = [
                     c for c in dict.fromkeys(_v335ld_third) if c != _v335ld_jupiter
