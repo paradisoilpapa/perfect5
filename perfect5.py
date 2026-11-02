@@ -1,4 +1,4 @@
-# v335lh: 順流の第2評価ライン木星と横断太陽が同一車になった場合に限り、太陽を採用順流1位へ切替。木星と採用流れ・KOは保持。
+# v335li: 太陽と木星の同一車重複時だけ採用流れ主役を天体上の太陽に配置。既存3流・KO・横断評価スコアは不変。小田原5Rの木星1/太陽3を再現検証。
 # v335lg: 3流とKOを不変にして採用流れ別木星選抜。惑星/衛星は採用流れのライン帰属と順位。単騎補完。全区分3連複4点＋補足2車複（木星－太陽・全衛星）。外部AI印による軸除外廃止。
 # v335lf: 木星系の弱い衛星は外部評価無印でも2列目に保持。木星軸◎除外、その他の仕様はv335leを維持。
 # v335le: 木星軸の外部印除外を◎のみへ変更。木星が無印でも採用。その他のv335ld仕様は維持。
@@ -6433,15 +6433,15 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                         i,
                     ))
                     _v335lg_jup = min(_v335lg_groups[_second_gid], key=_v335kv_seq.index)
-            # v335lh: 横断太陽が木星と同一車になった場合だけ、採用流れ1位を
-            # 太陽として天体配置を行う。順流第2評価ラインの木星は変更しない。
-            # 順流・逆流・渦の順位、主役ライン、KO補正、横断太陽得点の算出は不変。
-            _v335lh_display_sun = _v335kv_sun
-            if (_v335lg_jup is not None
-                    and _v335lh_display_sun == _v335lg_jup):
-                _v335lh_display_sun = _v335kv_seq[0]
+            # 木星は採用流れの第2評価ライン／逆流・渦1位から選抜済み。
+            # 横断評価太陽と同一車ならその車を木星に残し、採用流れの
+            # 主役（第1評価ラインの最上位車）を天体配置上の太陽に採用。
+            # 横断太陽の計算結果や3流順位を変更するものではない。
+            _v335li_sun_for_layout = _v335kv_sun
+            if (_v335lg_jup is not None and _v335li_sun_for_layout == _v335lg_jup):
+                _v335li_sun_for_layout = int(_v335kv_seq[0])
             _v335lg_model = _v335lg_build_jupiter_model(
-                _v335kv_seq, _v335lg_groups, _v335lh_display_sun, _v335lg_jup
+                _v335kv_seq, _v335lg_groups, _v335li_sun_for_layout, _v335lg_jup
             ) if _v335lg_jup is not None else {"reason": "木星候補なし", "trios": [], "pairs": []}
             _v335lg_append_model_lines(_lines, _v335lg_model, _v335lg_style)
         _lines.append("")
