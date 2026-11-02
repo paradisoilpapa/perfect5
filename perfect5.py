@@ -1,3 +1,4 @@
+# v335ld: 通常競輪の宇宙論表示・検証買目を木星モデルのみに変更。太陽と別系統の横断評価次点を木星とし、太陽系の惑星／木星系の衛星／系統外デブリを区別。外部印は買目採否のみ。既存3流・KO・その他機能維持。
 # v335lc: 太陽候補を3流上位2車から加重順位評価で選抜。太陽1位は太陽モデル、太陽2位は木星モデル。KO・3流・旧惑星候補4位保護・その他機能は維持。
 # v335lb: v335laの限定保護に加え、v335kx時点の各流れ旧惑星候補を保持し、最終順位4位以内に限定保護。
 # v335la: v335kxを原本としてライン後続の無条件上位固定だけを限定修正。KO・3流・宇宙論は元のまま。
@@ -6317,78 +6318,126 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             ))
             _v335kv_seq = _v335kv_selected["seq"]
             _v335lc_sun_rank = _v335kv_seq.index(_v335kv_sun) + 1
-            _v335kv_planet = next(c for c in _v335kv_seq[:2] if c != _v335kv_sun)
-            _v335kx_solar = (_v335lc_sun_rank == 1 and _v335kv_seq[1] == _v335kv_planet)
-            _lines.append("【太陽候補・3流横断順位評価】")
-            _lines.append("※順位点×各流れ比率の合計。候補は各流れの上位2車のみ")
-            for c in sorted(_v335lc_candidates, key=lambda c: (-_v335lc_sun_scores[c], c)):
-                _lines.append(f"{c}番　{_v335lc_sun_scores[c] * 100.0:.2f}点" + ("（太陽）" if c == _v335kv_sun else ""))
-            _lines.append(
-                f"採用流れ　{_v335kv_selected['row'].get('style', '不明')}"
-                f"（太陽{_v335kv_sun}：{_v335lc_sun_rank}位／旧流れ比較値{_v335kv_selected['score'] * 100.0:.2f}点）"
-            )
-            if _v335kx_solar:
-                _v335kv_moon = _v335kv_seq[2]
-                _v335kv_satellite = _v335kv_seq[3] if len(_v335kv_seq) >= 4 else None
-                _v335kv_outer = list(_v335kv_seq[4:])
-                _v335kv_comets = [c for c in _v335kv_outer if c in _v335kv_marks]
-                _v335kv_debris = [c for c in _v335kv_outer if c not in _v335kv_marks]
-                _lines.append("体系　太陽モデル（太陽1位・惑星2位／軌道型）")
-                _lines.append(f"太陽　{_v335kv_sun}（1位）")
-                _lines.append(f"惑星　{_v335kv_planet}（2位）")
-                _lines.append(f"月　{_v335kv_moon}（3位・内周3連単）")
-                _lines.append(
-                    "衛星　" + (str(_v335kv_satellite) if _v335kv_satellite is not None else "該当なし")
-                    + "（4位・内周3連単）"
+            # v335ld: 太陽の3流選抜はv335lcを保持。木星は太陽とは別の
+            # 系統に属する「太陽になり損ねた」横断順位評価第2勢力とする。
+            # 外部印は着順予想・KO・天体評価に一切加点しない。
+            _v335ld_groups = []
+            _v335ld_assigned = set()
+            for _v335ld_raw in (_line_groups or []):
+                _v335ld_group = tuple(
+                    int(c) for c in _v335ld_raw
+                    if int(c) in _v335kv_seq and int(c) not in _v335ld_assigned
                 )
-                _lines.append("彗星　" + ("・".join(map(str, _v335kv_comets)) if _v335kv_comets else "該当なし"))
-                _lines.append("デブリ　" + ("・".join(map(str, _v335kv_debris)) if _v335kv_debris else "該当なし"))
-                _v335kx_third_exact = [
-                    c for c in (_v335kv_moon, _v335kv_satellite)
-                    if c is not None and c not in (_v335kv_sun, _v335kv_planet)
-                ][:2]
-                _v335kv_exact = [
-                    (_v335kv_sun, _v335kv_planet, c) for c in _v335kx_third_exact
-                ]
-                _v335kx_outer = _v335kv_outer[:max(0, 5 - len(_v335kv_exact))]
-                _v335kv_trios = [
-                    tuple(sorted((_v335kv_sun, _v335kv_planet, c)))
-                    for c in _v335kx_outer
-                ]
-                _lines.append("【最終検証買目】")
-                _lines.append("〈太陽モデル・内周／月・衛星〉")
-                if _v335kx_third_exact:
-                    _v335kx_third_str = "".join(map(str, sorted(_v335kx_third_exact)))
-                    _lines.append(f"3連単　{_v335kv_sun}-{_v335kv_planet}-{_v335kx_third_str}")
-                else:
-                    _lines.append("3連単　該当なし")
-                _lines.append("〈太陽モデル・外周／彗星・デブリ〉")
-                if _v335kx_outer:
-                    _v335kx_outer_str = "".join(map(str, sorted(_v335kx_outer)))
-                    _lines.append(f"3連複　{_v335kv_sun}-{_v335kv_planet}-{_v335kx_outer_str}")
-                else:
-                    _lines.append("3連複　該当なし")
-            else:
-                _lines.append("体系　木星モデル（木星1位・太陽2位／二車軸型）")
-                _lines.append(f"木星　{_v335kv_planet}（採用流れ1位）")
-                _lines.append(f"太陽　{_v335kv_sun}（採用流れ2位）")
-                _v335kv_exact = []
-                _v335kx_binary_rest = list(_v335kv_seq[2:])[:5]
-                _v335kv_trios = [
-                    tuple(sorted((_v335kv_sun, _v335kv_planet, c)))
-                    for c in _v335kx_binary_rest
-                ]
-                _lines.append("【最終検証買目】")
-                _lines.append("〈木星モデル・太陽－木星／着順不問〉")
-                if _v335kx_binary_rest:
-                    _v335kx_rest_str = "".join(map(str, sorted(_v335kx_binary_rest)))
-                    _lines.append(f"3連複　{_v335kv_sun}-{_v335kv_planet}-{_v335kx_rest_str}")
-                else:
-                    _lines.append("3連複　該当なし")
-            _lines.append(
-                f"計{len(_v335kv_exact) + len(_v335kv_trios)}点"
-                f"（3連単{len(_v335kv_exact)}点＋3連複{len(_v335kv_trios)}点）"
+                if _v335ld_group:
+                    _v335ld_groups.append(_v335ld_group)
+                    _v335ld_assigned.update(_v335ld_group)
+            for _v335ld_car in _v335kv_seq:
+                if _v335ld_car not in _v335ld_assigned:
+                    _v335ld_groups.append((_v335ld_car,))
+            _v335ld_group_by_car = {
+                c: i for i, group in enumerate(_v335ld_groups) for c in group
+            }
+            _v335ld_sun_group = _v335ld_group_by_car.get(_v335kv_sun)
+            _v335ld_jupiter_candidates = [
+                c for c in _v335lc_candidates
+                if c != _v335kv_sun
+                and _v335ld_group_by_car.get(c) != _v335ld_sun_group
+            ]
+            _v335ld_jupiter = min(_v335ld_jupiter_candidates, key=lambda c: (
+                -_v335lc_sun_scores[c],
+                -sum(item["ratio"] for item in _v335kv_scored if item["seq"][0] == c),
+                _v335kv_seq.index(c), c,
+            )) if _v335ld_jupiter_candidates else None
+            _v335ld_mark_map = globals().get("market_mark_map", {}) or {}
+            def _v335ld_mark(c):
+                return str(_v335ld_mark_map.get(int(c), "—")).strip() if c is not None else "—"
+            def _v335ld_marked(c):
+                return _v335ld_mark(c) in {"◎", "〇", "○", "△", "▲", "×"}
+            # 採用流れの想定着順で、各系統の付属選手を選抜。
+            _v335ld_planet_candidates = [
+                c for c in _v335kv_seq
+                if c != _v335kv_sun and _v335ld_group_by_car.get(c) == _v335ld_sun_group
+            ]
+            _v335ld_planet = _v335ld_planet_candidates[0] if _v335ld_planet_candidates else None
+            _v335ld_satellites = [
+                c for c in _v335kv_seq
+                if _v335ld_jupiter is not None and c != _v335ld_jupiter
+                and _v335ld_group_by_car.get(c) == _v335ld_group_by_car.get(_v335ld_jupiter)
+            ][:2]
+            _v335ld_used_groups = {_v335ld_sun_group}
+            if _v335ld_jupiter is not None:
+                _v335ld_used_groups.add(_v335ld_group_by_car.get(_v335ld_jupiter))
+            _v335ld_debris_candidates = [
+                c for c in _v335kv_seq
+                if _v335ld_group_by_car.get(c) not in _v335ld_used_groups
+                and not _v335ld_marked(c)
+            ]
+            _v335ld_debris = (
+                _v335ld_debris_candidates[0]
+                if len(_v335ld_satellites) == 1 and _v335ld_debris_candidates else None
             )
+            _lines.append("体系　木星モデル（木星＝太陽になり損ねた第2評価勢力）")
+            _lines.append(f"太陽　{_v335kv_sun}（3流横断評価1位／太陽系）")
+            _lines.append("木星　" + (
+                f"{_v335ld_jupiter}（太陽とは別系統の第2評価勢力）"
+                if _v335ld_jupiter is not None else "該当なし（別系統の上位候補なし）"
+            ))
+            _lines.append("惑星　" + (str(_v335ld_planet) if _v335ld_planet is not None else "該当なし") + "（太陽系）")
+            _lines.append("衛星　" + ("・".join(map(str, _v335ld_satellites)) if _v335ld_satellites else "該当なし") + "（木星系・採用流れ順位順）")
+            _lines.append("デブリ　" + (str(_v335ld_debris) if _v335ld_debris is not None else "該当なし") + "（系統外・無印／衛星2車以上では除外）")
+            _lines.append("【最終検証買目】")
+            _v335kv_exact = []  # 木星モデルでは3連単を表示しない
+            _v335kv_trios = []
+            _v335ld_reason = None
+            if _v335ld_jupiter is None:
+                _v335ld_reason = "木星候補なし（別系統の3流上位2車候補なし）"
+            elif not _v335ld_marked(_v335ld_jupiter):
+                _v335ld_reason = "木星が外部評価無印のため対象外"
+            elif _v335ld_mark(_v335ld_jupiter) == "◎":
+                _v335ld_reason = "木星は過剰人気が予想されるため対象外"
+            elif not _v335ld_satellites:
+                _v335ld_reason = "木星系の衛星が存在しないため対象外"
+            if _v335ld_reason:
+                _lines.append(f"3連複　該当なし（{_v335ld_reason}）")
+            else:
+                # 衛星1車：木星－太陽・衛星－惑星・衛星・デブリ
+                # 衛星2車：木星－太陽・弱い衛星－惑星・強い衛星・弱い衛星
+                _v335ld_sat_strong = _v335ld_satellites[0]
+                _v335ld_sat_weak = _v335ld_satellites[-1]
+                _v335ld_second = [_v335kv_sun]
+                _v335ld_second.append(_v335ld_sat_weak)
+                _v335ld_third = []
+                if _v335ld_planet is not None:
+                    _v335ld_third.append(_v335ld_planet)
+                _v335ld_third.append(_v335ld_sat_strong)
+                if len(_v335ld_satellites) >= 2:
+                    _v335ld_third.append(_v335ld_sat_weak)
+                elif _v335ld_debris is not None:
+                    _v335ld_third.append(_v335ld_debris)
+                # 無印は1・2列目には配置しない。天体そのものの評価は変更しない。
+                _v335ld_second = [
+                    c for c in dict.fromkeys(_v335ld_second)
+                    if _v335ld_marked(c) and c != _v335ld_jupiter
+                ]
+                _v335ld_third = [
+                    c for c in dict.fromkeys(_v335ld_third) if c != _v335ld_jupiter
+                ]
+                _v335ld_all_trios = list(dict.fromkeys(
+                    tuple(sorted((_v335ld_jupiter, b, c)))
+                    for b in _v335ld_second for c in _v335ld_third
+                    if len({_v335ld_jupiter, b, c}) == 3
+                ))
+                # 5点超過時のみ採用流れの想定順位で先頭から採る。
+                _v335kv_trios = _v335ld_all_trios[:5]
+                if _v335kv_trios:
+                    _v335ld_fmt = lambda cs: "".join(map(str, cs)) if cs else "該当なし"
+                    _lines.append(
+                        f"3連複　{_v335ld_jupiter}-{_v335ld_fmt(_v335ld_second)}-{_v335ld_fmt(_v335ld_third)}"
+                    )
+                    _lines.append("成立買目　" + "／".join("-".join(map(str, trio)) for trio in _v335kv_trios))
+                else:
+                    _lines.append("3連複　該当なし（外部評価無印は1・2列目に置かない）")
+            _lines.append(f"計{len(_v335kv_trios)}点（3連複{len(_v335kv_trios)}点／3連単0点）")
         _lines.append("")
         # v335kl: 銀河系・統合3点の計算は保持、表示への書込みのみ停止。
         _v335kl_hidden_galaxy_lines = []
