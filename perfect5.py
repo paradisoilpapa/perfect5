@@ -1,3 +1,4 @@
+# v335lj: 入力確定時の会場・風・天候・開催日を予想入力とともに記録し、確定後の無断変更を検出して計算停止。予想式・3流・KO・木星生成は変更しない。
 # v335li: 太陽と木星の同一車重複時だけ採用流れ主役を天体上の太陽に配置。既存3流・KO・横断評価スコアは不変。小田原5Rの木星1/太陽3を再現検証。
 # v335lg: 3流とKOを不変にして採用流れ別木星選抜。惑星/衛星は採用流れのライン帰属と順位。単騎補完。全区分3連複4点＋補足2車複（木星－太陽・全衛星）。外部AI印による軸除外廃止。
 # v335lf: 木星系の弱い衛星は外部評価無印でも2列目に保持。木星軸◎除外、その他の仕様はv335leを維持。
@@ -8818,6 +8819,40 @@ for i, no in enumerate(active_cars_live):
 
 st.markdown("---")
 
+# v335lj: 予想に使う環境条件を入力確定と同時に保存・監査する。
+# 旧実装では race_snapshot に選手データだけが入り、風・降水量・開催日・会場条件は
+# snapshot 外の UI 値から計算されるため、同一レースの再表示でも条件が変わり得た。
+import json as _v335lj_json
+import hashlib as _v335lj_hashlib
+
+_v335lj_environment = {
+    "track": str(track),
+    "race_day": str(race_day),
+    "race_no": int(race_no),
+    "n_cars": int(n_cars),
+    "race_class": str(race_class),
+    "day_label": str(day_label),
+    "day_stage": str(day_stage),
+    "day_index": int(day_index),
+    "schedule_total_days": int(schedule_total_days),
+    "bank_length": float(bank_length),
+    "straight_length": float(straight_length),
+    "bank_angle": float(bank_angle),
+    "wind_dir": str(wind_dir),
+    "wind_speed": float(wind_speed),
+    "precipitation": float(precip),
+    "weather_override": float(weather_override),
+    "style": float(style),
+    "eff_laps": int(eff_laps),
+}
+
+def _v335lj_dump(_data):
+    return _v335lj_json.dumps(_data, ensure_ascii=False, sort_keys=True, default=str,
+                             separators=(",", ":"))
+
+def _v335lj_digest(_data):
+    return _v335lj_hashlib.sha256(_v335lj_dump(_data).encode("utf-8")).hexdigest()
+
 apply_input = st.button(
     "入力を反映して計算する",
     type="primary",
@@ -8873,6 +8908,10 @@ if apply_input:
         "line_follow_trust": dict(line_follow_trust_live),
     }
 
+if apply_input:
+    st.session_state["race_snapshot"]["_v335lj_environment"] = dict(_v335lj_environment)
+    st.session_state["race_snapshot"]["_v335lj_version"] = "v335lj"
+
 snapshot = st.session_state.get("race_snapshot")
 if snapshot is not None and tuple(snapshot.get("_race_identity", ())) != _v335ka_race_identity:
     # 別レースの確定結果を表示せず、次の計算を促す通常の待機状態にする。
@@ -8883,6 +8922,38 @@ if snapshot is not None and tuple(snapshot.get("_race_identity", ())) != _v335ka
 if snapshot is None:
     st.info("入力後、『入力を反映して計算する』を押すと本計算します。")
     st.stop()
+
+# 環境条件は過去の race_snapshot に含まれていなかった。
+# 未監査の既存保存状態を予想へ黙って流用せず、再反映を要求する。
+_v335lj_locked_environment = snapshot.get("_v335lj_environment")
+if _v335lj_locked_environment is None:
+    st.error("このレースの保存入力には天候・風・開催日などの計算条件が記録されていません。"
+             "『入力を反映して計算する』を押して条件を確定してください。")
+    st.stop()
+_v335lj_env_diff = {
+    _key: {"確定時": _v335lj_locked_environment.get(_key), "現在": _v335lj_environment.get(_key)}
+    for _key in _v335lj_environment
+    if _v335lj_locked_environment.get(_key) != _v335lj_environment.get(_key)
+}
+if _v335lj_env_diff:
+    st.error("入力確定後に予想条件が変化しています。前回計算の値を混ぜて再計算しないため停止しました。"
+             "以下を確認し、必要なら『入力を反映して計算する』を押してください。")
+    st.json(_v335lj_env_diff)
+    st.stop()
+_v335lj_audit = {
+    "version": "v335lj",
+    "environment": _v335lj_locked_environment,
+    "race_snapshot": {k: v for k, v in snapshot.items() if not str(k).startswith("_v335lj")},
+}
+_v335lj_audit_hash = _v335lj_digest(_v335lj_audit)
+st.caption("計算条件照合ID (SHA-256): " + _v335lj_audit_hash[:20])
+st.download_button(
+    "このレースの計算条件を保存（監査JSON）",
+    data=_v335lj_json.dumps(_v335lj_audit, ensure_ascii=False, indent=2, sort_keys=True, default=str),
+    file_name=f"velobi_audit_{str(track)}_{str(race_day)}_{int(race_no)}R.json",
+    mime="application/json",
+    key="v335lj_audit_download",
+)
 
 # ==============================
 # ここから下は、反映済みデータだけで計算する
