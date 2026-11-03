@@ -1,3 +1,6 @@
+# v335lm: 会場構造スコアをバンク諸元（みなし直線×カント）のみから全会場標準化して算出。
+# 過去的中率・過去回収率・指数帯の過去的中率はスコアへ一切加算しない。
+# 未登録実績会場（奈良等）でも構造データがあれば表示。KO・3流・天体・買目・保存は変更しない。
 # v335ll: 通常競輪の公転2車単を既存1着軸から公転相手・木星・衛星1の最大3点へ拡張。外周ワイド、ガールズ/アドバンス、KO/3流/天体選抜/保存は不変。
 # v335lk: 通常競輪＝公転2車単(太陽/惑星の外部AI印弱→強・片方向のみ)＋惑星－外周ワイド最大3点。ガールズ/アドバンス＝惑星－太陽衛星2－木星衛星1の3連複4点。KO・3流・入力/保存・天体選抜不変。
 # v335lj: 入力確定時の会場・風・天候・開催日を予想入力とともに記録し、確定後の無断変更を検出して計算停止。予想式・3流・KO・木星生成は変更しない。
@@ -7786,11 +7789,59 @@ st.sidebar.caption(
     "※全指数帯を200刻みで比較。指数帯と会場単独の実績は別指標。異なる券種・点数・予想方式を含み、購入の可否・利益率は確定できません。"
 )
 
-# v335ku: 38会場の過去実績から算定した適性スコア（平均60・補正+10）。
-# 画像の投票額・払戻額から年間回収率を算出した監査CSVに対応。
-# 各スコアは的中率40%、回収率40%、指数帯的中率20%を標準化して合成。
-# 順位は参考情報で、閾値を用いた自動購入停止は行わない。
-V335KU_TRACK_SCORES = {
+# v335lm: 会場構造スコア（旧：過去実績40/40/20の会場適性スコア）。
+# 予想方式が異なる過去的中率・回収率や指数帯的中率をスコアへ混合しない。
+# 全登録会場の物理諸元だけを母集団とし、みなし直線×カントの指数を標準化する。
+# スコアは指数の相対的位置であり、「高いほど適性・的中・回収が良い」を意味しない。
+# 過去の会場別年間データと200刻み指数帯の資料表示は従来どおり別掲する。
+def _v335lm_build_track_structure_scores(bank_master):
+    index_map = {}
+    for _name, _bank in bank_master.items():
+        if _name == "手入力" or not isinstance(_bank, dict):
+            continue
+        _straight = _bank.get("straight_length")
+        _angle = _bank.get("bank_angle")
+        if _straight is None or _angle is None:
+            continue
+        try:
+            _index = float(_straight) * float(_angle)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if math.isfinite(_index):
+            index_map[_name] = _index
+    if not index_map:
+        return {}, None, None
+    _values = list(index_map.values())
+    _mean = sum(_values) / len(_values)
+    _sd = (sum((_v - _mean) ** 2 for _v in _values) / len(_values)) ** 0.5
+    _scores = {
+        _name: (50.0 + 10.0 * (_index - _mean) / _sd) if _sd > 0 else 50.0
+        for _name, _index in index_map.items()
+    }
+    return _scores, _mean, _sd
+
+V335LM_TRACK_STRUCTURE_SCORES, V335LM_INDEX_MEAN, V335LM_INDEX_SD = ( 
+    _v335lm_build_track_structure_scores(KEIRIN_DATA)
+)
+_v335lm_name = {"松坂": "松阪", "伊東温泉": "伊東"}.get(str(track).strip(), str(track).strip())
+_v335lm_score = V335LM_TRACK_STRUCTURE_SCORES.get(_v335lm_name)
+if _v335lm_score is not None:
+    st.sidebar.metric("ヴェロビ会場構造スコア", f"{_v335lm_score:.1f}")
+    st.sidebar.caption(
+        f"バンク指数の相対値（登録{len(V335LM_TRACK_STRUCTURE_SCORES)}会場、平均50・標準偏差10）。"
+        "過去的中率・回収率を使わず算出。"
+    )
+    st.sidebar.caption(
+        "※指数の高低はバンク構造の違いを示すだけで、会場の優劣・予想着内率・期待回収率を示しません。"
+        "購入可否の自動判定には使いません。"
+    )
+else:
+    st.sidebar.caption("会場構造スコア：バンク諸元未登録")
+
+
+# 過去実績は参考資料としてのみ保持。新しい会場構造スコアの計算には参照しない。
+# (旧スコア, 年間投票額, 年間払戻額) を原資料のまま保存。
+V335LM_HISTORICAL_TRACK_RECORDS = {
     '名古屋': (79.57, 34900, 46170),
     '松山': (71.95, 112400, 90170),
     '豊橋': (71.32, 69500, 62570),
@@ -7830,19 +7881,16 @@ V335KU_TRACK_SCORES = {
     '函館': (46.10, 30900, 16880),
     '富山': (45.85, 38200, 22590),
 }
-_v335ku_track = {"松坂": "松阪", "伊東温泉": "伊東"}.get(str(track).strip(), str(track).strip())
-_v335ku_stats = V335KU_TRACK_SCORES.get(_v335ku_track)
-if _v335ku_stats is not None:
-    _v335ku_score, _v335ku_stake, _v335ku_payout = _v335ku_stats
-    _v335ku_roi = 100.0 * _v335ku_payout / _v335ku_stake if _v335ku_stake else 0.0
-    st.sidebar.metric("ヴェロビ会場適性スコア", f"{_v335ku_score:.1f}")
+_v335lm_history = V335LM_HISTORICAL_TRACK_RECORDS.get(_v335lm_name)
+if _v335lm_history is not None:
+    _, _v335lm_stake, _v335lm_payout = _v335lm_history
+    _v335lm_roi = (100.0 * _v335lm_payout / _v335lm_stake) if _v335lm_stake else 0.0
     st.sidebar.caption(
-        f"年間回収率 {_v335ku_roi:.2f}%（投票{_v335ku_stake:,}円／払戻{_v335ku_payout:,}円）"
+        f"参考・旧方式混合の年間回収率 {_v335lm_roi:.2f}%"
+        f"（投票{_v335lm_stake:,}円／払戻{_v335lm_payout:,}円）"
     )
-    st.sidebar.caption("平均60（通常偏差値+10）。高低は入力会場の比較用。50以下でも購入禁止にはしません。")
 else:
-    st.sidebar.caption("会場適性スコア：年間回収データ未登録")
-st.sidebar.caption("※会場スコアは過去の券種・点数・方式混合の参考値。将来の期待回収率ではありません。")
+    st.sidebar.caption("参考・会場別の年間回収実績：未登録")
 
 # 旧参照との互換用。v335bcでは会場による券種分岐を行わない。
 def _v335ac_track_purchase_mode(track_name=None):
