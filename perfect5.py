@@ -1,3 +1,5 @@
+# v335ll: 通常競輪の公転2車単を既存1着軸から公転相手・木星・衛星1の最大3点へ拡張。外周ワイド、ガールズ/アドバンス、KO/3流/天体選抜/保存は不変。
+# v335lk: 通常競輪＝公転2車単(太陽/惑星の外部AI印弱→強・片方向のみ)＋惑星－外周ワイド最大3点。ガールズ/アドバンス＝惑星－太陽衛星2－木星衛星1の3連複4点。KO・3流・入力/保存・天体選抜不変。
 # v335lj: 入力確定時の会場・風・天候・開催日を予想入力とともに記録し、確定後の無断変更を検出して計算停止。予想式・3流・KO・木星生成は変更しない。
 # v335li: 太陽と木星の同一車重複時だけ採用流れ主役を天体上の太陽に配置。既存3流・KO・横断評価スコアは不変。小田原5Rの木星1/太陽3を再現検証。
 # v335lg: 3流とKOを不変にして採用流れ別木星選抜。惑星/衛星は採用流れのライン帰属と順位。単騎補完。全区分3連複4点＋補足2車複（木星－太陽・全衛星）。外部AI印による軸除外廃止。
@@ -4135,7 +4137,7 @@ def _v335fl_allow_value_quinella(hit_prob, value_prob):
     return bool(_value >= 0.05 and _value >= (0.50 * _hit))
 
 
-def _v335lg_build_jupiter_model(seq, line_groups, sun, jupiter, single=False):
+def _v335lg_build_jupiter_model(seq, line_groups, sun, jupiter, single=False, legacy_tickets=True):
     """天体配置と車券だけを作る。3流/KO/予想スコアへは一切介入しない。"""
     seq = tuple(dict.fromkeys(int(x) for x in seq))
     rank = {c: i for i, c in enumerate(seq)}
@@ -4173,6 +4175,13 @@ def _v335lg_build_jupiter_model(seq, line_groups, sun, jupiter, single=False):
         assigned.add(c)
     planets.sort(key=rank.__getitem__)
     satellites.sort(key=rank.__getitem__)
+    if not legacy_tickets:
+        # v335lk: 旧木星固定の3連複・補足2車複は買目として生成しない。
+        # 惑星と衛星の帰属/順位だけを保持して、新方式へ渡す。
+        return {"reason": None if planets else "惑星候補不足",
+                "sun": sun, "jupiter": jupiter, "planets": planets,
+                "satellites": satellites, "debris": [c for c in seq if c not in assigned],
+                "trios": [], "pairs": []}
     if not planets or not satellites:
         return {"reason": "惑星・衛星の補完候補不足", "trios": [], "pairs": [],
                 "planets": planets, "satellites": satellites}
@@ -4203,26 +4212,126 @@ def _v335lg_build_jupiter_model(seq, line_groups, sun, jupiter, single=False):
             "debris": [c for c in seq if c not in {sun, jupiter, *planets, *satellites}]}
 
 
-def _v335lg_append_model_lines(lines, model, style):
-    fmt = lambda xs: "".join(map(str, xs)) if xs else "該当なし"
-    lines.append(f"体系　木星モデル（採用流れ：{style}）")
-    lines.append(f"太陽　{model.get('sun', '該当なし')}")
-    lines.append(f"木星　{model.get('jupiter', '該当なし')}")
-    lines.append("惑星　" + ("・".join(map(str, model.get('planets', []))) or "該当なし"))
-    lines.append("衛星　" + ("・".join(map(str, model.get('satellites', []))) or "該当なし"))
-    lines.append("デブリ　" + ("・".join(map(str, model.get('debris', []))) or "該当なし"))
+def _v335lk_mark_rank_for_car(car):
+    """計算反映済みsnapshotだけから外部AI印を取得。現在の未反映UIは参照しない。"""
+    snap = globals().get("snapshot", {}) or {}
+    marks = snap.get("market_mark_by_car", {}) or {}
+    raw = marks.get(car, marks.get(str(car), "—"))
+    rank = {"◎": 0, "〇": 1, "○": 1, "△": 2, "▲": 2, "×": 3}
+    mark = str(raw or "").strip()
+    if mark not in rank:
+        # 古いsnapshotは旧四印キーから復元する。
+        old = [("market_honmei_raw", "◎"), ("market_taikou_raw", "〇"),
+               ("market_tan_raw", "△"), ("market_batsu_raw", "×")]
+        mark = "無印"
+        for key, val in old:
+            try:
+                if int(snap.get(key)) == int(car):
+                    mark = val
+                    break
+            except (TypeError, ValueError):
+                pass
+    return rank.get(mark, 4), mark
+
+
+def _v335lk_append_normal_model_lines(lines, model, style, seq):
+    """通常競輪の最終買目のみ変更。天体は既存モデルの出力を再利用する。"""
+    lines.append(f"体系　公転・外周モデル（採用流れ：{style}）")
+    sun, jup = model.get("sun"), model.get("jupiter")
+    planets = list(model.get("planets") or [])
+    satellites = list(model.get("satellites") or [])
+    debris = list(model.get("debris") or [])
+    lines.append(f"太陽　{sun if sun is not None else '該当なし'}")
+    lines.append(f"木星　{jup if jup is not None else '該当なし'}")
+    lines.append("惑星　" + ("・".join(map(str, planets)) or "該当なし"))
+    lines.append("衛星　" + ("・".join(map(str, satellites)) or "該当なし"))
+    lines.append("デブリ　" + ("・".join(map(str, debris)) or "該当なし"))
     lines.append("【最終検証買目】")
-    if model.get('trios'):
-        lines.append(f"3連複　{model['jupiter']}-{fmt(model['second'])}-{fmt(model['third'])}")
-        lines.append("成立買目　" + "／".join("-".join(map(str, t)) for t in model['trios']))
+    if sun is None or not planets or jup is None:
+        lines.append("公転2車単・外周ワイド　該当なし（" + str(model.get('reason') or '天体選抜不成立') + "）")
+        lines.append("計0点")
+        return
+    planet = int(planets[0])
+    sun = int(sun)
+    # 印が弱いほうを先着にする。同印・両者無印では方向を捏造しない。
+    sun_rank, sun_mark = _v335lk_mark_rank_for_car(sun)
+    planet_rank, planet_mark = _v335lk_mark_rank_for_car(planet)
+    if sun == planet:
+        lines.append("公転2車単　該当なし（太陽と惑星が同一車）")
+        orbit_count = 0
+    elif sun_rank == planet_rank:
+        lines.append(f"公転2車単　方向未決定（太陽{sun}:{sun_mark}／惑星{planet}:{planet_mark}、同順位）")
+        orbit_count = 0
     else:
-        lines.append("3連複　該当なし（" + str(model.get('reason') or '選抜不成立') + "）")
-    lines.append(f"計{len(model.get('trios', []))}点（3連複）")
-    if model.get('pairs'):
-        lines.append("【補足2車複】")
-        lines.append(f"2車複　{model['jupiter']}-{fmt([model['sun'], *model['satellites']])}")
-        lines.append("成立買目　" + "／".join("-".join(map(str, t)) for t in model['pairs']))
-        lines.append(f"補足{len(model['pairs'])}点（3連複4点とは別枠）")
+        # v335ll: 公転の1着軸（外部AI印が弱い方）は従来どおり固定。
+        # 相手は公転の反対側・木星・衛星1（採用流れ順位上位）を順に採る。
+        # 同じ車番は重複せず、候補不足なら勝手に補充しない。
+        first, second = (sun, planet) if sun_rank > planet_rank else (planet, sun)
+        opponent_candidates = [second, int(jup)]
+        if satellites:
+            opponent_candidates.append(int(satellites[0]))
+        opponents = [c for c in dict.fromkeys(opponent_candidates) if c != first]
+        orbit_tickets = [(first, c) for c in opponents]
+        lines.append(f"公転2車単　{first}→{''.join(map(str, opponents))}（太陽{sun}:{sun_mark}／惑星{planet}:{planet_mark}）")
+        lines.append("成立買目　" + "／".join(f"{a}→{b}" for a, b in orbit_tickets))
+        orbit_count = len(orbit_tickets)
+    # 旧3連複3点の相手集合：太陽・木星・衛星1(最上位)。これ以外を外周扱い。
+    core = {planet, sun, int(jup)}
+    if satellites:
+        core.add(int(satellites[0]))
+    outer = [int(c) for c in seq if int(c) not in core][:3]
+    wides = list(dict.fromkeys(tuple(sorted((planet, c))) for c in outer if c != planet))
+    if wides:
+        lines.append(f"外周ワイド　{planet}-" + "".join(map(str, outer)))
+        lines.append("成立買目　" + "／".join("-".join(map(str, t)) for t in wides))
+    else:
+        lines.append("外周ワイド　該当なし（外周候補なし）")
+    lines.append(f"計{orbit_count + len(wides)}点（公転2車単{orbit_count}点＋ワイド{len(wides)}点）")
+
+
+def _v335lk_append_single_model_lines(lines, model, style, seq):
+    """単騎は選抜順位1=太陽,2=木星,3=惑星,4=衛星1,5=衛星2。"""
+    sun = model.get("sun")
+    jup = model.get("jupiter")
+    planets = list(model.get("planets") or [])
+    sats = list(model.get("satellites") or [])
+    if not planets or sun is None or jup is None:
+        lines.append(f"体系　惑星軸3連複モデル（採用流れ：{style}）")
+        lines.append("【最終検証買目】")
+        lines.append("3連複　該当なし（単騎天体候補不足）")
+        lines.append("計0点（3連複）")
+        return
+    planet = int(planets[0])
+    # 衛星2は単騎100%の採用順位で衛星1の次に高い未割当車。
+    # 木星・惑星の再選抜や3流/KOには影響を与えない。
+    assigned = {int(sun), int(jup), planet, *map(int, sats)}
+    remain = [int(c) for c in seq if int(c) not in assigned]
+    if len(sats) < 2 and remain:
+        sats.append(remain[0])
+    sats = list(dict.fromkeys(map(int, sats)))
+    debris = [int(c) for c in seq if int(c) not in {int(sun), int(jup), planet, *sats}]
+    lines.append(f"体系　惑星軸3連複モデル（採用流れ：{style}）")
+    lines.append(f"太陽　{sun}")
+    lines.append(f"木星　{jup}")
+    lines.append(f"惑星　{planet}")
+    lines.append("衛星　" + ("・".join(map(str, sats)) or "該当なし"))
+    lines.append("デブリ　" + ("・".join(map(str, debris)) or "該当なし"))
+    lines.append("【最終検証買目】")
+    if len(sats) < 2:
+        lines.append("3連複　該当なし（衛星2の候補不足）")
+        lines.append("計0点（3連複）")
+        return
+    sat1, sat2 = sats[:2]
+    col2, col3 = [int(sun), sat2], [int(jup), sat1]
+    trios = list(dict.fromkeys(tuple(sorted((planet, b, c))) for b in col2 for c in col3 if len({planet,b,c}) == 3))
+    if len(trios) != 4:
+        lines.append("3連複　該当なし（有効な4点を生成不可）")
+        lines.append("計0点（3連複）")
+        return
+    lines.append(f"3連複　{planet}-{''.join(map(str,col2))}-{''.join(map(str,col3))}")
+    lines.append("成立買目　" + "／".join("-".join(map(str,t)) for t in trios))
+    lines.append("計4点（3連複）")
+
 
 
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
@@ -6187,9 +6296,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
         else:
             _single_model_v335lg = _v335lg_build_jupiter_model(
                 _single_seq_v335lg, [], _single_sun_v335lg,
-                _single_jup_v335lg, single=True
+                _single_jup_v335lg, single=True, legacy_tickets=False
             )
-            _v335lg_append_model_lines(_lines, _single_model_v335lg, "単騎100%")
+            _v335lk_append_single_model_lines(_lines, _single_model_v335lg, "単騎100%", _single_seq_v335lg)
         if race_class == "ガールズ":
             _lines.append("※ガールズは傾向分析から除外しています")
     else:
@@ -6373,7 +6482,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _lines.append("該当なし（有効な流れなし）")
             _lines.append("【最終検証買目】")
             _lines.append("該当なし（有効な流れなし）")
-            _lines.append("計0点（3連単0点＋3連複0点）")
+            _lines.append("計0点（公転2車単0点＋ワイド0点）")
         else:
             _v335lc_candidates = sorted({
                 c for item in _v335kv_scored for c in item["seq"][:2]
@@ -6442,9 +6551,10 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             if (_v335lg_jup is not None and _v335li_sun_for_layout == _v335lg_jup):
                 _v335li_sun_for_layout = int(_v335kv_seq[0])
             _v335lg_model = _v335lg_build_jupiter_model(
-                _v335kv_seq, _v335lg_groups, _v335li_sun_for_layout, _v335lg_jup
+                _v335kv_seq, _v335lg_groups, _v335li_sun_for_layout, _v335lg_jup,
+                legacy_tickets=False
             ) if _v335lg_jup is not None else {"reason": "木星候補なし", "trios": [], "pairs": []}
-            _v335lg_append_model_lines(_lines, _v335lg_model, _v335lg_style)
+            _v335lk_append_normal_model_lines(_lines, _v335lg_model, _v335lg_style, _v335kv_seq)
         _lines.append("")
         # v335kl: 銀河系・統合3点の計算は保持、表示への書込みのみ停止。
         _v335kl_hidden_galaxy_lines = []
