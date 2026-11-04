@@ -1,3 +1,4 @@
+# v335lo: 通常競輪で太陽と木星が同一車・同一ラインになる場合の天体配置不成立を修正。買目仕様・単騎3連複・KO/3流・保存は維持。
 # v335ln: 通常競輪の最終検証買目のみ「太陽－共通相手3車の2車複」＋「惑星1－同じ相手3車のワイド」に変更。
 # 相手は既存ヴェロビ評価◎○▲△×の順から太陽・惑星1を除外して最大3車、足りない場合だけ採用流れの順位順に補完。
 # 各券種は独立集計し、買目は同一の相手3車で生成。ガールズ・アドバンスの現行3連複4点、3流・KO・天体選抜・入力保存・他表示は維持。
@@ -6560,12 +6561,29 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             # 主役（第1評価ラインの最上位車）を天体配置上の太陽に採用。
             # 横断太陽の計算結果や3流順位を変更するものではない。
             _v335li_sun_for_layout = _v335kv_sun
-            if (_v335lg_jup is not None and _v335li_sun_for_layout == _v335lg_jup):
-                _v335li_sun_for_layout = int(_v335kv_seq[0])
+            # v335lo: 木星と横断太陽が同一車、または同一ラインの場合、
+            # 木星を動かさず天体配置上の太陽のみ別ラインの最上位車へ置換する。
+            # 旧処理は採用流れ1位をそのまま太陽へ再代入していたため、
+            # 逆流・渦で木星=流れ1位となると同一車のまま全天体が不成立になった。
+            # 横断太陽点、採用流れ、KO、木星、評価印は一切変更しない。
+            if _v335lg_jup is not None:
+                _jup_gid_v335lo = _v335lg_group_idx.get(int(_v335lg_jup))
+                _sun_gid_v335lo = _v335lg_group_idx.get(int(_v335li_sun_for_layout))
+                if (_v335li_sun_for_layout == _v335lg_jup
+                        or (_jup_gid_v335lo is not None and _sun_gid_v335lo == _jup_gid_v335lo)):
+                    _alternate_suns_v335lo = [
+                        int(c) for c in _v335kv_seq
+                        if _v335lg_group_idx.get(int(c)) != _jup_gid_v335lo
+                    ]
+                    _v335li_sun_for_layout = (
+                        _alternate_suns_v335lo[0] if _alternate_suns_v335lo else None
+                    )
             _v335lg_model = _v335lg_build_jupiter_model(
                 _v335kv_seq, _v335lg_groups, _v335li_sun_for_layout, _v335lg_jup,
                 legacy_tickets=False
-            ) if _v335lg_jup is not None else {"reason": "木星候補なし", "trios": [], "pairs": []}
+            ) if (_v335lg_jup is not None and _v335li_sun_for_layout is not None) else {
+                "reason": "木星と別ラインの太陽候補なし", "trios": [], "pairs": []
+            }
             _v335lk_append_normal_model_lines(
                 _lines, _v335lg_model, _v335lg_style, _v335kv_seq,
                 normal_marks=(_axis_gc, _b_gc, _triangle_gc, _delta_gc, _x_gc),
