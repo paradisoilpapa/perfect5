@@ -1,3 +1,4 @@
+# v335lp: 通常競輪の天体配置を太陽・惑星理論へ修正。採用流れ1位=太陽、同ライン後続=惑星。木星は参考表示のみ。ガールズ/アドバンス3連複、3流/KO、評価、買目6点、入力/保存は維持。
 # v335lo: 通常競輪で太陽と木星が同一車・同一ラインになる場合の天体配置不成立を修正。買目仕様・単騎3連複・KO/3流・保存は維持。
 # v335ln: 通常競輪の最終検証買目のみ「太陽－共通相手3車の2車複」＋「惑星1－同じ相手3車のワイド」に変更。
 # 相手は既存ヴェロビ評価◎○▲△×の順から太陽・惑星1を除外して最大3車、足りない場合だけ採用流れの順位順に補完。
@@ -6536,53 +6537,25 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 if _c not in _v335lg_seen:
                     _v335lg_groups.append((_c,))
             _v335lg_group_idx = {c: i for i, g in enumerate(_v335lg_groups) for c in g}
-            _v335lg_jup = None
-            if _v335lg_style in ("逆流", "渦"):
-                # 採用された流れの1位。別流れの順位へ切り替えない。
-                _v335lg_jup = _v335kv_seq[0]
-            elif _v335lg_style == "順流":
-                # 第2評価ライン：既存のライン勢力スコアで主役に次ぐライン。
-                # 予測順位をライン評価そのものに置き換えない。
-                _strength_map = globals().get("LINE_STRENGTH_SHARE_MAP", {}) or {}
-                _sun_main_gid = _v335lg_group_idx.get(_v335kv_seq[0])
-                _other_gids = [i for i in range(len(_v335lg_groups)) if i != _sun_main_gid]
-                if _other_gids:
-                    def _strength_v335lg(i):
-                        _key = "".join(str(c) for c in _v335lg_groups[i])
-                        return float(_strength_map.get(_key, 0.0) or 0.0)
-                    _second_gid = min(_other_gids, key=lambda i: (
-                        -_strength_v335lg(i),
-                        min(_v335kv_seq.index(c) for c in _v335lg_groups[i]),
-                        i,
-                    ))
-                    _v335lg_jup = min(_v335lg_groups[_second_gid], key=_v335kv_seq.index)
-            # 木星は採用流れの第2評価ライン／逆流・渦1位から選抜済み。
-            # 横断評価太陽と同一車ならその車を木星に残し、採用流れの
-            # 主役（第1評価ラインの最上位車）を天体配置上の太陽に採用。
-            # 横断太陽の計算結果や3流順位を変更するものではない。
-            _v335li_sun_for_layout = _v335kv_sun
-            # v335lo: 木星と横断太陽が同一車、または同一ラインの場合、
-            # 木星を動かさず天体配置上の太陽のみ別ラインの最上位車へ置換する。
-            # 旧処理は採用流れ1位をそのまま太陽へ再代入していたため、
-            # 逆流・渦で木星=流れ1位となると同一車のまま全天体が不成立になった。
-            # 横断太陽点、採用流れ、KO、木星、評価印は一切変更しない。
-            if _v335lg_jup is not None:
-                _jup_gid_v335lo = _v335lg_group_idx.get(int(_v335lg_jup))
-                _sun_gid_v335lo = _v335lg_group_idx.get(int(_v335li_sun_for_layout))
-                if (_v335li_sun_for_layout == _v335lg_jup
-                        or (_jup_gid_v335lo is not None and _sun_gid_v335lo == _jup_gid_v335lo)):
-                    _alternate_suns_v335lo = [
-                        int(c) for c in _v335kv_seq
-                        if _v335lg_group_idx.get(int(c)) != _jup_gid_v335lo
-                    ]
-                    _v335li_sun_for_layout = (
-                        _alternate_suns_v335lo[0] if _alternate_suns_v335lo else None
-                    )
+            # v335lp: 通常競輪は太陽・惑星理論で天体を配置する。
+            # 採用流れの1位を太陽とし、そのラインの後続を惑星とする。
+            # 木星は太陽とは別ラインの最上位車として参考表示するだけで、
+            # 太陽の移動や公転/買い目選抜には介入させない。
+            # 旧「逆流・渦1位=木星」「木星優先で太陽を移動」は廃止。
+            _v335lp_sun = int(_v335kv_seq[0])
+            _v335lp_sun_gid = _v335lg_group_idx.get(_v335lp_sun)
+            _v335lp_jup = next(
+                (int(c) for c in _v335kv_seq
+                 if _v335lg_group_idx.get(int(c)) != _v335lp_sun_gid),
+                None,
+            )
+            # 天体のライン帰属・順位、単騎補完は既存関数を再利用。
+            # ただし第1引数の太陽と木星は上記の太陽系基準で確定済み。
             _v335lg_model = _v335lg_build_jupiter_model(
-                _v335kv_seq, _v335lg_groups, _v335li_sun_for_layout, _v335lg_jup,
+                _v335kv_seq, _v335lg_groups, _v335lp_sun, _v335lp_jup,
                 legacy_tickets=False
-            ) if (_v335lg_jup is not None and _v335li_sun_for_layout is not None) else {
-                "reason": "木星と別ラインの太陽候補なし", "trios": [], "pairs": []
+            ) if _v335lp_jup is not None else {
+                "reason": "太陽と別ラインの選手なし", "trios": [], "pairs": []
             }
             _v335lk_append_normal_model_lines(
                 _lines, _v335lg_model, _v335lg_style, _v335kv_seq,
