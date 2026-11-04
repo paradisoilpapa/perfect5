@@ -1,3 +1,6 @@
+# v335ln: 通常競輪の最終検証買目のみ「太陽－共通相手3車の2車複」＋「惑星1－同じ相手3車のワイド」に変更。
+# 相手は既存ヴェロビ評価◎○▲△×の順から太陽・惑星1を除外して最大3車、足りない場合だけ採用流れの順位順に補完。
+# 各券種は独立集計し、買目は同一の相手3車で生成。ガールズ・アドバンスの現行3連複4点、3流・KO・天体選抜・入力保存・他表示は維持。
 # v335lm: 会場構造スコアをバンク諸元（みなし直線×カント）のみから全会場標準化して算出。
 # 過去的中率・過去回収率・指数帯の過去的中率はスコアへ一切加算しない。
 # 未登録実績会場（奈良等）でも構造データがあれば表示。KO・3流・天体・買目・保存は変更しない。
@@ -4237,9 +4240,9 @@ def _v335lk_mark_rank_for_car(car):
     return rank.get(mark, 4), mark
 
 
-def _v335lk_append_normal_model_lines(lines, model, style, seq):
-    """通常競輪の最終買目のみ変更。天体は既存モデルの出力を再利用する。"""
-    lines.append(f"体系　公転・外周モデル（採用流れ：{style}）")
+def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=None):
+    """v335ln: 通常競輪の買目表示だけ更新。天体配置・予想・単騎モデルは変更しない。"""
+    lines.append(f"体系　太陽2車複・惑星ワイド分解モデル（採用流れ：{style}）")
     sun, jup = model.get("sun"), model.get("jupiter")
     planets = list(model.get("planets") or [])
     satellites = list(model.get("satellites") or [])
@@ -4250,46 +4253,52 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq):
     lines.append("衛星　" + ("・".join(map(str, satellites)) or "該当なし"))
     lines.append("デブリ　" + ("・".join(map(str, debris)) or "該当なし"))
     lines.append("【最終検証買目】")
-    if sun is None or not planets or jup is None:
-        lines.append("公転2車単・外周ワイド　該当なし（" + str(model.get('reason') or '天体選抜不成立') + "）")
-        lines.append("計0点")
+    if sun is None or not planets:
+        lines.append("太陽2車複・惑星ワイド　該当なし（" + str(model.get('reason') or '天体選抜不成立') + "）")
+        lines.append("計0点（2車複0点＋ワイド0点）")
         return
-    planet = int(planets[0])
     sun = int(sun)
-    # 印が弱いほうを先着にする。同印・両者無印では方向を捏造しない。
-    sun_rank, sun_mark = _v335lk_mark_rank_for_car(sun)
-    planet_rank, planet_mark = _v335lk_mark_rank_for_car(planet)
+    planet = int(planets[0])
     if sun == planet:
-        lines.append("公転2車単　該当なし（太陽と惑星が同一車）")
-        orbit_count = 0
-    elif sun_rank == planet_rank:
-        lines.append(f"公転2車単　方向未決定（太陽{sun}:{sun_mark}／惑星{planet}:{planet_mark}、同順位）")
-        orbit_count = 0
-    else:
-        # v335ll: 公転の1着軸（外部AI印が弱い方）は従来どおり固定。
-        # 相手は公転の反対側・木星・衛星1（採用流れ順位上位）を順に採る。
-        # 同じ車番は重複せず、候補不足なら勝手に補充しない。
-        first, second = (sun, planet) if sun_rank > planet_rank else (planet, sun)
-        opponent_candidates = [second, int(jup)]
-        if satellites:
-            opponent_candidates.append(int(satellites[0]))
-        opponents = [c for c in dict.fromkeys(opponent_candidates) if c != first]
-        orbit_tickets = [(first, c) for c in opponents]
-        lines.append(f"公転2車単　{first}→{''.join(map(str, opponents))}（太陽{sun}:{sun_mark}／惑星{planet}:{planet_mark}）")
-        lines.append("成立買目　" + "／".join(f"{a}→{b}" for a, b in orbit_tickets))
-        orbit_count = len(orbit_tickets)
-    # 旧3連複3点の相手集合：太陽・木星・衛星1(最上位)。これ以外を外周扱い。
-    core = {planet, sun, int(jup)}
-    if satellites:
-        core.add(int(satellites[0]))
-    outer = [int(c) for c in seq if int(c) not in core][:3]
-    wides = list(dict.fromkeys(tuple(sorted((planet, c))) for c in outer if c != planet))
-    if wides:
-        lines.append(f"外周ワイド　{planet}-" + "".join(map(str, outer)))
-        lines.append("成立買目　" + "／".join("-".join(map(str, t)) for t in wides))
-    else:
-        lines.append("外周ワイド　該当なし（外周候補なし）")
-    lines.append(f"計{orbit_count + len(wides)}点（公転2車単{orbit_count}点＋ワイド{len(wides)}点）")
+        lines.append("太陽2車複・惑星ワイド　該当なし（太陽と惑星が同一車）")
+        lines.append("計0点（2車複0点＋ワイド0点）")
+        return
+
+    # 通常評価の既存5印を相手選抜に使う。太陽・惑星のいずれとも
+    # 重複しない車だけを採り、両券種で同一の3車を共有する。
+    # 印で3車未満なら採用流れの順位順で不足分だけ補う。
+    available = [int(c) for c in seq if int(c) not in {sun, planet}]
+    allowed = set(available)
+    opponents = []
+    for raw in (normal_marks or ()):
+        if raw is None:
+            continue
+        try:
+            car = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if car in allowed and car not in opponents:
+            opponents.append(car)
+        if len(opponents) == 3:
+            break
+    for car in available:
+        if len(opponents) == 3:
+            break
+        if car not in opponents:
+            opponents.append(car)
+
+    quinellas = [tuple(sorted((sun, c))) for c in opponents]
+    wides = [tuple(sorted((planet, c))) for c in opponents]
+    if not opponents:
+        lines.append("太陽2車複・惑星ワイド　該当なし（相手候補なし）")
+        lines.append("計0点（2車複0点＋ワイド0点）")
+        return
+    lines.append("共通相手　" + "・".join(map(str, opponents)) + "（通常評価印順・不足時は採用流れ順）")
+    lines.append(f"太陽軸2車複　{sun}-{''.join(map(str, opponents))}")
+    lines.append("成立買目　" + "／".join("-".join(map(str, t)) for t in quinellas))
+    lines.append(f"惑星軸ワイド　{planet}-{''.join(map(str, opponents))}")
+    lines.append("成立買目　" + "／".join("-".join(map(str, t)) for t in wides))
+    lines.append(f"計{len(quinellas) + len(wides)}点（2車複{len(quinellas)}点＋ワイド{len(wides)}点）")
 
 
 def _v335lk_append_single_model_lines(lines, model, style, seq):
@@ -6485,7 +6494,7 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _lines.append("該当なし（有効な流れなし）")
             _lines.append("【最終検証買目】")
             _lines.append("該当なし（有効な流れなし）")
-            _lines.append("計0点（公転2車単0点＋ワイド0点）")
+            _lines.append("計0点（2車複0点＋ワイド0点）")
         else:
             _v335lc_candidates = sorted({
                 c for item in _v335kv_scored for c in item["seq"][:2]
@@ -6557,7 +6566,10 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 _v335kv_seq, _v335lg_groups, _v335li_sun_for_layout, _v335lg_jup,
                 legacy_tickets=False
             ) if _v335lg_jup is not None else {"reason": "木星候補なし", "trios": [], "pairs": []}
-            _v335lk_append_normal_model_lines(_lines, _v335lg_model, _v335lg_style, _v335kv_seq)
+            _v335lk_append_normal_model_lines(
+                _lines, _v335lg_model, _v335lg_style, _v335kv_seq,
+                normal_marks=(_axis_gc, _b_gc, _triangle_gc, _delta_gc, _x_gc),
+            )
         _lines.append("")
         # v335kl: 銀河系・統合3点の計算は保持、表示への書込みのみ停止。
         _v335kl_hidden_galaxy_lines = []
