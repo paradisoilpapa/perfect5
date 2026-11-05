@@ -1,3 +1,6 @@
+# v335ls: 通常競輪の共通相手3車を天体配置順（木星→第2惑星以降→衛星→デブリ）から選抜。
+# 太陽2車複最大3点・惑星ワイド最大2点を維持。ワイドの外部AI印最上位1車除外を維持。
+# 太陽単騎時の木星ワイド軸、通常予想／3流／KO／天体生成、ガールズ・アドバンス3連複、入力・保存は変更しない。
 # v335lr: 通常競輪の惑星ワイドのみ、共通相手3車から外部AI印最上位の相手を1車除外し最大2点に圧縮。
 # 太陽2車複の共通相手3車と最大3点は維持。外部AI印はワイド削減にだけ使用し、予想・天体・3流・KOに非介入。
 # AI印同順位時は既存共通相手の先行車を除外。ガールズ／アドバンス3連複、保存・入力・他表示は維持。
@@ -4272,28 +4275,29 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
         lines.append("計0点（2車複0点＋ワイド0点）")
         return
 
-    # 通常評価の既存5印を相手選抜に使う。太陽・惑星のいずれとも
-    # 重複しない車だけを採り、両券種で同一の3車を共有する。
-    # 印で3車未満なら採用流れの順位順で不足分だけ補う。
-    available = [int(c) for c in seq if int(c) not in {sun, planet}]
-    allowed = set(available)
+    # v335ls: 買目相手を通常評価印／逆流順位の直列選抜から切り離し、
+    # 計算済みの天体配置そのものを採用する。
+    # 太陽－惑星1を軸として固定し、相手は木星→残る惑星→衛星→
+    # デブリの優先順で最大3車。各グループ内の並びは天体配置の順序を維持。
+    # 太陽単騎で木星を惑星ワイド軸としている場合、木星は軸との重複を回避。
+    # 2車複3点とワイド2点の共通相手の選抜に通常印・外部AI印は介入させない。
+    # 外部AI印は従来どおり、ワイド相手3車から最上位1車を削除するためだけに使用。
+    valid_cars = set(int(c) for c in seq)
     opponents = []
-    for raw in (normal_marks or ()):
-        if raw is None:
-            continue
-        try:
-            car = int(raw)
-        except (TypeError, ValueError):
-            continue
-        if car in allowed and car not in opponents:
-            opponents.append(car)
-        if len(opponents) == 3:
+    for group in ([jup], planets[1:], satellites, debris):
+        for raw in group:
+            if raw is None:
+                continue
+            try:
+                car = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if car in valid_cars and car not in {sun, planet} and car not in opponents:
+                opponents.append(car)
+            if len(opponents) >= 3:
+                break
+        if len(opponents) >= 3:
             break
-    for car in available:
-        if len(opponents) == 3:
-            break
-        if car not in opponents:
-            opponents.append(car)
 
     quinellas = [tuple(sorted((sun, c))) for c in opponents]
     # v335lr: ワイドに限り、共通相手の外部AI印が最上位の1車を除外する。
@@ -4307,7 +4311,7 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
         lines.append("太陽2車複・惑星ワイド　該当なし（相手候補なし）")
         lines.append("計0点（2車複0点＋ワイド0点）")
         return
-    lines.append("共通相手　" + "・".join(map(str, opponents)) + "（通常評価印順・不足時は採用流れ順）")
+    lines.append("共通相手　" + "・".join(map(str, opponents)) + "（天体配置順：木星→第2惑星以降→衛星→デブリ）")
     lines.append(f"太陽軸2車複　{sun}-{''.join(map(str, opponents))}")
     lines.append("成立買目　" + "／".join("-".join(map(str, t)) for t in quinellas))
     if wide_removed is not None:
