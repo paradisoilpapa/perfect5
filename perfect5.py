@@ -1,3 +1,6 @@
+# v335lr: 通常競輪の惑星ワイドのみ、共通相手3車から外部AI印最上位の相手を1車除外し最大2点に圧縮。
+# 太陽2車複の共通相手3車と最大3点は維持。外部AI印はワイド削減にだけ使用し、予想・天体・3流・KOに非介入。
+# AI印同順位時は既存共通相手の先行車を除外。ガールズ／アドバンス3連複、保存・入力・他表示は維持。
 # v335lq: 通常競輪で太陽が単騎のとき、別ライン最上位の木星を惑星ワイド軸として使用する。単騎以外の太陽・惑星選抜、共通相手、ガールズ/アドバンス3連複、予想/保存は維持。
 # v335lp: 通常競輪の天体配置を太陽・惑星理論へ修正。採用流れ1位=太陽、同ライン後続=惑星。木星は参考表示のみ。ガールズ/アドバンス3連複、3流/KO、評価、買目6点、入力/保存は維持。
 # v335lo: 通常競輪で太陽と木星が同一車・同一ラインになる場合の天体配置不成立を修正。買目仕様・単騎3連複・KO/3流・保存は維持。
@@ -4293,7 +4296,13 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
             opponents.append(car)
 
     quinellas = [tuple(sorted((sun, c))) for c in opponents]
-    wides = [tuple(sorted((planet, c))) for c in opponents]
+    # v335lr: ワイドに限り、共通相手の外部AI印が最上位の1車を除外する。
+    # AI印の序列は既存のsnapshot参照関数（◎＞〇＞△＞×＞無印）と同じ。
+    # 同順位では既存の共通相手順を優先し、2車複側の3点は変更しない。
+    # AI印が全て無印の場合も同順位として先頭1車を除外し、最大2点とする。
+    wide_removed = min(opponents, key=lambda c: _v335lk_mark_rank_for_car(c)[0]) if opponents else None
+    wide_opponents = [c for c in opponents if c != wide_removed]
+    wides = [tuple(sorted((planet, c))) for c in wide_opponents]
     if not opponents:
         lines.append("太陽2車複・惑星ワイド　該当なし（相手候補なし）")
         lines.append("計0点（2車複0点＋ワイド0点）")
@@ -4301,8 +4310,11 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
     lines.append("共通相手　" + "・".join(map(str, opponents)) + "（通常評価印順・不足時は採用流れ順）")
     lines.append(f"太陽軸2車複　{sun}-{''.join(map(str, opponents))}")
     lines.append("成立買目　" + "／".join("-".join(map(str, t)) for t in quinellas))
-    lines.append(f"惑星軸ワイド　{planet}-{''.join(map(str, opponents))}")
-    lines.append("成立買目　" + "／".join("-".join(map(str, t)) for t in wides))
+    if wide_removed is not None:
+        _removed_rank, _removed_mark = _v335lk_mark_rank_for_car(wide_removed)
+        lines.append(f"惑星ワイド除外　{wide_removed}（外部AI印：{_removed_mark}／相手3車中最上位）")
+    lines.append(f"惑星軸ワイド　{planet}-{''.join(map(str, wide_opponents)) if wide_opponents else '該当なし'}")
+    lines.append("成立買目　" + ("／".join("-".join(map(str, t)) for t in wides) or "該当なし"))
     lines.append(f"計{len(quinellas) + len(wides)}点（2車複{len(quinellas)}点＋ワイド{len(wides)}点）")
 
 
