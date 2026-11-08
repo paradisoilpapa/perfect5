@@ -1,3 +1,5 @@
+# v335lu: 単騎なしでも2列目2車で成立させ、残余0車なら3列目を流れ未選抜3車から選抜。
+# その他の3流・KO・天体・保存・表示・ガールズ／アドバンスは変更しない。
 # v335lt: 通常競輪の最終選抜のみ改修。太陽＋惑星／木星＋衛星は2車平均、単騎は個人点。
 # 1列目=惑星・衛星・単騎、2列目=太陽・木星・単騎の上位2車、3列目=残余1車＋軸最上位流れから2車。
 # 2車複推奨=1列目－3列目3点。3連単検証=1－2－3列6点。既存3流・KO・天体・他機能維持。
@@ -4314,17 +4316,21 @@ def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map):
     second_pool = sorted((c for c in second_pool if c != axis), key=lambda c: (-sc[c], c))
     second = second_pool[:2]
     left = second_pool[2:]
-    if len(second) != 2 or not left:
-        return {"reason": "2列目2車＋3列目残余1車の候補不足",
+    if len(second) != 2:
+        return {"reason": "2列目2車の候補不足",
                 "axis": axis, "contenders": contenders, "best": best}
 
     # 1列目車が最も上位の流れをすべて並列に用いる。
     axis_best_rank = min(tuple(map(int, r["order"])).index(axis) for r in rows if axis in r["order"])
     tied = [r for r in rows if axis in r["order"] and tuple(map(int, r["order"])).index(axis) == axis_best_rank]
     excluded = {axis, *second}
-    # 3列目の一枠は2列目選考に漏れた最高評価の一車に確保。
-    third = [left[0]]
-    excluded.add(left[0])
+    # 2列目選考から漏れた候補が存在する場合だけ先頭の一車を確保。
+    # 単騎がない通常の複数ライン戦では残余がないため、
+    # 3列目の3枠すべてを1列目が最上位となる流れの未選抜車から選ぶ。
+    third = [left[0]] if left else []
+    if third:
+        excluded.add(third[0])
+    remaining_slots = 3 - len(third)
     # 同順位流れを並列に評価。候補車は全該当流れにおける最良順位、
     # 溢れたときは既存ヴェロビ個人点を優先する。
     flow_rank = {}
@@ -4334,11 +4340,11 @@ def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map):
                 flow_rank[c] = min(flow_rank.get(c, 999), i)
     # 同順位の流れが複数あって候補が空き枠を超える場合は、
     # 流れ順位で片側を優先せずヴェロビ評価上位で決定する。
-    if len(tied) > 1 and len(flow_rank) > 2:
+    if len(tied) > 1 and len(flow_rank) > remaining_slots:
         additions = sorted(flow_rank, key=lambda c: (-sc[c], c))
     else:
         additions = sorted(flow_rank, key=lambda c: (flow_rank[c], -sc[c], c))
-    third.extend(additions[:2])
+    third.extend(additions[:remaining_slots])
     if len(third) != 3:
         return {"reason": "3列目3車を生成できない", "axis": axis,
                 "second": second, "third": third}
