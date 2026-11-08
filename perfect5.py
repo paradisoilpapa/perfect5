@@ -1,3 +1,6 @@
+# v335lt: 通常競輪の最終選抜のみ改修。太陽＋惑星／木星＋衛星は2車平均、単騎は個人点。
+# 1列目=惑星・衛星・単騎、2列目=太陽・木星・単騎の上位2車、3列目=残余1車＋軸最上位流れから2車。
+# 2車複推奨=1列目－3列目3点。3連単検証=1－2－3列6点。既存3流・KO・天体・他機能維持。
 # v335ls: 通常競輪の共通相手3車を天体配置順（木星→第2惑星以降→衛星→デブリ）から選抜。
 # 太陽2車複最大3点・惑星ワイド最大2点を維持。ワイドの外部AI印最上位1車除外を維持。
 # 太陽単騎時の木星ワイド軸、通常予想／3流／KO／天体生成、ガールズ・アドバンス3連複、入力・保存は変更しない。
@@ -4249,9 +4252,110 @@ def _v335lk_mark_rank_for_car(car):
     return rank.get(mark, 4), mark
 
 
-def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=None):
-    """v335ln: 通常競輪の買目表示だけ更新。天体配置・予想・単騎モデルは変更しない。"""
-    lines.append(f"体系　太陽2車複・惑星ワイド分解モデル（採用流れ：{style}）")
+def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map):
+    """v335lt: 通常競輪のみ最終列を選抜。既存の3流・KO・天体は変更しない。
+
+    2車組（太陽＋惑星、木星＋衛星）は個人スコアの単純平均、
+    単騎は個人スコアのまま比較。既存の天体に紐づく実際のラインだけを使う。
+    1列目は選抜組の惑星／衛星、または最上位単騎。
+    """
+    sun, jup = model.get("sun"), model.get("jupiter")
+    if sun is None or jup is None:
+        return {"reason": "太陽・木星候補不足"}
+    sun, jup = int(sun), int(jup)
+    rows = [r for r in (flow_rows or []) if r.get("order")]
+    if not rows:
+        return {"reason": "流れ順位不足"}
+    cars = list(dict.fromkeys(int(c) for r in rows for c in r["order"]))
+    valid = set(cars)
+    sc = {int(c): float(v) for c, v in (score_map or {}).items() if str(c).isdigit()}
+    if any(c not in sc for c in cars):
+        return {"reason": "ヴェロビ個人スコア不足（順位による代用なし）"}
+
+    groups, used = [], set()
+    for raw in (line_groups or []):
+        group = tuple(int(c) for c in raw if int(c) in valid and int(c) not in used)
+        if group:
+            groups.append(group)
+            used.update(group)
+    for c in cars:
+        if c not in used:
+            groups.append((c,))
+            used.add(c)
+    by_car = {c: g for g in groups for c in g}
+    sun_group, jup_group = by_car.get(sun, (sun,)), by_car.get(jup, (jup,))
+    if sun_group == jup_group:
+        return {"reason": "太陽と木星が同一ライン"}
+
+    # 実ライン上に所属する天体だけで比較。単騎補完の仮想惑星／衛星は採用しない。
+    planets = [int(c) for c in (model.get("planets") or []) if int(c) in sun_group and int(c) != sun]
+    sats = [int(c) for c in (model.get("satellites") or []) if int(c) in jup_group and int(c) != jup]
+    contenders = []
+    if len(sun_group) >= 2 and planets:
+        planet = planets[0]
+        contenders.append({"kind": "太陽＋惑星", "axis": planet, "partner": sun,
+                           "score": (sc[sun] + sc[planet]) / 2.0})
+    if len(jup_group) >= 2 and sats:
+        sat = sats[0]
+        contenders.append({"kind": "木星＋衛星", "axis": sat, "partner": jup,
+                           "score": (sc[jup] + sc[sat]) / 2.0})
+    singles = sorted((g[0] for g in groups if len(g) == 1), key=lambda c: (-sc[c], c))
+    if singles:
+        contenders.append({"kind": "単騎", "axis": singles[0], "partner": None,
+                           "score": sc[singles[0]]})
+    if not contenders:
+        return {"reason": "実ラインの惑星・衛星・単騎候補なし"}
+    # 同点なら候補の記載順（太陽系→木星系→単騎）で決着し、後付けの流れ選択はしない。
+    best = max(enumerate(contenders), key=lambda it: (it[1]["score"], -it[0]))[1]
+    axis = best["axis"]
+
+    # 2列目は太陽・木星・単騎を個人点で比較。1列目の車番を重複採用しない。
+    second_pool = list(dict.fromkeys([sun, jup, *singles]))
+    second_pool = sorted((c for c in second_pool if c != axis), key=lambda c: (-sc[c], c))
+    second = second_pool[:2]
+    left = second_pool[2:]
+    if len(second) != 2 or not left:
+        return {"reason": "2列目2車＋3列目残余1車の候補不足",
+                "axis": axis, "contenders": contenders, "best": best}
+
+    # 1列目車が最も上位の流れをすべて並列に用いる。
+    axis_best_rank = min(tuple(map(int, r["order"])).index(axis) for r in rows if axis in r["order"])
+    tied = [r for r in rows if axis in r["order"] and tuple(map(int, r["order"])).index(axis) == axis_best_rank]
+    excluded = {axis, *second}
+    # 3列目の一枠は2列目選考に漏れた最高評価の一車に確保。
+    third = [left[0]]
+    excluded.add(left[0])
+    # 同順位流れを並列に評価。候補車は全該当流れにおける最良順位、
+    # 溢れたときは既存ヴェロビ個人点を優先する。
+    flow_rank = {}
+    for r in tied:
+        for i, c in enumerate(map(int, r["order"])):
+            if c not in excluded:
+                flow_rank[c] = min(flow_rank.get(c, 999), i)
+    # 同順位の流れが複数あって候補が空き枠を超える場合は、
+    # 流れ順位で片側を優先せずヴェロビ評価上位で決定する。
+    if len(tied) > 1 and len(flow_rank) > 2:
+        additions = sorted(flow_rank, key=lambda c: (-sc[c], c))
+    else:
+        additions = sorted(flow_rank, key=lambda c: (flow_rank[c], -sc[c], c))
+    third.extend(additions[:2])
+    if len(third) != 3:
+        return {"reason": "3列目3車を生成できない", "axis": axis,
+                "second": second, "third": third}
+    exactas = [(axis, c) for c in third]
+    trifectas = [(axis, b, c) for b in second for c in third if len({axis, b, c}) == 3]
+    if len(exactas) != 3 or len(trifectas) != 6:
+        return {"reason": "指定点数の車券生成不可", "axis": axis,
+                "second": second, "third": third}
+    return {"reason": None, "axis": axis, "second": second, "third": third,
+            "contenders": contenders, "best": best, "tied": tied,
+            "quinellas": [tuple(sorted(t)) for t in exactas], "trifectas": trifectas}
+
+
+def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=None,
+                                       line_groups=None, flow_rows=None, score_map=None):
+    """v335lt: 通常競輪の最終買目のみ変更。既存天体表示・他区分は維持。"""
+    lines.append(f"体系　太陽・木星2車平均／単騎個人評価モデル（採用流れ：{style}）")
     sun, jup = model.get("sun"), model.get("jupiter")
     planets = list(model.get("planets") or [])
     satellites = list(model.get("satellites") or [])
@@ -4264,62 +4368,23 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
     lines.append("衛星　" + ("・".join(map(str, satellites)) or "該当なし"))
     lines.append("デブリ　" + ("・".join(map(str, debris)) or "該当なし"))
     lines.append("【最終検証買目】")
-    if sun is None or not planets:
-        lines.append("太陽2車複・惑星ワイド　該当なし（" + str(model.get('reason') or '天体選抜不成立') + "）")
-        lines.append("計0点（2車複0点＋ワイド0点）")
+    selected = _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map)
+    if selected.get("reason"):
+        lines.append("新方式　該当なし（" + str(selected["reason"]) + "）")
+        lines.append("計0点（3連単0点＋2車複0点）")
         return
-    sun = int(sun)
-    planet = int(planets[0])
-    if sun == planet:
-        lines.append("太陽2車複・惑星ワイド　該当なし（太陽と惑星が同一車）")
-        lines.append("計0点（2車複0点＋ワイド0点）")
-        return
-
-    # v335ls: 買目相手を通常評価印／逆流順位の直列選抜から切り離し、
-    # 計算済みの天体配置そのものを採用する。
-    # 太陽－惑星1を軸として固定し、相手は木星→残る惑星→衛星→
-    # デブリの優先順で最大3車。各グループ内の並びは天体配置の順序を維持。
-    # 太陽単騎で木星を惑星ワイド軸としている場合、木星は軸との重複を回避。
-    # 2車複3点とワイド2点の共通相手の選抜に通常印・外部AI印は介入させない。
-    # 外部AI印は従来どおり、ワイド相手3車から最上位1車を削除するためだけに使用。
-    valid_cars = set(int(c) for c in seq)
-    opponents = []
-    for group in ([jup], planets[1:], satellites, debris):
-        for raw in group:
-            if raw is None:
-                continue
-            try:
-                car = int(raw)
-            except (TypeError, ValueError):
-                continue
-            if car in valid_cars and car not in {sun, planet} and car not in opponents:
-                opponents.append(car)
-            if len(opponents) >= 3:
-                break
-        if len(opponents) >= 3:
-            break
-
-    quinellas = [tuple(sorted((sun, c))) for c in opponents]
-    # v335lr: ワイドに限り、共通相手の外部AI印が最上位の1車を除外する。
-    # AI印の序列は既存のsnapshot参照関数（◎＞〇＞△＞×＞無印）と同じ。
-    # 同順位では既存の共通相手順を優先し、2車複側の3点は変更しない。
-    # AI印が全て無印の場合も同順位として先頭1車を除外し、最大2点とする。
-    wide_removed = min(opponents, key=lambda c: _v335lk_mark_rank_for_car(c)[0]) if opponents else None
-    wide_opponents = [c for c in opponents if c != wide_removed]
-    wides = [tuple(sorted((planet, c))) for c in wide_opponents]
-    if not opponents:
-        lines.append("太陽2車複・惑星ワイド　該当なし（相手候補なし）")
-        lines.append("計0点（2車複0点＋ワイド0点）")
-        return
-    lines.append("共通相手　" + "・".join(map(str, opponents)) + "（天体配置順：木星→第2惑星以降→衛星→デブリ）")
-    lines.append(f"太陽軸2車複　{sun}-{''.join(map(str, opponents))}")
-    lines.append("成立買目　" + "／".join("-".join(map(str, t)) for t in quinellas))
-    if wide_removed is not None:
-        _removed_rank, _removed_mark = _v335lk_mark_rank_for_car(wide_removed)
-        lines.append(f"惑星ワイド除外　{wide_removed}（外部AI印：{_removed_mark}／相手3車中最上位）")
-    lines.append(f"惑星軸ワイド　{planet}-{''.join(map(str, wide_opponents)) if wide_opponents else '該当なし'}")
-    lines.append("成立買目　" + ("／".join("-".join(map(str, t)) for t in wides) or "該当なし"))
-    lines.append(f"計{len(quinellas) + len(wides)}点（2車複{len(quinellas)}点＋ワイド{len(wides)}点）")
+    for row in selected["contenders"]:
+        lines.append(f"候補評価　{row['kind']}　{row['score']:.2f}点")
+    axis, second, third = selected["axis"], selected["second"], selected["third"]
+    lines.append(f"1列目　{axis}（{selected['best']['kind']}）")
+    lines.append("2列目　" + "・".join(map(str, second)))
+    lines.append("3列目　" + "・".join(map(str, third)))
+    lines.append("3列目参照流れ　" + "・".join(str(r.get("style", "不明")) for r in selected["tied"]))
+    lines.append(f"3連単検証　{axis}-{''.join(map(str, second))}-{''.join(map(str, third))}")
+    lines.append("成立買目　" + "／".join("-".join(map(str, t)) for t in selected["trifectas"]))
+    lines.append(f"推奨2車複　{axis}-{''.join(map(str, third))}")
+    lines.append("成立買目　" + "／".join("-".join(map(str, t)) for t in selected["quinellas"]))
+    lines.append("計9点（3連単6点＋2車複3点／推奨は2車複3点）")
 
 
 def _v335lk_append_single_model_lines(lines, model, style, seq):
@@ -6589,6 +6654,9 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
             _v335lk_append_normal_model_lines(
                 _lines, _v335lg_model, _v335lg_style, _v335kv_seq,
                 normal_marks=(_axis_gc, _b_gc, _triangle_gc, _delta_gc, _x_gc),
+                line_groups=_v335lg_groups,
+                flow_rows=_rows,
+                score_map=globals().get("score_map", {}) or globals().get("KO_SCORE_MAP_FOR_SANTEN", {}),
             )
         _lines.append("")
         # v335kl: 銀河系・統合3点の計算は保持、表示への書込みのみ停止。
