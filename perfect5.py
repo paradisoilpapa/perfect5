@@ -1,3 +1,4 @@
+# v335lx: 単騎軸では旧3列目候補の個人スコア最上位1車を表示2列目へ追加（3連複・2車複双方）。
 # v335lw: 通常競輪の1列目が惑星なら太陽、衛星なら木星を2列目表示・検証3連複・推奨2車複に追加。単騎は追加なし。既存選抜・他処理維持。
 # v335lv: 通常競輪の検証3連単6点を検証3連複6点へ変更。2・3列目は表示のみ入替え、推奨2車複3点を維持。
 # 最終検証買目の表示を候補評価・3列・検証3連複・推奨2車複のみに簡素化。既存選抜・3流・KO・天体・他区分は変更しない。
@@ -4351,12 +4352,20 @@ def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map):
     if len(third) != 3:
         return {"reason": "3列目3車を生成できない", "axis": axis,
                 "second": second, "third": third}
-    # 旧3列目（表示2列目）に、軸が惑星／衛星ならその組の相方を加える。
-    # 単騎軸は相方がいないため、従来どおりとする。
+    # 旧3列目（表示2列目）に、惑星／衛星軸ならその組の相方を加える。
+    # 単騎軸では相方がいないため、表示3列目（太陽・木星等）のうち
+    # ヴェロビ個人スコアが最上位の1車を表示2列目にも追加する。
+    # 元の候補・列・選抜スコアは変更せず、買い目のみ1車分拡張する。
     partner = best["partner"]
     displayed_second = list(third)
+    if best["kind"] == "単騎":
+        if second:
+            partner = max(second, key=lambda c: (sc[c], -c))
     if partner is not None and partner not in displayed_second and partner != axis:
-        displayed_second.insert(0, partner)
+        if best["kind"] == "単騎":
+            displayed_second.append(partner)
+        else:
+            displayed_second.insert(0, partner)
     # 元の6組は保持し、相方の追加による新しい3連複だけを重複排除で加える。
     trios = list(dict.fromkeys(
         tuple(sorted((axis, b, c))) for b in second for c in displayed_second
