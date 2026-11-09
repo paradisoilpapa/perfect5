@@ -1,3 +1,4 @@
+# v335ly: 通常競輪の推奨2車複4点を、1列目軸1着固定の推奨2車単4点へ変更。検証3連複・選抜・他区分は維持。
 # v335lx: 単騎軸では旧3列目候補の個人スコア最上位1車を表示2列目へ追加（3連複・2車複双方）。
 # v335lw: 通常競輪の1列目が惑星なら太陽、衛星なら木星を2列目表示・検証3連複・推奨2車複に追加。単騎は追加なし。既存選抜・他処理維持。
 # v335lv: 通常競輪の検証3連単6点を検証3連複6点へ変更。2・3列目は表示のみ入替え、推奨2車複3点を維持。
@@ -4371,16 +4372,16 @@ def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map):
         tuple(sorted((axis, b, c))) for b in second for c in displayed_second
         if len({axis, b, c}) == 3
     ))
-    quinellas = list(dict.fromkeys(
-        tuple(sorted((axis, c))) for c in displayed_second if c != axis
+    exactas = list(dict.fromkeys(
+        (axis, c) for c in displayed_second if c != axis
     ))
-    if len(quinellas) != len(displayed_second) or len(trios) < 6:
+    if len(exactas) != len(displayed_second) or len(trios) < 6:
         return {"reason": "指定買い目の生成不可", "axis": axis,
                 "second": second, "third": third}
     return {"reason": None, "axis": axis, "second": second, "third": third,
             "displayed_second": displayed_second,
             "contenders": contenders, "best": best, "tied": tied,
-            "quinellas": quinellas, "trios": trios}
+            "exactas": exactas, "trios": trios}
 
 
 def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=None,
@@ -4411,7 +4412,7 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
     lines.append("2列目　" + "・".join(map(str, displayed_second)))
     lines.append("3列目　" + "・".join(map(str, second)))
     lines.append(f"検証3連複　{axis}-{''.join(map(str, displayed_second))}-{''.join(map(str, second))}")
-    lines.append(f"推奨2車複　{axis}-{''.join(map(str, displayed_second))}")
+    lines.append(f"推奨2車単　{axis}-{''.join(map(str, displayed_second))}")
 
 
 def _v335lk_append_single_model_lines(lines, model, style, seq):
