@@ -1,8 +1,9 @@
+# v335me: 通常7車立ての相手2車を、軸・太陽・木星以外の4車から天体距離の最上位・最下位で選抜。
 # v335md: 単騎中心で旧2列目が不足する場合に、軸最上位流れから補完。
-# v335mb: 通常7車立ては軸と天体・3流・KOを維持し、相手4車に旧選抜漏れ1車を固定。
-# 太陽・木星を保護し、軸の同ライン候補を優先。3連複1軸4車流し6点／2車複4点。
+# v335mbの旧選抜漏れ固定処理はv335meで撤去。
+# 太陽・木星を保護し、天体距離最上位・最下位を選抜。3連複1軸4車流し6点／2車複4点。
 # 7車立て以外・ガールズ・アドバンス・保存・引継ぎは原本を維持。
-# ヴェロビ v335md（単騎時の2列目候補不足を補完／盲点入り6点）
+# ヴェロビ v335me（天体距離の最上位・最下位選抜／6点）
 # 基準：v335lz。予想・軸・相手・3連複・他区分は維持し、通常競輪の2車系のみ2車複へ復帰。
 # 【通常競輪】順流・渦・逆流、KO、内部スコア・天体配置、入力保存は原本維持。
 # 【通常競輪・3連複】太陽＋惑星／木星＋衛星の2車平均と単騎個人評価で軸を選抜。
@@ -2713,7 +2714,7 @@ def _v335lk_mark_rank_for_car(car):
     return rank.get(mark, 4), mark
 
 
-def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map):
+def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map, adopted_seq=None):
     """v335lt: 通常競輪のみ最終列を選抜。既存の3流・KO・天体は変更しない。
 
     2車組（太陽＋惑星、木星＋衛星）は個人スコアの単純平均、
@@ -2848,36 +2849,68 @@ def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map):
             displayed_second.append(partner)
         else:
             displayed_second.insert(0, partner)
-    # v335mb: 現行の軸・天体配置は維持する。通常7車立てのみ、
-    # 太陽／木星の重力源を保護し、軸に近いライン候補と
-    # 現行5車の選抜から漏れた「盲点」1車を組み合わせる。
-    # 3連複＝1車軸・相手4車流し（6点）、2車複＝同じ相手4車（4点）。
-    # 個人点、3流、KO、ガールズ・アドバンスの処理には介入しない。
+    # v335me: 合意した天体距離選抜。通常7車立てのみ。
+    # 軸・太陽・木星を固定し、それ以外の4車から天体上の最上位と
+    # 最下位を1車ずつ選ぶ。旧選抜漏れによる盲点固定は使わない。
+    # 距離は軸と同一重力圏→別重力圏→デブリの順。
+    # 同じ重力圏内の順位は採用流れの想定着順で決める。
     if len(cars) == 7:
-        current_selected = {axis, *displayed_second, *second}
-        blind_candidates = [c for c in cars if c not in current_selected]
-        if len(blind_candidates) != 1:
-            return {"reason": "盲点候補を一意に選べません", "axis": axis}
-        blind = blind_candidates[0]
-        # 保護する重力源。軸との重複は除き、必ず他の車で補う。
-        anchors = [c for c in (sun, jup) if c != axis]
-        anchors = list(dict.fromkeys(anchors))
-        # 近距離は同一実ライン（惑星・衛星の伴走関係）を優先。
-        # 遠距離は現行の選抜から漏れた盲点1車で固定する。
-        original_order = list(dict.fromkeys([*displayed_second, *second]))
-        near_pool = [c for c in original_order if c not in {axis, blind, *anchors}]
-        near_pool.sort(key=lambda c: (
-            0 if by_car.get(c) == by_car.get(axis) else 1,
-            original_order.index(c), -sc[c], c,
-        ))
-        opponents = list(dict.fromkeys([*anchors, *near_pool[:max(0, 3-len(anchors))], blind]))
-        if len(opponents) != 4 or len(set(opponents) | {axis}) != 5:
-            return {"reason": "盲点を含む相手4車の生成不可", "axis": axis}
-        # 4車から任意の2車を選ぶため、重複なし6点。
+        anchors = list(dict.fromkeys(c for c in (sun, jup) if c != axis))
+        candidates = [c for c in cars if c not in {axis, sun, jup}]
+        if len(anchors) != 2 or len(candidates) != 4:
+            # 軸が太陽／木星と重なる単騎等は「残り4車」の条件外。
+            # 合意されていない新条件を補わず、v335mdの処理を維持する。
+            current_selected = {axis, *displayed_second, *second}
+            blind_candidates = [c for c in cars if c not in current_selected]
+            if len(blind_candidates) != 1:
+                return {"reason": "盲点候補を一意に選べません", "axis": axis}
+            blind = blind_candidates[0]
+            original_order = list(dict.fromkeys([*displayed_second, *second]))
+            near_pool = [c for c in original_order if c not in {axis, blind, *anchors}]
+            near_pool.sort(key=lambda c: (
+                0 if by_car.get(c) == by_car.get(axis) else 1,
+                original_order.index(c), -sc[c], c,
+            ))
+            opponents = list(dict.fromkeys([*anchors, *near_pool[:max(0, 3-len(anchors))], blind]))
+            if len(opponents) != 4 or len(set(opponents) | {axis}) != 5:
+                return {"reason": "盲点を含む相手4車の生成不可", "axis": axis}
+            trios = [tuple(sorted((axis, b, c))) for b, c in combinations(opponents, 2)]
+            quinellas = [tuple(sorted((axis, c))) for c in opponents]
+            return {"reason": None, "axis": axis, "second": second, "third": third,
+                    "displayed_second": opponents, "blind": blind,
+                    "near": [c for c in opponents if c not in {sun, jup, blind}],
+                    "contenders": contenders, "best": best, "tied": tied,
+                    "quinellas": quinellas, "trios": trios, "trio_format": "box"}
+
+        # 採用流れの想定着順をそのまま使う。天体モデル作成側のseqと同一。
+        adopted_order = tuple(map(int, adopted_seq or ()))
+        if not adopted_order:
+            adopted_rank = {c: min((tuple(map(int, r["order"])).index(c)
+                                    for r in rows if c in r["order"]), default=999)
+                            for c in cars}
+        else:
+            adopted_rank = {c: i for i, c in enumerate(adopted_order)}
+
+        axis_line = by_car.get(axis, (axis,))
+        sun_line = by_car.get(sun, (sun,))
+        jup_line = by_car.get(jup, (jup,))
+        def gravity_distance(car):
+            group = by_car.get(car, (car,))
+            if group == axis_line and len(group) > 1:
+                return 0  # 惑星／衛星の同一重力圏
+            if group == sun_line or group == jup_line:
+                return 1  # 他方の重力圏
+            return 2      # デブリ／いずれの重力圏にも属さない車
+
+        ranked = sorted(candidates, key=lambda c: (gravity_distance(c), adopted_rank.get(c, 999), c))
+        nearest, farthest = ranked[0], ranked[-1]
+        opponents = [*anchors, nearest, farthest]
+        if len(set(opponents) | {axis}) != 5:
+            return {"reason": "天体距離による相手4車の生成不可", "axis": axis}
         trios = [tuple(sorted((axis, b, c))) for b, c in combinations(opponents, 2)]
         quinellas = [tuple(sorted((axis, c))) for c in opponents]
         return {"reason": None, "axis": axis, "second": second, "third": third,
-                "displayed_second": opponents, "blind": blind, "near": [c for c in opponents if c not in {sun,jup,blind}],
+                "displayed_second": opponents, "blind": farthest, "near": [nearest],
                 "contenders": contenders, "best": best, "tied": tied,
                 "quinellas": quinellas, "trios": trios, "trio_format": "box"}
 
@@ -2914,7 +2947,7 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
     lines.append("衛星　" + ("・".join(map(str, satellites)) or "該当なし"))
     lines.append("デブリ　" + ("・".join(map(str, debris)) or "該当なし"))
     lines.append("【最終検証買目】")
-    selected = _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map)
+    selected = _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map, adopted_seq=seq)
     if selected.get("reason"):
         lines.append("新方式　該当なし（" + str(selected["reason"]) + "）")
         return
@@ -2926,7 +2959,7 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
     if selected.get("trio_format") == "box":
         lines.append("相手4車　" + "・".join(map(str, displayed_second)))
         # 買い目用の印。上段の通常「ヴェロビ評価」の印とは独立。
-        # ◎＝現行軸、○＝太陽、▲＝木星、△＝近距離、×＝盲点。
+        # ◎＝現行軸、○＝太陽、▲＝木星、△＝距離最上位、×＝距離最下位。
         # 軸が太陽・木星と同車の場合は、実際の相手4車の並び順を保持する。
         sun_car = model.get("sun")
         jup_car = model.get("jupiter")
