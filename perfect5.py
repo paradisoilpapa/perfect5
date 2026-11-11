@@ -1,3 +1,4 @@
+# v335mf: 通常7車立て最終×をヴェロビ評価×優先（重複時はデブリ個人スコア上位）へ変更。最終軸の通常評価印で2車複／3連複／ケン推奨を表示。
 # v335me: 通常7車立ての相手2車を、軸・太陽・木星以外の4車から天体距離の最上位・最下位で選抜。
 # v335md: 単騎中心で旧2列目が不足する場合に、軸最上位流れから補完。
 # v335mbの旧選抜漏れ固定処理はv335meで撤去。
@@ -2714,7 +2715,7 @@ def _v335lk_mark_rank_for_car(car):
     return rank.get(mark, 4), mark
 
 
-def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map, adopted_seq=None):
+def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map, adopted_seq=None, normal_marks=None):
     """v335lt: 通常競輪のみ最終列を選抜。既存の3流・KO・天体は変更しない。
 
     2車組（太陽＋惑星、木星＋衛星）は個人スコアの単純平均、
@@ -2849,6 +2850,27 @@ def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map, adopt
             displayed_second.append(partner)
         else:
             displayed_second.insert(0, partner)
+    # v335mf: 最終×は既存ヴェロビ評価の的中妙味バランス2位（×）。
+    # 軸・太陽・木星・近距離候補に重複するときのみ、デブリの
+    # 個人スコア最上位から採用。デブリ以外への独断補完は行わない。
+    def _v335mf_pick_x(protected):
+        marks = list(normal_marks or ())
+        if len(marks) < 5 or marks[4] is None:
+            return None, "ヴェロビ評価×が取得できません"
+        x_car = int(marks[4])
+        if x_car not in valid:
+            return None, "ヴェロビ評価×が出走車にありません"
+        if x_car not in protected:
+            return x_car, None
+        debris_pool = sorted(
+            (int(c) for c in (model.get("debris") or [])
+             if int(c) in valid and int(c) not in protected),
+            key=lambda c: (-sc[c], c),
+        )
+        if not debris_pool:
+            return None, "×重複時の未選抜デブリ候補がありません"
+        return debris_pool[0], None
+
     # v335me: 合意した天体距離選抜。通常7車立てのみ。
     # 軸・太陽・木星を固定し、それ以外の4車から天体上の最上位と
     # 最下位を1車ずつ選ぶ。旧選抜漏れによる盲点固定は使わない。
@@ -2864,14 +2886,18 @@ def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map, adopt
             blind_candidates = [c for c in cars if c not in current_selected]
             if len(blind_candidates) != 1:
                 return {"reason": "盲点候補を一意に選べません", "axis": axis}
-            blind = blind_candidates[0]
             original_order = list(dict.fromkeys([*displayed_second, *second]))
-            near_pool = [c for c in original_order if c not in {axis, blind, *anchors}]
+            near_pool = [c for c in original_order if c not in {axis, *anchors}]
             near_pool.sort(key=lambda c: (
                 0 if by_car.get(c) == by_car.get(axis) else 1,
                 original_order.index(c), -sc[c], c,
             ))
-            opponents = list(dict.fromkeys([*anchors, *near_pool[:max(0, 3-len(anchors))], blind]))
+            near_selected = near_pool[:max(0, 3-len(anchors))]
+            protected = {axis, *anchors, *near_selected}
+            blind, x_error = _v335mf_pick_x(protected)
+            if x_error:
+                return {"reason": x_error, "axis": axis}
+            opponents = list(dict.fromkeys([*anchors, *near_selected, blind]))
             if len(opponents) != 4 or len(set(opponents) | {axis}) != 5:
                 return {"reason": "盲点を含む相手4車の生成不可", "axis": axis}
             trios = [tuple(sorted((axis, b, c))) for b, c in combinations(opponents, 2)]
@@ -2903,14 +2929,17 @@ def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map, adopt
             return 2      # デブリ／いずれの重力圏にも属さない車
 
         ranked = sorted(candidates, key=lambda c: (gravity_distance(c), adopted_rank.get(c, 999), c))
-        nearest, farthest = ranked[0], ranked[-1]
-        opponents = [*anchors, nearest, farthest]
+        nearest = ranked[0]
+        blind, x_error = _v335mf_pick_x({axis, *anchors, nearest})
+        if x_error:
+            return {"reason": x_error, "axis": axis}
+        opponents = [*anchors, nearest, blind]
         if len(set(opponents) | {axis}) != 5:
             return {"reason": "天体距離による相手4車の生成不可", "axis": axis}
         trios = [tuple(sorted((axis, b, c))) for b, c in combinations(opponents, 2)]
         quinellas = [tuple(sorted((axis, c))) for c in opponents]
         return {"reason": None, "axis": axis, "second": second, "third": third,
-                "displayed_second": opponents, "blind": farthest, "near": [nearest],
+                "displayed_second": opponents, "blind": blind, "near": [nearest],
                 "contenders": contenders, "best": best, "tied": tied,
                 "quinellas": quinellas, "trios": trios, "trio_format": "box"}
 
@@ -2947,7 +2976,10 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
     lines.append("衛星　" + ("・".join(map(str, satellites)) or "該当なし"))
     lines.append("デブリ　" + ("・".join(map(str, debris)) or "該当なし"))
     lines.append("【最終検証買目】")
-    selected = _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map, adopted_seq=seq)
+    selected = _v335lt_build_normal_tickets(
+        model, line_groups, flow_rows, score_map,
+        adopted_seq=seq, normal_marks=normal_marks,
+    )
     if selected.get("reason"):
         lines.append("新方式　該当なし（" + str(selected["reason"]) + "）")
         return
@@ -2956,10 +2988,27 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
     axis, second = selected["axis"], selected["second"]
     displayed_second = selected["displayed_second"]
     lines.append(f"1列目　{axis}（{selected['best']['kind']}）")
+    # v335mf: 既存ヴェロビ評価の印と最終軸を照合するだけ。
+    # 印自体や車券生成の変更は行わない。通常7車立ての6点モデルのみ。
+    if selected.get("trio_format") == "box":
+        marks = list(normal_marks or ())
+        axis_mark = next(
+            (mark for mark, car in zip("◎○▲△×", marks)
+             if car is not None and int(car) == int(axis)),
+            None,
+        )
+        if axis_mark in ("◎", "○"):
+            lines.append(f"推奨車券　2車複（最終軸{axis}：ヴェロビ評価{axis_mark}）")
+        elif axis_mark in ("▲", "△"):
+            lines.append(f"推奨車券　3連複（最終軸{axis}：ヴェロビ評価{axis_mark}）")
+        elif axis_mark == "×":
+            lines.append(f"推奨車券　ケン（最終軸{axis}：ヴェロビ評価×）")
+        else:
+            lines.append(f"推奨車券　ケン（最終軸{axis}：ヴェロビ評価無印）")
     if selected.get("trio_format") == "box":
         lines.append("相手4車　" + "・".join(map(str, displayed_second)))
         # 買い目用の印。上段の通常「ヴェロビ評価」の印とは独立。
-        # ◎＝現行軸、○＝太陽、▲＝木星、△＝距離最上位、×＝距離最下位。
+        # ◎＝現行軸、○＝太陽、▲＝木星、△＝距離最上位、×＝ヴェロビ評価×（重複時デブリ最上位）。
         # 軸が太陽・木星と同車の場合は、実際の相手4車の並び順を保持する。
         sun_car = model.get("sun")
         jup_car = model.get("jupiter")
