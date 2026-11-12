@@ -1,3 +1,4 @@
+# v335mh: 通常7車の公開表示を推奨買い目のみ冒頭配置。ケンは車券非表示、488R基準率表示。選抜・保存等は維持。
 # v335mg: 通常7車立ての券種推奨のみ変更。軸のヴェロビ評価◎→3連複、○→2車単、その他→ケン。既存×選抜・買い目は維持。
 # v335mf: 通常7車立て最終×をヴェロビ評価×優先（重複時はデブリ個人スコア上位）へ変更。最終軸の通常評価印で2車複／3連複／ケン推奨を表示。
 # v335me: 通常7車立ての相手2車を、軸・太陽・木星以外の4車から天体距離の最上位・最下位で選抜。
@@ -2963,7 +2964,7 @@ def _v335lt_build_normal_tickets(model, line_groups, flow_rows, score_map, adopt
 
 def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=None,
                                        line_groups=None, flow_rows=None, score_map=None):
-    """v335lt: 通常競輪の最終買目のみ変更。既存天体表示・他区分は維持。"""
+    """通常競輪の天体・候補評価を保持し、通常7車の公開先頭のみ推奨車券表示にする。"""
     lines.append(f"体系　太陽・木星2車平均／単騎個人評価モデル（採用流れ：{style}）")
     sun, jup = model.get("sun"), model.get("jupiter")
     planets = list(model.get("planets") or [])
@@ -2989,28 +2990,17 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
     axis, second = selected["axis"], selected["second"]
     displayed_second = selected["displayed_second"]
     lines.append(f"1列目　{axis}（{selected['best']['kind']}）")
-    # v335mg: 既存ヴェロビ評価印と最終軸を照合して推奨だけを決定。
-    # ◎＝3連複6点、○＝2車単4点、▲△×無印＝ケン。
-    # 最終軸、相手4車、既存3連複・2車複の生成は変更しない。
-    axis_mark = None
+
     if selected.get("trio_format") == "box":
+        # 既存の軸・相手・×選抜・6点/4点の生成結果だけを使用。
+        # ヴェロビ評価（通常評価）の印を参照し、公開推奨券種を確定する。
         marks = list(normal_marks or ())
         axis_mark = next(
             (mark for mark, car in zip("◎○▲△×", marks)
              if car is not None and int(car) == int(axis)),
             None,
         )
-        if axis_mark == "◎":
-            lines.append(f"推奨車券　3連複（最終軸{axis}：ヴェロビ評価◎）")
-        elif axis_mark == "○":
-            lines.append(f"推奨車券　2車単（最終軸{axis}：ヴェロビ評価○）")
-        else:
-            lines.append(f"推奨車券　ケン（最終軸{axis}：ヴェロビ評価{axis_mark or '無印'}）")
-    if selected.get("trio_format") == "box":
         lines.append("相手4車　" + "・".join(map(str, displayed_second)))
-        # 買い目用の印。上段の通常「ヴェロビ評価」の印とは独立。
-        # ◎＝現行軸、○＝太陽、▲＝木星、△＝距離最上位、×＝ヴェロビ評価×（重複時デブリ最上位）。
-        # 軸が太陽・木星と同車の場合は、実際の相手4車の並び順を保持する。
         sun_car = model.get("sun")
         jup_car = model.get("jupiter")
         blind_car = selected["blind"]
@@ -3023,13 +3013,55 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
                 mark_cars.append(car)
         if blind_car not in mark_cars:
             mark_cars.append(blind_car)
-        lines.append("　".join(f"{mark}{car}" for mark, car in zip("◎○▲△×", mark_cars)))
-        lines.append(f"3連複　{axis}-{''.join(map(str, displayed_second))}-{''.join(map(str, displayed_second))}")
-        lines.append(f"2車複　{axis}-{''.join(map(str, displayed_second))}")
-        # ○軸では推奨された2車単4点を明記（軸1着固定）。
-        if axis_mark == "○":
-            lines.append(f"2車単　{axis}-{''.join(map(str, displayed_second))}")
+
+        final_marks_text = "　".join(
+            f"{mark}{car}" for mark, car in zip("◎○▲△×", mark_cars)
+        )
+        # carFR順位別・過去集計実績488Rの公表値。個別レースの予測的中率ではない。
+        # 無印は6位/7位以下の別判定が無いため、2階級の実績範囲で表示する。
+        third_place_reference = {
+            "◎": "62.9%", "○": "53.9%", "▲": "47.1%",
+            "△": "44.1%", "×": "39.8%", None: "23.8～29.2%",
+        }
+        if axis_mark == "◎":
+            ticket_type = "3連複"
+            ticket_text = f"{axis}-{''.join(map(str, displayed_second))}-{''.join(map(str, displayed_second))}"
+            reference_text = "基準軸3着内率　62.9%（過去集計実績488R参照）"
+        elif axis_mark == "○":
+            ticket_type = "2車単"
+            ticket_text = f"{axis}-{''.join(map(str, displayed_second))}"
+            reference_text = "基準軸1着率　23.4%（過去集計実績488R参照）"
+        else:
+            ticket_type = "ケン"
+            ticket_text = None  # ケンは全券種の買い目を非表示
+            reference_text = (
+                "基準軸3着内率　"
+                + third_place_reference[axis_mark]
+                + "（過去集計実績488R参照）"
+            )
+
+        # 公開用の冒頭ブロックだけを先頭へ配置。既存の予想・評価・天体表示は残す。
+        venue = str(globals().get("track") or globals().get("place") or "").strip()
+        race_num = str(globals().get("race_no") or "").strip()
+        race_title = f"{venue}{race_num if race_num.endswith('R') else race_num + 'R'}" if race_num else venue
+        top_lines = []
+        if race_title:
+            top_lines.extend([race_title, ""])
+        top_lines.append(final_marks_text)
+        top_lines.append(
+            f"推奨車券　{ticket_type}（最終軸：ヴェロビ評価{axis_mark or '無印'}）"
+        )
+        top_lines.append("＊＊＊＊")
+        if ticket_text is not None:
+            top_lines.append(ticket_text)
+        top_lines.append(reference_text)
+        top_lines.extend(["＊＊＊＊", ""])
+        queue = str(globals().get("home_line_text") or "").strip()
+        if queue:
+            top_lines.extend([f"想定隊列　{queue}", ""])
+        lines[:0] = top_lines
     else:
+        # 7車立て以外の従来表示・生成は変更しない。
         lines.append("2列目　" + "・".join(map(str, displayed_second)))
         lines.append("3列目　" + "・".join(map(str, second)))
         lines.append(f"検証3連複　{axis}-{''.join(map(str, displayed_second))}-{''.join(map(str, second))}")
