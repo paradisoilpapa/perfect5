@@ -1,3 +1,4 @@
+# v335mj: 通常6車立てにも公開冒頭形式を適用。選抜・買い目生成は変更しない。
 # v335mh: 通常7車の公開表示を推奨買い目のみ冒頭配置。ケンは車券非表示、488R基準率表示。選抜・保存等は維持。
 # v335mi: note用コピー欄で、公開本文に含まれるレース名・想定隊列の二重付与を防止。
 # v335mg: 通常7車立ての券種推奨のみ変更。軸のヴェロビ評価◎→3連複、○→2車単、その他→ケン。既存×選抜・買い目は維持。
@@ -3061,8 +3062,69 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
         if queue:
             top_lines.extend([f"想定隊列　{queue}", ""])
         lines[:0] = top_lines
+    elif len(seq) == 6:
+        # v335mj：通常6車立ても公開表記だけを7車立てと統一。
+        # 6車の既存列・相手4車・3連複フォーメーション（4車×2車）は一切変更しない。
+        # 最終印は既存の軸＋表示2列目4車の並びをそのまま示す。
+        marks = list(normal_marks or ())
+        axis_mark = next(
+            (mark for mark, car in zip("◎○▲△×", marks)
+             if car is not None and int(car) == int(axis)),
+            None,
+        )
+        if len(displayed_second) != 4 or len(set([axis, *displayed_second])) != 5:
+            # 元の買い目を保護し、無理に新フォーマットを作らない。
+            lines.append("2列目　" + "・".join(map(str, displayed_second)))
+            lines.append("3列目　" + "・".join(map(str, second)))
+            lines.append(f"検証3連複　{axis}-{''.join(map(str, displayed_second))}-{''.join(map(str, second))}")
+            lines.append(f"推奨2車複　{axis}-{''.join(map(str, displayed_second))}")
+            return
+        lines.append("2列目　" + "・".join(map(str, displayed_second)))
+        lines.append("3列目　" + "・".join(map(str, second)))
+        final_marks_text = "　".join(
+            f"{mark}{car}" for mark, car in zip("◎○▲△×", [axis, *displayed_second])
+        )
+        third_place_reference = {
+            "◎": "62.9%", "○": "53.9%", "▲": "47.1%",
+            "△": "44.1%", "×": "39.8%", None: "23.8～29.2%",
+        }
+        if axis_mark == "◎":
+            ticket_type = "3連複"
+            # 6車立ての既存3連複を保持。7車の6点BOXに変換しない。
+            ticket_text = f"{axis}-{''.join(map(str, displayed_second))}-{''.join(map(str, second))}"
+            reference_text = "基準軸3着内率　62.9%（過去集計実績488R参照）"
+        elif axis_mark == "○":
+            ticket_type = "2車単"
+            ticket_text = f"{axis}-{''.join(map(str, displayed_second))}"
+            reference_text = "基準軸1着率　23.4%（過去集計実績488R参照）"
+        else:
+            ticket_type = "ケン"
+            ticket_text = None
+            reference_text = (
+                "基準軸3着内率　" + third_place_reference[axis_mark]
+                + "（過去集計実績488R参照）"
+            )
+        venue = str(globals().get("track") or globals().get("place") or "").strip()
+        race_num = str(globals().get("race_no") or "").strip()
+        race_title = f"{venue}{race_num if race_num.endswith('R') else race_num + 'R'}" if race_num else venue
+        top_lines = []
+        if race_title:
+            top_lines.extend([race_title, ""])
+        top_lines.append(final_marks_text)
+        top_lines.append(
+            f"推奨車券　{ticket_type}（最終軸：ヴェロビ評価{axis_mark or '無印'}）"
+        )
+        top_lines.append("＊＊＊＊")
+        if ticket_text is not None:
+            top_lines.append(ticket_text)
+        top_lines.append(reference_text)
+        top_lines.extend(["＊＊＊＊", ""])
+        queue = str(globals().get("home_line_text") or "").strip()
+        if queue:
+            top_lines.extend([f"想定隊列　{queue}", ""])
+        lines[:0] = top_lines
     else:
-        # 7車立て以外の従来表示・生成は変更しない。
+        # 5・8・9車立てその他は従来形式を維持。
         lines.append("2列目　" + "・".join(map(str, displayed_second)))
         lines.append("3列目　" + "・".join(map(str, second)))
         lines.append(f"検証3連複　{axis}-{''.join(map(str, displayed_second))}-{''.join(map(str, second))}")
