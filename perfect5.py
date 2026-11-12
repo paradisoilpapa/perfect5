@@ -1,3 +1,4 @@
+# v335mg: 通常7車立ての券種推奨のみ変更。軸のヴェロビ評価◎→3連複、○→2車単、その他→ケン。既存×選抜・買い目は維持。
 # v335mf: 通常7車立て最終×をヴェロビ評価×優先（重複時はデブリ個人スコア上位）へ変更。最終軸の通常評価印で2車複／3連複／ケン推奨を表示。
 # v335me: 通常7車立ての相手2車を、軸・太陽・木星以外の4車から天体距離の最上位・最下位で選抜。
 # v335md: 単騎中心で旧2列目が不足する場合に、軸最上位流れから補完。
@@ -2988,8 +2989,10 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
     axis, second = selected["axis"], selected["second"]
     displayed_second = selected["displayed_second"]
     lines.append(f"1列目　{axis}（{selected['best']['kind']}）")
-    # v335mf: 既存ヴェロビ評価の印と最終軸を照合するだけ。
-    # 印自体や車券生成の変更は行わない。通常7車立ての6点モデルのみ。
+    # v335mg: 既存ヴェロビ評価印と最終軸を照合して推奨だけを決定。
+    # ◎＝3連複6点、○＝2車単4点、▲△×無印＝ケン。
+    # 最終軸、相手4車、既存3連複・2車複の生成は変更しない。
+    axis_mark = None
     if selected.get("trio_format") == "box":
         marks = list(normal_marks or ())
         axis_mark = next(
@@ -2997,14 +3000,12 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
              if car is not None and int(car) == int(axis)),
             None,
         )
-        if axis_mark in ("◎", "○"):
-            lines.append(f"推奨車券　2車複（最終軸{axis}：ヴェロビ評価{axis_mark}）")
-        elif axis_mark in ("▲", "△"):
-            lines.append(f"推奨車券　3連複（最終軸{axis}：ヴェロビ評価{axis_mark}）")
-        elif axis_mark == "×":
-            lines.append(f"推奨車券　ケン（最終軸{axis}：ヴェロビ評価×）")
+        if axis_mark == "◎":
+            lines.append(f"推奨車券　3連複（最終軸{axis}：ヴェロビ評価◎）")
+        elif axis_mark == "○":
+            lines.append(f"推奨車券　2車単（最終軸{axis}：ヴェロビ評価○）")
         else:
-            lines.append(f"推奨車券　ケン（最終軸{axis}：ヴェロビ評価無印）")
+            lines.append(f"推奨車券　ケン（最終軸{axis}：ヴェロビ評価{axis_mark or '無印'}）")
     if selected.get("trio_format") == "box":
         lines.append("相手4車　" + "・".join(map(str, displayed_second)))
         # 買い目用の印。上段の通常「ヴェロビ評価」の印とは独立。
@@ -3025,6 +3026,9 @@ def _v335lk_append_normal_model_lines(lines, model, style, seq, normal_marks=Non
         lines.append("　".join(f"{mark}{car}" for mark, car in zip("◎○▲△×", mark_cars)))
         lines.append(f"3連複　{axis}-{''.join(map(str, displayed_second))}-{''.join(map(str, displayed_second))}")
         lines.append(f"2車複　{axis}-{''.join(map(str, displayed_second))}")
+        # ○軸では推奨された2車単4点を明記（軸1着固定）。
+        if axis_mark == "○":
+            lines.append(f"2車単　{axis}-{''.join(map(str, displayed_second))}")
     else:
         lines.append("2列目　" + "・".join(map(str, displayed_second)))
         lines.append("3列目　" + "・".join(map(str, second)))
