@@ -1,4 +1,5 @@
 # v335mh: 通常7車の公開表示を推奨買い目のみ冒頭配置。ケンは車券非表示、488R基準率表示。選抜・保存等は維持。
+# v335mi: note用コピー欄で、公開本文に含まれるレース名・想定隊列の二重付与を防止。
 # v335mg: 通常7車立ての券種推奨のみ変更。軸のヴェロビ評価◎→3連複、○→2車単、その他→ケン。既存×選抜・買い目は維持。
 # v335mf: 通常7車立て最終×をヴェロビ評価×優先（重複時はデブリ個人スコア上位）へ変更。最終軸の通常評価印で2車複／3連複／ケン推奨を表示。
 # v335me: 通常7車立ての相手2車を、軸・太陽・木星以外の4車から天体距離の最上位・最下位で選抜。
@@ -17754,12 +17755,19 @@ def _v334n_build_compact_note_text(plan, weighted_trio_rows, queue_source=""):
         if not _current_lines:
             return "note用簡易出力生成不可：現行購入評価未確定"
 
+        # v335mi：通常7車の公開本文には既にレース名・想定隊列が含まれる。
+        # コピー欄側で重ねて付与しない。その他の従来出力経路は維持。
+        _current_text_lines = [str(_x) for _x in _current_lines]
+        _first_nonempty = next((x.strip() for x in _current_text_lines if x.strip()), "")
+        if (_first_nonempty == race_title
+                and any(x.startswith("推奨車券　") for x in _current_text_lines)):
+            return "\n".join(_current_text_lines).strip() + "\n"
         return "\n".join([
             race_title,
             "",
             f"想定隊列　{queue_text}",
             "",
-            *[str(_x) for _x in _current_lines],
+            *_current_text_lines,
         ]).strip() + "\n"
 
         # ---- v335ht以前の旧三連複スナップショット経路（到達しない・履歴互換） ----
