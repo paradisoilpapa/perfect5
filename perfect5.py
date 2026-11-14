@@ -1,3 +1,4 @@
+# v335mk: ガールズ／アドバンスの公開推奨を○→◎→▲△×（3連単3点）＋○→▲△×（2車単3点）へ変更。通常競輪・内部予想・保存は原本維持。
 # v335mj: 通常6車立てにも公開冒頭形式を適用。選抜・買い目生成は変更しない。
 # v335mh: 通常7車の公開表示を推奨買い目のみ冒頭配置。ケンは車券非表示、488R基準率表示。選抜・保存等は維持。
 # v335mi: note用コピー欄で、公開本文に含まれるレース名・想定隊列の二重付与を防止。
@@ -3176,6 +3177,47 @@ def _v335lk_append_single_model_lines(lines, model, style, seq):
 
 
 
+def _v335mk_single_mixed_ticket_block(axis, circle, triangle, delta, cross,
+                                      race_title, queue_text, circle_p1):
+    """ガールズ／アドバンス用、既存の通常印5車だけで6点の公開買目を生成する。"""
+    mark_cars = (axis, circle, triangle, delta, cross)
+    if any(c is None for c in mark_cars):
+        return None
+    mark_cars = tuple(int(c) for c in mark_cars)
+    if len(set(mark_cars)) != 5:
+        return None
+    a, o, t, d, x = mark_cars
+    group = f"{t}{d}{x}"
+    marks = "　".join(f"{m}{c}" for m, c in zip("◎○▲△×", mark_cars))
+    trifecta = f"{o}-{a}-{group}"
+    exacta = f"{o}-{group}"
+    top = []
+    if race_title:
+        top.extend((race_title, ""))
+    top.extend((
+        marks,
+        "推奨車券　3連単3点＋2車単3点（最終軸：ヴェロビ評価○）",
+        "＊＊＊＊",
+        trifecta,
+        exacta,
+        f"想定軸1着率　{float(circle_p1) * 100.0:.1f}%（当該レース内部推定）",
+        "＊＊＊＊",
+        "",
+    ))
+    if queue_text:
+        top.extend((f"想定隊列　{queue_text}", ""))
+    details = (
+        "【最終検証買目】",
+        f"1列目　{o}（ヴェロビ評価○）",
+        f"3連単2列目　{a}（ヴェロビ評価◎）",
+        f"相手3車　{t}・{d}・{x}",
+        "計6点（3連単3点＋2車単3点）",
+    )
+    return {"top": top, "details": list(details),
+            "trifecta_tickets": ((o, a, t), (o, a, d), (o, a, x)),
+            "exacta_tickets": ((o, t), (o, d), (o, x))}
+
+
 def _v335es_flow_top2_purchase_lines(profile, v_order=None):
     """v335gd：印の役割と券種別おすすめを生成する。
 
@@ -5692,9 +5734,47 @@ def _v335es_flow_top2_purchase_lines(profile, v_order=None):
                 (_normal_axis_v335iv, _other_v335iv), f"◎-無印{_idx_v335iv}"
             ))
 
-    # 公開用の推奨買い目（2車単・3連複）は表示しない。
-    # 印評価、想定着順、内部計算はそのまま維持する。
-
+    # v335mk：単騎専用の公開推奨だけを差し替える。通常競輪の分岐には触れない。
+    # 既存の印・単騎順位・天体配置は保持し、旧3連複公開欄だけを新6点へ置換。
+    if _single_flow_class_v335hl:
+        _venue_v335mk = str(globals().get("track") or globals().get("place") or "").strip()
+        _race_number_v335mk = str(globals().get("race_no") or "").strip()
+        _race_title_v335mk = (
+            f"{_venue_v335mk}{_race_number_v335mk if _race_number_v335mk.endswith('R') else _race_number_v335mk + 'R'}"
+            if _race_number_v335mk else _venue_v335mk
+        )
+        _queue_v335mk = str(globals().get("home_line_text") or "").strip()
+        _p1_circle_v335mk = float((_p1_map or {}).get(int(_b_gc), 0.0) or 0.0)
+        _mixed_v335mk = _v335mk_single_mixed_ticket_block(
+            _axis_gc, _b_gc, _triangle_gc, _delta_gc, _x_gc,
+            _race_title_v335mk, _queue_v335mk, _p1_circle_v335mk,
+        )
+        if _mixed_v335mk is not None:
+            _old_section_v335mk = _lines.index("【最終検証買目】")
+            _old_end_v335mk = next(
+                (i for i in range(_old_section_v335mk + 1, len(_lines))
+                 if str(_lines[i]).startswith("※ガールズは傾向分析")),
+                len(_lines),
+            )
+            _lines[_old_section_v335mk:_old_end_v335mk] = _mixed_v335mk["details"]
+            _lines[:0] = _mixed_v335mk["top"]
+        else:
+            # 印5車が成立しない場合は、不成立車券を表示せず理由を出す。
+            _old_section_v335mk = _lines.index("【最終検証買目】")
+            _old_end_v335mk = next(
+                (i for i in range(_old_section_v335mk + 1, len(_lines))
+                 if str(_lines[i]).startswith("※ガールズは傾向分析")),
+                len(_lines),
+            )
+            _lines[_old_section_v335mk:_old_end_v335mk] = [
+                "【最終検証買目】", "ケン（◎○▲△×の5車が一意に成立しないため）"
+            ]
+            _lines[:0] = [
+                _race_title_v335mk, "", "推奨車券　ケン（印5車未確定）",
+                "＊＊＊＊", "買い目なし", "＊＊＊＊", "",
+                *([f"想定隊列　{_queue_v335mk}", ""] if _queue_v335mk else []),
+            ]
+    # 通常競輪の既存買目・公開表示・内部計算は維持。
     return _lines
 
 def _v335bt_purchase_lines(final_order, profile):
